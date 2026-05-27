@@ -1,0 +1,4 @@
+.minicloud-caddy/
+dist/
+web/dist/
+web/node_modules/

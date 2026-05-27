@@ -1,0 +1,81 @@
+services:
+  loki:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/loki:2.9.8
+    container_name: mini-cloud-center-loki
+    command:
+      - -config.file=/etc/loki/config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
+      - mini-cloud-center-loki-data:/loki
+
+  tempo:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/tempo:2.5.0
+    container_name: mini-cloud-center-tempo
+    command:
+      - -config.file=/etc/tempo/config.yml
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+      - mini-cloud-center-tempo-data:/var/tempo
+
+  alertmanager:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}prom/alertmanager:v0.27.0
+    container_name: mini-cloud-center-alertmanager
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+      - mini-cloud-center-alertmanager-data:/alertmanager
+
+  prometheus:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}prom/prometheus:v2.53.4
+    container_name: mini-cloud-center-prometheus
+    depends_on:
+      - alertmanager
+    command:
+      - --config.file=/etc/prometheus/config.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/config.yml:/etc/prometheus/config.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/file_sd:/etc/prometheus/file_sd:ro
+      - ./secrets/control-plane-metrics.token:/run/secrets/control-plane-metrics.token:ro
+      - mini-cloud-center-prometheus-data:/prometheus
+
+  grafana:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/grafana-oss:10.4.3
+    container_name: mini-cloud-center-grafana
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - mini-cloud-center-grafana-data:/var/lib/grafana
+
+volumes:
+  mini-cloud-center-loki-data:
+  mini-cloud-center-tempo-data:
+  mini-cloud-center-alertmanager-data:
+  mini-cloud-center-prometheus-data:
+  mini-cloud-center-grafana-data:

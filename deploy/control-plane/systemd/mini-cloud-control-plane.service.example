@@ -1,0 +1,22 @@
+[Unit]
+Description=mini-cloud control-plane
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=minicloud
+Group=minicloud
+WorkingDirectory=/opt/mini-cloud/control-plane
+EnvironmentFile=/etc/mini-cloud/control-plane/control-plane.env
+ExecStart=/opt/mini-cloud/control-plane/bin/control-plane
+Restart=always
+RestartSec=2
+StandardOutput=append:/var/log/mini-cloud/control-plane.log
+StandardError=append:/var/log/mini-cloud/control-plane.log
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

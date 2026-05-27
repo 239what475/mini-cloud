@@ -1,0 +1,62 @@
+provider_name = "aliyun"
+platform_name = "mini-cloud-v3-lab"
+environment   = "lab"
+owner         = "student"
+
+vpc_cidr_block    = "10.88.0.0/16"
+subnet_cidr_block = "10.88.1.0/24"
+
+# admin_cidrs 只用于 SSH 登录 platform host。
+admin_cidrs = [
+  "203.0.113.10/32"
+]
+
+# control_plane_cidrs 用于外部 control-plane/admin 访问 cloud-plane gRPC。
+control_plane_cidrs = [
+  "203.0.113.10/32"
+]
+
+# ingress_cidrs 用于用户/CDN 访问 Caddy HTTP 入口。
+ingress_cidrs = [
+  "203.0.113.10/32"
+]
+
+# public service 默认入口域名为：
+# <service>.<project>.<ingress_base_domain>
+ingress_base_domain = "apps.example.test"
+
+# 这里填本机 SSH 公钥路径。
+# Terraform 会读取这把公钥，并自动在云侧创建登录密钥对。
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+# admin_token 默认自动生成。
+# 如果你想固定成自己指定的值，再取消下面这一行的注释。
+# admin_token = "replace-with-a-strong-admin-token"
+
+# cloud_plane_binary_url / agent_binary_url
+# 默认不写在这个主 tfvars 里。
+# 如果需要真实云主机自动下载安装二进制，
+# 请先用 `make build-release` 构建 release 产物，
+# 再把二进制上传到你自己的对象存储或制品仓库，
+# 最后在 terraform.binary.auto.tfvars.json 中填入下载 URL 和 SHA256。
+
+aliyun = {
+  region_id     = "cn-beijing"
+  zone_id       = "cn-beijing-f"
+  instance_type = "ecs.u1-c1m1.large"
+  image_id      = "replace-with-a-region-available-image-id"
+}
+
+# 如果要切到腾讯云，只需要把 provider_name 改成 "tencent"，
+# 然后填写下面这组字段；未被选中的 provider 配置不会参与本次部署。
+#
+# tencent = {
+#   region_id     = "ap-beijing"
+#   zone_id       = "ap-beijing-6"
+#   instance_type = "S5.MEDIUM4"
+#   image_id      = "img-xxxxxxxx"
+# }
+#
+# 留空时，image_pull_registry_mirror 会按 provider_name 自动选默认值：
+# aliyun 走 https://docker.m.daocloud.io
+# tencent 走 https://mirror.ccs.tencentyun.com

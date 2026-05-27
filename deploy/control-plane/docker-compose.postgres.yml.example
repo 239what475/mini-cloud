@@ -1,0 +1,13 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: mini-cloud-control-plane-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mini_cloud
+      POSTGRES_PASSWORD: mini_cloud
+      POSTGRES_DB: mini_cloud_control_plane
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - ./live/postgres-data:/var/lib/postgresql/data

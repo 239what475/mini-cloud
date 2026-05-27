@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package minicloud.nodeagent.v1;
+
+option go_package = "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1;nodeagentv1";
+
+import "google/protobuf/timestamp.proto";
+
+message RegisterNodeRequest {
+  reserved 8, 9;
+
+  string provider = 1;
+  string region = 2;
+  string name = 3;
+  string private_ip = 4 [json_name = "privateIP"];
+  string public_ip = 5 [json_name = "publicIP"];
+  string instance_id = 6 [json_name = "instanceID"];
+  string instance_type = 7 [json_name = "instanceType"];
+  int32 cpu_milli_total = 10 [json_name = "cpuMilliTotal"];
+  int32 memory_mi_total = 11 [json_name = "memoryMiTotal"];
+}
+
+message RegisterNodeResponse {
+  string node_id = 1 [json_name = "nodeID"];
+  string session_token = 2 [json_name = "sessionToken"];
+  string observed_status = 3 [json_name = "observedStatus"];
+  google.protobuf.Timestamp accepted_at = 4 [json_name = "acceptedAt"];
+}
+
+message HeartbeatRequest {
+  reserved 4, 5;
+
+  string node_id = 1 [json_name = "nodeID"];
+  google.protobuf.Timestamp reported_at = 2 [json_name = "reportedAt"];
+  string agent_version = 3 [json_name = "agentVersion"];
+  int32 running_containers = 6 [json_name = "runningContainers"];
+  string status = 7;
+  int32 cpu_milli_allocatable = 8 [json_name = "cpuMilliAllocatable"];
+  int32 memory_mi_allocatable = 9 [json_name = "memoryMiAllocatable"];
+}
+
+message HeartbeatResponse {
+  string node_id = 1 [json_name = "nodeID"];
+  bool accepted = 2;
+  string observed_status = 3 [json_name = "observedStatus"];
+  google.protobuf.Timestamp received_at = 4 [json_name = "receivedAt"];
+}
+
+message ImageCredential {
+  string server = 1;
+  string username = 2;
+  string password = 3;
+}
+
+message SupersededExecution {
+  string deployment_id = 1 [json_name = "deploymentID"];
+  string execution_id = 2 [json_name = "executionID"];
+  string container_id = 3 [json_name = "containerID"];
+  string container_name = 4 [json_name = "containerName"];
+}
+
+message ProjectedFile {
+  string mount_path = 1 [json_name = "mountPath"];
+  string content = 2;
+  uint32 mode = 3;
+  bool sensitive = 4;
+}
+
+message PersistentDirMount {
+  string name = 1;
+  string mount_path = 2 [json_name = "mountPath"];
+  string source_path = 3 [json_name = "sourcePath"];
+}
+
+message WorkItem {
+  string execution_id = 1 [json_name = "executionID"];
+  string deployment_id = 2 [json_name = "deploymentID"];
+  int32 replica_index = 3 [json_name = "replicaIndex"];
+  string node_id = 4 [json_name = "nodeID"];
+  string project_id = 5 [json_name = "projectID"];
+  string service_id = 6 [json_name = "serviceID"];
+  string service_name = 7 [json_name = "serviceName"];
+  string revision_id = 8 [json_name = "revisionID"];
+  string revision_label = 9 [json_name = "revisionLabel"];
+  string image = 10;
+  repeated string command = 11;
+  repeated string args = 12;
+  map<string, string> env = 13;
+  ImageCredential image_credential = 14 [json_name = "imageCredential"];
+  SupersededExecution superseded_execution = 15 [json_name = "supersededExecution"];
+  int32 container_port = 16 [json_name = "containerPort"];
+  string readiness_path = 17 [json_name = "readinessPath"];
+  string container_name = 18 [json_name = "containerName"];
+  repeated ProjectedFile projected_files = 19 [json_name = "projectedFiles"];
+  repeated PersistentDirMount persistent_dirs = 20 [json_name = "persistentDirs"];
+}
+
+message PollWorkRequest {
+  string node_id = 1 [json_name = "nodeID"];
+}
+
+message PollWorkResponse {
+  WorkItem item = 1;
+}
+
+message ReportExecutionRequest {
+  string node_id = 1 [json_name = "nodeID"];
+  string execution_id = 2 [json_name = "executionID"];
+  string status = 3;
+  string reason = 4;
+  string container_id = 5 [json_name = "containerID"];
+  string container_name = 6 [json_name = "containerName"];
+  int32 host_port = 7 [json_name = "hostPort"];
+  string superseded_execution_id = 8 [json_name = "supersededExecutionID"];
+}
+
+message ExecutionRecord {
+  string id = 1;
+  string deployment_id = 2 [json_name = "deploymentID"];
+  string node_id = 3 [json_name = "nodeID"];
+  string image = 4;
+  string container_name = 5 [json_name = "containerName"];
+  string container_id = 6 [json_name = "containerID"];
+  int32 container_port = 7 [json_name = "containerPort"];
+  int32 host_port = 8 [json_name = "hostPort"];
+  string readiness_path = 9 [json_name = "readinessPath"];
+  string status = 10;
+  string status_reason = 11 [json_name = "statusReason"];
+  google.protobuf.Timestamp started_at = 12 [json_name = "startedAt"];
+  google.protobuf.Timestamp finished_at = 13 [json_name = "finishedAt"];
+  google.protobuf.Timestamp created_at = 14 [json_name = "createdAt"];
+  google.protobuf.Timestamp updated_at = 15 [json_name = "updatedAt"];
+}
+
+message ReportExecutionAck {
+  ExecutionRecord execution = 1;
+  google.protobuf.Timestamp observed_at = 2 [json_name = "observedAt"];
+}
+
+message ReportExecutionResponse {
+  ReportExecutionAck ack = 1;
+}
+
+service NodeAgentService {
+  rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
+
+  rpc RecordHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  rpc PollWork(PollWorkRequest) returns (PollWorkResponse);
+
+  rpc ReportExecution(ReportExecutionRequest) returns (ReportExecutionResponse);
+}

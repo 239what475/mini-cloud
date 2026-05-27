@@ -1,0 +1,22 @@
+version: v2
+
+modules:
+  - path: proto
+
+deps:
+  - buf.build/googleapis/googleapis
+
+lint:
+  use:
+    - STANDARD
+  except:
+    # TODO(v7): 清理历史 proto RPC 命名。
+    # 早期 proto 复用了 Empty、Project、ServiceEnvelope 等消息作为多个 RPC 的请求或响应。
+    # 后续应为 RPC 补齐专用 Request / Response 消息，再移除下面三个例外。
+    - RPC_REQUEST_RESPONSE_UNIQUE
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
+
+breaking:
+  use:
+    - FILE

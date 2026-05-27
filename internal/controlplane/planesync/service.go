@@ -1,0 +1,362 @@
+package planesync
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"mini-cloud/internal/common/logctx"
+	"mini-cloud/internal/contract/cloudplaneapi"
+	plane "mini-cloud/internal/controlplane/plane"
+	"mini-cloud/internal/controlplane/store"
+)
+
+var (
+	ErrPlaneNotRegistered = errors.New("plane southbound token is not configured")
+)
+
+const (
+	backgroundPlaneSyncPerPlaneTimeout = 30 * time.Second
+	ManualPlaneSyncTimeout             = 2 * time.Minute
+)
+
+type Service struct {
+	logger  *slog.Logger
+	store   serviceStore
+	fetcher planeSnapshotFetcher
+	now     func() time.Time
+}
+
+type Result struct {
+	Plane            plane.Detail                  `json:"plane"`
+	ObservedProvider string                        `json:"observedProvider"`
+	ObservedRegion   string                        `json:"observedRegion"`
+	HealthCheckedAt  time.Time                     `json:"healthCheckedAt"`
+	SyncedAt         time.Time                     `json:"syncedAt"`
+	Overview         cloudplaneapi.OverviewSummary `json:"overview"`
+	AlertsFiring     int                           `json:"alertsFiring"`
+}
+
+type PlaneSyncOutcome struct {
+	PlaneID string  `json:"planeID"`
+	Result  *Result `json:"result,omitempty"`
+	Error   string  `json:"error,omitempty"`
+}
+
+type serviceStore interface {
+	GetPlane(context.Context, string) (plane.Detail, error)
+	SetPlaneSouthboundToken(context.Context, string, string) (plane.Registration, error)
+	MarkPlaneSouthboundTokenVerified(context.Context, string, time.Time) (plane.Registration, error)
+	GetPlaneSouthboundToken(context.Context, string) (string, error)
+	ListRegisteredPlaneIDs(context.Context) ([]string, error)
+	UpdatePlaneStatus(context.Context, string, plane.UpdateStatusInput) (plane.PlaneStatus, error)
+	RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error)
+	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
+	RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error)
+}
+
+type planeSnapshot struct {
+	Plane         cloudplaneapi.PlaneSummary
+	Health        cloudplaneapi.HealthSummary
+	Overview      cloudplaneapi.OverviewSummary
+	Capacity      cloudplaneapi.CapacitySummary
+	Reliability   cloudplaneapi.ReliabilitySummary
+	Runtime       cloudplaneapi.RuntimeInventory
+	RuntimeConfig cloudplaneapi.RuntimeConfigSnapshot
+}
+
+type planeSnapshotFetcher interface {
+	Fetch(context.Context, string, string) (planeSnapshot, error)
+}
+
+type syncError struct {
+	status          string
+	message         string
+	lastHeartbeatAt *time.Time
+}
+
+func (e *syncError) Error() string {
+	return e.message
+}
+
+func IsSyncFailure(err error) bool {
+	var target *syncError
+	return errors.As(err, &target)
+}
+
+func NewService(logger *slog.Logger, stores *store.Store) *Service {
+	return NewServiceWithFetcher(logger, stores, newGRPCPlaneSnapshotFetcher())
+}
+
+func NewServiceWithFetcher(logger *slog.Logger, stores serviceStore, fetcher planeSnapshotFetcher) *Service {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Service{
+		logger:  logger,
+		store:   stores,
+		fetcher: fetcher,
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+	}
+}
+
+func (s *Service) RegisterPlane(ctx context.Context, planeID string, input plane.RegisterInput) (Result, error) {
+	if err := input.Validate(); err != nil {
+		return Result{}, err
+	}
+	return s.syncWithToken(ctx, planeID, strings.TrimSpace(input.SouthboundToken), true)
+}
+
+func (s *Service) SyncPlane(ctx context.Context, planeID string) (Result, error) {
+	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
+	if err != nil {
+		if errors.Is(err, store.ErrPlaneSouthboundTokenNotFound) {
+			return Result{}, ErrPlaneNotRegistered
+		}
+		return Result{}, err
+	}
+	return s.syncWithToken(ctx, planeID, token, false)
+}
+
+func (s *Service) SyncRegisteredPlanes(ctx context.Context) ([]PlaneSyncOutcome, error) {
+	return s.syncRegisteredPlanes(ctx, 0)
+}
+
+func (s *Service) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSyncOutcome, error) {
+	planeIDs, err := s.store.ListRegisteredPlaneIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	outcomes := make([]PlaneSyncOutcome, 0, len(planeIDs))
+	for _, planeID := range planeIDs {
+		planeCtx := ctx
+		cancel := func() {}
+		if perPlaneTimeout > 0 {
+			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
+		}
+		result, err := s.SyncPlane(planeCtx, planeID)
+		cancel()
+		outcome := PlaneSyncOutcome{PlaneID: planeID}
+		if err != nil {
+			outcome.Error = err.Error()
+		} else {
+			outcome.Result = &result
+		}
+		outcomes = append(outcomes, outcome)
+		if ctx.Err() != nil {
+			return outcomes, ctx.Err()
+		}
+	}
+	return outcomes, nil
+}
+
+func StartLoop(ctx context.Context, logger *slog.Logger, service *Service, interval time.Duration) {
+	if service == nil || interval <= 0 {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				outcomes, err := service.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
+				if err != nil {
+					logger.Error("plane background sync failed", "error", err)
+					continue
+				}
+				for _, outcome := range outcomes {
+					if outcome.Error != "" {
+						logger.Warn("plane sync failed", "plane_id", outcome.PlaneID, "error", outcome.Error)
+					}
+				}
+			}
+		}
+	}()
+}
+
+func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundToken string, persistToken bool) (Result, error) {
+	ctx = logctx.WithFields(ctx, logctx.Fields{PlaneID: planeID})
+	logger := logctx.Logger(ctx, s.logger)
+	planeDetail, err := s.store.GetPlane(ctx, planeID)
+	if err != nil {
+		return Result{}, err
+	}
+
+	snapshot, err := s.fetcher.Fetch(ctx, planeDetail.GRPCEndpoint, southboundToken)
+	if err != nil {
+		var syncErr *syncError
+		if errors.As(err, &syncErr) {
+			if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
+				logger.Error("update failed plane status failed", "error", updateErr)
+			}
+		}
+		return Result{}, err
+	}
+
+	if persistToken {
+		if _, err := s.store.SetPlaneSouthboundToken(ctx, planeID, southboundToken); err != nil {
+			return Result{}, err
+		}
+	}
+	if _, err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, snapshot.Health.CheckedAt); err != nil {
+		return Result{}, err
+	}
+	syncedAt := s.now()
+	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
+	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, plane.UpdateStatusInput{
+		Status:          status,
+		Message:         message,
+		LastHeartbeatAt: &snapshot.Health.CheckedAt,
+		LastSyncAt:      &syncedAt,
+	}); err != nil {
+		return Result{}, err
+	}
+	if _, _, err := s.store.ReplacePlaneRuntimeInventory(ctx, planeID, buildRuntimeInventory(snapshot)); err != nil {
+		return Result{}, err
+	}
+	if _, err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
+		return Result{}, err
+	}
+	if _, err := s.store.RecordPlaneCapacitySnapshot(ctx, planeID, buildCapacitySnapshot(snapshot)); err != nil {
+		return Result{}, err
+	}
+
+	detail, err := s.store.GetPlane(ctx, planeID)
+	if err != nil {
+		return Result{}, err
+	}
+
+	return Result{
+		Plane:            detail,
+		ObservedProvider: snapshot.Plane.Provider,
+		ObservedRegion:   snapshot.Plane.Region,
+		HealthCheckedAt:  snapshot.Health.CheckedAt,
+		SyncedAt:         syncedAt,
+		Overview:         snapshot.Overview,
+		AlertsFiring:     alertsFiring,
+	}, nil
+}
+
+func (s *Service) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
+	syncedAt := s.now()
+	_, err := s.store.UpdatePlaneStatus(ctx, planeID, plane.UpdateStatusInput{
+		Status:          syncErr.status,
+		Message:         syncErr.message,
+		LastHeartbeatAt: syncErr.lastHeartbeatAt,
+		LastSyncAt:      &syncedAt,
+	})
+	return err
+}
+
+func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string, string, int) {
+	alertsFiring := snapshot.Reliability.AlertsFiring
+
+	issues := make([]string, 0, 3)
+	if snapshot.Health.Service != "" && snapshot.Health.Service != "ok" {
+		issues = append(issues, fmt.Sprintf("remote plane service health is %s", snapshot.Health.Service))
+	}
+	if snapshot.Health.Database != "" && snapshot.Health.Database != "ok" {
+		issues = append(issues, fmt.Sprintf("remote plane database health is %s", snapshot.Health.Database))
+	}
+	if !snapshot.Plane.Configured {
+		issues = append(issues, "remote plane config is not fully configured")
+	}
+	if snapshot.Plane.Provider != "" && snapshot.Plane.Provider != planeDetail.Provider {
+		issues = append(issues, fmt.Sprintf("provider mismatch: expected %s but remote reports %s", planeDetail.Provider, snapshot.Plane.Provider))
+	}
+	if snapshot.Plane.Region != "" && snapshot.Plane.Region != planeDetail.Region {
+		issues = append(issues, fmt.Sprintf("region mismatch: expected %s but remote reports %s", planeDetail.Region, snapshot.Plane.Region))
+	}
+
+	unhealthyNodes := snapshot.Overview.NodesNotReady + snapshot.Overview.NodesOffline + snapshot.Overview.NodesDraining
+	if unhealthyNodes > 0 {
+		issues = append(issues, fmt.Sprintf("%d node(s) are not ready/offline/draining", unhealthyNodes))
+	}
+	if alertsFiring > 0 {
+		issues = append(issues, fmt.Sprintf("%d reliability alert(s) are firing", alertsFiring))
+	}
+
+	if len(issues) == 0 {
+		return plane.StatusReady, fmt.Sprintf(
+			"sync healthy: %d nodes, %d services, %d deployments",
+			snapshot.Overview.NodesTotal,
+			snapshot.Overview.ServicesTotal,
+			snapshot.Overview.DeploymentsTotal,
+		), alertsFiring
+	}
+
+	return plane.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
+}
+
+func buildCapacitySnapshot(snapshot planeSnapshot) plane.RecordCapacitySnapshotInput {
+	out := plane.RecordCapacitySnapshotInput{
+		// v6/03 开始，这里的 capacity snapshot 明确代表 runtime node 供给侧，
+		// 所以节点计数优先使用 CapacitySummary.RuntimeNodes*，
+		// 而不是更泛化的 Overview.Nodes*。
+		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
+		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
+		ServicesTotal:     snapshot.Overview.ServicesTotal,
+		DeploymentsTotal:  snapshot.Overview.DeploymentsTotal,
+		CapturedAt:        snapshot.Health.CheckedAt,
+		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
+		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
+		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
+		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
+	}
+	return out
+}
+
+func buildRuntimeInventory(snapshot planeSnapshot) plane.RecordRuntimeInventoryInput {
+	out := plane.RecordRuntimeInventoryInput{
+		SyncVersion:       snapshot.Runtime.SyncVersion,
+		ObservedAt:        snapshot.Runtime.ObservedAt,
+		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
+		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
+		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
+		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
+		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
+		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
+		Nodes:             make([]plane.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
+	}
+	for _, item := range snapshot.Runtime.Nodes {
+		out.Nodes = append(out.Nodes, plane.RuntimeNode{
+			NodeID:            item.NodeID,
+			NodeEpoch:         item.NodeEpoch,
+			Name:              item.Name,
+			Provider:          item.Provider,
+			Region:            item.Region,
+			InstanceID:        item.InstanceID,
+			InstanceType:      item.InstanceType,
+			Status:            item.Status,
+			Schedulable:       item.Schedulable,
+			CPUMilliCapacity:  item.CPUMilliAllocatable,
+			CPUMilliAllocated: item.CPUMilliAllocated,
+			MemoryMiCapacity:  item.MemoryMiAllocatable,
+			MemoryMiAllocated: item.MemoryMiAllocated,
+			LastHeartbeatAt:   item.LastHeartbeatAt,
+		})
+	}
+	return out
+}
+
+func buildRuntimeConfig(snapshot planeSnapshot) plane.RecordRuntimeConfigInput {
+	return plane.RecordRuntimeConfigInput{
+		ObservedAt:  snapshot.RuntimeConfig.ObservedAt,
+		Fingerprint: snapshot.RuntimeConfig.Fingerprint,
+		Summary:     snapshot.RuntimeConfig.Summary,
+	}
+}

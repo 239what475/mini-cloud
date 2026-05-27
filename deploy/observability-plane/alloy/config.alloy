@@ -1,0 +1,68 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+loki.write "center" {
+  endpoint {
+    url       = sys.env("MINICLOUD_CENTER_LOKI_PUSH_URL")
+    tenant_id = sys.env("MINICLOUD_LOKI_TENANT_ID")
+  }
+}
+
+local.file_match "platform_logs" {
+  path_targets = [
+    {
+      "__path__"  = "/var/log/mini-cloud/control-plane.log",
+      "job"       = "mini-cloud",
+      "component" = "control-plane",
+      "platform"  = sys.env("MINICLOUD_PLATFORM_NAME"),
+      "plane"     = sys.env("MINICLOUD_PLANE_NAME"),
+      "provider"  = sys.env("MINICLOUD_PROVIDER"),
+      "region"    = sys.env("MINICLOUD_REGION"),
+      "source"    = "platform",
+    },
+    {
+      "__path__"  = "/var/log/mini-cloud/cloud-plane.log",
+      "job"       = "mini-cloud",
+      "component" = "cloud-plane",
+      "platform"  = sys.env("MINICLOUD_PLATFORM_NAME"),
+      "plane"     = sys.env("MINICLOUD_PLANE_NAME"),
+      "provider"  = sys.env("MINICLOUD_PROVIDER"),
+      "region"    = sys.env("MINICLOUD_REGION"),
+      "source"    = "platform",
+    },
+    {
+      "__path__"  = "/var/log/mini-cloud/node-agent.log",
+      "job"       = "mini-cloud",
+      "component" = "node-agent",
+      "platform"  = sys.env("MINICLOUD_PLATFORM_NAME"),
+      "plane"     = sys.env("MINICLOUD_PLANE_NAME"),
+      "provider"  = sys.env("MINICLOUD_PROVIDER"),
+      "region"    = sys.env("MINICLOUD_REGION"),
+      "source"    = "platform",
+    },
+  ]
+}
+
+loki.source.file "platform_logs" {
+  targets    = local.file_match.platform_logs.targets
+  forward_to = [loki.write.center.receiver]
+}
+
+loki.source.api "workload_logs" {
+  http {
+    listen_address = "0.0.0.0"
+    listen_port    = 3101
+  }
+  labels = {
+    job = "mini-cloud",
+    platform = sys.env("MINICLOUD_PLATFORM_NAME"),
+    plane = sys.env("MINICLOUD_PLANE_NAME"),
+    provider = sys.env("MINICLOUD_PROVIDER"),
+    region = sys.env("MINICLOUD_REGION"),
+    source = "workload",
+  }
+  use_incoming_timestamp = true
+  forward_to             = [loki.write.center.receiver]
+}

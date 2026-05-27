@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package minicloud.cloudplane.v1;
+
+option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1";
+
+message ProjectQuota {
+  int32 max_services = 1 [json_name = "maxServices"];
+  int32 cpu_milli = 2 [json_name = "cpuMilli"];
+  int32 memory_mi = 3 [json_name = "memoryMi"];
+  reserved 4;
+}

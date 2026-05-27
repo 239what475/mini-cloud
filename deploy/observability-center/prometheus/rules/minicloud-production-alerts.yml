@@ -1,0 +1,47 @@
+groups:
+  - name: minicloud-production
+    rules:
+      - alert: MiniCloudControlPlaneMetricsDown
+        expr: up{job="mini-cloud-control-plane"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "control-plane 指标端点不可达"
+          description: "中心 Prometheus 连续 1 分钟无法抓取 /metrics/control。"
+
+      - alert: MiniCloudPlaneFederationDown
+        expr: up{job="mini-cloud-plane-federation"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "plane Prometheus federation 不可达"
+          description: "中心 Prometheus 连续 1 分钟无法从某个 plane 的 /federate 拉取指标。"
+
+      - alert: MiniCloudPlaneOffline
+        expr: minicloud_plane_status{status="offline"} == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "存在离线 plane"
+          description: "plane {{ $labels.plane_id }} 已进入 offline。"
+
+      - alert: MiniCloudDeploymentRolloutStuck
+        expr: sum by (plane) (minicloud_deployments_stuck) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "存在卡住的 deployment"
+          description: "plane {{ $labels.plane }} 上至少有一个 deployment 长时间停留在非终态。"
+
+      - alert: MiniCloudRuntimeNodeBootstrapStuck
+        expr: sum by (plane) (minicloud_runtime_nodes_bootstrap_stuck) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "存在长时间未完成 bootstrap 的 runtime node"
+          description: "plane {{ $labels.plane }} 上至少有一个 runtime node 超时仍在 provisioning。"

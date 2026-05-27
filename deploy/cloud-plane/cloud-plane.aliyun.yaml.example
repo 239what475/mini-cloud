@@ -1,0 +1,84 @@
+# 通过 cloud-plane --config 指定本文件路径。
+server:
+  listenGRPCAddr: 0.0.0.0:18081
+
+database:
+  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
+
+plane:
+  identity:
+    name: mini-cloud-prod-aliyun
+    environment: prod
+    owner: replace-with-owner
+
+controlPlane:
+  auth:
+    bearerToken: replace-with-southbound-token
+
+nodeAgent:
+  connectEndpoint: replace-with-platform-private-ip:18081
+  auth:
+    bootstrapToken: replace-with-node-agent-bootstrap-token
+    sessionTTL: 24h
+  artifact:
+    binaryUrl: https://replace-with-artifact-host/node-agent-linux-amd64
+    binarySha256: ""
+  defaults:
+    nodeNamePrefix: mini-cloud-prod-aliyun-runtime
+    heartbeatIntervalSeconds: 15
+    workIntervalSeconds: 5
+    hostPortRange:
+      min: 30000
+      max: 60999
+
+infrastructure:
+  provider: aliyun
+  location:
+    regionId: replace-with-region-id
+    zoneId: replace-with-zone-id
+
+runtimeProvisioning:
+  imagePull:
+    registryMirrors:
+      - https://docker.m.daocloud.io
+  egress:
+    proxy:
+      enabled: true
+      endpoint: http://replace-with-platform-private-ip:3128
+      noProxy:
+        - 127.0.0.1
+        - localhost
+        - 10.0.0.0/8
+        - 100.100.100.200
+  providerSpec:
+    instanceType: ecs.u1-c1m1.large
+    imageId: replace-with-image-id
+    keyPairName: replace-with-key-pair-name
+    vSwitchId: replace-with-vswitch-id
+    securityGroupId: replace-with-security-group-id
+    systemDiskCategory: cloud_essd
+    systemDiskSizeGiB: 40
+
+ingress:
+  enabled: true
+  baseDomain: apps.example.com
+  caddy:
+    listenHTTPAddr: 0.0.0.0:80
+    configPath: /etc/mini-cloud/ingress/Caddyfile
+    reloadCommand:
+      - docker
+      - exec
+      - mini-cloud-caddy
+      - caddy
+      - reload
+      - --config
+      - /etc/caddy/Caddyfile
+      - --adapter
+      - caddyfile
+
+observability:
+  logs:
+    lokiURL: ""
+    lokiTenantID: ""
+  traces:
+    otlpEndpoint: ""

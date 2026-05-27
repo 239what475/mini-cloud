@@ -1,0 +1,316 @@
+syntax = "proto3";
+
+package minicloud.controlplane.v1;
+
+option go_package = "mini-cloud/internal/gen/proto/minicloud/controlplane/v1;controlplanev1";
+
+import "google/api/annotations.proto";
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+message Overview {
+  int32 planes_total = 1 [json_name = "planesTotal"];
+  int32 planes_registering = 2 [json_name = "planesRegistering"];
+  int32 planes_ready = 3 [json_name = "planesReady"];
+  int32 planes_degraded = 4 [json_name = "planesDegraded"];
+  int32 planes_offline = 5 [json_name = "planesOffline"];
+  int32 projects_total = 6 [json_name = "projectsTotal"];
+  int32 services_total = 7 [json_name = "servicesTotal"];
+  int32 services_pending = 8 [json_name = "servicesPending"];
+  int32 services_progressing = 9 [json_name = "servicesProgressing"];
+  int32 services_ready = 10 [json_name = "servicesReady"];
+  int32 services_degraded = 11 [json_name = "servicesDegraded"];
+  int32 services_deleting = 12 [json_name = "servicesDeleting"];
+}
+
+message PlaneStatus {
+  string status = 1;
+  string message = 2;
+  google.protobuf.Timestamp last_heartbeat_at = 3 [json_name = "lastHeartbeatAt"];
+  google.protobuf.Timestamp last_sync_at = 4 [json_name = "lastSyncAt"];
+  int64 last_inventory_version = 5 [json_name = "lastInventoryVersion"];
+  google.protobuf.Timestamp updated_at = 6 [json_name = "updatedAt"];
+}
+
+message PlaneRegistration {
+  bool registered = 1;
+  google.protobuf.Timestamp last_verified_at = 2 [json_name = "lastVerifiedAt"];
+  google.protobuf.Timestamp token_updated_at = 3 [json_name = "tokenUpdatedAt"];
+}
+
+message PlaneOperation {
+  string state = 1;
+  string reason = 2;
+  google.protobuf.Timestamp updated_at = 3 [json_name = "updatedAt"];
+}
+
+
+message PlaneCapacitySnapshot {
+  string id = 1;
+  int32 nodes_total = 2 [json_name = "nodesTotal"];
+  int32 nodes_ready = 3 [json_name = "nodesReady"];
+  int32 services_total = 4 [json_name = "servicesTotal"];
+  int32 deployments_total = 5 [json_name = "deploymentsTotal"];
+  int32 cpu_milli_capacity = 6 [json_name = "cpuMilliCapacity"];
+  int32 cpu_milli_allocated = 7 [json_name = "cpuMilliAllocated"];
+  int32 memory_mi_capacity = 8 [json_name = "memoryMiCapacity"];
+  int32 memory_mi_allocated = 9 [json_name = "memoryMiAllocated"];
+  google.protobuf.Timestamp captured_at = 10 [json_name = "capturedAt"];
+}
+
+message PlaneRuntimeInventory {
+  int64 sync_version = 1 [json_name = "syncVersion"];
+  google.protobuf.Timestamp observed_at = 2 [json_name = "observedAt"];
+  int32 nodes_total = 3 [json_name = "nodesTotal"];
+  int32 nodes_ready = 4 [json_name = "nodesReady"];
+  int32 cpu_milli_capacity = 5 [json_name = "cpuMilliCapacity"];
+  int32 cpu_milli_allocated = 6 [json_name = "cpuMilliAllocated"];
+  int32 memory_mi_capacity = 7 [json_name = "memoryMiCapacity"];
+  int32 memory_mi_allocated = 8 [json_name = "memoryMiAllocated"];
+  google.protobuf.Timestamp updated_at = 9 [json_name = "updatedAt"];
+}
+
+message PlaneRuntimeConfig {
+  google.protobuf.Timestamp observed_at = 1 [json_name = "observedAt"];
+  string fingerprint = 2;
+  google.protobuf.Struct summary = 3;
+  google.protobuf.Timestamp updated_at = 4 [json_name = "updatedAt"];
+}
+
+message Plane {
+  string id = 1;
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  string provider = 4;
+  string region = 5;
+  string grpc_endpoint = 6 [json_name = "grpcEndpoint"];
+  google.protobuf.Timestamp created_at = 7 [json_name = "createdAt"];
+  PlaneStatus status = 8;
+  PlaneRegistration registration = 9;
+  PlaneOperation operation = 10;
+  PlaneCapacitySnapshot latest_capacity_snapshot = 12 [json_name = "latestCapacitySnapshot"];
+  PlaneRuntimeInventory latest_runtime_inventory = 13 [json_name = "latestRuntimeInventory"];
+  PlaneRuntimeConfig latest_runtime_config = 14 [json_name = "latestRuntimeConfig"];
+}
+
+message ListPlanesResponse {
+  repeated Plane items = 1;
+}
+
+message GetPlaneRequest {
+  string plane_id = 1 [json_name = "planeID"];
+}
+
+message SyncPlaneRequest {
+  string plane_id = 1 [json_name = "planeID"];
+}
+
+message SyncPlaneResponse {
+  Plane plane = 1;
+  string observed_provider = 2 [json_name = "observedProvider"];
+  string observed_region = 3 [json_name = "observedRegion"];
+  google.protobuf.Timestamp health_checked_at = 4 [json_name = "healthCheckedAt"];
+  google.protobuf.Timestamp synced_at = 5 [json_name = "syncedAt"];
+  int32 alerts_firing = 6 [json_name = "alertsFiring"];
+}
+
+message ProjectQuota {
+  int32 max_services = 1 [json_name = "maxServices"];
+  int32 cpu_milli = 2 [json_name = "cpuMilli"];
+  int32 memory_mi = 3 [json_name = "memoryMi"];
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  string owner_user_id = 4 [json_name = "ownerUserID"];
+  ProjectQuota quota = 5;
+  google.protobuf.Timestamp created_at = 6 [json_name = "createdAt"];
+}
+
+message ListProjectsResponse {
+  repeated Project items = 1;
+}
+
+message GetProjectRequest {
+  string project_id = 1 [json_name = "projectID"];
+}
+
+message ServiceCurrentRevision {
+  string id = 1;
+  string label = 2;
+}
+
+message ServiceRollout {
+  string phase = 1;
+  string message = 2;
+  string stable_revision_id = 3 [json_name = "stableRevisionID"];
+  string candidate_revision_id = 4 [json_name = "candidateRevisionID"];
+  int32 stable_desired_replicas = 5 [json_name = "stableDesiredReplicas"];
+  int32 stable_ready_replicas = 6 [json_name = "stableReadyReplicas"];
+  int32 stable_available_replicas = 7 [json_name = "stableAvailableReplicas"];
+  int32 candidate_desired_replicas = 8 [json_name = "candidateDesiredReplicas"];
+  int32 candidate_ready_replicas = 9 [json_name = "candidateReadyReplicas"];
+  int32 candidate_available_replicas = 10 [json_name = "candidateAvailableReplicas"];
+  google.protobuf.Timestamp last_observed_at = 11 [json_name = "lastObservedAt"];
+  ServiceCurrentRevision stable_revision = 12 [json_name = "stableRevision"];
+  ServiceCurrentRevision candidate_revision = 13 [json_name = "candidateRevision"];
+}
+
+message ServiceStatus {
+  string desired_state = 1 [json_name = "desiredState"];
+  int64 observed_generation = 2 [json_name = "observedGeneration"];
+  string phase = 3;
+  bool healthy = 4;
+  string message = 5;
+  google.protobuf.Timestamp last_reconciled_at = 6 [json_name = "lastReconciledAt"];
+  ServiceCurrentRevision current_revision = 7 [json_name = "currentRevision"];
+  ServiceRollout rollout = 8;
+  ServicePlacement placement = 9;
+}
+
+message ServicePlacement {
+  string plane_id = 1 [json_name = "planeID"];
+  string remote_status = 5 [json_name = "remoteStatus"];
+  bool remote_healthy = 6 [json_name = "remoteHealthy"];
+  string remote_message = 7 [json_name = "remoteMessage"];
+}
+
+message ServiceRevisionPolicy {
+  string strategy = 1;
+}
+
+message ProjectedFileSpec {
+  string mount_path = 1 [json_name = "mountPath"];
+  string source_kind = 2 [json_name = "sourceKind"];
+  string source_id = 3 [json_name = "sourceID"];
+  string source_key = 4 [json_name = "sourceKey"];
+}
+
+message PersistentDirSpec {
+  string name = 1;
+  string mount_path = 2 [json_name = "mountPath"];
+}
+
+message ServiceMetadata {
+  string id = 1;
+  string project_id = 2 [json_name = "projectID"];
+  string name = 3;
+  string display_name = 4 [json_name = "displayName"];
+  int64 generation = 5;
+}
+
+message ServiceSpec {
+  string provider = 1;
+  string region = 2;
+  string pinned_plane_id = 3 [json_name = "pinnedPlaneID"];
+  int32 replicas = 4;
+  string instance_class = 5 [json_name = "instanceClass"];
+  string exposure = 6;
+  string image = 7;
+  repeated string command = 8;
+  repeated string args = 9;
+  int32 default_port = 10 [json_name = "defaultPort"];
+  string readiness_path = 11 [json_name = "readinessPath"];
+  map<string, string> env = 12;
+  string config_set_id = 13 [json_name = "configSetID"];
+  string secret_set_id = 14 [json_name = "secretSetID"];
+  string registry_credential_id = 15 [json_name = "registryCredentialID"];
+  ServiceRevisionPolicy revision_policy = 16 [json_name = "revisionPolicy"];
+  repeated ProjectedFileSpec projected_files = 17 [json_name = "projectedFiles"];
+  repeated PersistentDirSpec persistent_dirs = 18 [json_name = "persistentDirs"];
+}
+
+message CreateServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  ServiceSpec spec = 4;
+}
+
+message Service {
+  ServiceMetadata metadata = 1;
+  ServiceSpec spec = 2;
+  ServiceStatus status = 3;
+  google.protobuf.Timestamp created_at = 4 [json_name = "createdAt"];
+  google.protobuf.Timestamp updated_at = 5 [json_name = "updatedAt"];
+}
+
+
+message ListServicesRequest {
+  string project_id = 1 [json_name = "projectID"];
+}
+
+message ListServicesResponse {
+  repeated Service items = 1;
+}
+
+message GetServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string service_id = 2 [json_name = "serviceID"];
+}
+
+
+
+
+service OperatorService {
+  rpc GetOverview(google.protobuf.Empty) returns (Overview) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/overview"
+    };
+  }
+
+  rpc ListPlanes(google.protobuf.Empty) returns (ListPlanesResponse) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/planes"
+    };
+  }
+
+  rpc GetPlane(GetPlaneRequest) returns (Plane) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/planes/{plane_id}"
+    };
+  }
+
+  rpc SyncPlane(SyncPlaneRequest) returns (SyncPlaneResponse) {
+    option (google.api.http) = {
+      post: "/api/operator/v1/planes/{plane_id}:sync"
+      body: "*"
+    };
+  }
+
+  rpc ListProjects(google.protobuf.Empty) returns (ListProjectsResponse) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/projects"
+    };
+  }
+
+  rpc GetProject(GetProjectRequest) returns (Project) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/projects/{project_id}"
+    };
+  }
+
+  rpc ListServices(ListServicesRequest) returns (ListServicesResponse) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/projects/{project_id}/services"
+    };
+  }
+
+  rpc GetService(GetServiceRequest) returns (Service) {
+    option (google.api.http) = {
+      get: "/api/operator/v1/projects/{project_id}/services/{service_id}"
+    };
+  }
+
+
+
+  rpc CreateService(CreateServiceRequest) returns (Service) {
+    option (google.api.http) = {
+      post: "/api/operator/v1/projects/{project_id}/services"
+      body: "*"
+    };
+  }
+}

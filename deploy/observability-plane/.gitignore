@@ -1,0 +1,5 @@
+docker-compose.yml
+prometheus/config.yml
+prometheus/file_sd/*.json
+!prometheus/file_sd/*.json.example
+live/

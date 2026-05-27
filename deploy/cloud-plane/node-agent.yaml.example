@@ -1,0 +1,36 @@
+server:
+  # gRPC endpoint；当前示例使用明文内部网络。
+  url: 127.0.0.1:18081
+auth:
+  bootstrapToken: replace-with-node-agent-bootstrap-token
+platform:
+  name: mini-cloud
+node:
+  provider: aliyun
+  region: replace-with-region-id
+  name: replace-with-node-name
+  privateIP: replace-with-private-ip
+  publicIP: ""
+  instanceID: replace-with-instance-id
+  instanceType: replace-with-instance-type
+capacity:
+  total:
+    cpuMilli: 2000
+    memoryMi: 4096
+agent:
+  version: 0.1.0
+  stateFile: /var/lib/mini-cloud/node-agent/state.json
+  heartbeatInterval: 15s
+  workInterval: 5s
+runtime:
+  type: docker
+  hostPortRange:
+    min: 30000
+    max: 60999
+network:
+  egressProxy:
+    # 固定本机 node-agent 默认不注入代理。
+    # 动态 runtime node 会由 cloud-plane 根据 runtimeProvisioning.egress.proxy 生成该段配置。
+    enabled: false
+    endpoint: ""
+    noProxy: []

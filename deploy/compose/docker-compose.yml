@@ -1,0 +1,117 @@
+services:
+  postgres:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}postgres:17
+    container_name: mini-cloud-postgres
+    environment:
+      POSTGRES_DB: mini_cloud
+      POSTGRES_USER: mini_cloud
+      POSTGRES_PASSWORD: mini_cloud
+    ports:
+      - "5432:5432"
+    volumes:
+      - mini-cloud-postgres-data:/var/lib/postgresql/data
+
+  loki:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/loki:2.9.8
+    container_name: mini-cloud-loki
+    command:
+      - -config.file=/etc/loki/config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yaml:/etc/loki/config.yaml:ro
+      - mini-cloud-loki-data:/loki
+
+  promtail:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/promtail:2.9.8
+    container_name: mini-cloud-promtail
+    command:
+      - -config.file=/etc/promtail/config.yaml
+    depends_on:
+      - loki
+    volumes:
+      - ./promtail/config.yaml:/etc/promtail/config.yaml:ro
+      - ${MINICLOUD_COMPOSE_LOG_DIR:-/tmp/mini-cloud-v2-simulated-env/logs}:/var/log/mini-cloud:ro
+      - mini-cloud-promtail-data:/var/lib/promtail
+
+  grafana:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/grafana-oss:10.4.3
+    container_name: mini-cloud-grafana
+    depends_on:
+      - loki
+      - prometheus
+      - tempo
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - mini-cloud-grafana-data:/var/lib/grafana
+
+  prometheus:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}prom/prometheus:v2.53.4
+    container_name: mini-cloud-prometheus
+    depends_on:
+      - alertmanager
+    command:
+      - --config.file=/etc/prometheus/config.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.enable-lifecycle
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./prometheus/config.yml:/etc/prometheus/config.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/file_sd:/etc/prometheus/file_sd:ro
+      - mini-cloud-prometheus-data:/prometheus
+
+  alertmanager:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}prom/alertmanager:v0.27.0
+    container_name: mini-cloud-alertmanager
+    command:
+      - --config.file=/etc/alertmanager/config.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+      - mini-cloud-alertmanager-data:/alertmanager
+
+  tempo:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}grafana/tempo:2.5.0
+    container_name: mini-cloud-tempo
+    command:
+      - -config.file=/etc/tempo/config.yml
+    ports:
+      - "3200:3200"
+      - "4317:4317"
+    volumes:
+      - ./tempo/config.yml:/etc/tempo/config.yml:ro
+      - mini-cloud-tempo-data:/var/tempo
+
+  otel-collector:
+    image: ${MINICLOUD_IMAGE_PREFIX:-}otel/opentelemetry-collector-contrib:0.103.1
+    container_name: mini-cloud-otel-collector
+    depends_on:
+      - tempo
+    command:
+      - --config=/etc/otelcol-contrib/config.yml
+    ports:
+      - "4318:4318"
+      - "9464:9464"
+    volumes:
+      - ./otel-collector/config.yml:/etc/otelcol-contrib/config.yml:ro
+
+volumes:
+  mini-cloud-postgres-data:
+  mini-cloud-loki-data:
+  mini-cloud-promtail-data:
+  mini-cloud-grafana-data:
+  mini-cloud-prometheus-data:
+  mini-cloud-alertmanager-data:
+  mini-cloud-tempo-data:

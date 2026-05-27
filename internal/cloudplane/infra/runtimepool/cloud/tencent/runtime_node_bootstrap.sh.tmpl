@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_ROOT={{.InstallRoot}}
+AGENT_BINARY_URL={{.AgentBinaryURL}}
+AGENT_BINARY_SHA256={{.AgentBinarySHA256}}
+DOCKER_DAEMON_JSON_BASE64={{.DockerDaemonJSONBase64}}
+EGRESS_PROXY_ENABLED={{.EgressProxyEnabledShell}}
+EGRESS_PROXY_ENDPOINT={{.EgressProxyEndpoint}}
+NO_PROXY_VALUE={{.NoProxyValue}}
+NODE_AGENT_BOOTSTRAP_TOKEN={{.BootstrapToken}}
+BOOTSTRAP_LOG={{.BootstrapLog}}
+METADATA_BASE={{.MetadataBase}}
+
+log() {
+  printf '[mini-cloud node agent bootstrap] %s\n' "$1" | tee -a "$BOOTSTRAP_LOG"
+}
+
+configure_proxy_env() {
+  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
+    return 0
+  fi
+  export HTTP_PROXY="$EGRESS_PROXY_ENDPOINT"
+  export HTTPS_PROXY="$EGRESS_PROXY_ENDPOINT"
+  export NO_PROXY="$NO_PROXY_VALUE"
+  export http_proxy="$HTTP_PROXY"
+  export https_proxy="$HTTPS_PROXY"
+  export no_proxy="$NO_PROXY"
+}
+
+write_apt_proxy_if_needed() {
+  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
+    return 0
+  fi
+  cat >/etc/apt/apt.conf.d/99-mini-cloud-egress-proxy <<EOF_APT_PROXY
+Acquire::http::Proxy "$EGRESS_PROXY_ENDPOINT";
+Acquire::https::Proxy "$EGRESS_PROXY_ENDPOINT";
+EOF_APT_PROXY
+}
+
+write_docker_proxy_if_needed() {
+  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
+    return 0
+  fi
+  install -d -m 0755 /etc/systemd/system/docker.service.d
+  cat >/etc/systemd/system/docker.service.d/mini-cloud-egress-proxy.conf <<EOF_DOCKER_PROXY
+[Service]
+Environment="HTTP_PROXY=$EGRESS_PROXY_ENDPOINT"
+Environment="HTTPS_PROXY=$EGRESS_PROXY_ENDPOINT"
+Environment="NO_PROXY=$NO_PROXY_VALUE"
+EOF_DOCKER_PROXY
+}
+
+configure_proxy_env
+
+metadata_get() {
+  local path="$1"
+  curl -fsS "$METADATA_BASE/$path"
+}
+
+if ! command -v apt-get >/dev/null 2>&1; then
+  log 'image does not provide apt-get; node agent bootstrap currently expects a Debian/Ubuntu style image'
+  exit 1
+fi
+
+export DEBIAN_FRONTEND=noninteractive
+write_apt_proxy_if_needed
+apt-get update
+apt-get install -y curl ca-certificates
+
+touch "$BOOTSTRAP_LOG"
+INSTANCE_ID="$(metadata_get instance-id)"
+PRIVATE_IP="$(metadata_get local-ipv4)"
+PUBLIC_IP="$(metadata_get public-ipv4 || true)"
+INSTANCE_NAME={{.InstanceName}}
+
+apt-get install -y docker.io
+install -d -m 0755 "$INSTALL_ROOT/bin" /var/lib/mini-cloud-node-agent /etc/docker
+
+if [[ -n "$DOCKER_DAEMON_JSON_BASE64" ]]; then
+  printf '%s' "$DOCKER_DAEMON_JSON_BASE64" | base64 -d >/etc/docker/daemon.json
+fi
+
+write_docker_proxy_if_needed
+
+systemctl daemon-reload || true
+systemctl enable --now docker
+systemctl restart docker
+
+log "download node-agent binary from $AGENT_BINARY_URL"
+curl -fsSL "$AGENT_BINARY_URL" -o "$INSTALL_ROOT/bin/node-agent"
+chmod 0755 "$INSTALL_ROOT/bin/node-agent"
+if [[ -n "$AGENT_BINARY_SHA256" ]]; then
+  printf '%s  %s\n' "$AGENT_BINARY_SHA256" "$INSTALL_ROOT/bin/node-agent" | sha256sum -c -
+fi
+
+cat >"$INSTALL_ROOT/node-agent.yaml" <<EOF_NODE_AGENT_CONFIG
+server:
+  url: {{.ConnectEndpoint}}
+auth:
+  bootstrapToken: "$NODE_AGENT_BOOTSTRAP_TOKEN"
+platform:
+  name: {{.PlatformName}}
+node:
+  provider: {{.Provider}}
+  region: {{.Region}}
+  name: "$INSTANCE_NAME"
+  privateIP: "$PRIVATE_IP"
+  publicIP: "$PUBLIC_IP"
+  instanceID: "$INSTANCE_ID"
+  instanceType: {{.InstanceType}}
+capacity:
+  total:
+    cpuMilli: {{.CPUMilli}}
+    memoryMi: {{.MemoryMi}}
+  agentReserved:
+    cpuMilli: 200
+    memoryMi: 256
+  evictionReserved:
+    memoryMi: 512
+agent:
+  version: 0.1.0
+  stateFile: /var/lib/mini-cloud-node-agent/state.json
+  heartbeatInterval: {{.HeartbeatInterval}}
+  workInterval: {{.WorkInterval}}
+runtime:
+  type: docker
+  hostPortRange:
+    min: {{.HostPortMin}}
+    max: {{.HostPortMax}}
+network:
+  egressProxy:
+    enabled: {{.EgressProxyEnabledYAML}}
+    endpoint: {{.EgressProxyEndpoint}}
+    noProxy:
+{{range .NoProxyItems}}      - {{.}}
+{{end}}observability:
+  workloadLogLokiURL: {{.WorkloadLogLokiURL}}
+  workloadLogLokiTenantID: {{.WorkloadLogLokiTenantID}}
+  workloadOTLPEndpoint: {{.WorkloadOTLPEndpoint}}
+EOF_NODE_AGENT_CONFIG
+chmod 0600 "$INSTALL_ROOT/node-agent.yaml"
+
+cat >"$INSTALL_ROOT/bin/start-agent.sh" <<EOF_AGENT_START
+#!/usr/bin/env bash
+set -euo pipefail
+exec {{.NodeAgentBinaryPath}} --config {{.NodeAgentConfigPath}}
+EOF_AGENT_START
+chmod 0755 "$INSTALL_ROOT/bin/start-agent.sh"
+
+install -d -m 0755 /etc/mini-cloud/node-agent
+if [[ "$EGRESS_PROXY_ENABLED" == "true" ]]; then
+  cat >/etc/mini-cloud/node-agent/proxy.env <<EOF_NODE_AGENT_PROXY_ENV
+HTTP_PROXY=$EGRESS_PROXY_ENDPOINT
+HTTPS_PROXY=$EGRESS_PROXY_ENDPOINT
+NO_PROXY=$NO_PROXY_VALUE
+http_proxy=$EGRESS_PROXY_ENDPOINT
+https_proxy=$EGRESS_PROXY_ENDPOINT
+no_proxy=$NO_PROXY_VALUE
+EOF_NODE_AGENT_PROXY_ENV
+else
+  rm -f /etc/mini-cloud/node-agent/proxy.env
+fi
+
+cat >/etc/systemd/system/mini-cloud-node-agent.service <<EOF_SYSTEMD
+[Unit]
+Description=mini-cloud node agent
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env
+ExecStart=/opt/mini-cloud/bin/start-agent.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF_SYSTEMD
+
+systemctl daemon-reload
+systemctl enable --now mini-cloud-node-agent.service
+log 'node agent bootstrap completed'

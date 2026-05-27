@@ -1,0 +1,262 @@
+syntax = "proto3";
+
+package minicloud.cloudplane.v1;
+
+option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1";
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+import "minicloud/cloudplane/v1/project.proto";
+import "minicloud/cloudplane/v1/project_resources.proto";
+import "minicloud/cloudplane/v1/service.proto";
+
+message PlaneSummary {
+  string name = 1;
+  string provider = 2;
+  string region = 3;
+  bool configured = 4;
+}
+
+message PlaneHealth {
+  google.protobuf.Timestamp checked_at = 1 [json_name = "checkedAt"];
+  string service = 2;
+  string database = 3;
+}
+
+message PlaneOverview {
+  int32 projects_total = 1 [json_name = "projectsTotal"];
+  int32 services_total = 2 [json_name = "servicesTotal"];
+  int32 services_idle = 3 [json_name = "servicesIdle"];
+  int32 services_deploying = 4 [json_name = "servicesDeploying"];
+  int32 services_running = 5 [json_name = "servicesRunning"];
+  int32 services_degraded = 6 [json_name = "servicesDegraded"];
+  int32 services_failed = 7 [json_name = "servicesFailed"];
+  int32 nodes_total = 8 [json_name = "nodesTotal"];
+  int32 nodes_registering = 9 [json_name = "nodesRegistering"];
+  int32 nodes_ready = 10 [json_name = "nodesReady"];
+  int32 nodes_not_ready = 11 [json_name = "nodesNotReady"];
+  int32 nodes_draining = 12 [json_name = "nodesDraining"];
+  int32 nodes_offline = 13 [json_name = "nodesOffline"];
+  int32 deployments_total = 14 [json_name = "deploymentsTotal"];
+  int32 deployments_pending = 15 [json_name = "deploymentsPending"];
+  int32 deployments_scheduling = 16 [json_name = "deploymentsScheduling"];
+  int32 deployments_assigned = 17 [json_name = "deploymentsAssigned"];
+  int32 deployments_deploying = 18 [json_name = "deploymentsDeploying"];
+  int32 deployments_running = 19 [json_name = "deploymentsRunning"];
+  int32 deployments_failed = 20 [json_name = "deploymentsFailed"];
+}
+
+message PlaneCapacity {
+  int32 runtime_nodes_total = 1 [json_name = "runtimeNodesTotal"];
+  int32 runtime_nodes_ready = 2 [json_name = "runtimeNodesReady"];
+  int32 cpu_milli_total = 3 [json_name = "cpuMilliTotal"];
+  int32 cpu_milli_allocatable = 4 [json_name = "cpuMilliAllocatable"];
+  int32 cpu_milli_allocated = 5 [json_name = "cpuMilliAllocated"];
+  int32 memory_mi_total = 6 [json_name = "memoryMiTotal"];
+  int32 memory_mi_allocatable = 7 [json_name = "memoryMiAllocatable"];
+  int32 memory_mi_allocated = 8 [json_name = "memoryMiAllocated"];
+}
+
+message PlaneReliability {
+  int32 alerts_firing = 1 [json_name = "alertsFiring"];
+}
+
+message PlaneRuntimeNode {
+  string node_id = 1 [json_name = "nodeID"];
+  int64 node_epoch = 2 [json_name = "nodeEpoch"];
+  string name = 3;
+  string provider = 4;
+  string region = 5;
+  string instance_id = 6 [json_name = "instanceID"];
+  string instance_type = 7 [json_name = "instanceType"];
+  string status = 8;
+  bool schedulable = 9;
+  int32 cpu_milli_total = 10 [json_name = "cpuMilliTotal"];
+  int32 cpu_milli_allocatable = 11 [json_name = "cpuMilliAllocatable"];
+  int32 cpu_milli_allocated = 12 [json_name = "cpuMilliAllocated"];
+  int32 memory_mi_total = 13 [json_name = "memoryMiTotal"];
+  int32 memory_mi_allocatable = 14 [json_name = "memoryMiAllocatable"];
+  int32 memory_mi_allocated = 15 [json_name = "memoryMiAllocated"];
+  google.protobuf.Timestamp last_heartbeat_at = 16 [json_name = "lastHeartbeatAt"];
+}
+
+message PlaneRuntimeInventory {
+  int64 sync_version = 1 [json_name = "syncVersion"];
+  google.protobuf.Timestamp observed_at = 2 [json_name = "observedAt"];
+  repeated PlaneRuntimeNode nodes = 3;
+}
+
+message PlaneRuntimeConfig {
+  google.protobuf.Timestamp observed_at = 1 [json_name = "observedAt"];
+  string fingerprint = 2;
+  google.protobuf.Struct summary = 3;
+}
+
+message PlaneSnapshot {
+  PlaneSummary plane = 1;
+  PlaneHealth health = 2;
+  PlaneOverview overview = 3;
+  PlaneCapacity capacity = 4;
+  PlaneReliability reliability = 5;
+  PlaneRuntimeInventory runtime_inventory = 7 [json_name = "runtimeInventory"];
+  PlaneRuntimeConfig runtime_config = 8 [json_name = "runtimeConfig"];
+}
+
+message Project {
+  string id = 1;
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+}
+
+message PlaneProjectedFileSpec {
+  string mount_path = 1 [json_name = "mountPath"];
+  string source_kind = 2 [json_name = "sourceKind"];
+  string source_id = 3 [json_name = "sourceID"];
+  string source_key = 4 [json_name = "sourceKey"];
+}
+
+message PlanePersistentDirSpec {
+  string name = 1;
+  string mount_path = 2 [json_name = "mountPath"];
+}
+
+message ProjectConfigSet {
+  string id = 1;
+  string name = 2;
+  map<string, string> values = 3;
+}
+
+message ProjectSecretSet {
+  string id = 1;
+  string name = 2;
+  map<string, string> values = 3;
+}
+
+message ProjectRegistryCredential {
+  string id = 1;
+  string name = 2;
+  string server = 3;
+  string username = 4;
+  string password = 5;
+}
+
+message ApplyProjectRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  ProjectQuota quota = 4;
+  string owner_user_id = 5 [json_name = "ownerUserID"];
+  repeated ProjectConfigSet config_sets = 6 [json_name = "configSets"];
+  repeated ProjectSecretSet secret_sets = 7 [json_name = "secretSets"];
+  repeated ProjectRegistryCredential registry_credentials = 8 [json_name = "registryCredentials"];
+}
+
+message ApplyProjectResponse {
+  string action = 1;
+  string project_id = 2 [json_name = "projectID"];
+}
+
+message ServiceMetadata {
+  string id = 1;
+  string project_id = 2 [json_name = "projectID"];
+  string name = 3;
+  string display_name = 4 [json_name = "displayName"];
+}
+
+message ServiceStatus {
+  string phase = 1;
+  string current_revision_id = 2 [json_name = "currentRevisionID"];
+  string candidate_revision_id = 3 [json_name = "candidateRevisionID"];
+  string rollout_phase = 4 [json_name = "rolloutPhase"];
+  string rollout_message = 5 [json_name = "rolloutMessage"];
+}
+
+message Service {
+  ServiceMetadata metadata = 1;
+  ServiceSpec spec = 2;
+  ServiceStatus status = 3;
+}
+
+message ObservedServiceStatus {
+  string current_revision_id = 1 [json_name = "currentRevisionID"];
+  bool healthy = 2;
+  string message = 3;
+  ObservedRolloutStatus rollout = 4;
+}
+
+message ObservedRolloutStatus {
+  string phase = 1;
+  string message = 2;
+  string stable_revision_id = 3 [json_name = "stableRevisionID"];
+  string candidate_revision_id = 4 [json_name = "candidateRevisionID"];
+  int32 stable_desired_replicas = 5 [json_name = "stableDesiredReplicas"];
+  int32 stable_ready_replicas = 6 [json_name = "stableReadyReplicas"];
+  int32 stable_available_replicas = 7 [json_name = "stableAvailableReplicas"];
+  int32 candidate_desired_replicas = 8 [json_name = "candidateDesiredReplicas"];
+  int32 candidate_ready_replicas = 9 [json_name = "candidateReadyReplicas"];
+  int32 candidate_available_replicas = 10 [json_name = "candidateAvailableReplicas"];
+  google.protobuf.Timestamp observed_at = 11 [json_name = "observedAt"];
+}
+
+message ApplyServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string service_id = 2 [json_name = "serviceID"];
+  string name = 3;
+  string display_name = 4 [json_name = "displayName"];
+  ServiceSpec spec = 5;
+}
+
+message ApplyServiceResponse {
+  string action = 1;
+  int64 desired_generation = 2 [json_name = "desiredGeneration"];
+}
+
+message DeleteServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string service_id = 2 [json_name = "serviceID"];
+}
+
+message DeleteServiceResponse {
+  bool deleted = 1;
+  string service_id = 2 [json_name = "serviceID"];
+}
+
+message GetServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string service_id = 2 [json_name = "serviceID"];
+}
+
+message GetServiceResponse {
+  Service service = 1;
+  ObservedServiceStatus status = 2;
+}
+
+message RollbackServiceRequest {
+  string project_id = 1 [json_name = "projectID"];
+  string service_id = 2 [json_name = "serviceID"];
+  string revision_id = 3 [json_name = "revisionID"];
+}
+
+message RollbackServiceResponse {
+  string action = 1;
+  int64 desired_generation = 2 [json_name = "desiredGeneration"];
+}
+
+service ControlPlaneSnapshotService {
+  rpc GetSnapshot(google.protobuf.Empty) returns (PlaneSnapshot);
+}
+
+service ControlPlaneProjectService {
+  rpc ApplyProject(ApplyProjectRequest) returns (ApplyProjectResponse);
+}
+
+service ControlPlaneWorkloadService {
+  rpc ApplyService(ApplyServiceRequest) returns (ApplyServiceResponse);
+
+  rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);
+
+  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+
+  rpc RollbackService(RollbackServiceRequest) returns (RollbackServiceResponse);
+}
