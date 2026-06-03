@@ -52,6 +52,8 @@ type Config struct {
 	ServerURL string
 	// BootstrapToken 是首次注册节点时发送的启动令牌。
 	BootstrapToken string
+	// Dialer 覆盖 gRPC 底层连接建立函数，主要用于测试内存连接。
+	Dialer func(context.Context, string) (net.Conn, error)
 }
 
 const (
@@ -93,6 +95,7 @@ func New(cfg Config) *Client {
 		target:         target,
 		useTLS:         useTLS,
 		bootstrapToken: strings.TrimSpace(cfg.BootstrapToken),
+		dialer:         cfg.Dialer,
 	}
 }
 

@@ -333,11 +333,10 @@ func newBufconnClientWithConfig(t *testing.T, cfg Config, server nodeagentv1.Nod
 	})
 
 	cfg.ServerURL = "http://bufconn"
-	client := New(cfg)
-	client.dialer = func(context.Context, string) (net.Conn, error) {
+	cfg.Dialer = func(context.Context, string) (net.Conn, error) {
 		return listener.Dial()
 	}
-	return client
+	return New(cfg)
 }
 
 // firstMetadataValue 返回入站 gRPC metadata 中指定 key 的第一个值。

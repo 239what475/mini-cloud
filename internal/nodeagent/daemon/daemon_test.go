@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"net/http/httptest"
+	"net"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,12 +17,11 @@ import (
 	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/workloadlogs"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -62,7 +61,8 @@ func TestHandleNodeErrorClearsStateOnInvalidNodeSession(t *testing.T) {
 			}
 
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			client := &fakeDaemonClient{sessionToken: "mcws_stale_secret"}
+			client := agentclient.New(agentclient.Config{})
+			client.SetSessionToken("mcws_stale_secret")
 			runner := NewRunner(
 				logger,
 				agentconfig.Config{StateFile: path},
@@ -83,9 +83,6 @@ func TestHandleNodeErrorClearsStateOnInvalidNodeSession(t *testing.T) {
 			if loaded.NodeID != "" || loaded.SessionToken != "" {
 				t.Fatalf("expected cleared state file, got %+v", loaded)
 			}
-			if client.sessionToken != "" {
-				t.Fatalf("sessionToken = %q, want empty string", client.sessionToken)
-			}
 		})
 	}
 }
@@ -104,8 +101,7 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 
 	var registerCalls int
 	var heartbeatCalls int
-	grpcServer := grpc.NewServer()
-	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, &nodeAgentTestService{
+	client := newDaemonTestClient(t, agentclient.Config{BootstrapToken: "bootstrap-secret"}, &nodeAgentTestService{
 		registerNode: func(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			registerCalls++
 			if firstIncomingMetadata(ctx, "authorization") != "Bearer bootstrap-secret" {
@@ -139,19 +135,10 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 			}
 		},
 	})
-	server := httptest.NewUnstartedServer(h2c.NewHandler(grpcServer, &http2.Server{}))
-	server.Start()
-	defer server.Close()
-	defer grpcServer.Stop()
-
-	client := agentclient.New(agentclient.Config{
-		ServerURL:      server.URL,
-		BootstrapToken: "bootstrap-secret",
-	})
 	client.SetSessionToken("stale-session")
 
 	cfg := agentconfig.Config{
-		ServerURL:      server.URL,
+		ServerURL:      "http://bufconn",
 		BootstrapToken: "bootstrap-secret",
 		RegisterInput: nodeagentapi.RegisterNodeRequest{
 			Provider:      "aliyun",
@@ -214,20 +201,43 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	t.Parallel()
 
-	client := &fakeDaemonClient{
-		registerResponse: nodeagentapi.RegisterNodeResponse{
-			NodeID:         "node-injected",
-			SessionToken:   "session-injected",
-			ObservedStatus: nodeagentapi.NodeStatusRegistering,
-			AcceptedAt:     time.Now(),
+	var registerCalls int
+	var heartbeatCalls int
+	var pollCalls int
+	var lastHeartbeat nodeagentapi.HeartbeatRequest
+	done := make(chan struct{})
+	client := newDaemonTestClient(t, agentclient.Config{}, &nodeAgentTestService{
+		registerNode: func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
+			registerCalls++
+			return &nodeagentv1.RegisterNodeResponse{
+				NodeId:         "node-injected",
+				SessionToken:   "session-injected",
+				ObservedStatus: nodeagentapi.NodeStatusRegistering,
+				AcceptedAt:     timestamppb.Now(),
+			}, nil
 		},
-		heartbeatResponse: nodeagentapi.HeartbeatResponse{
-			NodeID:         "node-injected",
-			Accepted:       true,
-			ObservedStatus: nodeagentapi.NodeStatusReady,
-			ReceivedAt:     time.Now(),
+		recordHeartbeat: func(_ context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+			heartbeatCalls++
+			lastHeartbeat = nodeagentapi.HeartbeatRequest{
+				AgentVersion:        req.GetAgentVersion(),
+				CPUMilliAllocatable: int(req.GetCpuMilliAllocatable()),
+				MemoryMiAllocatable: int(req.GetMemoryMiAllocatable()),
+				RunningContainers:   int(req.GetRunningContainers()),
+				Status:              req.GetStatus(),
+			}
+			return &nodeagentv1.HeartbeatResponse{
+				NodeId:         "node-injected",
+				Accepted:       true,
+				ObservedStatus: nodeagentapi.NodeStatusReady,
+				ReceivedAt:     timestamppb.Now(),
+			}, nil
 		},
-	}
+		pollWork: func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
+			pollCalls++
+			close(done)
+			return &nodeagentv1.PollWorkResponse{}, nil
+		},
+	})
 	workloadLogs, err := workloadlogs.NewManager(testDaemonLogger(), workloadlogs.Config{}, nil)
 	if err != nil {
 		t.Fatalf("workloadlogs.NewManager returned error: %v", err)
@@ -254,32 +264,39 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- NewRunner(
+			testDaemonLogger(),
+			cfg,
+			client,
+			stubRuntime{runningContainers: 3},
+			workloadLogs,
+		).Run(ctx)
+	}()
+	select {
+	case <-done:
+		cancel()
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("timed out waiting for first work poll")
+	}
 
-	err = NewRunner(
-		testDaemonLogger(),
-		cfg,
-		client,
-		stubRuntime{runningContainers: 3},
-		workloadLogs,
-	).Run(ctx)
+	err = <-errCh
 	if err != nil {
 		t.Fatalf("Runner.Run returned error: %v", err)
 	}
-	if client.registerCalls != 1 {
-		t.Fatalf("registerCalls = %d, want 1", client.registerCalls)
+	if registerCalls != 1 {
+		t.Fatalf("registerCalls = %d, want 1", registerCalls)
 	}
-	if client.heartbeatCalls != 1 {
-		t.Fatalf("heartbeatCalls = %d, want 1", client.heartbeatCalls)
+	if heartbeatCalls != 1 {
+		t.Fatalf("heartbeatCalls = %d, want 1", heartbeatCalls)
 	}
-	if client.lastHeartbeat.Status != nodeagentapi.NodeStatusReady {
-		t.Fatalf("heartbeat status = %q, want %q", client.lastHeartbeat.Status, nodeagentapi.NodeStatusReady)
+	if lastHeartbeat.Status != nodeagentapi.NodeStatusReady {
+		t.Fatalf("heartbeat status = %q, want %q", lastHeartbeat.Status, nodeagentapi.NodeStatusReady)
 	}
-	if client.pollCalls != 1 {
-		t.Fatalf("pollCalls = %d, want 1", client.pollCalls)
-	}
-	if client.sessionToken != "session-injected" {
-		t.Fatalf("sessionToken = %q, want session-injected", client.sessionToken)
+	if pollCalls != 1 {
+		t.Fatalf("pollCalls = %d, want 1", pollCalls)
 	}
 }
 
@@ -289,61 +306,9 @@ type stubRuntime struct {
 	runningContainers int
 }
 
-// fakeDaemonClient 是 daemon 测试用的控制面客户端。
-type fakeDaemonClient struct {
-	// sessionToken 记录最近设置的节点会话令牌。
-	sessionToken string
-	// registerCalls 记录注册调用次数。
-	registerCalls int
-	// heartbeatCalls 记录心跳调用次数。
-	heartbeatCalls int
-	// pollCalls 记录任务轮询调用次数。
-	pollCalls int
-	// registerResponse 是注册调用返回的预设响应。
-	registerResponse nodeagentapi.RegisterNodeResponse
-	// heartbeatResponse 是心跳调用返回的预设响应。
-	heartbeatResponse nodeagentapi.HeartbeatResponse
-	// lastHeartbeat 记录最近一次心跳请求，用于断言 daemon 自己派生的运行态。
-	lastHeartbeat nodeagentapi.HeartbeatRequest
-}
-
 // testDaemonLogger 返回丢弃输出的 daemon 测试 logger。
 func testDaemonLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
-}
-
-// RegisterNode 记录注册调用并返回预设响应。
-func (f *fakeDaemonClient) RegisterNode(context.Context, nodeagentapi.RegisterNodeRequest) (nodeagentapi.RegisterNodeResponse, error) {
-	f.registerCalls++
-	return f.registerResponse, nil
-}
-
-// SendHeartbeat 记录心跳调用并返回预设响应。
-func (f *fakeDaemonClient) SendHeartbeat(_ context.Context, _ string, req nodeagentapi.HeartbeatRequest) (nodeagentapi.HeartbeatResponse, error) {
-	f.heartbeatCalls++
-	f.lastHeartbeat = req
-	return f.heartbeatResponse, nil
-}
-
-// PollExecutionWork 记录任务轮询调用并返回空任务。
-func (f *fakeDaemonClient) PollExecutionWork(context.Context, string) (*nodeagentapi.WorkItem, error) {
-	f.pollCalls++
-	return nil, nil
-}
-
-// ReportExecution 实现测试用执行结果上报接口。
-func (f *fakeDaemonClient) ReportExecution(context.Context, string, string, nodeagentapi.ReportExecutionRequest) (nodeagentapi.ReportExecutionResponse, error) {
-	return nodeagentapi.ReportExecutionResponse{}, nil
-}
-
-// SetSessionToken 记录当前 session token。
-func (f *fakeDaemonClient) SetSessionToken(token string) {
-	f.sessionToken = token
-}
-
-// Close 实现测试用控制面客户端关闭接口。
-func (f *fakeDaemonClient) Close() error {
-	return nil
 }
 
 // nodeAgentTestService 是 daemon 测试用的 gRPC NodeAgentService。
@@ -355,6 +320,10 @@ type nodeAgentTestService struct {
 	registerNode func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
 	// recordHeartbeat 覆盖心跳 RPC 行为。
 	recordHeartbeat func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error)
+	// pollWork 覆盖任务拉取 RPC 行为。
+	pollWork func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error)
+	// reportExecution 覆盖执行上报 RPC 行为。
+	reportExecution func(context.Context, *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error)
 }
 
 // RegisterNode 转发到测试注入的注册回调。
@@ -365,6 +334,45 @@ func (s *nodeAgentTestService) RegisterNode(ctx context.Context, req *nodeagentv
 // RecordHeartbeat 转发到测试注入的心跳回调。
 func (s *nodeAgentTestService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 	return s.recordHeartbeat(ctx, req)
+}
+
+// PollWork 转发到测试注入的任务拉取回调。
+func (s *nodeAgentTestService) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
+	if s.pollWork != nil {
+		return s.pollWork(ctx, req)
+	}
+	return &nodeagentv1.PollWorkResponse{}, nil
+}
+
+// ReportExecution 转发到测试注入的执行上报回调。
+func (s *nodeAgentTestService) ReportExecution(ctx context.Context, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
+	if s.reportExecution != nil {
+		return s.reportExecution(ctx, req)
+	}
+	return &nodeagentv1.ReportExecutionResponse{}, nil
+}
+
+func newDaemonTestClient(t *testing.T, cfg agentclient.Config, server nodeagentv1.NodeAgentServiceServer) *agentclient.Client {
+	t.Helper()
+
+	listener := bufconn.Listen(1024 * 1024)
+	grpcServer := grpc.NewServer()
+	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, server)
+	go func() {
+		_ = grpcServer.Serve(listener)
+	}()
+	t.Cleanup(func() {
+		grpcServer.Stop()
+		if err := listener.Close(); err != nil {
+			t.Logf("close bufconn listener: %v", err)
+		}
+	})
+
+	cfg.ServerURL = "http://bufconn"
+	cfg.Dialer = func(context.Context, string) (net.Conn, error) {
+		return listener.Dial()
+	}
+	return agentclient.New(cfg)
 }
 
 // firstIncomingMetadata 返回入站 gRPC metadata 中指定 key 的第一个值。

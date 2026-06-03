@@ -76,8 +76,8 @@ type Manager struct {
 	platform string
 	// loki 是 Loki HTTP push 客户端。
 	loki *lokiClient
-	// logs 是底层运行时日志跟随能力。
-	logs runtime.LogFollower
+	// logs 是底层工作负载运行时。
+	logs runtime.Runtime
 	// queueSize 是每个执行的内存日志队列大小。
 	queueSize int
 	// batchSize 是单批次最多推送的日志行数。
@@ -119,7 +119,7 @@ type queuedLog struct {
 }
 
 // NewManager 创建工作负载日志 Manager；未配置 Loki 时返回禁用但可安全调用的 Manager。
-func NewManager(logger *slog.Logger, cfg Config, logs runtime.LogFollower) (*Manager, error) {
+func NewManager(logger *slog.Logger, cfg Config, logs runtime.Runtime) (*Manager, error) {
 	rootCtx, cancel := context.WithCancel(context.Background())
 	if logger == nil {
 		logger = slog.Default()

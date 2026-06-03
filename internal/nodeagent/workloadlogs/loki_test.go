@@ -154,6 +154,30 @@ func (f fakeLogFollower) FollowLogs(ctx context.Context, containerID string, emi
 	return nil
 }
 
+func (f fakeLogFollower) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
+	return runtime.RunResult{}, nil
+}
+
+func (f fakeLogFollower) Stop(context.Context, string) error {
+	return nil
+}
+
+func (f fakeLogFollower) Logs(context.Context, string, int) (string, error) {
+	return "", nil
+}
+
+func (f fakeLogFollower) CountRunning(context.Context) (int, error) {
+	return 0, nil
+}
+
+func (f fakeLogFollower) GarbageCollect(context.Context) error {
+	return nil
+}
+
+func (f fakeLogFollower) Close() error {
+	return nil
+}
+
 // TestPushBatchSendsMultipleStreamsInOneLokiRequest 验证批量推送会按 stdout/stderr 分成多个 Loki stream。
 func TestPushBatchSendsMultipleStreamsInOneLokiRequest(t *testing.T) {
 	t.Parallel()

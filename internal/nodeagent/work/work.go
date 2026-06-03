@@ -10,6 +10,7 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/nodeagentapi"
+	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/workloadlogs"
@@ -17,28 +18,10 @@ import (
 	"mini-cloud/internal/nodeagent/workloadtelemetry"
 )
 
-// Client 定义执行状态机访问控制面任务和上报结果所需的能力。
-type Client interface {
-	// PollExecutionWork 拉取指定节点的下一项执行任务。
-	PollExecutionWork(context.Context, string) (*nodeagentapi.WorkItem, error)
-	// ReportExecution 上报指定执行的运行中或终态结果。
-	ReportExecution(context.Context, string, string, nodeagentapi.ReportExecutionRequest) (nodeagentapi.ReportExecutionResponse, error)
-}
-
 // ReadinessWaiter 定义等待工作负载 readiness 端点通过的能力。
 type ReadinessWaiter interface {
 	// Wait 按配置等待工作负载 readiness 端点通过，并返回完整观测结果。
 	Wait(context.Context, workloadreadiness.Config) workloadreadiness.Result
-}
-
-// Runtime 定义执行状态机启动、停止和读取工作负载容器所需的最小运行时能力。
-type Runtime interface {
-	// Run 创建并启动一个工作负载容器。
-	Run(context.Context, runtime.RunInput) (runtime.RunResult, error)
-	// Stop 停止指定容器。
-	Stop(context.Context, string) error
-	// Logs 返回指定容器尾部日志文本。
-	Logs(context.Context, string, int) (string, error)
 }
 
 // WorkloadLogStarter 是启动工作负载日志采集的函数。
@@ -148,9 +131,9 @@ type Executor struct {
 	// logger 记录执行状态机日志。
 	logger *slog.Logger
 	// client 访问控制面任务和上报接口。
-	client Client
+	client *agentclient.Client
 	// containerRuntime 启动、停止和读取工作负载容器。
-	containerRuntime Runtime
+	containerRuntime runtime.Runtime
 	// readinessWaiter 等待工作负载 readiness 端点通过。
 	readinessWaiter ReadinessWaiter
 	// opts 保存状态机配置和可选依赖。
@@ -158,7 +141,7 @@ type Executor struct {
 }
 
 // NewExecutor 创建执行状态机实例，并补齐默认 readiness 探测器。
-func NewExecutor(logger *slog.Logger, client Client, containerRuntime Runtime, opts Options) Executor {
+func NewExecutor(logger *slog.Logger, client *agentclient.Client, containerRuntime runtime.Runtime, opts Options) Executor {
 	readinessWaiter := opts.ReadinessWaiter
 	if readinessWaiter == nil {
 		readinessWaiter = workloadreadiness.NewChecker(nil)
@@ -173,7 +156,7 @@ func NewExecutor(logger *slog.Logger, client Client, containerRuntime Runtime, o
 }
 
 // ExecuteNext 使用临时 Executor 拉取并执行下一项任务。
-func ExecuteNext(ctx context.Context, logger *slog.Logger, client Client, containerRuntime Runtime, opts Options) (Result, error) {
+func ExecuteNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime runtime.Runtime, opts Options) (Result, error) {
 	return NewExecutor(logger, client, containerRuntime, opts).ExecuteNext(ctx)
 }
 

@@ -17,34 +17,6 @@ import (
 	"mini-cloud/internal/nodeagent/workloadlogs"
 )
 
-// ControlClient 定义 daemon 与控制面通信所需的完整客户端能力。
-type ControlClient interface {
-	// Client 提供任务拉取和执行结果上报能力。
-	work.Client
-	// RegisterNode 使用注册信息向控制面注册当前节点。
-	RegisterNode(context.Context, nodeagentapi.RegisterNodeRequest) (nodeagentapi.RegisterNodeResponse, error)
-	// SendHeartbeat 向控制面发送指定节点的一次心跳。
-	SendHeartbeat(context.Context, string, nodeagentapi.HeartbeatRequest) (nodeagentapi.HeartbeatResponse, error)
-	// SetSessionToken 设置后续节点级请求使用的会话令牌。
-	SetSessionToken(string)
-	// Close 释放控制面客户端资源。
-	Close() error
-}
-
-// Runtime 定义 daemon 管理本机工作负载运行时所需的完整能力。
-type Runtime interface {
-	// Runtime 提供执行状态机需要的容器启动、停止和日志读取能力。
-	work.Runtime
-	// LogFollower 提供工作负载日志采集需要的持续日志跟随能力。
-	runtime.LogFollower
-	// CountRunning 汇报当前 runtime 可见的所有运行中容器。
-	CountRunning(context.Context) (int, error)
-	// GarbageCollect 清理 runtime 本地孤儿资源。
-	GarbageCollect(context.Context) error
-	// Close 释放运行时客户端资源和本地跟踪的临时资源。
-	Close() error
-}
-
 // Runner 持有 node-agent daemon 主循环运行所需的组件和内存状态。
 type Runner struct {
 	// logger 记录 daemon 生命周期、心跳和执行日志。
@@ -52,9 +24,9 @@ type Runner struct {
 	// cfg 是已校验的 node-agent 配置。
 	cfg agentconfig.Config
 	// controlClient 访问控制面的注册、心跳、任务和上报接口。
-	controlClient ControlClient
+	controlClient *agentclient.Client
 	// containerRuntime 启动、停止和观测本机工作负载容器。
-	containerRuntime Runtime
+	containerRuntime runtime.Runtime
 	// workloadLogs 管理工作负载日志采集。
 	workloadLogs *workloadlogs.Manager
 
@@ -101,8 +73,8 @@ func Run(ctx context.Context, logger *slog.Logger, cfg agentconfig.Config) error
 func NewRunner(
 	logger *slog.Logger,
 	cfg agentconfig.Config,
-	controlClient ControlClient,
-	containerRuntime Runtime,
+	controlClient *agentclient.Client,
+	containerRuntime runtime.Runtime,
 	workloadLogs *workloadlogs.Manager,
 ) *Runner {
 	if logger == nil {

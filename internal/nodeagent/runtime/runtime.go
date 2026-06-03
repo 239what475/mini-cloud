@@ -91,10 +91,22 @@ type LogRecord struct {
 // LogEmitter 接收运行时解析出的容器日志记录。
 type LogEmitter func(LogRecord)
 
-// LogFollower 表示支持持续跟随容器日志的运行时能力。
-type LogFollower interface {
+// Runtime 表示 node-agent 支持的工作负载运行时能力。
+type Runtime interface {
+	// Run 创建并启动一个工作负载容器。
+	Run(context.Context, RunInput) (RunResult, error)
+	// Stop 停止指定容器。
+	Stop(context.Context, string) error
+	// Logs 返回指定容器尾部日志文本。
+	Logs(context.Context, string, int) (string, error)
 	// FollowLogs 从指定容器读取持续日志流，并将每行日志交给 emit。
 	FollowLogs(context.Context, string, LogEmitter) error
+	// CountRunning 汇报当前 runtime 可见的所有运行中容器。
+	CountRunning(context.Context) (int, error)
+	// GarbageCollect 清理 runtime 本地孤儿资源。
+	GarbageCollect(context.Context) error
+	// Close 释放运行时客户端资源和本地跟踪的临时资源。
+	Close() error
 }
 
 // ImageCredential 描述拉取私有镜像时使用的 registry 认证信息。
