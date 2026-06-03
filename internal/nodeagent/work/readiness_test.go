@@ -1,4 +1,4 @@
-package workloadreadiness
+package work
 
 import (
 	"context"
@@ -15,14 +15,14 @@ func TestWaitEventuallyPasses(t *testing.T) {
 	t.Parallel()
 
 	var attempts atomic.Int32
-	checker := NewChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
+	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
 		current := attempts.Add(1)
 		if current == 1 {
 			return newHTTPResponse(http.StatusServiceUnavailable), nil
 		}
 		return newHTTPResponse(http.StatusOK), nil
 	}))
-	result := checker.Wait(context.Background(), Config{
+	result := checker.Wait(context.Background(), ReadinessConfig{
 		URL:      "http://service.local/healthz",
 		Attempts: 3,
 		Interval: 5 * time.Millisecond,
@@ -50,10 +50,10 @@ func TestWaitEventuallyPasses(t *testing.T) {
 func TestWaitReturnsFailureAfterAllAttempts(t *testing.T) {
 	t.Parallel()
 
-	checker := NewChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
+	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return newHTTPResponse(http.StatusBadGateway), nil
 	}))
-	result := checker.Wait(context.Background(), Config{
+	result := checker.Wait(context.Background(), ReadinessConfig{
 		URL:      "http://service.local/healthz",
 		Attempts: 2,
 		Interval: 5 * time.Millisecond,
@@ -76,11 +76,11 @@ func TestWaitNormalizesInvalidRetryConfig(t *testing.T) {
 	t.Parallel()
 
 	var attempts atomic.Int32
-	checker := NewChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
+	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
 		attempts.Add(1)
 		return newHTTPResponse(http.StatusOK), nil
 	}))
-	result := checker.Wait(context.Background(), Config{
+	result := checker.Wait(context.Background(), ReadinessConfig{
 		URL:      "http://service.local/healthz",
 		Attempts: -1,
 		Interval: -1,

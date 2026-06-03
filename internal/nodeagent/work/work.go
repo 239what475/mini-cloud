@@ -14,14 +14,12 @@ import (
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/workloadlogs"
-	"mini-cloud/internal/nodeagent/workloadreadiness"
-	"mini-cloud/internal/nodeagent/workloadtelemetry"
 )
 
 // ReadinessWaiter 定义等待工作负载 readiness 端点通过的能力。
 type ReadinessWaiter interface {
 	// Wait 按配置等待工作负载 readiness 端点通过，并返回完整观测结果。
-	Wait(context.Context, workloadreadiness.Config) workloadreadiness.Result
+	Wait(context.Context, ReadinessConfig) ReadinessResult
 }
 
 // WorkloadLogStarter 是启动工作负载日志采集的函数。
@@ -119,7 +117,7 @@ type Result struct {
 	// RuntimeRun 是运行时容器启动结果。
 	RuntimeRun *runtime.RunResult `json:"runtimeRun,omitempty"`
 	// Readiness 是工作负载 readiness 探测结果。
-	Readiness *workloadreadiness.Result `json:"readiness,omitempty"`
+	Readiness *ReadinessResult `json:"readiness,omitempty"`
 	// Report 是最后一次执行结果上报响应。
 	Report *nodeagentapi.ReportExecutionResponse `json:"report,omitempty"`
 	// string 是本次状态机推进到的最后阶段。
@@ -144,7 +142,7 @@ type Executor struct {
 func NewExecutor(logger *slog.Logger, client *agentclient.Client, containerRuntime runtime.Runtime, opts Options) Executor {
 	readinessWaiter := opts.ReadinessWaiter
 	if readinessWaiter == nil {
-		readinessWaiter = workloadreadiness.NewChecker(nil)
+		readinessWaiter = NewReadinessChecker(nil)
 	}
 	return Executor{
 		logger:           logger,
@@ -239,7 +237,7 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	if err := e.record(item, PhaseReadinessChecking, runResult, ""); err != nil {
 		return result, err
 	}
-	readinessResult := e.readinessWaiter.Wait(ctx, workloadreadiness.Config{
+	readinessResult := e.readinessWaiter.Wait(ctx, ReadinessConfig{
 		URL:      readinessURL,
 		Attempts: opts.ReadinessAttempts,
 		Interval: opts.ReadinessInterval,
@@ -304,7 +302,7 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) 
 	runCtx, cancelRun := context.WithTimeout(e.workContext(ctx, item), e.timeout(e.opts.RuntimeTimeout))
 	defer cancelRun()
 
-	env := workloadtelemetry.InjectWorkloadTelemetryEnv(item.Env, item, workloadtelemetry.WorkloadTelemetryEnvOptions{
+	env := injectTelemetryEnv(item.Env, item, telemetryEnvOptions{
 		PlatformName:         e.opts.PlatformName,
 		WorkloadOTLPEndpoint: e.opts.WorkloadOTLPEndpoint,
 	})
@@ -406,7 +404,7 @@ func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentapi.WorkIte
 }
 
 // cleanupFailedRun 在 readiness 探测失败后采集日志、停止容器并上报失败。
-func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentapi.WorkItem, runResult runtime.RunResult, readinessResult workloadreadiness.Result) (nodeagentapi.ReportExecutionResponse, string, error) {
+func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentapi.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (nodeagentapi.ReportExecutionResponse, string, error) {
 	logSnippet := ""
 	logCtx, cancelLogs := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.RuntimeLogsTimeout))
 	logSnippet, _ = e.containerRuntime.Logs(logCtx, runResult.ContainerID, e.opts.LogTail)
@@ -564,8 +562,8 @@ func (e Executor) timeout(value time.Duration) time.Duration {
 }
 
 // BuildFailedExecutionReason 根据 readiness 探测、日志片段和清理错误构造失败原因。
-func BuildFailedExecutionReason(readinessResult workloadreadiness.Result, logs string, stopErr error) string {
-	lastObservation := workloadreadiness.Observation{}
+func BuildFailedExecutionReason(readinessResult ReadinessResult, logs string, stopErr error) string {
+	lastObservation := ReadinessObservation{}
 	if len(readinessResult.Observations) > 0 {
 		lastObservation = readinessResult.Observations[len(readinessResult.Observations)-1]
 	}

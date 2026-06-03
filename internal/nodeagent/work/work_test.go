@@ -18,7 +18,6 @@ import (
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/workloadlogs"
-	"mini-cloud/internal/nodeagent/workloadreadiness"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
@@ -72,7 +71,7 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
 	workloadLogs := &fakeWorkloadLogs{}
-	readinessWaiter := &fakeReadinessWaiter{result: workloadreadiness.Result{Passed: true}}
+	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 	opts := testOptions()
 	opts.WorkloadLogs = workloadLogs.Start
 	opts.ReadinessWaiter = readinessWaiter
@@ -125,9 +124,9 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 		logs: "workload boot failed",
 	}
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: workloadreadiness.Result{
+	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{
 		URL: "http://127.0.0.1:32080/healthz",
-		Observations: []workloadreadiness.Observation{
+		Observations: []ReadinessObservation{
 			{Attempt: 1, StatusCode: http.StatusInternalServerError, Error: "unexpected status 500"},
 		},
 	}}
@@ -170,7 +169,7 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 		},
 	}
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: workloadreadiness.Result{Passed: true}}
+	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 
 	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
 	if err == nil || !strings.Contains(err.Error(), "stopping superseded container") {
@@ -196,7 +195,7 @@ func TestExecuteNextReturnsReportError(t *testing.T) {
 		reportErr: errors.New("control plane unavailable"),
 	})
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: workloadreadiness.Result{Passed: true}}
+	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 
 	_, err := ExecuteNext(context.Background(), testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
@@ -216,9 +215,9 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{beforeWait: cancel, result: workloadreadiness.Result{
+	opts.ReadinessWaiter = &fakeReadinessWaiter{beforeWait: cancel, result: ReadinessResult{
 		URL: "http://127.0.0.1:32080/healthz",
-		Observations: []workloadreadiness.Observation{
+		Observations: []ReadinessObservation{
 			{Attempt: 1, Error: context.Canceled.Error()},
 		},
 	}}
@@ -244,9 +243,9 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 func TestBuildFailedExecutionReasonIncludesUsefulContext(t *testing.T) {
 	t.Parallel()
 
-	reason := BuildFailedExecutionReason(workloadreadiness.Result{
+	reason := BuildFailedExecutionReason(ReadinessResult{
 		URL: "http://127.0.0.1:32774/",
-		Observations: []workloadreadiness.Observation{
+		Observations: []ReadinessObservation{
 			{
 				Attempt:    1,
 				StatusCode: http.StatusBadGateway,
@@ -521,7 +520,7 @@ func (f *fakeRuntime) Close() error {
 // fakeReadinessWaiter 是执行状态机测试用的 readiness 探测器。
 type fakeReadinessWaiter struct {
 	// result 是 Wait 返回的预设 readiness 探测结果。
-	result workloadreadiness.Result
+	result ReadinessResult
 	// beforeWait 是返回结果前执行的测试钩子。
 	beforeWait func()
 	// urls 记录 Wait 收到的 readiness URL。
@@ -529,7 +528,7 @@ type fakeReadinessWaiter struct {
 }
 
 // Wait 记录 readiness 配置，并返回预设结果。
-func (f *fakeReadinessWaiter) Wait(_ context.Context, cfg workloadreadiness.Config) workloadreadiness.Result {
+func (f *fakeReadinessWaiter) Wait(_ context.Context, cfg ReadinessConfig) ReadinessResult {
 	f.urls = append(f.urls, cfg.URL)
 	if f.beforeWait != nil {
 		f.beforeWait()

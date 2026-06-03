@@ -1,4 +1,4 @@
-package workloadtelemetry
+package work
 
 import (
 	"strings"
@@ -7,8 +7,8 @@ import (
 	"mini-cloud/internal/contract/nodeagentapi"
 )
 
-// TestInjectWorkloadTelemetryEnvSetsDefaults 验证默认 OTEL exporter 和资源属性注入。
-func TestInjectWorkloadTelemetryEnvSetsDefaults(t *testing.T) {
+// TestInjectTelemetryEnvSetsDefaults 验证默认 OTEL exporter 和资源属性注入。
+func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	t.Parallel()
 
 	base := map[string]string{
@@ -23,7 +23,7 @@ func TestInjectWorkloadTelemetryEnvSetsDefaults(t *testing.T) {
 		ReplicaIndex: 2,
 	}
 
-	got := InjectWorkloadTelemetryEnv(base, item, WorkloadTelemetryEnvOptions{
+	got := injectTelemetryEnv(base, item, telemetryEnvOptions{
 		PlatformName:         "mini-cloud-lab",
 		WorkloadOTLPEndpoint: "http://otel-collector:4318",
 	})
@@ -53,15 +53,15 @@ func TestInjectWorkloadTelemetryEnvSetsDefaults(t *testing.T) {
 		}
 	}
 	if _, exists := base["OTEL_EXPORTER_OTLP_ENDPOINT"]; exists {
-		t.Fatalf("InjectWorkloadTelemetryEnv should not mutate input map")
+		t.Fatalf("injectTelemetryEnv should not mutate input map")
 	}
 }
 
-// TestInjectWorkloadTelemetryEnvKeepsUserProvidedIdentityFields 验证用户服务名保留、保留资源属性覆盖同名已有值，并覆盖 OTLP endpoint。
-func TestInjectWorkloadTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
+// TestInjectTelemetryEnvKeepsUserProvidedIdentityFields 验证用户服务名保留、保留资源属性覆盖同名已有值，并覆盖 OTLP endpoint。
+func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 	t.Parallel()
 
-	got := InjectWorkloadTelemetryEnv(map[string]string{
+	got := injectTelemetryEnv(map[string]string{
 		"OTEL_SERVICE_NAME":           "custom-service-name",
 		"OTEL_RESOURCE_ATTRIBUTES":    "service.version=1.2.3,mini_cloud.service_id=wrong",
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-collector:4318",
@@ -72,7 +72,7 @@ func TestInjectWorkloadTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T)
 		ExecutionID:  "exec_demo",
 		ReplicaIndex: 1,
 		ServiceName:  "ignored-by-test",
-	}, WorkloadTelemetryEnvOptions{
+	}, telemetryEnvOptions{
 		PlatformName:         "mini-cloud-lab",
 		WorkloadOTLPEndpoint: "http://platform-collector:4318",
 	})

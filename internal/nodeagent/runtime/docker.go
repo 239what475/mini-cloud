@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -659,7 +660,14 @@ func preparePersistentDirMounts(items []persistentdir.Mount) ([]mount.Mount, err
 // buildContainerEnv 将环境变量 map 转换为 Docker 需要的 KEY=VALUE 列表。
 func buildContainerEnv(env map[string]string) []string {
 	values := make([]string, 0, len(env))
-	for _, key := range sortedEnvKeys(env) {
+
+	keys := make([]string, 0, len(env))
+	for key := range env {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
 		values = append(values, fmt.Sprintf("%s=%s", key, env[key]))
 	}
 	return values

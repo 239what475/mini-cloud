@@ -1,4 +1,4 @@
-package workloadtelemetry
+package work
 
 import (
 	"sort"
@@ -8,16 +8,16 @@ import (
 	"mini-cloud/internal/contract/nodeagentapi"
 )
 
-// WorkloadTelemetryEnvOptions 配置注入到工作负载环境变量中的遥测元数据。
-type WorkloadTelemetryEnvOptions struct {
+// telemetryEnvOptions 配置注入到工作负载环境变量中的遥测元数据。
+type telemetryEnvOptions struct {
 	// PlatformName 是写入 OTEL_RESOURCE_ATTRIBUTES 的平台名称。
 	PlatformName string
 	// WorkloadOTLPEndpoint 是写入 OTEL_EXPORTER_OTLP_ENDPOINT 的 OTLP HTTP endpoint。
 	WorkloadOTLPEndpoint string
 }
 
-// InjectWorkloadTelemetryEnv 按需注入 OpenTelemetry exporter 默认配置，并写入 mini-cloud 资源属性。
-func InjectWorkloadTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opts WorkloadTelemetryEnvOptions) map[string]string {
+// injectTelemetryEnv 按需注入 OpenTelemetry exporter 默认配置，并写入 mini-cloud 资源属性。
+func injectTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opts telemetryEnvOptions) map[string]string {
 	env := cloneStringMap(base)
 	if env == nil {
 		env = map[string]string{}

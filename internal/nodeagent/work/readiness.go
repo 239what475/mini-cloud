@@ -1,4 +1,4 @@
-package workloadreadiness
+package work
 
 import (
 	"context"
@@ -17,8 +17,8 @@ const (
 	defaultTimeout = time.Second
 )
 
-// Config 描述等待工作负载 readiness 端点通过所需的探测参数。
-type Config struct {
+// ReadinessConfig 描述等待工作负载 readiness 端点通过所需的探测参数。
+type ReadinessConfig struct {
 	// URL 是工作负载容器暴露给 node-agent 的 readiness HTTP 端点。
 	URL string `json:"url"`
 	// Attempts 是最多探测次数；小于等于 0 时按 1 次处理。
@@ -29,8 +29,8 @@ type Config struct {
 	Timeout time.Duration `json:"timeout"`
 }
 
-// Observation 记录一次工作负载 readiness 探测尝试。
-type Observation struct {
+// ReadinessObservation 记录一次工作负载 readiness 探测尝试。
+type ReadinessObservation struct {
 	// Attempt 是从 1 开始的尝试序号。
 	Attempt int `json:"attempt"`
 	// StartedAt 是本次尝试开始时的 UTC 时间。
@@ -41,8 +41,8 @@ type Observation struct {
 	Error string `json:"error,omitempty"`
 }
 
-// Result 汇总等待工作负载 readiness 期间采集到的所有探测结果。
-type Result struct {
+// ReadinessResult 汇总等待工作负载 readiness 期间采集到的所有探测结果。
+type ReadinessResult struct {
 	// URL 是被探测的工作负载 readiness 端点。
 	URL string `json:"url"`
 	// Passed 表示是否有任一次尝试返回成功 HTTP 状态且响应处理无错误。
@@ -50,7 +50,7 @@ type Result struct {
 	// PassedAt 是首次成功尝试开始时的观测时间。
 	PassedAt *time.Time `json:"passedAt,omitempty"`
 	// Observations 按顺序保存每一次探测结果。
-	Observations []Observation `json:"observations"`
+	Observations []ReadinessObservation `json:"observations"`
 }
 
 // httpDoer 是执行 HTTP 请求所需的最小能力，便于测试注入确定性实现。
@@ -59,26 +59,26 @@ type httpDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// Checker 等待工作负载 readiness HTTP 端点通过。
-type Checker struct {
+// ReadinessChecker 等待工作负载 readiness HTTP 端点通过。
+type ReadinessChecker struct {
 	// client 执行单次 HTTP 探测；为空时使用 http.DefaultClient。
 	client httpDoer
 }
 
-// NewChecker 创建工作负载 readiness 检查器。
-func NewChecker(client httpDoer) Checker {
+// NewReadinessChecker 创建工作负载 readiness 检查器。
+func NewReadinessChecker(client httpDoer) ReadinessChecker {
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return Checker{client: client}
+	return ReadinessChecker{client: client}
 }
 
 // Wait 按配置轮询工作负载 readiness URL，直到通过、耗尽尝试次数或上下文取消。
-func (c Checker) Wait(ctx context.Context, cfg Config) Result {
+func (c ReadinessChecker) Wait(ctx context.Context, cfg ReadinessConfig) ReadinessResult {
 	cfg = normalizeConfig(cfg)
-	result := Result{
+	result := ReadinessResult{
 		URL:          cfg.URL,
-		Observations: make([]Observation, 0, cfg.Attempts),
+		Observations: make([]ReadinessObservation, 0, cfg.Attempts),
 	}
 
 	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
@@ -102,8 +102,8 @@ func (c Checker) Wait(ctx context.Context, cfg Config) Result {
 }
 
 // probe 执行一次 readiness HTTP 探测并返回结构化观测结果。
-func (c Checker) probe(ctx context.Context, cfg Config, attempt int) Observation {
-	observation := Observation{
+func (c ReadinessChecker) probe(ctx context.Context, cfg ReadinessConfig, attempt int) ReadinessObservation {
+	observation := ReadinessObservation{
 		Attempt:   attempt,
 		StartedAt: time.Now().UTC(),
 	}
@@ -147,7 +147,7 @@ func (c Checker) probe(ctx context.Context, cfg Config, attempt int) Observation
 }
 
 // normalizeConfig 补齐 workload readiness 探测参数的安全默认值。
-func normalizeConfig(cfg Config) Config {
+func normalizeConfig(cfg ReadinessConfig) ReadinessConfig {
 	if cfg.Attempts <= 0 {
 		cfg.Attempts = defaultAttempts
 	}
