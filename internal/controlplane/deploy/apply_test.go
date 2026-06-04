@@ -11,13 +11,12 @@ import (
 func TestApplyServiceInputResolvedApplyRequestRejectsProjectedFileOverlapWithPersistentDir(t *testing.T) {
 	t.Parallel()
 
-	_, err := (ApplyServiceInput{
-		Metadata: ServiceMetadata{
-			ID:          "svc-1",
-			ProjectID:   "prj-1",
-			Name:        "demo",
-			DisplayName: "Demo",
-		},
+		_, err := (ApplyServiceInput{
+			Metadata: ServiceMetadata{
+				ID:          "svc-1",
+				Name:        "demo",
+				DisplayName: "Demo",
+			},
 		Spec: ServiceSpec{
 			Region:        "cn-beijing",
 			Replicas:      1,

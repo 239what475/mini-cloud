@@ -2,50 +2,33 @@
 -- 当前仍处于开发期，cloud-plane 不保留旧 schema 的升级历史。
 -- 这个 baseline 直接描述当前代码需要的完整数据库结构；已有开发库需要重建。
 
-CREATE TABLE IF NOT EXISTS projects (
+CREATE TABLE IF NOT EXISTS config_sets (
     id TEXT PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    display_name TEXT NOT NULL,
-    quota_max_services INTEGER NOT NULL DEFAULT 5 CHECK (quota_max_services > 0),
-    quota_cpu_milli INTEGER NOT NULL DEFAULT 4000 CHECK (quota_cpu_milli > 0),
-    quota_memory_mi INTEGER NOT NULL DEFAULT 8192 CHECK (quota_memory_mi > 0),
-    owner_user_id TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_projects_owner_user_id
-    ON projects (owner_user_id, created_at, id);
-
-CREATE TABLE IF NOT EXISTS project_config_sets (
-    id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     values_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT project_config_sets_name_unique UNIQUE (project_id, name)
+    CONSTRAINT config_sets_name_unique UNIQUE (name)
 );
 
-CREATE TABLE IF NOT EXISTS project_secret_sets (
+CREATE TABLE IF NOT EXISTS secret_sets (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     values_json JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (project_id, name)
+    UNIQUE (name)
 );
 
-CREATE TABLE IF NOT EXISTS project_registry_credentials (
+CREATE TABLE IF NOT EXISTS registry_credentials (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     server TEXT NOT NULL,
     username TEXT NOT NULL,
     password TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (project_id, name)
+    UNIQUE (name)
 );
 
 CREATE TABLE IF NOT EXISTS nodes (
@@ -105,7 +88,6 @@ CREATE INDEX IF NOT EXISTS idx_node_agent_session_tokens_expires_at
 
 CREATE TABLE IF NOT EXISTS services (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     spec_region TEXT NOT NULL,
@@ -117,9 +99,9 @@ CREATE TABLE IF NOT EXISTS services (
     spec_args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_default_port INTEGER NOT NULL CHECK (spec_default_port > 0 AND spec_default_port <= 65535),
     spec_readiness_path TEXT NOT NULL,
-    spec_config_set_id TEXT NULL REFERENCES project_config_sets(id) ON DELETE SET NULL,
-    spec_secret_set_id TEXT NULL REFERENCES project_secret_sets(id) ON DELETE SET NULL,
-    spec_registry_credential_id TEXT NULL REFERENCES project_registry_credentials(id) ON DELETE SET NULL,
+    spec_config_set_id TEXT NULL REFERENCES config_sets(id) ON DELETE SET NULL,
+    spec_secret_set_id TEXT NULL REFERENCES secret_sets(id) ON DELETE SET NULL,
+    spec_registry_credential_id TEXT NULL REFERENCES registry_credentials(id) ON DELETE SET NULL,
     spec_projected_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_persistent_dirs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -130,11 +112,11 @@ CREATE TABLE IF NOT EXISTS services (
     status_phase TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (project_id, name)
+    UNIQUE (name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_services_project_created_at
-    ON services (project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_services_created_at
+    ON services (created_at DESC);
 
 CREATE TABLE IF NOT EXISTS revisions (
     id TEXT PRIMARY KEY,
@@ -145,9 +127,9 @@ CREATE TABLE IF NOT EXISTS revisions (
     spec_command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    spec_config_set_id TEXT NULL REFERENCES project_config_sets(id) ON DELETE SET NULL,
-    spec_secret_set_id TEXT NULL REFERENCES project_secret_sets(id) ON DELETE SET NULL,
-    spec_registry_credential_id TEXT NULL REFERENCES project_registry_credentials(id) ON DELETE SET NULL,
+    spec_config_set_id TEXT NULL REFERENCES config_sets(id) ON DELETE SET NULL,
+    spec_secret_set_id TEXT NULL REFERENCES secret_sets(id) ON DELETE SET NULL,
+    spec_registry_credential_id TEXT NULL REFERENCES registry_credentials(id) ON DELETE SET NULL,
     spec_projected_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     spec_persistent_dirs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     port INTEGER NOT NULL CHECK (port > 0 AND port <= 65535),
@@ -274,7 +256,6 @@ CREATE INDEX IF NOT EXISTS idx_runtime_nodes_status_created_at
 
 CREATE TABLE IF NOT EXISTS service_desired (
     service_id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     generation BIGINT NOT NULL DEFAULT 1 CHECK (generation > 0),
     observed_generation BIGINT NOT NULL DEFAULT 0 CHECK (observed_generation >= 0),
@@ -301,7 +282,7 @@ CREATE TABLE IF NOT EXISTS service_desired (
     observed_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (project_id, name)
+    UNIQUE (name)
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_desired_reconcile
@@ -354,7 +335,6 @@ DROP TABLE IF EXISTS services;
 DROP TABLE IF EXISTS node_agent_session_tokens;
 DROP TABLE IF EXISTS node_heartbeats;
 DROP TABLE IF EXISTS nodes;
-DROP TABLE IF EXISTS project_registry_credentials;
-DROP TABLE IF EXISTS project_secret_sets;
-DROP TABLE IF EXISTS project_config_sets;
-DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS registry_credentials;
+DROP TABLE IF EXISTS secret_sets;
+DROP TABLE IF EXISTS config_sets;

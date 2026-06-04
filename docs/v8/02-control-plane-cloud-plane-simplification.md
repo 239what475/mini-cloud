@@ -37,7 +37,7 @@ Web / HTTP API
 
 ```text
 control-plane
-  管全局项目、服务、调度、状态
+  管全局 service、resource、调度、状态
 
 aliyun cloud-plane
   管阿里云上的 runtime nodes 和 node-agents
@@ -133,9 +133,9 @@ v8 采用更简单的模型：
 
 后续如果需要“从旧 revision 创建新变更”的体验，可以在 Web 或 CLI 做辅助操作，但底层仍然是一次普通 apply，不引入特殊 rollback 状态机。
 
-### 不把 project resources 整包同步到 cloud-plane
+### 不把全量 resources 整包同步到 cloud-plane
 
-当前 cloud-plane southbound API 会接收 project、config set、secret set、registry credential 等全量 project resources。
+当前 cloud-plane southbound API 会接收 config set、secret set、registry credential 等全量 resources。
 
 v8 应改为：
 
@@ -144,7 +144,7 @@ control-plane 在生成 execution work 时解析引用
 cloud-plane / node-agent 只接收本次 execution 需要的材料
 ```
 
-这样 cloud-plane 不需要保存 project resource truth。
+这样 cloud-plane 不需要保存 resource truth。
 
 ## 新的主流程
 
@@ -394,7 +394,7 @@ scale 链路完成后，再考虑 provider runtime node scale out / scale in 的
 - control-plane 是 service / revision / deployment 的唯一事实来源。
 - cloud-plane 不再有 service desired reconciler。
 - cloud-plane 不再有 rollback API。
-- cloud-plane 不再保存完整 project resources。
+- cloud-plane 不再保存完整 resources。
 - node-agent API 仍保持 unary pull/report 模型。
 - Web 可以只读 control-plane 得到完整 service 状态。
 - 多 cloud-plane 调度仍可工作。

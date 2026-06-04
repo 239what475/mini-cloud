@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/operationhistory"
 	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
@@ -17,37 +16,37 @@ import (
 	"mini-cloud/internal/controlplane/store"
 )
 
-type projectServiceCurrentRevision struct {
+type serviceCurrentRevision struct {
 	ID    string `json:"id"`
 	Label string `json:"label"`
 }
 
-type projectServiceRevisionPolicy struct {
+type serviceRevisionPolicy struct {
 	Strategy string `json:"strategy"`
 }
 
-type projectServiceSpec struct {
-	Provider             string                       `json:"provider"`
-	Region               string                       `json:"region"`
-	PinnedPlaneID        string                       `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                          `json:"replicas"`
-	InstanceClass        string                       `json:"instanceClass"`
-	RevisionPolicy       projectServiceRevisionPolicy `json:"revisionPolicy"`
-	Exposure             string                       `json:"exposure"`
-	Image                string                       `json:"image"`
-	Command              []string                     `json:"command,omitempty"`
-	Args                 []string                     `json:"args,omitempty"`
-	DefaultPort          int                          `json:"defaultPort"`
-	ReadinessPath        string                       `json:"readinessPath"`
-	Env                  map[string]string            `json:"env,omitempty"`
-	ConfigSetID          string                       `json:"configSetID,omitempty"`
-	SecretSetID          string                       `json:"secretSetID,omitempty"`
-	RegistryCredentialID string                       `json:"registryCredentialID,omitempty"`
-	ProjectedFiles       []projectedfile.Spec         `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec         `json:"persistentDirs,omitempty"`
+type serviceSpec struct {
+	Provider             string                `json:"provider"`
+	Region               string                `json:"region"`
+	PinnedPlaneID        string                `json:"pinnedPlaneID,omitempty"`
+	Replicas             int                   `json:"replicas"`
+	InstanceClass        string                `json:"instanceClass"`
+	RevisionPolicy       serviceRevisionPolicy `json:"revisionPolicy"`
+	Exposure             string                `json:"exposure"`
+	Image                string                `json:"image"`
+	Command              []string              `json:"command,omitempty"`
+	Args                 []string              `json:"args,omitempty"`
+	DefaultPort          int                   `json:"defaultPort"`
+	ReadinessPath        string                `json:"readinessPath"`
+	Env                  map[string]string     `json:"env,omitempty"`
+	ConfigSetID          string                `json:"configSetID,omitempty"`
+	SecretSetID          string                `json:"secretSetID,omitempty"`
+	RegistryCredentialID string                `json:"registryCredentialID,omitempty"`
+	ProjectedFiles       []projectedfile.Spec  `json:"projectedFiles,omitempty"`
+	PersistentDirs       []persistentdir.Spec  `json:"persistentDirs,omitempty"`
 }
 
-type projectServiceCondition struct {
+type serviceCondition struct {
 	Type               string `json:"type"`
 	Status             string `json:"status"`
 	Reason             string `json:"reason,omitempty"`
@@ -56,93 +55,92 @@ type projectServiceCondition struct {
 	LastTransitionAt   string `json:"lastTransitionAt"`
 }
 
-type projectServiceRolloutStatus struct {
-	Phase                      string                         `json:"phase"`
-	Message                    string                         `json:"message,omitempty"`
-	StableRevisionID           string                         `json:"stableRevisionID,omitempty"`
-	CandidateRevisionID        string                         `json:"candidateRevisionID,omitempty"`
-	StableDesiredReplicas      int                            `json:"stableDesiredReplicas"`
-	StableReadyReplicas        int                            `json:"stableReadyReplicas"`
-	StableAvailableReplicas    int                            `json:"stableAvailableReplicas"`
-	CandidateDesiredReplicas   int                            `json:"candidateDesiredReplicas"`
-	CandidateReadyReplicas     int                            `json:"candidateReadyReplicas"`
-	CandidateAvailableReplicas int                            `json:"candidateAvailableReplicas"`
-	LastObservedAt             string                         `json:"lastObservedAt,omitempty"`
-	StableRevision             *projectServiceCurrentRevision `json:"stableRevision,omitempty"`
-	CandidateRevision          *projectServiceCurrentRevision `json:"candidateRevision,omitempty"`
+type serviceRolloutStatus struct {
+	Phase                      string                  `json:"phase"`
+	Message                    string                  `json:"message,omitempty"`
+	StableRevisionID           string                  `json:"stableRevisionID,omitempty"`
+	CandidateRevisionID        string                  `json:"candidateRevisionID,omitempty"`
+	StableDesiredReplicas      int                     `json:"stableDesiredReplicas"`
+	StableReadyReplicas        int                     `json:"stableReadyReplicas"`
+	StableAvailableReplicas    int                     `json:"stableAvailableReplicas"`
+	CandidateDesiredReplicas   int                     `json:"candidateDesiredReplicas"`
+	CandidateReadyReplicas     int                     `json:"candidateReadyReplicas"`
+	CandidateAvailableReplicas int                     `json:"candidateAvailableReplicas"`
+	LastObservedAt             string                  `json:"lastObservedAt,omitempty"`
+	StableRevision             *serviceCurrentRevision `json:"stableRevision,omitempty"`
+	CandidateRevision          *serviceCurrentRevision `json:"candidateRevision,omitempty"`
 }
 
-type projectServiceStatus struct {
-	ObservedGeneration int64                          `json:"observedGeneration"`
-	DesiredState       string                         `json:"desiredState"`
-	Phase              string                         `json:"phase"`
-	Healthy            bool                           `json:"healthy"`
-	Message            string                         `json:"message,omitempty"`
-	Conditions         []projectServiceCondition      `json:"conditions,omitempty"`
-	LastReconciledAt   *time.Time                     `json:"lastReconciledAt,omitempty"`
-	CurrentRevision    *projectServiceCurrentRevision `json:"currentRevision,omitempty"`
-	Rollout            projectServiceRolloutStatus    `json:"rollout"`
-	Placement          *projectServicePlacement       `json:"placement,omitempty"`
+type serviceStatus struct {
+	ObservedGeneration int64                   `json:"observedGeneration"`
+	DesiredState       string                  `json:"desiredState"`
+	Phase              string                  `json:"phase"`
+	Healthy            bool                    `json:"healthy"`
+	Message            string                  `json:"message,omitempty"`
+	Conditions         []serviceCondition      `json:"conditions,omitempty"`
+	LastReconciledAt   *time.Time              `json:"lastReconciledAt,omitempty"`
+	CurrentRevision    *serviceCurrentRevision `json:"currentRevision,omitempty"`
+	Rollout            serviceRolloutStatus    `json:"rollout"`
+	Placement          *servicePlacement       `json:"placement,omitempty"`
 }
 
-type projectServicePlacement struct {
+type servicePlacement struct {
 	PlaneID       string `json:"planeID"`
 	RemoteStatus  string `json:"remoteStatus,omitempty"`
 	RemoteHealthy bool   `json:"remoteHealthy"`
 	RemoteMessage string `json:"remoteMessage,omitempty"`
 }
 
-type projectServiceMetadata struct {
+type serviceMetadata struct {
 	ID          string `json:"id"`
-	ProjectID   string `json:"projectID"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Generation  int64  `json:"generation"`
 }
 
-type projectServiceResource struct {
-	Metadata projectServiceMetadata `json:"metadata"`
-	Spec     projectServiceSpec     `json:"spec"`
-	Status   projectServiceStatus   `json:"status"`
+type serviceResource struct {
+	Metadata serviceMetadata `json:"metadata"`
+	Spec     serviceSpec     `json:"spec"`
+	Status   serviceStatus   `json:"status"`
 }
 
-type projectServiceEnvelope struct {
-	Service projectServiceResource `json:"service"`
+type serviceEnvelope struct {
+	Service serviceResource `json:"service"`
 }
 
-type projectServiceSpecInput struct {
-	Provider             string                       `json:"provider"`
-	Region               string                       `json:"region"`
-	PinnedPlaneID        string                       `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                          `json:"replicas"`
-	InstanceClass        string                       `json:"instanceClass"`
-	RevisionPolicy       projectServiceRevisionPolicy `json:"revisionPolicy"`
-	Exposure             string                       `json:"exposure"`
-	Image                string                       `json:"image"`
-	Command              []string                     `json:"command"`
-	Args                 []string                     `json:"args"`
-	DefaultPort          int                          `json:"defaultPort"`
-	ReadinessPath        string                       `json:"readinessPath"`
-	Env                  map[string]string            `json:"env"`
-	ConfigSetID          string                       `json:"configSetID"`
-	SecretSetID          string                       `json:"secretSetID"`
-	RegistryCredentialID string                       `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec         `json:"projectedFiles"`
-	PersistentDirs       []persistentdir.Spec         `json:"persistentDirs"`
+type serviceSpecInput struct {
+	Provider             string                `json:"provider"`
+	Region               string                `json:"region"`
+	PinnedPlaneID        string                `json:"pinnedPlaneID,omitempty"`
+	Replicas             int                   `json:"replicas"`
+	InstanceClass        string                `json:"instanceClass"`
+	RevisionPolicy       serviceRevisionPolicy `json:"revisionPolicy"`
+	Exposure             string                `json:"exposure"`
+	Image                string                `json:"image"`
+	Command              []string              `json:"command"`
+	Args                 []string              `json:"args"`
+	DefaultPort          int                   `json:"defaultPort"`
+	ReadinessPath        string                `json:"readinessPath"`
+	Env                  map[string]string     `json:"env"`
+	ConfigSetID          string                `json:"configSetID"`
+	SecretSetID          string                `json:"secretSetID"`
+	RegistryCredentialID string                `json:"registryCredentialID"`
+	ProjectedFiles       []projectedfile.Spec  `json:"projectedFiles"`
+	PersistentDirs       []persistentdir.Spec  `json:"persistentDirs"`
 }
 
-type projectServiceCreateRequest struct {
-	Name        string                   `json:"name"`
-	DisplayName string                   `json:"displayName"`
-	Spec        *projectServiceSpecInput `json:"spec"`
+type serviceCreateRequest struct {
+	Name        string            `json:"name"`
+	DisplayName string            `json:"displayName"`
+	Spec        *serviceSpecInput `json:"spec"`
 }
 
-type projectServiceUpdateRequest struct {
-	DisplayName string                   `json:"displayName"`
-	Spec        *projectServiceSpecInput `json:"spec"`
+type serviceUpdateRequest struct {
+	DisplayName string            `json:"displayName"`
+	Spec        *serviceSpecInput `json:"spec"`
 }
 
-var errProjectServiceSpecRequired = errors.New("spec is required")
+var errServiceSpecRequired = errors.New("spec is required")
 
 type serviceHandler struct {
 	logger   *slog.Logger
@@ -158,40 +156,24 @@ func newServiceHandler(logger *slog.Logger, stores *store.Store, services *servi
 	}
 }
 
-func (h serviceHandler) listProjectServices(w http.ResponseWriter, r *http.Request) {
-	projectID := strings.TrimSpace(r.PathValue("projectID"))
-	if projectID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID is required"})
-		return
-	}
-	items, err := h.services.ListByProject(r.Context(), projectID)
+func (h serviceHandler) listServices(w http.ResponseWriter, r *http.Request) {
+	items, err := h.services.List(r.Context())
 	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrProjectNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
-		default:
-			requestScopedLogger(r, h.logger).Error("list project services failed", "project_id", projectID, "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-		}
+		requestScopedLogger(r, h.logger).Error("list services failed", "error", err)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
-	out := make([]projectServiceEnvelope, 0, len(items))
+	out := make([]serviceEnvelope, 0, len(items))
 	for _, item := range items {
-		out = append(out, projectServiceEnvelope{
-			Service: buildProjectServiceResource(item),
+		out = append(out, serviceEnvelope{
+			Service: buildServiceResource(item),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
-func (h serviceHandler) createProjectService(w http.ResponseWriter, r *http.Request) {
-	projectID := strings.TrimSpace(r.PathValue("projectID"))
-	if projectID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID is required"})
-		return
-	}
-
-	var request projectServiceCreateRequest
+func (h serviceHandler) createService(w http.ResponseWriter, r *http.Request) {
+	var request serviceCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -201,34 +183,29 @@ func (h serviceHandler) createProjectService(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	r = withRequestLogFields(r, logctx.Fields{ProjectID: projectID})
 	logger := requestScopedLogger(r, h.logger)
 
-	view, err := h.services.Create(r.Context(), projectID, input)
+	view, err := h.services.Create(r.Context(), input)
 	if err != nil {
 		switch {
 		case isServiceInputError(err):
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrProjectNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrProjectConfigSetNotFound),
-			errors.Is(err, store.ErrProjectSecretSetNotFound),
-			errors.Is(err, store.ErrProjectRegistryCredentialNotFound):
+		case errors.Is(err, store.ErrConfigSetNotFound),
+			errors.Is(err, store.ErrSecretSetNotFound),
+			errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
-			logger.Error("create project service failed", "error", err)
+			logger.Error("create service failed", "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
 	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		ProjectID:  projectID,
 		Action:     "control.service.create",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
@@ -236,42 +213,40 @@ func (h serviceHandler) createProjectService(w http.ResponseWriter, r *http.Requ
 		Details:    buildServiceOperationDetails(view),
 	})
 
-	writeJSON(w, http.StatusCreated, projectServiceEnvelope{
-		Service: buildProjectServiceResource(view),
+	writeJSON(w, http.StatusCreated, serviceEnvelope{
+		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) getProjectService(w http.ResponseWriter, r *http.Request) {
-	projectID := strings.TrimSpace(r.PathValue("projectID"))
+func (h serviceHandler) getService(w http.ResponseWriter, r *http.Request) {
 	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
-	if projectID == "" || serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID and serviceID are required"})
+	if serviceID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	view, err := h.services.Get(r.Context(), projectID, serviceID)
+	view, err := h.services.Get(r.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			requestScopedLogger(r, h.logger).Error("get project service failed", "service_id", serviceID, "error", err)
+			requestScopedLogger(r, h.logger).Error("get service failed", "service_id", serviceID, "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, projectServiceEnvelope{
-		Service: buildProjectServiceResource(view),
+	writeJSON(w, http.StatusOK, serviceEnvelope{
+		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) updateProjectService(w http.ResponseWriter, r *http.Request) {
-	projectID := strings.TrimSpace(r.PathValue("projectID"))
+func (h serviceHandler) updateService(w http.ResponseWriter, r *http.Request) {
 	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
-	if projectID == "" || serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID and serviceID are required"})
+	if serviceID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	var request projectServiceUpdateRequest
+	var request serviceUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -281,10 +256,9 @@ func (h serviceHandler) updateProjectService(w http.ResponseWriter, r *http.Requ
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	r = withRequestLogFields(r, logctx.Fields{ProjectID: projectID})
 	logger := requestScopedLogger(r, h.logger)
 
-	view, err := h.services.Update(r.Context(), projectID, serviceID, input)
+	view, err := h.services.Update(r.Context(), serviceID, input)
 	if err != nil {
 		switch {
 		case isServiceInputError(err):
@@ -293,19 +267,18 @@ func (h serviceHandler) updateProjectService(w http.ResponseWriter, r *http.Requ
 		case errors.Is(err, store.ErrServiceNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrProjectConfigSetNotFound),
-			errors.Is(err, store.ErrProjectSecretSetNotFound),
-			errors.Is(err, store.ErrProjectRegistryCredentialNotFound):
+		case errors.Is(err, store.ErrConfigSetNotFound),
+			errors.Is(err, store.ErrSecretSetNotFound),
+			errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
-			logger.Error("update project service failed", "service_id", serviceID, "error", err)
+			logger.Error("update service failed", "service_id", serviceID, "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
 	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		ProjectID:  projectID,
 		Action:     "control.service.update",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
@@ -313,34 +286,31 @@ func (h serviceHandler) updateProjectService(w http.ResponseWriter, r *http.Requ
 		Details:    buildServiceOperationDetails(view),
 	})
 
-	writeJSON(w, http.StatusOK, projectServiceEnvelope{
-		Service: buildProjectServiceResource(view),
+	writeJSON(w, http.StatusOK, serviceEnvelope{
+		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) deleteProjectService(w http.ResponseWriter, r *http.Request) {
-	projectID := strings.TrimSpace(r.PathValue("projectID"))
+func (h serviceHandler) deleteService(w http.ResponseWriter, r *http.Request) {
 	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
-	if projectID == "" || serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID and serviceID are required"})
+	if serviceID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	r = withRequestLogFields(r, logctx.Fields{ProjectID: projectID})
 	logger := requestScopedLogger(r, h.logger)
 
-	view, err := h.services.Delete(r.Context(), projectID, serviceID)
+	view, err := h.services.Delete(r.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			logger.Error("delete project service failed", "service_id", serviceID, "error", err)
+			logger.Error("delete service failed", "service_id", serviceID, "error", err)
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
 	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		ProjectID:  projectID,
 		Action:     "control.service.delete",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
@@ -352,23 +322,22 @@ func (h serviceHandler) deleteProjectService(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-func buildProjectServiceResource(view servicecontroller.View) projectServiceResource {
-	status := buildProjectServiceStatus(view)
-	return projectServiceResource{
-		Metadata: projectServiceMetadata{
+func buildServiceResource(view servicecontroller.View) serviceResource {
+	status := buildServiceStatus(view)
+	return serviceResource{
+		Metadata: serviceMetadata{
 			ID:          view.Service.Metadata.ID,
-			ProjectID:   view.Service.Metadata.ProjectID,
 			Name:        view.Service.Metadata.Name,
 			DisplayName: view.Service.Metadata.DisplayName,
 			Generation:  view.Service.Metadata.Generation,
 		},
-		Spec: projectServiceSpec{
+		Spec: serviceSpec{
 			Provider:      view.Service.Spec.Provider,
 			Region:        view.Service.Spec.Region,
 			PinnedPlaneID: view.Service.Spec.PinnedPlaneID,
 			Replicas:      view.Service.Spec.Replicas,
 			InstanceClass: view.Service.Spec.InstanceClass,
-			RevisionPolicy: projectServiceRevisionPolicy{
+			RevisionPolicy: serviceRevisionPolicy{
 				Strategy: string(view.Service.Spec.RevisionPolicy.Strategy),
 			},
 			Exposure:             view.Service.Spec.Exposure,
@@ -388,27 +357,27 @@ func buildProjectServiceResource(view servicecontroller.View) projectServiceReso
 	}
 }
 
-func buildProjectServiceStatus(view servicecontroller.View) projectServiceStatus {
+func buildServiceStatus(view servicecontroller.View) serviceStatus {
 	serviceItem := view.Service
-	status := projectServiceStatus{
+	status := serviceStatus{
 		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
 		DesiredState:       string(serviceItem.Status.DesiredState),
 		Phase:              serviceItem.Status.Observed.Phase,
 		Healthy:            serviceItem.Status.Observed.Healthy,
 		Message:            serviceItem.Status.Observed.Message,
-		Conditions:         buildProjectServiceConditions(serviceItem.Status.Observed.Conditions),
+		Conditions:         buildServiceConditions(serviceItem.Status.Observed.Conditions),
 		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
-		Rollout:            buildProjectServiceRollout(serviceItem.Status.Rollout),
+		Rollout:            buildServiceRollout(serviceItem.Status.Rollout),
 	}
 	currentRevisionID := strings.TrimSpace(serviceItem.Status.Rollout.StableRevisionID)
 	if currentRevisionID != "" {
-		status.CurrentRevision = &projectServiceCurrentRevision{
+		status.CurrentRevision = &serviceCurrentRevision{
 			ID:    currentRevisionID,
 			Label: currentRevisionID,
 		}
 	}
 	if view.Placement != nil {
-		status.Placement = &projectServicePlacement{
+		status.Placement = &servicePlacement{
 			PlaneID:       view.Placement.PlaneID,
 			RemoteStatus:  view.Placement.RemoteStatus,
 			RemoteHealthy: view.Placement.RemoteHealthy,
@@ -418,8 +387,8 @@ func buildProjectServiceStatus(view servicecontroller.View) projectServiceStatus
 	return status
 }
 
-func buildProjectServiceRollout(input controlservice.RolloutStatus) projectServiceRolloutStatus {
-	out := projectServiceRolloutStatus{
+func buildServiceRollout(input controlservice.RolloutStatus) serviceRolloutStatus {
+	out := serviceRolloutStatus{
 		Phase:                      input.Phase,
 		Message:                    input.Message,
 		StableRevisionID:           input.StableRevisionID,
@@ -435,13 +404,13 @@ func buildProjectServiceRollout(input controlservice.RolloutStatus) projectServi
 		out.LastObservedAt = input.LastObservedAt.UTC().Format(time.RFC3339)
 	}
 	if strings.TrimSpace(input.StableRevisionID) != "" {
-		out.StableRevision = &projectServiceCurrentRevision{
+		out.StableRevision = &serviceCurrentRevision{
 			ID:    input.StableRevisionID,
 			Label: input.StableRevisionID,
 		}
 	}
 	if strings.TrimSpace(input.CandidateRevisionID) != "" {
-		out.CandidateRevision = &projectServiceCurrentRevision{
+		out.CandidateRevision = &serviceCurrentRevision{
 			ID:    input.CandidateRevisionID,
 			Label: input.CandidateRevisionID,
 		}
@@ -449,13 +418,13 @@ func buildProjectServiceRollout(input controlservice.RolloutStatus) projectServi
 	return out
 }
 
-func buildProjectServiceConditions(input []controlservice.Condition) []projectServiceCondition {
+func buildServiceConditions(input []controlservice.Condition) []serviceCondition {
 	if len(input) == 0 {
 		return nil
 	}
-	out := make([]projectServiceCondition, 0, len(input))
+	out := make([]serviceCondition, 0, len(input))
 	for _, item := range input {
-		out = append(out, projectServiceCondition{
+		out = append(out, serviceCondition{
 			Type:               item.Type,
 			Status:             string(item.Status),
 			Reason:             item.Reason,
@@ -480,9 +449,9 @@ func buildServiceOperationDetails(view servicecontroller.View) map[string]any {
 	return details
 }
 
-func (r projectServiceCreateRequest) toCreateInput() (controlservice.CreateInput, error) {
+func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error) {
 	if r.Spec == nil {
-		return controlservice.CreateInput{}, errProjectServiceSpecRequired
+		return controlservice.CreateInput{}, errServiceSpecRequired
 	}
 	spec := *r.Spec
 	return controlservice.CreateInput{
@@ -513,9 +482,9 @@ func (r projectServiceCreateRequest) toCreateInput() (controlservice.CreateInput
 	}, nil
 }
 
-func (r projectServiceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error) {
+func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error) {
 	if r.Spec == nil {
-		return controlservice.UpdateInput{}, errProjectServiceSpecRequired
+		return controlservice.UpdateInput{}, errServiceSpecRequired
 	}
 	spec := *r.Spec
 	return controlservice.UpdateInput{
@@ -546,8 +515,7 @@ func (r projectServiceUpdateRequest) toUpdateInput() (controlservice.UpdateInput
 }
 
 func isServiceInputError(err error) bool {
-	return errors.Is(err, errProjectServiceSpecRequired) ||
-		errors.Is(err, controlservice.ErrProjectIDRequired) ||
+	return errors.Is(err, errServiceSpecRequired) ||
 		errors.Is(err, controlservice.ErrServiceNameRequired) ||
 		errors.Is(err, controlservice.ErrInvalidServiceName) ||
 		errors.Is(err, controlservice.ErrDisplayNameRequired) ||

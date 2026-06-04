@@ -4,42 +4,30 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"testing"
-	"time"
-
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/runtimepool"
 	"mini-cloud/internal/testutil"
+	"testing"
+	"time"
 )
 
-func TestPreviewProjectSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing.T) {
+func TestPreviewSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-demo",
-		DisplayName: "Control Placement Demo",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	planeA := createReadyPlane(t, db.Store, "aliyun-bj-a", "Aliyun Beijing A", 2000, 1000, 4096, 1024)
 	planeB := createReadyPlane(t, db.Store, "aliyun-bj-b", "Aliyun Beijing B", 3000, 1000, 4096, 1024)
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision == nil {
 		t.Fatalf("expected selection decision, got failure=%q", result.FailureReason)
@@ -58,24 +46,14 @@ func TestPreviewProjectSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing
 	}
 }
 
-func TestPreviewProjectSelectionHonorsPinnedPlane(t *testing.T) {
+func TestPreviewSelectionHonorsPinnedPlane(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-pinned",
-		DisplayName: "Control Placement Pinned",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	planeA := createReadyPlane(t, db.Store, "aliyun-bj-pinned-a", "Aliyun Beijing Pinned A", 2000, 1000, 4096, 1024)
 	planeB := createReadyPlane(t, db.Store, "aliyun-bj-pinned-b", "Aliyun Beijing Pinned B", 3000, 1000, 4096, 1024)
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		PinnedPlaneID: planeA.ID,
@@ -83,7 +61,7 @@ func TestPreviewProjectSelectionHonorsPinnedPlane(t *testing.T) {
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision == nil {
 		t.Fatalf("expected selection decision, got failure=%q", result.FailureReason)
@@ -105,20 +83,10 @@ func TestPreviewProjectSelectionHonorsPinnedPlane(t *testing.T) {
 	}
 }
 
-func TestPreviewProjectSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *testing.T) {
+func TestPreviewSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-pinned-unavailable",
-		DisplayName: "Control Placement Pinned Unavailable",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	createReadyPlane(t, db.Store, "aliyun-bj-pinned-healthy", "Aliyun Beijing Pinned Healthy", 2000, 1000, 4096, 1024)
 	pinnedPlane := createReadyPlane(t, db.Store, "aliyun-bj-pinned-maint", "Aliyun Beijing Pinned Maintenance", 3000, 1000, 4096, 1024)
 	if _, err := db.Store.UpdatePlaneOperation(context.Background(), pinnedPlane.ID, plane.UpdateOperationInput{
@@ -128,7 +96,7 @@ func TestPreviewProjectSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *t
 		t.Fatalf("UpdatePlaneOperation returned error: %v", err)
 	}
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		PinnedPlaneID: pinnedPlane.ID,
@@ -136,7 +104,7 @@ func TestPreviewProjectSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *t
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision != nil {
 		t.Fatalf("expected no selection decision, got %+v", result.Decision)
@@ -152,30 +120,20 @@ func TestPreviewProjectSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *t
 	}
 }
 
-func TestPreviewProjectSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
+func TestPreviewSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-failure",
-		DisplayName: "Control Placement Failure",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	createReadyPlane(t, db.Store, "aliyun-bj-tight", "Aliyun Beijing Tight", 500, 250, 1024, 512)
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassLarge,
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision != nil {
 		t.Fatalf("expected no decision, got %+v", result.Decision)
@@ -191,20 +149,10 @@ func TestPreviewProjectSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
 	}
 }
 
-func TestPreviewProjectSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.T) {
+func TestPreviewSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-maintenance",
-		DisplayName: "Control Placement Maintenance",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	planeItem := createReadyPlane(t, db.Store, "aliyun-bj-maint", "Aliyun Beijing Maintenance", 2000, 500, 4096, 1024)
 	if _, err := db.Store.UpdatePlaneOperation(context.Background(), planeItem.ID, plane.UpdateOperationInput{
 		State:  plane.OperationStateMaintenance,
@@ -213,14 +161,14 @@ func TestPreviewProjectSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *t
 		t.Fatalf("UpdatePlaneOperation returned error: %v", err)
 	}
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision != nil {
 		t.Fatalf("expected no decision, got %+v", result.Decision)
@@ -236,20 +184,10 @@ func TestPreviewProjectSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *t
 	}
 }
 
-func TestPreviewProjectSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) {
+func TestPreviewSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-headroom",
-		DisplayName: "Control Placement Headroom",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	planeA := createReadyPlane(t, db.Store, "aliyun-bj-headroom-a", "Aliyun Beijing Headroom A", 2000, 1000, 4096, 1024)
 	planeB := createReadyPlane(t, db.Store, "aliyun-bj-headroom-b", "Aliyun Beijing Headroom B", 3000, 1000, 4096, 1024)
 	if _, err := db.Store.UpsertRuntimeNodePool(context.Background(), planeA.ID, runtimepool.UpsertInput{
@@ -261,14 +199,14 @@ func TestPreviewProjectSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) 
 		t.Fatalf("UpsertRuntimeNodePool returned error: %v", err)
 	}
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision == nil {
 		t.Fatalf("expected selection decision, got failure=%q", result.FailureReason)
@@ -284,20 +222,10 @@ func TestPreviewProjectSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) 
 	}
 }
 
-func TestPreviewProjectSelectionExplainsPoolMinReadyBlock(t *testing.T) {
+func TestPreviewSelectionExplainsPoolMinReadyBlock(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	service := planeselector.NewService(logger, db.Store, nil)
-
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "control-placement-min-ready",
-		DisplayName: "Control Placement Min Ready",
-		OwnerUserID: "usr-owner-001",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	planeItem := createReadyPlane(t, db.Store, "aliyun-bj-min-ready", "Aliyun Beijing Min Ready", 3000, 1000, 4096, 1024)
 	if _, err := db.Store.UpsertRuntimeNodePool(context.Background(), planeItem.ID, runtimepool.UpsertInput{
 		MinReady:         2,
@@ -308,14 +236,14 @@ func TestPreviewProjectSelectionExplainsPoolMinReadyBlock(t *testing.T) {
 		t.Fatalf("UpsertRuntimeNodePool returned error: %v", err)
 	}
 
-	result, err := service.PreviewProjectSelection(context.Background(), projectItem.ID, planeselector.SelectionInput{
+	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
 		Replicas:      1,
 	})
 	if err != nil {
-		t.Fatalf("PreviewProjectSelection returned error: %v", err)
+		t.Fatalf("PreviewSelection returned error: %v", err)
 	}
 	if result.Decision != nil {
 		t.Fatalf("expected no decision, got %+v", result.Decision)

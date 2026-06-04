@@ -96,7 +96,7 @@ func TestRegisterNodeUsesBootstrapToken(t *testing.T) {
 	}
 }
 
-// TestPollExecutionWorkDecodesScopedFields 验证拉取任务响应会解码项目、服务和副本作用域字段。
+// TestPollExecutionWorkDecodesScopedFields 验证拉取任务响应会解码服务、部署和副本作用域字段。
 func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +108,6 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 					DeploymentId:  "dep_demo",
 					ReplicaIndex:  2,
 					NodeId:        "node_demo",
-					ProjectId:     "prj_demo",
 					ServiceId:     "svc_demo",
 					ServiceName:   "hello",
 					RevisionId:    "rev_demo",
@@ -134,9 +133,6 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	}
 	if item == nil {
 		t.Fatalf("PollExecutionWork returned nil item")
-	}
-	if item.ProjectID != "prj_demo" {
-		t.Fatalf("ProjectID = %q, want prj_demo", item.ProjectID)
 	}
 	if item.ServiceID != "svc_demo" {
 		t.Fatalf("ServiceID = %q, want svc_demo", item.ServiceID)

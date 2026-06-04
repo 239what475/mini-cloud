@@ -15,7 +15,6 @@ message Overview {
   int32 planes_ready = 3 [json_name = "planesReady"];
   int32 planes_degraded = 4 [json_name = "planesDegraded"];
   int32 planes_offline = 5 [json_name = "planesOffline"];
-  int32 projects_total = 6 [json_name = "projectsTotal"];
   int32 services_total = 7 [json_name = "servicesTotal"];
   int32 services_pending = 8 [json_name = "servicesPending"];
   int32 services_progressing = 9 [json_name = "servicesProgressing"];
@@ -115,29 +114,6 @@ message SyncPlaneResponse {
   int32 alerts_firing = 6 [json_name = "alertsFiring"];
 }
 
-message ProjectQuota {
-  int32 max_services = 1 [json_name = "maxServices"];
-  int32 cpu_milli = 2 [json_name = "cpuMilli"];
-  int32 memory_mi = 3 [json_name = "memoryMi"];
-}
-
-message Project {
-  string id = 1;
-  string name = 2;
-  string display_name = 3 [json_name = "displayName"];
-  string owner_user_id = 4 [json_name = "ownerUserID"];
-  ProjectQuota quota = 5;
-  google.protobuf.Timestamp created_at = 6 [json_name = "createdAt"];
-}
-
-message ListProjectsResponse {
-  repeated Project items = 1;
-}
-
-message GetProjectRequest {
-  string project_id = 1 [json_name = "projectID"];
-}
-
 message ServiceCurrentRevision {
   string id = 1;
   string label = 2;
@@ -196,7 +172,6 @@ message PersistentDirSpec {
 
 message ServiceMetadata {
   string id = 1;
-  string project_id = 2 [json_name = "projectID"];
   string name = 3;
   string display_name = 4 [json_name = "displayName"];
   int64 generation = 5;
@@ -224,7 +199,6 @@ message ServiceSpec {
 }
 
 message CreateServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
   string name = 2;
   string display_name = 3 [json_name = "displayName"];
   ServiceSpec spec = 4;
@@ -239,16 +213,11 @@ message Service {
 }
 
 
-message ListServicesRequest {
-  string project_id = 1 [json_name = "projectID"];
-}
-
 message ListServicesResponse {
   repeated Service items = 1;
 }
 
 message GetServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
   string service_id = 2 [json_name = "serviceID"];
 }
 
@@ -281,27 +250,15 @@ service OperatorService {
     };
   }
 
-  rpc ListProjects(google.protobuf.Empty) returns (ListProjectsResponse) {
+  rpc ListServices(google.protobuf.Empty) returns (ListServicesResponse) {
     option (google.api.http) = {
-      get: "/api/operator/v1/projects"
-    };
-  }
-
-  rpc GetProject(GetProjectRequest) returns (Project) {
-    option (google.api.http) = {
-      get: "/api/operator/v1/projects/{project_id}"
-    };
-  }
-
-  rpc ListServices(ListServicesRequest) returns (ListServicesResponse) {
-    option (google.api.http) = {
-      get: "/api/operator/v1/projects/{project_id}/services"
+      get: "/api/operator/v1/services"
     };
   }
 
   rpc GetService(GetServiceRequest) returns (Service) {
     option (google.api.http) = {
-      get: "/api/operator/v1/projects/{project_id}/services/{service_id}"
+      get: "/api/operator/v1/services/{service_id}"
     };
   }
 
@@ -309,7 +266,7 @@ service OperatorService {
 
   rpc CreateService(CreateServiceRequest) returns (Service) {
     option (google.api.http) = {
-      post: "/api/operator/v1/projects/{project_id}/services"
+      post: "/api/operator/v1/services"
       body: "*"
     };
   }

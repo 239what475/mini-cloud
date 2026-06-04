@@ -40,7 +40,7 @@ type Client struct {
 	bearerToken string
 	conn        *grpc.ClientConn
 	snapshotRPC cloudplanev1.ControlPlaneSnapshotServiceClient
-	projectRPC  cloudplanev1.ControlPlaneProjectServiceClient
+	resourceRPC cloudplanev1.ControlPlaneResourceServiceClient
 	workloadRPC cloudplanev1.ControlPlaneWorkloadServiceClient
 }
 
@@ -66,7 +66,7 @@ func NewWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...
 		bearerToken: strings.TrimSpace(bearerToken),
 		conn:        conn,
 		snapshotRPC: cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
-		projectRPC:  cloudplanev1.NewControlPlaneProjectServiceClient(conn),
+		resourceRPC: cloudplanev1.NewControlPlaneResourceServiceClient(conn),
 		workloadRPC: cloudplanev1.NewControlPlaneWorkloadServiceClient(conn),
 	}, nil
 }
@@ -86,34 +86,25 @@ func (c *Client) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, 
 	return snapshotFromProto(resp), nil
 }
 
-func (c *Client) ApplyProject(ctx context.Context, project cloudplaneapi.Project) (cloudplaneapi.ApplyProjectResponse, error) {
-	resp, err := c.projectRPC.ApplyProject(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyProjectRequest{
-		ProjectId:           strings.TrimSpace(project.ID),
-		Name:                project.Name,
-		DisplayName:         project.DisplayName,
-		OwnerUserId:         project.OwnerUserID,
-		ConfigSets:          protoProjectConfigSets(project.ConfigSets),
-		SecretSets:          protoProjectSecretSets(project.SecretSets),
-		RegistryCredentials: protoProjectRegistryCredentials(project.RegistryCredentials),
-		Quota: &cloudplanev1.ProjectQuota{
-			MaxServices: int32(project.Quota.MaxServices),
-			CpuMilli:    int32(project.Quota.CPUMilli),
-			MemoryMi:    int32(project.Quota.MemoryMi),
-		},
+func (c *Client) ApplyResources(ctx context.Context, resources cloudplaneapi.ResourceBundle) (cloudplaneapi.ApplyResourcesResponse, error) {
+	resp, err := c.resourceRPC.ApplyResources(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyResourcesRequest{
+		ConfigSets:          protoConfigSets(resources.ConfigSets),
+		SecretSets:          protoSecretSets(resources.SecretSets),
+		RegistryCredentials: protoRegistryCredentials(resources.RegistryCredentials),
 	})
 	if err != nil {
-		return cloudplaneapi.ApplyProjectResponse{}, classifyRPCError(err)
+		return cloudplaneapi.ApplyResourcesResponse{}, classifyRPCError(err)
 	}
-	return applyProjectResponseFromProto(resp), nil
+	return applyResourcesResponseFromProto(resp), nil
 }
 
-func protoProjectConfigSets(items []cloudplaneapi.ProjectConfigSet) []*cloudplanev1.ProjectConfigSet {
+func protoConfigSets(items []cloudplaneapi.ConfigSet) []*cloudplanev1.ResourceConfigSet {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]*cloudplanev1.ProjectConfigSet, 0, len(items))
+	out := make([]*cloudplanev1.ResourceConfigSet, 0, len(items))
 	for _, item := range items {
-		out = append(out, &cloudplanev1.ProjectConfigSet{
+		out = append(out, &cloudplanev1.ResourceConfigSet{
 			Id:     strings.TrimSpace(item.ID),
 			Name:   strings.TrimSpace(item.Name),
 			Values: copyStringMap(item.Values),
@@ -122,13 +113,13 @@ func protoProjectConfigSets(items []cloudplaneapi.ProjectConfigSet) []*cloudplan
 	return out
 }
 
-func protoProjectSecretSets(items []cloudplaneapi.ProjectSecretSet) []*cloudplanev1.ProjectSecretSet {
+func protoSecretSets(items []cloudplaneapi.SecretSet) []*cloudplanev1.ResourceSecretSet {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]*cloudplanev1.ProjectSecretSet, 0, len(items))
+	out := make([]*cloudplanev1.ResourceSecretSet, 0, len(items))
 	for _, item := range items {
-		out = append(out, &cloudplanev1.ProjectSecretSet{
+		out = append(out, &cloudplanev1.ResourceSecretSet{
 			Id:     strings.TrimSpace(item.ID),
 			Name:   strings.TrimSpace(item.Name),
 			Values: copyStringMap(item.Values),
@@ -137,13 +128,13 @@ func protoProjectSecretSets(items []cloudplaneapi.ProjectSecretSet) []*cloudplan
 	return out
 }
 
-func protoProjectRegistryCredentials(items []cloudplaneapi.ProjectRegistryCredential) []*cloudplanev1.ProjectRegistryCredential {
+func protoRegistryCredentials(items []cloudplaneapi.RegistryCredential) []*cloudplanev1.ResourceRegistryCredential {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]*cloudplanev1.ProjectRegistryCredential, 0, len(items))
+	out := make([]*cloudplanev1.ResourceRegistryCredential, 0, len(items))
 	for _, item := range items {
-		out = append(out, &cloudplanev1.ProjectRegistryCredential{
+		out = append(out, &cloudplanev1.ResourceRegistryCredential{
 			Id:       strings.TrimSpace(item.ID),
 			Name:     strings.TrimSpace(item.Name),
 			Server:   strings.TrimSpace(item.Server),
@@ -154,9 +145,8 @@ func protoProjectRegistryCredentials(items []cloudplaneapi.ProjectRegistryCreden
 	return out
 }
 
-func (c *Client) ApplyService(ctx context.Context, projectID string, serviceID string, serviceName string, input cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.ApplyServiceResponse, error) {
+func (c *Client) ApplyService(ctx context.Context, serviceID string, serviceName string, input cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.ApplyServiceResponse, error) {
 	resp, err := c.workloadRPC.ApplyService(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyServiceRequest{
-		ProjectId:   strings.TrimSpace(projectID),
 		ServiceId:   strings.TrimSpace(serviceID),
 		Name:        strings.TrimSpace(serviceName),
 		DisplayName: input.DisplayName,
@@ -184,9 +174,8 @@ func (c *Client) ApplyService(ctx context.Context, projectID string, serviceID s
 	return applyServiceResponseFromProto(resp), nil
 }
 
-func (c *Client) DeleteService(ctx context.Context, projectID string, serviceID string) error {
+func (c *Client) DeleteService(ctx context.Context, serviceID string) error {
 	_, err := c.workloadRPC.DeleteService(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteServiceRequest{
-		ProjectId: strings.TrimSpace(projectID),
 		ServiceId: strings.TrimSpace(serviceID),
 	})
 	if err != nil {
@@ -195,9 +184,8 @@ func (c *Client) DeleteService(ctx context.Context, projectID string, serviceID 
 	return nil
 }
 
-func (c *Client) GetService(ctx context.Context, projectID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
+func (c *Client) GetService(ctx context.Context, serviceID string) (cloudplaneapi.ServiceResponse, error) {
 	resp, err := c.workloadRPC.GetService(withAuth(ctx, c.bearerToken), &cloudplanev1.GetServiceRequest{
-		ProjectId: strings.TrimSpace(projectID),
 		ServiceId: strings.TrimSpace(serviceID),
 	})
 	if err != nil {
@@ -326,7 +314,6 @@ func snapshotFromProto(item *cloudplanev1.PlaneSnapshot) cloudplaneapi.SnapshotR
 	}
 	if item.GetOverview() != nil {
 		out.Overview = cloudplaneapi.OverviewSummary{
-			ProjectsTotal:         int(item.GetOverview().GetProjectsTotal()),
 			ServicesTotal:         int(item.GetOverview().GetServicesTotal()),
 			ServicesIdle:          int(item.GetOverview().GetServicesIdle()),
 			ServicesDeploying:     int(item.GetOverview().GetServicesDeploying()),
@@ -384,13 +371,12 @@ func snapshotFromProto(item *cloudplanev1.PlaneSnapshot) cloudplaneapi.SnapshotR
 	return out
 }
 
-func applyProjectResponseFromProto(item *cloudplanev1.ApplyProjectResponse) cloudplaneapi.ApplyProjectResponse {
+func applyResourcesResponseFromProto(item *cloudplanev1.ApplyResourcesResponse) cloudplaneapi.ApplyResourcesResponse {
 	if item == nil {
-		return cloudplaneapi.ApplyProjectResponse{}
+		return cloudplaneapi.ApplyResourcesResponse{}
 	}
-	return cloudplaneapi.ApplyProjectResponse{
-		Action:    item.GetAction(),
-		ProjectID: item.GetProjectId(),
+	return cloudplaneapi.ApplyResourcesResponse{
+		Action: item.GetAction(),
 	}
 }
 
@@ -424,7 +410,6 @@ func serviceFromProto(item *cloudplanev1.Service) cloudplaneapi.Service {
 	return cloudplaneapi.Service{
 		Metadata: cloudplaneapi.ServiceMetadata{
 			ID:          metadata.GetId(),
-			ProjectID:   metadata.GetProjectId(),
 			Name:        metadata.GetName(),
 			DisplayName: metadata.GetDisplayName(),
 		},

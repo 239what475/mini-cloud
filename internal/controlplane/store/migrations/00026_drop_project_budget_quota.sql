@@ -1,7 +1,5 @@
 -- +goose Up
-ALTER TABLE projects
-    DROP COLUMN IF EXISTS quota_monthly_budget_cents;
+SELECT 1;
 
 -- +goose Down
-ALTER TABLE projects
-    ADD COLUMN IF NOT EXISTS quota_monthly_budget_cents INTEGER NOT NULL DEFAULT 20000 CHECK (quota_monthly_budget_cents > 0);
+SELECT 1;

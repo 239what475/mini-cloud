@@ -20,7 +20,6 @@ func (s deploymentCoordinator) schedule(ctx context.Context, serviceItem workloa
 	// 阶段三：现有节点无法生成 selection 时才尝试 runtime scale-out；最终失败会写回 deployment/service 状态。
 	// 补充 deployment 日志字段，后续调度、扩容和失败落库都能关联同一 deployment。
 	ctx = logctx.WithFields(ctx, logctx.Fields{
-		ProjectID:    serviceItem.Metadata.ProjectID,
 		ServiceID:    serviceItem.Metadata.ID,
 		DeploymentID: createdDeployment.ID,
 	})

@@ -11,7 +11,6 @@ import (
 	"mini-cloud/internal/cloudplane/domain/scheduler"
 	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/testutil"
@@ -22,20 +21,8 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 	// 使用真实测试数据库验证 CreateExecutionClaim 使用 revision 快照中的 config/secret 引用。
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	// 创建 project owner 和 project，作为后续资源归属。
-	ownerUserID := "runtime-inputs-owner"
-
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "runtime-inputs",
-		DisplayName: "Runtime Inputs",
-		OwnerUserID: ownerUserID,
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	// 创建 v1 config/secret set，后续 revisionV1 应固定引用这些资源。
-	configSetV1 := cloudplaneapi.ProjectConfigSet{
+	configSetV1 := cloudplaneapi.ConfigSet{
 		ID:   "cfg-config-v1",
 		Name: "config-v1",
 		Values: map[string]string{
@@ -43,7 +30,7 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 			"API_HOST":     "https://v1.internal.example",
 		},
 	}
-	secretSetV1 := cloudplaneapi.ProjectSecretSet{
+	secretSetV1 := cloudplaneapi.SecretSet{
 		ID:   "sec-secret-v1",
 		Name: "secret-v1",
 		Values: map[string]string{
@@ -51,12 +38,12 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 			"DB_PASSWORD": "db-pass-v1",
 		},
 	}
-	if _, err := db.Store.ApplyProjectResources(ctx, projectItem.ID, projectResources(configSetV1, secretSetV1)); err != nil {
-		t.Fatalf("ApplyProjectResources(v1) returned error: %v", err)
+	if _, err := db.Store.ApplyResources(ctx, resourceBundle(configSetV1, secretSetV1)); err != nil {
+		t.Fatalf("ApplyResources(v1) returned error: %v", err)
 	}
 
 	// 创建 service v1，inline env 会被 config/secret set 中同名 key 覆盖。
-	serviceItem, err := db.Store.InsertService(ctx, "svc-demo-web", projectItem.ID, "demo-web", "Demo Web", workload.Spec{
+	serviceItem, err := db.Store.InsertService(ctx, "svc-demo-web", "demo-web", "Demo Web", workload.Spec{
 		Region:        "cn-beijing",
 		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
@@ -87,7 +74,7 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 	}
 
 	// 再创建 v2 config/secret set，模拟 service 后续更新到新运行输入。
-	configSetV2 := cloudplaneapi.ProjectConfigSet{
+	configSetV2 := cloudplaneapi.ConfigSet{
 		ID:   "cfg-config-v2",
 		Name: "config-v2",
 		Values: map[string]string{
@@ -95,7 +82,7 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 			"API_HOST":     "https://v2.internal.example",
 		},
 	}
-	secretSetV2 := cloudplaneapi.ProjectSecretSet{
+	secretSetV2 := cloudplaneapi.SecretSet{
 		ID:   "sec-secret-v2",
 		Name: "secret-v2",
 		Values: map[string]string{
@@ -103,8 +90,8 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 			"DB_PASSWORD": "db-pass-v2",
 		},
 	}
-	if _, err := db.Store.ApplyProjectResources(ctx, projectItem.ID, projectResources(configSetV2, secretSetV2)); err != nil {
-		t.Fatalf("ApplyProjectResources(v2) returned error: %v", err)
+	if _, err := db.Store.ApplyResources(ctx, resourceBundle(configSetV2, secretSetV2)); err != nil {
+		t.Fatalf("ApplyResources(v2) returned error: %v", err)
 	}
 
 	// 更新当前 service 指向 v2 资源；这不应影响已经创建的 revisionV1。
@@ -218,19 +205,9 @@ func TestIntegrationFailedReplicaCanBeReclaimedWithoutLeakingNodeAllocation(t *t
 	// 使用真实测试数据库验证失败副本释放资源，重复失败上报不重复释放。
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	// 创建 owner/project/service/revision，service 期望两个副本。
-	ownerUserID := "failed-replica-owner"
+	// 创建 service/revision，service 期望两个副本。
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "failed-replica-retry",
-		DisplayName: "Failed Replica Retry",
-		OwnerUserID: ownerUserID,
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
-	serviceItem, err := db.Store.InsertService(ctx, "svc-retry-web", projectItem.ID, "retry-web", "Retry Web", workload.Spec{
+	serviceItem, err := db.Store.InsertService(ctx, "svc-retry-web", "retry-web", "Retry Web", workload.Spec{
 		Region:        "cn-beijing",
 		Replicas:      2,
 		InstanceClass: workload.InstanceClassSmall,
@@ -410,39 +387,29 @@ func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles
 	// 使用真实测试数据库验证 projected files 按 revision 快照物化，而不是读取 service 当前 spec。
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	// 创建 owner/project，作为 config/secret 和 service 归属。
-	ownerUserID := "projected-files-owner"
-
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "projected-files",
-		DisplayName: "Projected Files",
-		OwnerUserID: ownerUserID,
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
+	// 创建 config/secret 资源，作为 service 输入。
 
 	// 创建 v1 config/secret，projected file 会分别读取非敏感配置和敏感 token。
-	configSetV1 := cloudplaneapi.ProjectConfigSet{
+	configSetV1 := cloudplaneapi.ConfigSet{
 		ID:   "cfg-cliproxy-v1",
 		Name: "cliproxy-config-v1",
 		Values: map[string]string{
 			"config.yaml": "listen: :8317\nupstream: https://v1.internal.example\n",
 		},
 	}
-	secretSetV1 := cloudplaneapi.ProjectSecretSet{
+	secretSetV1 := cloudplaneapi.SecretSet{
 		ID:   "sec-cliproxy-v1",
 		Name: "cliproxy-secret-v1",
 		Values: map[string]string{
 			"token": "token-v1",
 		},
 	}
-	if _, err := db.Store.ApplyProjectResources(ctx, projectItem.ID, projectResources(configSetV1, secretSetV1)); err != nil {
-		t.Fatalf("ApplyProjectResources(v1) returned error: %v", err)
+	if _, err := db.Store.ApplyResources(ctx, resourceBundle(configSetV1, secretSetV1)); err != nil {
+		t.Fatalf("ApplyResources(v1) returned error: %v", err)
 	}
 
 	// 创建带 projected files 的 service v1。
-	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", projectItem.ID, "cliproxyapi", "CLI Proxy API", workload.Spec{
+	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", "cliproxyapi", "CLI Proxy API", workload.Spec{
 		Region:        "cn-beijing",
 		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
@@ -478,22 +445,22 @@ func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles
 	}
 
 	// 创建 v2 config/secret，后续更新 service 当前 spec 指向 v2。
-	configSetV2 := cloudplaneapi.ProjectConfigSet{
+	configSetV2 := cloudplaneapi.ConfigSet{
 		ID:   "cfg-cliproxy-v2",
 		Name: "cliproxy-config-v2",
 		Values: map[string]string{
 			"config.yaml": "listen: :8317\nupstream: https://v2.internal.example\n",
 		},
 	}
-	secretSetV2 := cloudplaneapi.ProjectSecretSet{
+	secretSetV2 := cloudplaneapi.SecretSet{
 		ID:   "sec-cliproxy-v2",
 		Name: "cliproxy-secret-v2",
 		Values: map[string]string{
 			"token": "token-v2",
 		},
 	}
-	if _, err := db.Store.ApplyProjectResources(ctx, projectItem.ID, projectResources(configSetV2, secretSetV2)); err != nil {
-		t.Fatalf("ApplyProjectResources(v2) returned error: %v", err)
+	if _, err := db.Store.ApplyResources(ctx, resourceBundle(configSetV2, secretSetV2)); err != nil {
+		t.Fatalf("ApplyResources(v2) returned error: %v", err)
 	}
 
 	// 更新 service 当前 projected file refs；revisionV1 应继续保持 v1 refs。
@@ -605,19 +572,9 @@ func TestIntegrationCreateExecutionClaimMaterializesPersistentDirs(t *testing.T)
 	// 使用真实测试数据库验证 persistent dirs 会在 work item 中物化为 node 本地 source path。
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	// 创建 owner/project 和带 persistent dir 的 service。
-	ownerUserID := "persistent-dirs-owner"
+	// 创建带 persistent dir 的 service。
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "persistent-dirs",
-		DisplayName: "Persistent Dirs",
-		OwnerUserID: ownerUserID,
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
-	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", projectItem.ID, "cliproxyapi", "CLI Proxy API", workload.Spec{
+	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", "cliproxyapi", "CLI Proxy API", workload.Spec{
 		Region:        "cn-beijing",
 		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
@@ -737,10 +694,10 @@ func markIntegrationNodeReady(t *testing.T, ctx context.Context, db testutil.Tes
 	}
 }
 
-// projectResources 把测试使用的 project resource 组装成 store apply 所需的 project 聚合。
-func projectResources(configSet cloudplaneapi.ProjectConfigSet, secretSet cloudplaneapi.ProjectSecretSet) cloudplaneapi.Project {
-	return cloudplaneapi.Project{
-		ConfigSets: []cloudplaneapi.ProjectConfigSet{configSet},
-		SecretSets: []cloudplaneapi.ProjectSecretSet{secretSet},
+// resourceBundle 把测试使用的资源组装成全局 resource apply 所需的聚合。
+func resourceBundle(configSet cloudplaneapi.ConfigSet, secretSet cloudplaneapi.SecretSet) cloudplaneapi.ResourceBundle {
+	return cloudplaneapi.ResourceBundle{
+		ConfigSets: []cloudplaneapi.ConfigSet{configSet},
+		SecretSets: []cloudplaneapi.SecretSet{secretSet},
 	}
 }

@@ -12,7 +12,6 @@ import (
 
 var (
 	ErrPlaneIDRequired            = errors.New("planeID is required")
-	ErrProjectIDRequired          = errors.New("projectID is required")
 	ErrServiceIDRequired          = errors.New("serviceID is required")
 	ErrServiceNameRequired        = errors.New("name is required")
 	ErrInvalidServiceName         = errors.New("name must use lowercase letters, digits, and hyphens")
@@ -45,7 +44,6 @@ type ApplyServiceInput struct {
 
 type ServiceMetadata struct {
 	ID          string `json:"serviceID"`
-	ProjectID   string `json:"-"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 }
@@ -70,15 +68,11 @@ type ServiceSpec struct {
 
 type ApplyResult struct {
 	PlaneID           string `json:"planeID"`
-	ProjectID         string `json:"projectID"`
 	Action            string `json:"action"`
 	DesiredGeneration int64  `json:"desiredGeneration"`
 }
 
 func (in ApplyServiceInput) Validate() error {
-	if strings.TrimSpace(in.Metadata.ProjectID) == "" {
-		return ErrProjectIDRequired
-	}
 	_, err := in.ResolvedApplyRequest("")
 	return err
 }

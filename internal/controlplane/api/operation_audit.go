@@ -14,12 +14,11 @@ func recordOperationEvent(logger *slog.Logger, stores *store.Store, r *http.Requ
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
 	defer cancel()
 
-	actorKind, actorID, actorLabel, actorProjectID := operationActorFromRequest(r)
+	actorKind, actorID, actorLabel := operationActorFromRequest(r)
 	input.Details = mergeAuthorizationDetails(input.Details, r)
 	input.ActorKind = actorKind
 	input.ActorID = actorID
 	input.ActorLabel = actorLabel
-	input.ActorProjectID = actorProjectID
 	input.RequestMethod = r.Method
 	input.RequestPath = r.URL.Path
 	if input.Result == "" {
@@ -31,25 +30,20 @@ func recordOperationEvent(logger *slog.Logger, stores *store.Store, r *http.Requ
 	}
 }
 
-func operationActorFromRequest(r *http.Request) (kind string, id string, label string, projectID string) {
+func operationActorFromRequest(r *http.Request) (kind string, id string, label string) {
 	state := authStateFromRequest(r)
 	principal := state.Principal
 
 	switch principal.Kind {
 	case authPrincipalKindBreakGlass:
-		return "break_glass", "break-glass-admin", "break-glass-admin", ""
+		return "break_glass", "break-glass-admin", "break-glass-admin"
 	case authPrincipalKindServiceAccount:
 		if principal.ServiceAccount != nil {
-			return "service_account", principal.ServiceAccount.ID, principal.ServiceAccount.Name, ""
+			return "service_account", principal.ServiceAccount.ID, principal.ServiceAccount.Name
 		}
-		return "service_account", "", "service-account", ""
-	case authPrincipalKindProjectToken:
-		if principal.ProjectToken != nil {
-			return "project_token", principal.ProjectToken.ID, principal.ProjectToken.Name, principal.ProjectToken.ProjectID
-		}
-		return "project_token", "", "project-token", ""
+		return "service_account", "", "service-account"
 	default:
-		return "anonymous", "", "anonymous", ""
+		return "anonymous", "", "anonymous"
 	}
 }
 

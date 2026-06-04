@@ -70,18 +70,8 @@ func (c *Client) SyncPlane(ctx context.Context, planeID string) (*controlplanev1
 	})
 }
 
-func (c *Client) ListProjects(ctx context.Context) ([]*controlplanev1.Project, error) {
-	resp, err := c.operatorRPC.ListProjects(withAuth(ctx, c.bearerToken), &emptypb.Empty{})
-	if err != nil {
-		return nil, err
-	}
-	return resp.GetItems(), nil
-}
-
-func (c *Client) ListServices(ctx context.Context, projectID string) ([]*controlplanev1.Service, error) {
-	resp, err := c.operatorRPC.ListServices(withAuth(ctx, c.bearerToken), &controlplanev1.ListServicesRequest{
-		ProjectId: strings.TrimSpace(projectID),
-	})
+func (c *Client) ListServices(ctx context.Context) ([]*controlplanev1.Service, error) {
+	resp, err := c.operatorRPC.ListServices(withAuth(ctx, c.bearerToken), &emptypb.Empty{})
 	if err != nil {
 		return nil, err
 	}

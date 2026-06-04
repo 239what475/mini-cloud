@@ -123,102 +123,102 @@ var ControlPlaneSnapshotService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ControlPlaneProjectService_ApplyProject_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneProjectService/ApplyProject"
+	ControlPlaneResourceService_ApplyResources_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneResourceService/ApplyResources"
 )
 
-// ControlPlaneProjectServiceClient is the client API for ControlPlaneProjectService service.
+// ControlPlaneResourceServiceClient is the client API for ControlPlaneResourceService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ControlPlaneProjectServiceClient interface {
-	ApplyProject(ctx context.Context, in *ApplyProjectRequest, opts ...grpc.CallOption) (*ApplyProjectResponse, error)
+type ControlPlaneResourceServiceClient interface {
+	ApplyResources(ctx context.Context, in *ApplyResourcesRequest, opts ...grpc.CallOption) (*ApplyResourcesResponse, error)
 }
 
-type controlPlaneProjectServiceClient struct {
+type controlPlaneResourceServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewControlPlaneProjectServiceClient(cc grpc.ClientConnInterface) ControlPlaneProjectServiceClient {
-	return &controlPlaneProjectServiceClient{cc}
+func NewControlPlaneResourceServiceClient(cc grpc.ClientConnInterface) ControlPlaneResourceServiceClient {
+	return &controlPlaneResourceServiceClient{cc}
 }
 
-func (c *controlPlaneProjectServiceClient) ApplyProject(ctx context.Context, in *ApplyProjectRequest, opts ...grpc.CallOption) (*ApplyProjectResponse, error) {
+func (c *controlPlaneResourceServiceClient) ApplyResources(ctx context.Context, in *ApplyResourcesRequest, opts ...grpc.CallOption) (*ApplyResourcesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ApplyProjectResponse)
-	err := c.cc.Invoke(ctx, ControlPlaneProjectService_ApplyProject_FullMethodName, in, out, cOpts...)
+	out := new(ApplyResourcesResponse)
+	err := c.cc.Invoke(ctx, ControlPlaneResourceService_ApplyResources_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ControlPlaneProjectServiceServer is the server API for ControlPlaneProjectService service.
-// All implementations must embed UnimplementedControlPlaneProjectServiceServer
+// ControlPlaneResourceServiceServer is the server API for ControlPlaneResourceService service.
+// All implementations must embed UnimplementedControlPlaneResourceServiceServer
 // for forward compatibility.
-type ControlPlaneProjectServiceServer interface {
-	ApplyProject(context.Context, *ApplyProjectRequest) (*ApplyProjectResponse, error)
-	mustEmbedUnimplementedControlPlaneProjectServiceServer()
+type ControlPlaneResourceServiceServer interface {
+	ApplyResources(context.Context, *ApplyResourcesRequest) (*ApplyResourcesResponse, error)
+	mustEmbedUnimplementedControlPlaneResourceServiceServer()
 }
 
-// UnimplementedControlPlaneProjectServiceServer must be embedded to have
+// UnimplementedControlPlaneResourceServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedControlPlaneProjectServiceServer struct{}
+type UnimplementedControlPlaneResourceServiceServer struct{}
 
-func (UnimplementedControlPlaneProjectServiceServer) ApplyProject(context.Context, *ApplyProjectRequest) (*ApplyProjectResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ApplyProject not implemented")
+func (UnimplementedControlPlaneResourceServiceServer) ApplyResources(context.Context, *ApplyResourcesRequest) (*ApplyResourcesResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyResources not implemented")
 }
-func (UnimplementedControlPlaneProjectServiceServer) mustEmbedUnimplementedControlPlaneProjectServiceServer() {
+func (UnimplementedControlPlaneResourceServiceServer) mustEmbedUnimplementedControlPlaneResourceServiceServer() {
 }
-func (UnimplementedControlPlaneProjectServiceServer) testEmbeddedByValue() {}
+func (UnimplementedControlPlaneResourceServiceServer) testEmbeddedByValue() {}
 
-// UnsafeControlPlaneProjectServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ControlPlaneProjectServiceServer will
+// UnsafeControlPlaneResourceServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ControlPlaneResourceServiceServer will
 // result in compilation errors.
-type UnsafeControlPlaneProjectServiceServer interface {
-	mustEmbedUnimplementedControlPlaneProjectServiceServer()
+type UnsafeControlPlaneResourceServiceServer interface {
+	mustEmbedUnimplementedControlPlaneResourceServiceServer()
 }
 
-func RegisterControlPlaneProjectServiceServer(s grpc.ServiceRegistrar, srv ControlPlaneProjectServiceServer) {
-	// If the following call panics, it indicates UnimplementedControlPlaneProjectServiceServer was
+func RegisterControlPlaneResourceServiceServer(s grpc.ServiceRegistrar, srv ControlPlaneResourceServiceServer) {
+	// If the following call panics, it indicates UnimplementedControlPlaneResourceServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&ControlPlaneProjectService_ServiceDesc, srv)
+	s.RegisterService(&ControlPlaneResourceService_ServiceDesc, srv)
 }
 
-func _ControlPlaneProjectService_ApplyProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ApplyProjectRequest)
+func _ControlPlaneResourceService_ApplyResources_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyResourcesRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControlPlaneProjectServiceServer).ApplyProject(ctx, in)
+		return srv.(ControlPlaneResourceServiceServer).ApplyResources(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ControlPlaneProjectService_ApplyProject_FullMethodName,
+		FullMethod: ControlPlaneResourceService_ApplyResources_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControlPlaneProjectServiceServer).ApplyProject(ctx, req.(*ApplyProjectRequest))
+		return srv.(ControlPlaneResourceServiceServer).ApplyResources(ctx, req.(*ApplyResourcesRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// ControlPlaneProjectService_ServiceDesc is the grpc.ServiceDesc for ControlPlaneProjectService service.
+// ControlPlaneResourceService_ServiceDesc is the grpc.ServiceDesc for ControlPlaneResourceService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ControlPlaneProjectService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "minicloud.cloudplane.v1.ControlPlaneProjectService",
-	HandlerType: (*ControlPlaneProjectServiceServer)(nil),
+var ControlPlaneResourceService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "minicloud.cloudplane.v1.ControlPlaneResourceService",
+	HandlerType: (*ControlPlaneResourceServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ApplyProject",
-			Handler:    _ControlPlaneProjectService_ApplyProject_Handler,
+			MethodName: "ApplyResources",
+			Handler:    _ControlPlaneResourceService_ApplyResources_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

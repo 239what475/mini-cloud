@@ -9,7 +9,6 @@ import (
 	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/testutil"
 )
 
@@ -260,16 +259,7 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 func seedUnsettledDeployment(t *testing.T, ctx context.Context, db testutil.TestDatabase) deployment.Deployment {
 	t.Helper()
 
-	ownerUserID := "scale-in-owner"
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "scale-in-project",
-		DisplayName: "Scale In Project",
-		OwnerUserID: ownerUserID,
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-	serviceItem, err := db.Store.InsertService(ctx, "svc-scale-in-service", projectItem.ID, "scale-in-service", "Scale In Service", workload.Spec{
+	serviceItem, err := db.Store.InsertService(ctx, "svc-scale-in-service", "scale-in-service", "Scale In Service", workload.Spec{
 		Region:        "cn-beijing",
 		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,

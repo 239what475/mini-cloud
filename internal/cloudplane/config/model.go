@@ -36,7 +36,7 @@ type Config struct {
 
 // ServerConfig 对应 YAML 中的 server 配置段。
 type ServerConfig struct {
-	// ListenGRPCAddr 是 cloud-plane 内部 gRPC 服务监听地址，只服务 ControlPlaneSnapshotService、ControlPlaneProjectService、ControlPlaneWorkloadService 和 NodeAgentService。
+	// ListenGRPCAddr 是 cloud-plane 内部 gRPC 服务监听地址，只服务 ControlPlaneSnapshotService、ControlPlaneResourceService、ControlPlaneWorkloadService 和 NodeAgentService。
 	ListenGRPCAddr string
 }
 

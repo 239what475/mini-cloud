@@ -1,7 +1,6 @@
 -- +goose Up
 CREATE TABLE IF NOT EXISTS fleet_services (
     id TEXT PRIMARY KEY,
-    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     spec_exposure TEXT NOT NULL,
@@ -16,12 +15,12 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     spec_registry_credential_id TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT fleet_services_project_name_key UNIQUE (project_id, name)
+    CONSTRAINT fleet_services_name_key UNIQUE (name)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fleet_services_project_created_at
-    ON fleet_services (project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fleet_services_created_at
+    ON fleet_services (created_at DESC);
 
 -- +goose Down
-DROP INDEX IF EXISTS idx_fleet_services_project_created_at;
+DROP INDEX IF EXISTS idx_fleet_services_created_at;
 DROP TABLE IF EXISTS fleet_services;

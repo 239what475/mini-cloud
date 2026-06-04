@@ -17,13 +17,12 @@ import (
 
 var (
 	ErrServiceNotFound           = errors.New("service not found")
-	ErrServiceNameAlreadyExists  = errors.New("service name already exists in this project")
+	ErrServiceNameAlreadyExists  = errors.New("service name already exists")
 	ErrServiceGenerationConflict = errors.New("service generation changed before reconcile write could be committed")
 )
 
 const serviceSelectColumns = `
 	id,
-	project_id,
 	name,
 	display_name,
 	spec_provider,
@@ -62,7 +61,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := input.Validate(); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, input.ProjectID, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
 	provider, region, pinnedPlaneID, replicas, instanceClass, revisionPolicy, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass, input.Spec.RevisionPolicy)
@@ -115,7 +114,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		INSERT INTO fleet_services (
 			id,
-			project_id,
 			name,
 			display_name,
 			spec_provider,
@@ -147,11 +145,10 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_conditions_json,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, false, $22, $23, 1, $24, $25, $26, $27, $28, $29, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, false, $21, $22, 1, $23, $24, $25, $26, $27, $28, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
-		input.ProjectID,
 		input.Name,
 		input.DisplayName,
 		provider,
@@ -184,8 +181,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
-			case "23503":
-				return controlservice.Service{}, ErrProjectNotFound
 			case "23505":
 				return controlservice.Service{}, ErrServiceNameAlreadyExists
 			}
@@ -193,32 +188,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		return controlservice.Service{}, fmt.Errorf("insert service: %w", err)
 	}
 	return item, nil
-}
-
-func (s *Store) ListServicesByProject(ctx context.Context, projectID string) ([]controlservice.Service, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+serviceSelectColumns+`
-		FROM fleet_services
-		WHERE project_id = $1
-		ORDER BY created_at ASC, id ASC
-	`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("query services by project: %w", err)
-	}
-	defer closeRows(rows)
-
-	items := make([]controlservice.Service, 0)
-	for rows.Next() {
-		item, err := scanService(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate services: %w", err)
-	}
-	return items, nil
 }
 
 func (s *Store) ListServices(ctx context.Context) ([]controlservice.Service, error) {
@@ -311,13 +280,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := input.Validate(current.Metadata.ProjectID, current.Metadata.Name); err != nil {
+	if err := input.Validate(current.Metadata.Name); err != nil {
 		return controlservice.Service{}, err
 	}
 	if err := controlservice.ValidatePersistentDirUpdate(current, input); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, current.Metadata.ProjectID, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
 	provider, region, pinnedPlaneID, replicas, instanceClass, revisionPolicy, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass, input.Spec.RevisionPolicy)
@@ -656,7 +625,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var lastReconciledAt sql.NullTime
 	if err := scanner.Scan(
 		&item.Metadata.ID,
-		&item.Metadata.ProjectID,
 		&item.Metadata.Name,
 		&item.Metadata.DisplayName,
 		&item.Spec.Provider,
@@ -738,7 +706,7 @@ func nullableString(value string) any {
 	return strings.TrimSpace(value)
 }
 
-func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, projectID string, configSetID string, secretSetID string, registryCredentialID string, projectedFiles []projectedfile.Spec) error {
+func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, configSetID string, secretSetID string, registryCredentialID string, projectedFiles []projectedfile.Spec) error {
 	configSets := make(map[string]map[string]string)
 	secretSets := make(map[string]map[string]string)
 
@@ -746,7 +714,7 @@ func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, pro
 		if values, ok := configSets[id]; ok {
 			return values, nil
 		}
-		item, err := s.GetProjectConfigSet(ctx, projectID, id)
+		item, err := s.GetConfigSet(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -757,7 +725,7 @@ func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, pro
 		if values, ok := secretSets[id]; ok {
 			return values, nil
 		}
-		item, err := s.GetProjectSecretSet(ctx, projectID, id)
+		item, err := s.GetSecretSet(ctx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -776,7 +744,7 @@ func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, pro
 		}
 	}
 	if registryCredentialID != "" {
-		if _, err := s.GetProjectRegistryCredential(ctx, projectID, registryCredentialID); err != nil {
+		if _, err := s.GetRegistryCredential(ctx, registryCredentialID); err != nil {
 			return err
 		}
 	}

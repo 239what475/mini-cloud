@@ -52,7 +52,6 @@ func (s deploymentCoordinator) scaleCurrentDeployment(ctx context.Context, servi
 		return deploymentmodel.Deployment{}, nil, store.ErrDeploymentNotFound
 	}
 	ctx = logctx.WithFields(ctx, logctx.Fields{
-		ProjectID:    serviceItem.Metadata.ProjectID,
 		ServiceID:    serviceItem.Metadata.ID,
 		DeploymentID: currentDeployment.ID,
 	})

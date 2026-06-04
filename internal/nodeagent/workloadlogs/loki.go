@@ -31,8 +31,6 @@ type Config struct {
 
 // StartRequest 描述一个执行的容器日志采集上下文。
 type StartRequest struct {
-	// ProjectID 是执行所属项目 ID。
-	ProjectID string
 	// ServiceID 是执行所属服务 ID。
 	ServiceID string
 	// ServiceName 是执行所属服务名称。
@@ -262,7 +260,6 @@ func formatLogfmtLine(platformName string, req StartRequest, stream string, time
 	var builder strings.Builder
 	writeLogfmtKV(&builder, "time", timestamp.Format(time.RFC3339Nano))
 	writeLogfmtKV(&builder, "platform_name", platformName)
-	writeLogfmtKV(&builder, "project_id", req.ProjectID)
 	writeLogfmtKV(&builder, "service_id", req.ServiceID)
 	writeLogfmtKV(&builder, "service_name", req.ServiceName)
 	writeLogfmtKV(&builder, "deployment_id", req.DeploymentID)

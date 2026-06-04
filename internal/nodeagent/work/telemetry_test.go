@@ -15,7 +15,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 		"APP_ENV": "test",
 	}
 	item := &nodeagentapi.WorkItem{
-		ProjectID:    "prj_demo",
 		ServiceID:    "svc_demo",
 		ServiceName:  "hello",
 		DeploymentID: "dep_demo",
@@ -41,7 +40,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 		t.Fatalf("OTEL_SERVICE_NAME = %q, want hello", got["OTEL_SERVICE_NAME"])
 	}
 	for _, want := range []string{
-		"mini_cloud.project_id=prj_demo",
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.deployment_id=dep_demo",
 		"mini_cloud.execution_id=exec_demo",
@@ -66,7 +64,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		"OTEL_RESOURCE_ATTRIBUTES":    "service.version=1.2.3,mini_cloud.service_id=wrong",
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-collector:4318",
 	}, &nodeagentapi.WorkItem{
-		ProjectID:    "prj_demo",
 		ServiceID:    "svc_demo",
 		DeploymentID: "dep_demo",
 		ExecutionID:  "exec_demo",
@@ -82,7 +79,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 	}
 	for _, want := range []string{
 		"service.version=1.2.3",
-		"mini_cloud.project_id=prj_demo",
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.deployment_id=dep_demo",
 		"mini_cloud.execution_id=exec_demo",

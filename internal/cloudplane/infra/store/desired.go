@@ -34,25 +34,20 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 	if err := spec.Validate(); err != nil {
 		return desired.AcceptResult{}, err
 	}
-	projectID := strings.TrimSpace(input.ProjectID)
 	name := strings.TrimSpace(input.Name)
-	if err := workload.ValidateIdentity(projectID, name); err != nil {
+	if err := workload.ValidateIdentity(name); err != nil {
 		return desired.AcceptResult{}, err
 	}
 	displayName := strings.TrimSpace(input.DisplayName)
 	if displayName == "" {
 		return desired.AcceptResult{}, workload.ErrServiceDisplayNameRequired
 	}
-	// desired 必须属于一个已存在项目。
-	if _, err := s.GetProject(ctx, projectID); err != nil {
-		return desired.AcceptResult{}, err
-	}
-	// 先检查引用的 config/secret/registry credential 是否属于当前项目。
-	if err := s.ensureServiceReferencesResolved(ctx, projectID, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
+	// 先检查引用的全局 config/secret/registry credential 是否存在。
+	if err := s.ensureServiceReferencesResolved(ctx, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
 		return desired.AcceptResult{}, err
 	}
 	// projected file 引用的 config/secret key 也必须能解析。
-	if err := s.ensureServiceProjectedFilesResolved(ctx, projectID, spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceProjectedFilesResolved(ctx, spec.ProjectedFiles); err != nil {
 		return desired.AcceptResult{}, err
 	}
 
@@ -91,7 +86,7 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 	// Commit 成功后 Rollback 会返回错误，这里忽略即可；失败路径则释放事务。
 	defer func() { _ = tx.Rollback() }()
 
-	// 按 serviceID 加锁读取现有 desired；serviceID 是唯一身份，name 只作为 project 内唯一的可读名称。
+		// 按 serviceID 加锁读取现有 desired；serviceID 是唯一身份，name 是全局唯一的可读名称。
 	current, err := s.getServiceDesiredByServiceIDTx(ctx, tx, serviceID, true)
 	if err != nil && !errors.Is(err, ErrServiceDesiredNotFound) {
 		return desired.AcceptResult{}, err
@@ -103,7 +98,6 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 		row := tx.QueryRowContext(ctx, serviceDesiredReturningSQL(`
             INSERT INTO service_desired (
                 service_id,
-                project_id,
                 name,
                 generation,
                 observed_generation,
@@ -127,10 +121,9 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
                 reconcile_phase,
                 reconcile_message
 			)
-            VALUES ($1, $2, $3, 1, 0, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, '')
+            VALUES ($1, $2, 1, 0, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, '')
         `),
 			serviceID,
-			projectID,
 			name,
 			displayName,
 			spec.Region,
@@ -166,8 +159,8 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 		return desired.AcceptResult{Desired: created, Action: desired.ActionCreated}, nil
 	}
 
-	// serviceID 是 desired 的唯一身份；projectID/name 创建后不可变，避免后续 apply 静默改绑同一个 serviceID。
-	if current.ProjectID != projectID || current.Name != name {
+	// serviceID 是 desired 的唯一身份；name 创建后不可变，避免后续 apply 静默改名同一个 serviceID。
+	if current.Name != name {
 		return desired.AcceptResult{}, workload.ErrServiceIdentityConflict
 	}
 
@@ -344,14 +337,14 @@ func ignoreStaleServiceDesiredWrite(result sql.Result, operation string) error {
 	return nil
 }
 
-// isServiceDesiredNameConflict 判断写入 service_desired 是否撞上同 project service name 唯一约束。
+// isServiceDesiredNameConflict 判断写入 service_desired 是否撞上全局 service name 唯一约束。
 // 参数说明：err 是 INSERT/UPDATE RETURNING 扫描时暴露的数据库错误。
 func isServiceDesiredNameConflict(err error) bool {
 	pgErr, ok := errors.AsType[*pgconn.PgError](err)
 	if !ok || pgErr.Code != "23505" {
 		return false
 	}
-	return strings.Contains(pgErr.ConstraintName, "project_id") && strings.Contains(pgErr.ConstraintName, "name")
+	return strings.Contains(pgErr.ConstraintName, "name")
 }
 
 // getServiceDesiredByServiceIDTx 按 serviceID 读取 desired，可选择在事务内加锁。
@@ -389,7 +382,6 @@ func serviceDesiredSelectSQL() string {
 	return `
         SELECT
             service_id,
-            project_id,
             name,
             generation,
             observed_generation,
@@ -429,7 +421,6 @@ func serviceDesiredReturningSQL(prefix string) string {
 	return prefix + `
         RETURNING
             service_id,
-            project_id,
             name,
             generation,
             observed_generation,
@@ -476,7 +467,6 @@ func scanServiceDesired(scanner interface{ Scan(dest ...any) error }) (desired.S
 	// 扫描顺序必须和 serviceDesiredSelectSQL/serviceDesiredReturningSQL 的字段顺序一致。
 	if err := scanner.Scan(
 		&item.ServiceID,
-		&item.ProjectID,
 		&item.Name,
 		&item.Generation,
 		&item.ObservedGeneration,

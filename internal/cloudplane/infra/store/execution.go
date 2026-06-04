@@ -49,12 +49,11 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	// 查询一条分配给当前 node、对应 replica 尚未有 deploying/running execution、
 	// 且当前 node 仍然 ready/schedulable 的任务；draining 节点不能继续领取新 work。
 	err = tx.QueryRowContext(ctx, `
-		SELECT
-			d.id,
-			d.status,
-			a.project_id,
-			a.id,
-			a.name,
+			SELECT
+				d.id,
+				d.status,
+				a.id,
+				a.name,
 			r.id,
 			r.label,
 			r.image,
@@ -77,8 +76,8 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		FROM deployments d
 		JOIN services a ON a.id = d.service_id
 		JOIN revisions r ON r.id = d.revision_id
-		LEFT JOIN project_secret_sets ps ON ps.id = r.secret_set_id
-		LEFT JOIN project_registry_credentials prc ON prc.id = r.registry_credential_id
+		LEFT JOIN secret_sets ps ON ps.id = r.secret_set_id
+		LEFT JOIN registry_credentials prc ON prc.id = r.registry_credential_id
 		JOIN LATERAL (
 			SELECT
 				replica_index,
@@ -102,12 +101,11 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		ORDER BY d.created_at ASC, d.id ASC
 		LIMIT 1
 		FOR UPDATE OF d, n
-	`, deployment.StatusAssigned, deployment.StatusDeploying, deployment.StatusRunning, execution.StatusDeploying, execution.StatusRunning, nodeID, node.StatusReady).Scan(
-		&work.DeploymentID,
-		&currentStatus,
-		&work.ProjectID,
-		&work.ServiceID,
-		&work.ServiceName,
+		`, deployment.StatusAssigned, deployment.StatusDeploying, deployment.StatusRunning, execution.StatusDeploying, execution.StatusRunning, nodeID, node.StatusReady).Scan(
+			&work.DeploymentID,
+			&currentStatus,
+			&work.ServiceID,
+			&work.ServiceName,
 		&work.RevisionID,
 		&work.RevisionLabel,
 		&work.Image,
@@ -153,12 +151,12 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		return nil, fmt.Errorf("decode secret env: %w", err)
 	}
 	work.Env = mergeStringMaps(revisionEnv, secretEnv)
-	// projected file 需要读取当前项目的 config/secret 实际值后才能下发给 node-agent。
-	var projectedSpecs []projectedfile.Spec
-	if err := unmarshalJSON(projectedFilesJSON, &projectedSpecs, []projectedfile.Spec{}); err != nil {
-		return nil, fmt.Errorf("decode projected files: %w", err)
-	}
-	projectedFiles, err := s.materializeProjectedFiles(ctx, work.ProjectID, projectedSpecs)
+		// projected file 需要读取全局 config/secret 实际值后才能下发给 node-agent。
+		var projectedSpecs []projectedfile.Spec
+		if err := unmarshalJSON(projectedFilesJSON, &projectedSpecs, []projectedfile.Spec{}); err != nil {
+			return nil, fmt.Errorf("decode projected files: %w", err)
+		}
+		projectedFiles, err := s.materializeProjectedFiles(ctx, projectedSpecs)
 	if err != nil {
 		return nil, err
 	}
@@ -280,8 +278,8 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 }
 
 // materializeProjectedFiles 把 projected file spec 按 config/secret 值解析成 node-agent 可下发文件。
-// 参数说明：ctx 控制本次请求或后台操作生命周期；projectID 是 project 唯一标识；specs 是本次操作的输入结构。
-func (s *Store) materializeProjectedFiles(ctx context.Context, projectID string, specs []projectedfile.Spec) ([]projectedfile.File, error) {
+// 参数说明：ctx 控制本次请求或后台操作生命周期；specs 是本次操作的输入结构。
+func (s *Store) materializeProjectedFiles(ctx context.Context, specs []projectedfile.Spec) ([]projectedfile.File, error) {
 	// 没有 projected file spec 时无需查询 config/secret。
 	if len(specs) == 0 {
 		return nil, nil
@@ -292,7 +290,7 @@ func (s *Store) materializeProjectedFiles(ctx context.Context, projectID string,
 		switch item.SourceKind {
 		case projectedfile.SourceKindConfigSet:
 			// config set 来源读取明文配置值。
-			configSet, err := s.resolveProjectConfigSet(ctx, projectID, item.SourceID)
+			configSet, err := s.resolveConfigSet(ctx, item.SourceID)
 			if err != nil {
 				return nil, err
 			}
@@ -309,7 +307,7 @@ func (s *Store) materializeProjectedFiles(ctx context.Context, projectID string,
 			})
 		case projectedfile.SourceKindSecretSet:
 			// secret set 来源读取敏感配置值。
-			secretSet, err := s.resolveProjectSecretSet(ctx, projectID, item.SourceID)
+			secretSet, err := s.resolveSecretSet(ctx, item.SourceID)
 			if err != nil {
 				return nil, err
 			}
@@ -1043,11 +1041,10 @@ func updateServiceRevisionStateTx(
 			rollout_message = $6,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING
-			id,
-			project_id,
-			name,
-			display_name,
+			RETURNING
+				id,
+				name,
+				display_name,
 			region,
 			replicas,
 			instance_class,
@@ -1068,10 +1065,9 @@ func updateServiceRevisionStateTx(
 			status,
 			created_at,
 			updated_at
-	`, serviceID, nullableString(currentRevisionIDValue), nullableString(candidateRevisionIDValue), statusValue, workload.NormalizeRolloutPhase(rolloutPhase), rolloutMessage).Scan(
-		&updated.Metadata.ID,
-		&updated.Metadata.ProjectID,
-		&updated.Metadata.Name,
+		`, serviceID, nullableString(currentRevisionIDValue), nullableString(candidateRevisionIDValue), statusValue, workload.NormalizeRolloutPhase(rolloutPhase), rolloutMessage).Scan(
+			&updated.Metadata.ID,
+			&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
 		&updated.Spec.Replicas,

@@ -34,8 +34,6 @@ var (
 type Service struct {
 	// ServiceID 是该 desired 对应的 service 唯一标识；service_desired 以它作为主键。
 	ServiceID string
-	// ProjectID 表示所属 project 的唯一标识。
-	ProjectID string
 	// Name 表示目标 service 的机器可读名称。
 	Name string
 	// DisplayName 表示目标 service 的用户可读名称。
@@ -64,8 +62,6 @@ type Service struct {
 
 // AcceptInput 是接受 service desired state 的输入。
 type AcceptInput struct {
-	// ProjectID 表示所属 project 的唯一标识。
-	ProjectID string
 	// ServiceID 表示目标 service 标识；cloud-plane 直接使用 control-plane serviceID。
 	ServiceID string
 	// Name 表示目标 service 的机器可读名称。

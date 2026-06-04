@@ -36,7 +36,6 @@ const (
 )
 
 var (
-	ErrProjectIDRequired                        = errors.New("projectID is required")
 	ErrServiceNameRequired                      = errors.New("name is required")
 	ErrInvalidServiceName                       = errors.New("name must use lowercase letters, digits, and hyphens")
 	ErrDisplayNameRequired                      = errors.New("displayName is required")
@@ -105,7 +104,6 @@ type Service struct {
 
 type Metadata struct {
 	ID          string `json:"id"`
-	ProjectID   string `json:"projectID"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Generation  int64  `json:"generation"`
@@ -259,7 +257,6 @@ type RolloutStatus struct {
 }
 
 type CreateInput struct {
-	ProjectID   string `json:"-"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Spec        Spec   `json:"spec"`
@@ -271,9 +268,6 @@ type UpdateInput struct {
 }
 
 func (in CreateInput) Validate() error {
-	if strings.TrimSpace(in.ProjectID) == "" {
-		return ErrProjectIDRequired
-	}
 	if strings.TrimSpace(in.Name) == "" {
 		return ErrServiceNameRequired
 	}
@@ -286,10 +280,7 @@ func (in CreateInput) Validate() error {
 	return in.Spec.Validate()
 }
 
-func (in UpdateInput) Validate(projectID string, serviceName string) error {
-	if strings.TrimSpace(projectID) == "" {
-		return ErrProjectIDRequired
-	}
+func (in UpdateInput) Validate(serviceName string) error {
 	if strings.TrimSpace(serviceName) == "" {
 		return ErrServiceNameRequired
 	}

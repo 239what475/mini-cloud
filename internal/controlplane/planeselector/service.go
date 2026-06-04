@@ -26,17 +26,11 @@ func NewService(logger *slog.Logger, stores *store.Store, deploy *deploy.Service
 	}
 }
 
-func (s *Service) PreviewProjectSelection(ctx context.Context, projectID string, input SelectionInput) (SelectionResult, error) {
+func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (SelectionResult, error) {
 	if s == nil || s.store == nil {
 		return SelectionResult{}, fmt.Errorf("plane selector is not configured")
 	}
-	if projectID == "" {
-		return SelectionResult{}, ErrProjectIDRequired
-	}
 	if err := input.Validate(); err != nil {
-		return SelectionResult{}, err
-	}
-	if _, err := s.store.GetProject(ctx, projectID); err != nil {
 		return SelectionResult{}, err
 	}
 
@@ -85,7 +79,6 @@ func (s *Service) PreviewProjectSelection(ctx context.Context, projectID string,
 			Status:                  string(planeDetail.Status.Status),
 			OperationState:          string(planeDetail.Operation.ResolvedState()),
 			AcceptingNewDeployments: planeDetail.Operation.AcceptingNewDeployments(),
-			ProjectID:               projectID,
 		}
 
 		if !planeDetail.Registration.Registered {
@@ -205,7 +198,6 @@ func (s *Service) PreviewProjectSelection(ctx context.Context, projectID string,
 			PlaneDisplayName:            planeDetail.DisplayName,
 			Provider:                    planeDetail.Provider,
 			Region:                      planeDetail.Region,
-			ProjectID:                   projectID,
 			BasedOnInventorySyncVersion: planeDetail.LatestRuntimeInventory.SyncVersion,
 			Score:                       candidate.Score,
 			Reason: fmt.Sprintf(
@@ -235,18 +227,19 @@ func (s *Service) PreviewProjectSelection(ctx context.Context, projectID string,
 	return result, nil
 }
 
-func (s *Service) ApplyService(ctx context.Context, projectID string, input ApplyServiceInput) (ApplyResult, error) {
+func (s *Service) ApplyService(ctx context.Context, _ string, input ApplyServiceInput) (ApplyResult, error) {
+	return s.Apply(ctx, input)
+}
+
+func (s *Service) Apply(ctx context.Context, input ApplyServiceInput) (ApplyResult, error) {
 	if s == nil || s.store == nil || s.deploy == nil {
 		return ApplyResult{}, fmt.Errorf("plane selector is not configured")
 	}
-	if projectID == "" {
-		return ApplyResult{}, ErrProjectIDRequired
-	}
-	if err := input.Validate(projectID); err != nil {
+	if err := input.Validate(); err != nil {
 		return ApplyResult{}, err
 	}
 
-	selection, err := s.PreviewProjectSelection(ctx, projectID, input.SelectionInput())
+	selection, err := s.PreviewSelection(ctx, input.SelectionInput())
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -254,7 +247,7 @@ func (s *Service) ApplyService(ctx context.Context, projectID string, input Appl
 		return ApplyResult{Selection: selection}, nil
 	}
 
-	remoteResult, err := s.deploy.ApplyService(ctx, selection.Decision.PlaneID, input.ToDeployInput(projectID, selection.Decision.Region))
+	remoteResult, err := s.deploy.ApplyService(ctx, selection.Decision.PlaneID, input.ToDeployInput(selection.Decision.Region))
 	if err != nil {
 		return ApplyResult{}, err
 	}

@@ -17,15 +17,12 @@ import (
 	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/cloudplane/infra/store"
-	"mini-cloud/internal/common/project"
 )
 
 // storeReader 定义 ingress controller 构造 route snapshot 需要的本地状态读取能力。
 type storeReader interface {
 	// ListServices 列出当前 plane 内全部 service。
 	ListServices(context.Context) ([]workload.Service, error)
-	// GetProject 按项目 ID 读取项目。
-	GetProject(context.Context, string) (project.Project, error)
 	// GetPromotedDeploymentByService 读取 service 当前发布中的 deployment。
 	GetPromotedDeploymentByService(context.Context, string) (*deployment.Deployment, error)
 	// ListRunningExecutionsByDeployment 列出 deployment 下 running 且已分配 hostPort 的 execution。
@@ -97,19 +94,12 @@ func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, er
 		if workload.NormalizeExposure(serviceItem.Spec.Exposure) != workload.ExposurePublic {
 			continue
 		}
-		projectItem, err := c.store.GetProject(ctx, serviceItem.Metadata.ProjectID)
-		if err != nil {
-			if errors.Is(err, store.ErrProjectNotFound) {
-				continue
-			}
-			return nil, err
-		}
 		deploymentItem, err := c.store.GetPromotedDeploymentByService(ctx, serviceItem.Metadata.ID)
 		if err != nil {
 			return nil, err
 		}
 		if deploymentItem == nil {
-			routes = append(routes, domainingress.Route{Host: c.managedHost(projectItem.Name, serviceItem.Metadata.Name)})
+			routes = append(routes, domainingress.Route{Host: c.managedHost(serviceItem.Metadata.Name)})
 			continue
 		}
 		executions, err := c.store.ListRunningExecutionsByDeployment(ctx, deploymentItem.ID)
@@ -139,14 +129,14 @@ func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, er
 			}
 			backends = append(backends, net.JoinHostPort(privateIP, fmt.Sprintf("%d", executionItem.HostPort)))
 		}
-		routes = append(routes, domainingress.Route{Host: c.managedHost(projectItem.Name, serviceItem.Metadata.Name), Backends: backends})
+		routes = append(routes, domainingress.Route{Host: c.managedHost(serviceItem.Metadata.Name), Backends: backends})
 	}
 	return routes, nil
 }
 
 // managedHost 生成 public service 的默认入口域名。
-func (c *Controller) managedHost(projectName string, serviceName string) string {
-	return fmt.Sprintf("%s.%s.%s", dnsLabel(serviceName), dnsLabel(projectName), strings.Trim(strings.TrimSpace(c.cfg.Ingress.BaseDomain), "."))
+func (c *Controller) managedHost(serviceName string) string {
+	return fmt.Sprintf("%s.%s", dnsLabel(serviceName), strings.Trim(strings.TrimSpace(c.cfg.Ingress.BaseDomain), "."))
 }
 
 // dnsLabel 将 project/service 名称转换为保守 DNS label。

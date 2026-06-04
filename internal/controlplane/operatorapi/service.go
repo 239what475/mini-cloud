@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planesync"
@@ -36,7 +35,6 @@ type overviewCounts struct {
 	PlanesReady         int
 	PlanesDegraded      int
 	PlanesOffline       int
-	ProjectsTotal       int
 	ServicesTotal       int
 	ServicesPending     int
 	ServicesProgressing int
@@ -62,10 +60,6 @@ func (s *Service) GetOverview(ctx context.Context, _ *emptypb.Empty) (*controlpl
 	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
 		return nil, err
 	}
-	projects, err := s.store.ListProjects(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "list projects failed")
-	}
 	planes, err := s.store.ListPlanes(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "list planes failed")
@@ -74,7 +68,7 @@ func (s *Service) GetOverview(ctx context.Context, _ *emptypb.Empty) (*controlpl
 	if err != nil {
 		return nil, status.Error(codes.Internal, "list services failed")
 	}
-	counts := buildOverview(projects, planes, services)
+	counts := buildOverview(planes, services)
 	return protoOverview(counts), nil
 }
 
@@ -143,54 +137,11 @@ func (s *Service) SyncPlane(ctx context.Context, req *controlplanev1.SyncPlaneRe
 	}, nil
 }
 
-func (s *Service) ListProjects(ctx context.Context, _ *emptypb.Empty) (*controlplanev1.ListProjectsResponse, error) {
+func (s *Service) ListServices(ctx context.Context, _ *emptypb.Empty) (*controlplanev1.ListServicesResponse, error) {
 	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
 		return nil, err
 	}
-	items, err := s.store.ListProjects(ctx)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "list projects failed")
-	}
-	out := &controlplanev1.ListProjectsResponse{Items: make([]*controlplanev1.Project, 0, len(items))}
-	for _, item := range items {
-		out.Items = append(out.Items, protoProject(item))
-	}
-	return out, nil
-}
-
-func (s *Service) GetProject(ctx context.Context, req *controlplanev1.GetProjectRequest) (*controlplanev1.Project, error) {
-	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
-		return nil, err
-	}
-	projectID := req.GetProjectId()
-	if projectID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID is required")
-	}
-	item, err := s.store.GetProject(ctx, projectID)
-	if err != nil {
-		if errors.Is(err, store.ErrProjectNotFound) {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, "get project failed")
-	}
-	return protoProject(item), nil
-}
-
-func (s *Service) ListServices(ctx context.Context, req *controlplanev1.ListServicesRequest) (*controlplanev1.ListServicesResponse, error) {
-	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
-		return nil, err
-	}
-	projectID := req.GetProjectId()
-	if projectID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID is required")
-	}
-	if _, err := s.store.GetProject(ctx, projectID); err != nil {
-		if errors.Is(err, store.ErrProjectNotFound) {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, "get project failed")
-	}
-	items, err := s.serviceControl.ListByProject(ctx, projectID)
+	items, err := s.serviceControl.List(ctx)
 	if err != nil {
 		return nil, status.Error(codes.Internal, "list services failed")
 	}
@@ -205,12 +156,11 @@ func (s *Service) GetService(ctx context.Context, req *controlplanev1.GetService
 	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
 		return nil, err
 	}
-	projectID := req.GetProjectId()
 	serviceID := req.GetServiceId()
-	if projectID == "" || serviceID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID and serviceID are required")
+	if serviceID == "" {
+		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
-	view, err := s.serviceControl.Get(ctx, projectID, serviceID)
+	view, err := s.serviceControl.Get(ctx, serviceID)
 	if err != nil {
 		if errors.Is(err, store.ErrServiceNotFound) {
 			return nil, status.Error(codes.NotFound, err.Error())
@@ -224,23 +174,18 @@ func (s *Service) CreateService(ctx context.Context, req *controlplanev1.CreateS
 	if err := authorizeAdmin(ctx, s.adminToken); err != nil {
 		return nil, err
 	}
-	projectID := req.GetProjectId()
-	if projectID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID is required")
-	}
 	input, err := createInputFromProto(req)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	view, err := s.serviceControl.Create(ctx, projectID, input)
+	view, err := s.serviceControl.Create(ctx, input)
 	if err != nil {
 		switch {
 		case isServiceInputError(err):
 			return nil, status.Error(codes.InvalidArgument, err.Error())
-		case errors.Is(err, store.ErrProjectNotFound),
-			errors.Is(err, store.ErrProjectConfigSetNotFound),
-			errors.Is(err, store.ErrProjectSecretSetNotFound),
-			errors.Is(err, store.ErrProjectRegistryCredentialNotFound):
+		case errors.Is(err, store.ErrConfigSetNotFound),
+			errors.Is(err, store.ErrSecretSetNotFound),
+			errors.Is(err, store.ErrRegistryCredentialNotFound):
 			return nil, status.Error(codes.NotFound, err.Error())
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
 			return nil, status.Error(codes.AlreadyExists, err.Error())
@@ -251,9 +196,8 @@ func (s *Service) CreateService(ctx context.Context, req *controlplanev1.CreateS
 	return protoService(view), nil
 }
 
-func buildOverview(projects []project.Project, planes []plane.Detail, services []controlservice.Service) overviewCounts {
+func buildOverview(planes []plane.Detail, services []controlservice.Service) overviewCounts {
 	out := overviewCounts{
-		ProjectsTotal: len(projects),
 		PlanesTotal:   len(planes),
 		ServicesTotal: len(services),
 	}
@@ -288,7 +232,6 @@ func buildOverview(projects []project.Project, planes []plane.Detail, services [
 
 func isServiceInputError(err error) bool {
 	return errors.Is(err, errServiceSpecRequired) ||
-		errors.Is(err, controlservice.ErrProjectIDRequired) ||
 		errors.Is(err, controlservice.ErrServiceNameRequired) ||
 		errors.Is(err, controlservice.ErrInvalidServiceName) ||
 		errors.Is(err, controlservice.ErrDisplayNameRequired) ||

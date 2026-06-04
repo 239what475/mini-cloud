@@ -10,7 +10,6 @@ import (
 	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
 	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/domain/workload"
-	"mini-cloud/internal/common/project"
 )
 
 // TestBuildRoutesPublishesOnlyPublicReadyBackends 验证 ingress 只发布 public service 且只包含 ready node backend。
@@ -19,11 +18,8 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 
 	stores := &fakeStore{
 		services: []workload.Service{
-			{Metadata: workload.Metadata{ID: "svc-public", ProjectID: "prj-a", Name: "api"}, Spec: workload.Spec{Exposure: workload.ExposurePublic}},
-			{Metadata: workload.Metadata{ID: "svc-private", ProjectID: "prj-a", Name: "worker"}, Spec: workload.Spec{Exposure: workload.ExposurePrivate}},
-		},
-		projects: map[string]project.Project{
-			"prj-a": {ID: "prj-a", Name: "team-a"},
+			{Metadata: workload.Metadata{ID: "svc-public", Name: "api"}, Spec: workload.Spec{Exposure: workload.ExposurePublic}},
+			{Metadata: workload.Metadata{ID: "svc-private", Name: "worker"}, Spec: workload.Spec{Exposure: workload.ExposurePrivate}},
 		},
 		deployments: map[string]*deployment.Deployment{
 			"svc-public":  {ID: "dep-public", ServiceID: "svc-public"},
@@ -49,7 +45,7 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	if len(routes) != 1 {
 		t.Fatalf("routes len = %d, want 1: %+v", len(routes), routes)
 	}
-	if routes[0].Host != "api.team-a.apps.example.test" {
+	if routes[0].Host != "api.apps.example.test" {
 		t.Fatalf("route host = %q", routes[0].Host)
 	}
 	if len(routes[0].Backends) != 1 || routes[0].Backends[0] != "10.0.1.20:30080" {
@@ -74,7 +70,6 @@ func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 // fakeStore 是 ingress controller 单测使用的只读状态集合。
 type fakeStore struct {
 	services    []workload.Service
-	projects    map[string]project.Project
 	deployments map[string]*deployment.Deployment
 	executions  map[string][]execution.Record
 	nodes       map[string]node.Node
@@ -83,11 +78,6 @@ type fakeStore struct {
 // ListServices 返回预设 service 列表。
 func (f *fakeStore) ListServices(context.Context) ([]workload.Service, error) {
 	return f.services, nil
-}
-
-// GetProject 返回预设项目。
-func (f *fakeStore) GetProject(_ context.Context, id string) (project.Project, error) {
-	return f.projects[id], nil
 }
 
 // GetPromotedDeploymentByService 返回预设 deployment。

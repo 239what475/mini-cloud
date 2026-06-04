@@ -23,7 +23,6 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO operation_events (
 			id,
-			project_id,
 			action,
 			target_type,
 			target_id,
@@ -31,16 +30,14 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 			actor_kind,
 			actor_id,
 			actor_label,
-			actor_project_id,
 			request_method,
 			request_path,
 			result,
 			details_json
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING
 			id,
-			project_id,
 			action,
 			target_type,
 			target_id,
@@ -48,7 +45,6 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 			actor_kind,
 			actor_id,
 			actor_label,
-			actor_project_id,
 			request_method,
 			request_path,
 			result,
@@ -56,7 +52,6 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 			created_at
 	`,
 		id,
-		input.ProjectID,
 		input.Action,
 		input.TargetType,
 		input.TargetID,
@@ -64,14 +59,12 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 		input.ActorKind,
 		input.ActorID,
 		input.ActorLabel,
-		input.ActorProjectID,
 		input.RequestMethod,
 		input.RequestPath,
 		input.Result,
 		detailsJSON,
 	).Scan(
 		&created.ID,
-		&created.ProjectID,
 		&created.Action,
 		&created.TargetType,
 		&created.TargetID,
@@ -79,7 +72,6 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 		&created.ActorKind,
 		&created.ActorID,
 		&created.ActorLabel,
-		&created.ActorProjectID,
 		&created.RequestMethod,
 		&created.RequestPath,
 		&created.Result,
@@ -96,7 +88,7 @@ func (s *Store) CreateOperationEvent(ctx context.Context, input operationhistory
 }
 
 func (s *Store) ListPlatformOperationEvents(ctx context.Context, limit int) ([]operationhistory.Record, error) {
-	return s.listOperationEvents(ctx, "", limit)
+	return s.listOperationEvents(ctx, limit)
 }
 
 func (s *Store) ListControlOperationEvents(ctx context.Context, limit int) ([]operationhistory.Record, error) {
@@ -110,7 +102,6 @@ func (s *Store) ListControlOperationEvents(ctx context.Context, limit int) ([]op
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			id,
-			project_id,
 			action,
 			target_type,
 			target_id,
@@ -118,7 +109,6 @@ func (s *Store) ListControlOperationEvents(ctx context.Context, limit int) ([]op
 			actor_kind,
 			actor_id,
 			actor_label,
-			actor_project_id,
 			request_method,
 			request_path,
 			result,
@@ -148,11 +138,7 @@ func (s *Store) ListControlOperationEvents(ctx context.Context, limit int) ([]op
 	return items, nil
 }
 
-func (s *Store) ListProjectOperationEvents(ctx context.Context, projectID string, limit int) ([]operationhistory.Record, error) {
-	return s.listOperationEvents(ctx, projectID, limit)
-}
-
-func (s *Store) listOperationEvents(ctx context.Context, projectID string, limit int) ([]operationhistory.Record, error) {
+func (s *Store) listOperationEvents(ctx context.Context, limit int) ([]operationhistory.Record, error) {
 	if limit <= 0 {
 		limit = 40
 	}
@@ -163,7 +149,6 @@ func (s *Store) listOperationEvents(ctx context.Context, projectID string, limit
 	query := `
 		SELECT
 			id,
-			project_id,
 			action,
 			target_type,
 			target_id,
@@ -171,30 +156,17 @@ func (s *Store) listOperationEvents(ctx context.Context, projectID string, limit
 			actor_kind,
 			actor_id,
 			actor_label,
-			actor_project_id,
 			request_method,
 			request_path,
 			result,
 			details_json,
 			created_at
 		FROM operation_events
-	`
-	args := []any{limit}
-	if projectID != "" {
-		query += `
-		WHERE project_id = $1
-		ORDER BY created_at DESC, id DESC
-		LIMIT $2
-		`
-		args = []any{projectID, limit}
-	} else {
-		query += `
 		ORDER BY created_at DESC, id DESC
 		LIMIT $1
-		`
-	}
+	`
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
+	rows, err := s.db.QueryContext(ctx, query, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query operation events: %w", err)
 	}
@@ -219,7 +191,6 @@ func scanOperationEvent(scanner interface{ Scan(dest ...any) error }) (operation
 	var rawDetails []byte
 	if err := scanner.Scan(
 		&item.ID,
-		&item.ProjectID,
 		&item.Action,
 		&item.TargetType,
 		&item.TargetID,
@@ -227,7 +198,6 @@ func scanOperationEvent(scanner interface{ Scan(dest ...any) error }) (operation
 		&item.ActorKind,
 		&item.ActorID,
 		&item.ActorLabel,
-		&item.ActorProjectID,
 		&item.RequestMethod,
 		&item.RequestPath,
 		&item.Result,

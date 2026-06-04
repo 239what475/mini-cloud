@@ -47,7 +47,7 @@ func (c *Controller) reconcileServiceDeletion(ctx context.Context, serviceItem c
 		return nil
 	}
 
-	deleteErr := c.deploy.DeleteService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+	deleteErr := c.deploy.DeleteService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ID)
 	if deleteErr != nil && !errors.Is(deleteErr, planeclient.ErrNotFound) {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem.Metadata.Generation, deleteErr))
 		return errors.Join(deleteErr, statusErr)
@@ -69,7 +69,7 @@ func (c *Controller) reconcileServiceWithoutPlacement(ctx context.Context, servi
 	if persistentDirsPlacementLocked(serviceItem) {
 		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, false, false, ErrPersistentDirsAutoMoveBlocked))
 	}
-	decision, err := c.selectPlane(ctx, serviceItem.Metadata.ProjectID, serviceItem)
+	decision, err := c.selectPlane(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, false, false, err))
 		return errors.Join(err, statusErr)
@@ -84,7 +84,7 @@ func (c *Controller) reconcileServiceWithoutPlacement(ctx context.Context, servi
 func (c *Controller) reconcileServiceDesiredSpec(ctx context.Context, serviceItem controlservice.Service, currentPlacement controlservice.ServicePlacement) error {
 	if c.canReusePlacement(ctx, serviceItem, currentPlacement) {
 		if serviceItem.Spec.PersistentDirsLocked {
-			remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+			remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ID)
 			if err != nil {
 				if errors.Is(err, planeclient.ErrNotFound) {
 					return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, ErrPersistentDirsAutoMoveBlocked))
@@ -100,7 +100,7 @@ func (c *Controller) reconcileServiceDesiredSpec(ctx context.Context, serviceIte
 	if serviceItem.Spec.PersistentDirsLocked {
 		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, ErrPersistentDirsAutoMoveBlocked))
 	}
-	decision, err := c.selectPlane(ctx, serviceItem.Metadata.ProjectID, serviceItem)
+	decision, err := c.selectPlane(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return errors.Join(err, statusErr)
@@ -128,7 +128,7 @@ func (c *Controller) applyServiceToCurrentPlacement(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (c *Controller) applyServiceToCurrentPlacement(ctx context.Context, service
 }
 
 func (c *Controller) refreshObservedServiceStatus(ctx context.Context, serviceItem controlservice.Service, currentPlacement controlservice.ServicePlacement) error {
-	remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+	remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ID)
 	if err != nil {
 		if errors.Is(err, planeclient.ErrNotFound) {
 			if persistentDirsPlacementLocked(serviceItem) {
@@ -171,8 +171,8 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 
 	nextPlacement := acceptedPlacementFromApplyResult(serviceItem.Metadata.ID, result)
 	if previous != nil && shouldMovePlacement(*previous, nextPlacement) {
-		if err := c.deploy.DeleteService(ctx, previous.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID); err != nil && !errors.Is(err, planeclient.ErrNotFound) {
-			_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+		if err := c.deploy.DeleteService(ctx, previous.PlaneID, serviceItem.Metadata.ID); err != nil && !errors.Is(err, planeclient.ErrNotFound) {
+			_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ID)
 			statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, fmt.Errorf("delete old remote service after move: %w", err)))
 			return nil, errors.Join(err, statusErr)
 		}
@@ -182,17 +182,17 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 	if err != nil {
 		if errors.Is(err, store.ErrServiceGenerationConflict) {
 			if previous == nil || shouldMovePlacement(*previous, nextPlacement) {
-				_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+				_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ID)
 			}
 			return nil, nil
 		}
 		if previous == nil || shouldMovePlacement(*previous, nextPlacement) {
-			_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+			_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ID)
 		}
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ProjectID, serviceItem.Metadata.ID)
+	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -200,8 +200,8 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 	return &updatedPlacement, statusErr
 }
 
-func (c *Controller) selectPlane(ctx context.Context, projectID string, serviceItem controlservice.Service) (*planeselector.Decision, error) {
-	result, err := c.selector.PreviewProjectSelection(ctx, projectID, planeselector.SelectionInput{
+func (c *Controller) selectPlane(ctx context.Context, serviceItem controlservice.Service) (*planeselector.Decision, error) {
+	result, err := c.selector.PreviewSelection(ctx, planeselector.SelectionInput{
 		Provider:      serviceItem.Spec.Provider,
 		Region:        serviceItem.Spec.Region,
 		PinnedPlaneID: serviceItem.Spec.PinnedPlaneID,
@@ -314,7 +314,6 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 	return deploy.ApplyServiceInput{
 		Metadata: deploy.ServiceMetadata{
 			ID:          serviceItem.Metadata.ID,
-			ProjectID:   serviceItem.Metadata.ProjectID,
 			Name:        serviceItem.Metadata.Name,
 			DisplayName: serviceItem.Metadata.DisplayName,
 		},

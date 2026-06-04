@@ -196,3 +196,11 @@ func hashPlatformServiceAccountSecret(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
 }
+
+func tokenSecretPrefix(secret string) string {
+	trimmed := strings.TrimSpace(secret)
+	if len(trimmed) <= 12 {
+		return trimmed
+	}
+	return trimmed[:12]
+}

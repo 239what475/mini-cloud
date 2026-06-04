@@ -19,12 +19,11 @@ func (s *Server) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServic
 		return nil, err
 	}
 
-	// projectID 和 serviceID 直接使用 control-plane 身份，cloud-plane 不再生成另一套 remote project/service 身份。
-	projectID := strings.TrimSpace(req.GetProjectId())
+	// serviceID 直接使用 control-plane 身份，cloud-plane 不再生成另一套 remote service 身份。
 	serviceID := strings.TrimSpace(req.GetServiceId())
 	serviceName := strings.TrimSpace(req.GetName())
-	if projectID == "" || serviceID == "" || serviceName == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID, serviceID and name are required")
+	if serviceID == "" || serviceName == "" {
+		return nil, status.Error(codes.InvalidArgument, "serviceID and name are required")
 	}
 
 	displayName := strings.TrimSpace(req.GetDisplayName())
@@ -33,14 +32,13 @@ func (s *Server) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServic
 	// ApplyService 只接受 service desired；UpsertServiceDesired 是本路径的事务边界：
 	// 写入 accepted desired，并按输入变化生成新的 desired generation。
 	result, err := s.store.UpsertServiceDesired(ctx, desired.AcceptInput{
-		ProjectID:   projectID,
 		ServiceID:   serviceID,
 		Name:        serviceName,
 		DisplayName: displayName,
 		Spec:        spec,
 	})
 	if err != nil {
-		return nil, s.acceptDesiredStatusError("apply service", projectID, serviceName, err)
+		return nil, s.acceptDesiredStatusError("apply service", serviceName, err)
 	}
 	// ApplyService 只确认 desired state 已被 cloud-plane 接受并持久化。
 	// service 读模型和 observed status 必须由调用方通过 GetService 显式查询，避免把异步 reconcile 误表达成同步完成。

@@ -12,7 +12,6 @@ import (
 	"mini-cloud/internal/cloudplane/domain/deployment"
 	"mini-cloud/internal/cloudplane/domain/revision"
 	"mini-cloud/internal/cloudplane/domain/scheduler"
-	"mini-cloud/internal/cloudplane/domain/usage"
 	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
@@ -21,9 +20,8 @@ import (
 )
 
 var (
-	ErrProjectNotFound          = errors.New("project not found")
 	ErrServiceNotFound          = errors.New("service not found")
-	ErrServiceNameAlreadyExists = errors.New("service name already exists in this project")
+	ErrServiceNameAlreadyExists = errors.New("service name already exists")
 	ErrRevisionNotFound         = errors.New("revision not found")
 	ErrDeploymentNotFound       = errors.New("deployment not found")
 )
@@ -40,20 +38,18 @@ type ServiceUpdateImpact struct {
 	UpdatedReplicas int
 }
 
-// InsertService 校验项目配额和资源引用后创建 service 规格记录。
-// 参数说明：ctx 控制数据库请求生命周期；serviceID/projectID/name 是 service 身份；spec 是 service 目标运行规格。
-func (s *Store) InsertService(ctx context.Context, serviceID string, projectID string, name string, displayName string, spec workload.Spec) (workload.Service, error) {
-	// 阶段一：校验输入、project resource 引用和 projected file 来源。
-	// 阶段二：按项目 quota 预演新增 service 是否允许。
-	// 阶段三：持久化 service spec；后续 revision 会从这些字段生成不可变快照。
+// InsertService 校验资源引用后创建 service 规格记录。
+// 参数说明：ctx 控制数据库请求生命周期；serviceID/name 是 service 身份；spec 是 service 目标运行规格。
+func (s *Store) InsertService(ctx context.Context, serviceID string, name string, displayName string, spec workload.Spec) (workload.Service, error) {
+	// 阶段一：校验输入、全局资源引用和 projected file 来源。
+	// 阶段二：持久化 service spec；后续 revision 会从这些字段生成不可变快照。
 	// exposure 入库前归一化，保证后续比较和 revision 生成使用稳定值。
 	serviceID = strings.TrimSpace(serviceID)
-	projectID = strings.TrimSpace(projectID)
 	name = strings.TrimSpace(name)
 	if serviceID == "" {
 		return workload.Service{}, workload.ErrServiceIDRequired
 	}
-	if err := workload.ValidateIdentity(projectID, name); err != nil {
+	if err := workload.ValidateIdentity(name); err != nil {
 		return workload.Service{}, err
 	}
 	displayName = strings.TrimSpace(displayName)
@@ -65,35 +61,12 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 		return workload.Service{}, err
 	}
 
-	projectItem, err := s.GetProject(ctx, projectID)
-	if err != nil {
-		return workload.Service{}, err
-	}
-	// 校验 project 存在，并读取配额用于后续预演。
-	if err := s.ensureServiceReferencesResolved(ctx, projectID, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
 		return workload.Service{}, err
 	}
 	// projected file 来源必须在创建时可解析。
-	if err := s.ensureServiceProjectedFilesResolved(ctx, projectID, spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceProjectedFilesResolved(ctx, spec.ProjectedFiles); err != nil {
 		return workload.Service{}, err
-	}
-
-	// 读取当前项目内 services，用于预演新增 service 后的配额占用。
-	currentServices, err := s.ListServicesByProject(ctx, projectID)
-	if err != nil {
-		return workload.Service{}, err
-	}
-
-	preview, err := usage.PreviewServicePlan(projectItem, currentServices, usage.ServicePlanPreviewInput{
-		InstanceClass: spec.InstanceClass,
-		Replicas:      spec.Replicas,
-	})
-	if err != nil {
-		return workload.Service{}, err
-	}
-	// 配额预演不写库，只判断创建后的容量是否允许。
-	if !preview.Allowed {
-		return workload.Service{}, usage.NewQuotaExceededError(preview.RejectReasons)
 	}
 
 	// service 运行输入和扩展字段以 JSONB 存储。
@@ -127,11 +100,10 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 	var registryCredentialID sql.NullString
 	// 插入 service，初始状态为 idle，rollout phase 为 idle。
 	err = s.db.QueryRowContext(ctx, `
-		INSERT INTO services (
-			id,
-			project_id,
-			name,
-			display_name,
+			INSERT INTO services (
+				id,
+				name,
+				display_name,
 			spec_region,
 			spec_replicas,
 			spec_instance_class,
@@ -149,13 +121,12 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 			spec_env_json,
 			status_rollout_phase,
 			status_rollout_message,
-			status_phase
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
-		RETURNING
-			id,
-			project_id,
-			name,
+				status_phase
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			RETURNING
+				id,
+				name,
 			display_name,
 			spec_region,
 			spec_replicas,
@@ -179,11 +150,10 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 			status_phase,
 			created_at,
 			updated_at
-		`,
-		serviceID,
-		projectID,
-		name,
-		displayName,
+			`,
+			serviceID,
+			name,
+			displayName,
 		spec.Region,
 		spec.Replicas,
 		spec.InstanceClass,
@@ -202,10 +172,9 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 		workload.RolloutPhaseIdle,
 		"",
 		workload.RolloutPhaseIdle,
-	).Scan(
-		&created.Metadata.ID,
-		&created.Metadata.ProjectID,
-		&created.Metadata.Name,
+		).Scan(
+			&created.Metadata.ID,
+			&created.Metadata.Name,
 		&created.Metadata.DisplayName,
 		&created.Spec.Region,
 		&created.Spec.Replicas,
@@ -233,16 +202,13 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, projectID s
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok {
 			switch pgErr.Code {
-			case "23503":
-				// project_id 或资源外键冲突统一返回 project not found；资源引用已在前面显式校验。
-				return workload.Service{}, ErrProjectNotFound
 			case "23505":
 				// serviceID 主键冲突表示调用方试图复用已存在 service 身份。
 				if strings.Contains(pgErr.ConstraintName, "pkey") {
 					return workload.Service{}, workload.ErrServiceIdentityConflict
 				}
-				// 项目内 service name 唯一约束冲突。
-				if strings.Contains(pgErr.ConstraintName, "project_id") && strings.Contains(pgErr.ConstraintName, "name") {
+				// service name 是 single-tenant control plane 内全局唯一。
+				if strings.Contains(pgErr.ConstraintName, "name") {
 					return workload.Service{}, ErrServiceNameAlreadyExists
 				}
 			}
@@ -297,7 +263,6 @@ func (s *Store) ListServices(ctx context.Context) ([]workload.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			id,
-			project_id,
 			name,
 				display_name,
 				spec_region,
@@ -347,64 +312,6 @@ func (s *Store) ListServices(ctx context.Context) ([]workload.Service, error) {
 	return items, nil
 }
 
-// ListServicesByProject 列出项目下的 service。
-// 参数说明：ctx 控制数据库请求生命周期；projectID 是 project 唯一标识。
-func (s *Store) ListServicesByProject(ctx context.Context, projectID string) ([]workload.Service, error) {
-	// 按项目过滤，并按创建顺序稳定返回。
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			id,
-			project_id,
-			name,
-				display_name,
-				spec_region,
-				spec_replicas,
-				spec_instance_class,
-				spec_exposure,
-				spec_image,
-				spec_command_json,
-				spec_args_json,
-				spec_default_port,
-				spec_readiness_path,
-				spec_config_set_id,
-				spec_secret_set_id,
-				spec_registry_credential_id,
-				spec_projected_files_json,
-				spec_persistent_dirs_json,
-				spec_env_json,
-				status_current_revision_id,
-				status_candidate_revision_id,
-				status_rollout_phase,
-				status_rollout_message,
-				status_phase,
-				created_at,
-				updated_at
-		FROM services
-		WHERE project_id = $1
-		ORDER BY created_at ASC, id ASC
-	`, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("query services by project: %w", err)
-	}
-	defer closeRows(rows)
-
-	// 逐行扫描 service。
-	items := make([]workload.Service, 0)
-	for rows.Next() {
-		item, err := scanService(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	// rows.Err 捕获迭代过程中延迟暴露的数据库错误。
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate services by project: %w", err)
-	}
-
-	return items, nil
-}
-
 // GetService 按 service ID 查询 service。
 // 参数说明：ctx 控制数据库请求生命周期；serviceID 是 service 唯一标识。
 func (s *Store) GetService(ctx context.Context, serviceID string) (workload.Service, error) {
@@ -412,7 +319,6 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (workload.Serv
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			id,
-			project_id,
 			name,
 				display_name,
 				spec_region,
@@ -477,47 +383,12 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 	if persistentDirRevisionChangeBlocked(current, spec) {
 		return workload.Service{}, ServiceUpdateImpact{}, workload.ErrPersistentDirsRolloutUnsupported
 	}
-	// 校验资源引用仍属于当前项目。
-	if err := s.ensureServiceReferencesResolved(ctx, current.Metadata.ProjectID, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
+	// 校验全局资源引用仍可解析。
+	if err := s.ensureServiceReferencesResolved(ctx, spec.ConfigSetID, spec.SecretSetID, spec.RegistryCredentialID); err != nil {
 		return workload.Service{}, ServiceUpdateImpact{}, err
 	}
-	if err := s.ensureServiceProjectedFilesResolved(ctx, current.Metadata.ProjectID, spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceProjectedFilesResolved(ctx, spec.ProjectedFiles); err != nil {
 		return workload.Service{}, ServiceUpdateImpact{}, err
-	}
-
-	// 读取项目配额，并计算当前规格和目标规格的资源差异。
-	projectItem, err := s.GetProject(ctx, current.Metadata.ProjectID)
-	if err != nil {
-		return workload.Service{}, ServiceUpdateImpact{}, err
-	}
-	currentPlan, err := usage.DescribeServicePlan(usage.ServicePlanPreviewInput{
-		InstanceClass: current.Spec.InstanceClass,
-		Replicas:      current.Spec.Replicas,
-	})
-	if err != nil {
-		return workload.Service{}, ServiceUpdateImpact{}, err
-	}
-	desiredPlan, err := usage.DescribeServicePlan(usage.ServicePlanPreviewInput{
-		InstanceClass: spec.InstanceClass,
-		Replicas:      spec.Replicas,
-	})
-	if err != nil {
-		return workload.Service{}, ServiceUpdateImpact{}, err
-	}
-	delta := usage.DeltaBetweenPlans(currentPlan, desiredPlan, 0)
-	if usage.HasPositiveCapacityDelta(delta) {
-		// 只有资源占用增加时才需要执行容量配额预演。
-		currentServices, err := s.ListServicesByProject(ctx, current.Metadata.ProjectID)
-		if err != nil {
-			return workload.Service{}, ServiceUpdateImpact{}, err
-		}
-		preview, err := usage.PreviewCapacityChange(projectItem, currentServices, desiredPlan, delta)
-		if err != nil {
-			return workload.Service{}, ServiceUpdateImpact{}, err
-		}
-		if !preview.Allowed {
-			return workload.Service{}, ServiceUpdateImpact{}, usage.NewQuotaExceededError(preview.RejectReasons)
-		}
 	}
 
 	// 将目标 service spec 的 JSON 字段序列化为稳定存储格式。
@@ -573,10 +444,9 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 			spec_env_json = $17,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING
-			id,
-			project_id,
-			name,
+			RETURNING
+				id,
+				name,
 			display_name,
 			spec_region,
 			spec_replicas,
@@ -602,7 +472,6 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 			updated_at
 	`, serviceID, displayName, spec.Region, spec.Replicas, spec.InstanceClass, spec.Exposure, spec.Image, commandJSON, argsJSON, spec.DefaultPort, spec.ReadinessPath, nullableString(spec.ConfigSetID), nullableString(spec.SecretSetID), nullableString(spec.RegistryCredentialID), projectedFilesJSON, persistentDirsJSON, envJSON).Scan(
 		&updated.Metadata.ID,
-		&updated.Metadata.ProjectID,
 		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
@@ -733,10 +602,9 @@ func (s *Store) UpdateServiceRevisionState(
 			status_rollout_message = $6,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING
-			id,
-			project_id,
-			name,
+			RETURNING
+				id,
+				name,
 				display_name,
 				spec_region,
 				spec_replicas,
@@ -762,7 +630,6 @@ func (s *Store) UpdateServiceRevisionState(
 				updated_at
 		`, serviceID, nullableString(currentRevisionIDValue), nullableString(candidateRevisionIDValue), status, workload.NormalizeRolloutPhase(rolloutPhase), rolloutMessage).Scan(
 		&updated.Metadata.ID,
-		&updated.Metadata.ProjectID,
 		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
@@ -847,11 +714,11 @@ func (s *Store) InsertRevisionFromService(ctx context.Context, serviceID string)
 	if err != nil {
 		return revision.Revision{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, serviceItem.Metadata.ProjectID, serviceItem.Spec.ConfigSetID, serviceItem.Spec.SecretSetID, serviceItem.Spec.RegistryCredentialID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, serviceItem.Spec.ConfigSetID, serviceItem.Spec.SecretSetID, serviceItem.Spec.RegistryCredentialID); err != nil {
 		return revision.Revision{}, err
 	}
 	// projected file 来源必须仍可解析。
-	if err := s.ensureServiceProjectedFilesResolved(ctx, serviceItem.Metadata.ProjectID, serviceItem.Spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceProjectedFilesResolved(ctx, serviceItem.Spec.ProjectedFiles); err != nil {
 		return revision.Revision{}, err
 	}
 
@@ -876,7 +743,7 @@ func (s *Store) InsertRevisionFromService(ctx context.Context, serviceID string)
 	}
 	if serviceItem.Spec.ConfigSetID != "" {
 		// config set 值会合并进 revision env，形成不可变环境快照。
-		configSet, err := s.resolveProjectConfigSet(ctx, serviceItem.Metadata.ProjectID, serviceItem.Spec.ConfigSetID)
+		configSet, err := s.resolveConfigSet(ctx, serviceItem.Spec.ConfigSetID)
 		if err != nil {
 			return revision.Revision{}, err
 		}
@@ -1446,7 +1313,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (workload.Service
 	// 扫描顺序必须和 service SELECT/RETURNING 字段顺序一致。
 	err := scanner.Scan(
 		&item.Metadata.ID,
-		&item.Metadata.ProjectID,
 		&item.Metadata.Name,
 		&item.Metadata.DisplayName,
 		&item.Spec.Region,
@@ -1587,24 +1453,23 @@ func scanRevision(scanner interface{ Scan(dest ...any) error }) (revision.Revisi
 	return item, nil
 }
 
-// ensureServiceReferencesResolved 校验 service 引用的项目资源都存在且属于同一项目。
-// 参数说明：ctx 控制数据库请求生命周期；projectID 是 project 唯一标识；configSetID/secretSetID/registryCredentialID 是可选资源 ID。
-func (s *Store) ensureServiceReferencesResolved(ctx context.Context, projectID string, configSetID string, secretSetID string, registryCredentialID string) error {
+// ensureServiceReferencesResolved 校验 service 引用的全局资源都存在。
+func (s *Store) ensureServiceReferencesResolved(ctx context.Context, configSetID string, secretSetID string, registryCredentialID string) error {
 	// 配置集引用为空时跳过。
 	if configSetID != "" {
-		if _, err := s.resolveProjectConfigSet(ctx, projectID, configSetID); err != nil {
+		if _, err := s.resolveConfigSet(ctx, configSetID); err != nil {
 			return err
 		}
 	}
 	// 密钥集引用为空时跳过。
 	if secretSetID != "" {
-		if _, err := s.resolveProjectSecretSet(ctx, projectID, secretSetID); err != nil {
+		if _, err := s.resolveSecretSet(ctx, secretSetID); err != nil {
 			return err
 		}
 	}
 	// 仓库凭据引用为空时跳过。
 	if registryCredentialID != "" {
-		if _, err := s.resolveProjectRegistryCredential(ctx, projectID, registryCredentialID); err != nil {
+		if _, err := s.resolveRegistryCredential(ctx, registryCredentialID); err != nil {
 			return err
 		}
 	}
@@ -1612,14 +1477,13 @@ func (s *Store) ensureServiceReferencesResolved(ctx context.Context, projectID s
 }
 
 // ensureServiceProjectedFilesResolved 校验 projected file 来源资源和 key 都可解析。
-// 参数说明：ctx 控制数据库请求生命周期；projectID 是 project 唯一标识；projectedFiles 是 projected file spec 列表。
-func (s *Store) ensureServiceProjectedFilesResolved(ctx context.Context, projectID string, projectedFiles []projectedfile.Spec) error {
+func (s *Store) ensureServiceProjectedFilesResolved(ctx context.Context, projectedFiles []projectedfile.Spec) error {
 	// clone 后遍历，避免校验过程影响调用方切片。
 	for _, item := range projectedfile.CloneSpecs(projectedFiles) {
 		switch item.SourceKind {
 		case projectedfile.SourceKindConfigSet:
 			// config set 来源必须存在且包含指定 key。
-			configSet, err := s.resolveProjectConfigSet(ctx, projectID, item.SourceID)
+			configSet, err := s.resolveConfigSet(ctx, item.SourceID)
 			if err != nil {
 				return err
 			}
@@ -1628,7 +1492,7 @@ func (s *Store) ensureServiceProjectedFilesResolved(ctx context.Context, project
 			}
 		case projectedfile.SourceKindSecretSet:
 			// secret set 来源必须存在且包含指定 key。
-			secretSet, err := s.resolveProjectSecretSet(ctx, projectID, item.SourceID)
+			secretSet, err := s.resolveSecretSet(ctx, item.SourceID)
 			if err != nil {
 				return err
 			}

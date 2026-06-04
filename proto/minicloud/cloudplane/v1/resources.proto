@@ -21,7 +21,6 @@ message QuotaAdmissionRejected {
 
 message ConfigSet {
   string id = 1;
-  string project_id = 2 [json_name = "projectID"];
   string name = 3;
   map<string, string> values = 4;
   google.protobuf.Timestamp created_at = 5 [json_name = "createdAt"];
@@ -30,7 +29,6 @@ message ConfigSet {
 
 message SecretSet {
   string id = 1;
-  string project_id = 2 [json_name = "projectID"];
   string name = 3;
   repeated string keys = 4;
   google.protobuf.Timestamp created_at = 5 [json_name = "createdAt"];
@@ -39,7 +37,6 @@ message SecretSet {
 
 message RegistryCredential {
   string id = 1;
-  string project_id = 2 [json_name = "projectID"];
   string name = 3;
   string server = 4;
   string username = 5;

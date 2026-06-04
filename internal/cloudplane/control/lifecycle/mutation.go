@@ -11,15 +11,10 @@ import (
 )
 
 // Create 创建 service，并立即启动初始 revision。
-// 参数说明：ctx 控制数据库请求生命周期；serviceID/projectID/name 是 service 身份；spec 是 service 目标运行规格。
-func (o ServiceMutationController) Create(ctx context.Context, serviceID string, projectID string, name string, displayName string, spec workload.Spec) (CreateResult, error) {
-	// 先确认 project 存在，避免创建孤立 service。
-	if _, err := o.store.GetProject(ctx, projectID); err != nil {
-		return CreateResult{}, err
-	}
-
+// 参数说明：ctx 控制数据库请求生命周期；serviceID/name 是 service 身份；spec 是 service 目标运行规格。
+func (o ServiceMutationController) Create(ctx context.Context, serviceID string, name string, displayName string, spec workload.Spec) (CreateResult, error) {
 	// 按输入规格创建 service 记录；创建过程会做领域校验和默认值处理。
-	created, err := o.store.InsertService(ctx, serviceID, projectID, name, displayName, spec)
+	created, err := o.store.InsertService(ctx, serviceID, name, displayName, spec)
 	if err != nil {
 		return CreateResult{}, err
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	cloudplanecontrolapi "mini-cloud/internal/cloudplane/api/controlplane"
-	cloudplaneprojectapi "mini-cloud/internal/cloudplane/api/controlplane/project"
+	cloudplaneresourceapi "mini-cloud/internal/cloudplane/api/controlplane/resource"
 	cloudplaneserviceapi "mini-cloud/internal/cloudplane/api/controlplane/service"
 	cloudplanesnapshotapi "mini-cloud/internal/cloudplane/api/controlplane/snapshot"
 	cloudplaneagentapi "mini-cloud/internal/cloudplane/api/nodeagent"
@@ -30,8 +30,8 @@ func NewGRPCServer(opts Options, logger *slog.Logger, db *sql.DB, stores *store.
 	})
 	// snapshotService 承载 control-plane 拉取 cloud-plane 快照的内部 API。
 	snapshotService := cloudplanesnapshotapi.NewServer(logger, db, stores, opts.Config, controlPlaneAuth)
-	// projectService 承载 control-plane 同步 project 和 project resource 的内部 API。
-	projectService := cloudplaneprojectapi.NewServer(logger, stores, controlPlaneAuth)
+	// resourceService 承载 control-plane 同步全局 config、secret 和 registry credential 的内部 API。
+	resourceService := cloudplaneresourceapi.NewServer(logger, stores, controlPlaneAuth)
 	// workloadService 承载 control-plane 同步、查询和回滚 workload service 的内部 API。
 	workloadService := cloudplaneserviceapi.NewServer(logger, stores, controlPlaneAuth, lifecycleControllers)
 	// agentService 承载 node-agent 注册、心跳、拉取 work item 和上报 execution 的内部 API。
@@ -46,9 +46,9 @@ func NewGRPCServer(opts Options, logger *slog.Logger, db *sql.DB, stores *store.
 
 	// 创建裸 gRPC server；当前 cloud-plane 不在这里挂载 HTTP gateway 或额外拦截器。
 	grpcServer := grpc.NewServer()
-	// 注册 control-plane 内部服务；project、workload、snapshot 拆成独立 gRPC service，避免单个接口混杂多类职责。
+	// 注册 control-plane 内部服务；resource、workload、snapshot 拆成独立 gRPC service，避免单个接口混杂多类职责。
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, snapshotService)
-	cloudplanev1.RegisterControlPlaneProjectServiceServer(grpcServer, projectService)
+	cloudplanev1.RegisterControlPlaneResourceServiceServer(grpcServer, resourceService)
 	cloudplanev1.RegisterControlPlaneWorkloadServiceServer(grpcServer, workloadService)
 	// 注册 node-agent 内部服务，供运行节点接入 cloud-plane。
 	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, agentService)

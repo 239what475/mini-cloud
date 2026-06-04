@@ -620,7 +620,6 @@ type WorkItem struct {
 	DeploymentId        string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentID,proto3" json:"deployment_id,omitempty"`
 	ReplicaIndex        int32                  `protobuf:"varint,3,opt,name=replica_index,json=replicaIndex,proto3" json:"replica_index,omitempty"`
 	NodeId              string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	ProjectId           string                 `protobuf:"bytes,5,opt,name=project_id,json=projectID,proto3" json:"project_id,omitempty"`
 	ServiceId           string                 `protobuf:"bytes,6,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
 	ServiceName         string                 `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
 	RevisionId          string                 `protobuf:"bytes,8,opt,name=revision_id,json=revisionID,proto3" json:"revision_id,omitempty"`
@@ -694,13 +693,6 @@ func (x *WorkItem) GetReplicaIndex() int32 {
 func (x *WorkItem) GetNodeId() string {
 	if x != nil {
 		return x.NodeId
-	}
-	return ""
-}
-
-func (x *WorkItem) GetProjectId() string {
-	if x != nil {
-		return x.ProjectId
 	}
 	return ""
 }
@@ -1310,14 +1302,12 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x12\x1f\n" +
 	"\vsource_path\x18\x03 \x01(\tR\n" +
-	"sourcePath\"\xc0\a\n" +
+	"sourcePath\"\xb3\a\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12#\n" +
 	"\rreplica_index\x18\x03 \x01(\x05R\freplicaIndex\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeID\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x05 \x01(\tR\tprojectID\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x06 \x01(\tR\tserviceID\x12!\n" +
 	"\fservice_name\x18\a \x01(\tR\vserviceName\x12\x1f\n" +
@@ -1338,7 +1328,8 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x0fpersistent_dirs\x18\x14 \x03(\v2*.minicloud.nodeagent.v1.PersistentDirMountR\x0epersistentDirs\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\n" +
+	"project_id\"*\n" +
 	"\x0fPollWorkRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"H\n" +
 	"\x10PollWorkResponse\x124\n" +

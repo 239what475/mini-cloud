@@ -75,7 +75,6 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 		},
 		Health: health,
 		Overview: cloudplaneapi.OverviewSummary{
-			ProjectsTotal:         overview.ProjectsTotal,
 			ServicesTotal:         overview.ServicesTotal,
 			ServicesIdle:          overview.ServicesIdle,
 			ServicesDeploying:     overview.ServicesDeploying,

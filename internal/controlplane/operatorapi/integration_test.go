@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	"mini-cloud/internal/controlplane/operatorapi"
@@ -39,17 +38,7 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
 
-	projectItem, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{
-		Name:        "demo",
-		DisplayName: "Demo",
-		OwnerUserID: "usr-demo",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	_, err = db.Store.CreateService(context.Background(), controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "hello",
 		DisplayName: "Hello",
 		Spec: controlservice.Spec{
@@ -75,7 +64,6 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 				PlaneDisplayName:            "Aliyun Beijing Primary",
 				Provider:                    "aliyun",
 				Region:                      "cn-beijing",
-				ProjectID:                   projectItem.ID,
 				BasedOnInventorySyncVersion: 1,
 			},
 		},
@@ -120,11 +108,11 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetOverview returned error: %v", err)
 	}
-	if overview.GetProjectsTotal() != 1 || overview.GetServicesTotal() != 1 || overview.GetPlanesTotal() != 1 {
+	if overview.GetServicesTotal() != 1 || overview.GetPlanesTotal() != 1 {
 		t.Fatalf("unexpected overview payload: %+v", overview)
 	}
 
-	services, err := client.ListServices(context.Background(), projectItem.ID)
+	services, err := client.ListServices(context.Background())
 	if err != nil {
 		t.Fatalf("ListServices returned error: %v", err)
 	}
@@ -133,7 +121,6 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 	}
 
 	created, err := client.CreateService(context.Background(), &controlplanev1.CreateServiceRequest{
-		ProjectId:   projectItem.ID,
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
 		Spec: &controlplanev1.ServiceSpec{
@@ -181,7 +168,7 @@ type fakePlanner struct {
 	previewResult planeselector.SelectionResult
 }
 
-func (f *fakePlanner) PreviewProjectSelection(_ context.Context, _ string, _ planeselector.SelectionInput) (planeselector.SelectionResult, error) {
+func (f *fakePlanner) PreviewSelection(_ context.Context, _ planeselector.SelectionInput) (planeselector.SelectionResult, error) {
 	return f.previewResult, nil
 }
 
@@ -190,20 +177,19 @@ type fakeDeploy struct{}
 func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
 	return deploy.ApplyResult{
 		PlaneID:           planeID,
-		ProjectID:         input.Metadata.ProjectID,
 		Action:            deploy.ApplyActionCreated,
 		DesiredGeneration: 1,
 	}, nil
 }
 
-func (f *fakeDeploy) DeleteService(context.Context, string, string, string) error {
+func (f *fakeDeploy) DeleteService(context.Context, string, string) error {
 	return nil
 }
 
-func (f *fakeDeploy) GetService(_ context.Context, planeID string, projectID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
+func (f *fakeDeploy) GetService(_ context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
 	return cloudplaneapi.ServiceResponse{
 		Service: cloudplaneapi.Service{
-			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, ProjectID: projectID, Name: serviceID, DisplayName: serviceID},
+			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, Name: serviceID, DisplayName: serviceID},
 			Spec:     cloudplaneapi.ServiceSpec{Region: "cn-beijing", Replicas: 1, InstanceClass: controlservice.InstanceClassSmall, Exposure: "public", Image: "nginx:1.27-alpine", DefaultPort: 8080, ReadinessPath: "/healthz"},
 			Status:   cloudplaneapi.ServiceStatus{Phase: "running", CurrentRevisionID: "rel-1"},
 		},

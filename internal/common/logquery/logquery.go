@@ -60,7 +60,6 @@ type Filters struct {
 	Component     string
 	PlatformName  string
 	PlaneID       string
-	ProjectID     string
 	ServiceID     string
 	DeploymentID  string
 	NodeID        string
@@ -288,7 +287,6 @@ func buildLogQL(filters Filters) string {
 	builder.WriteString(" | logfmt")
 	appendParsedFilter(&builder, "platform_name", filters.PlatformName)
 	appendParsedFilter(&builder, "plane_id", filters.PlaneID)
-	appendParsedFilter(&builder, "project_id", filters.ProjectID)
 	appendParsedFilter(&builder, "service_id", filters.ServiceID)
 	appendParsedFilter(&builder, "deployment_id", filters.DeploymentID)
 	appendParsedFilter(&builder, "node_id", filters.NodeID)

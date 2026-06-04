@@ -1,4 +1,4 @@
-// Package usage 计算 project 配额、service 资源用量和变更预演结果。
+// Package usage 计算全局资源 guardrail、service 资源用量和变更预演结果。
 package usage
 
 import (
@@ -7,24 +7,23 @@ import (
 	"strings"
 
 	"mini-cloud/internal/cloudplane/domain/workload"
-	"mini-cloud/internal/common/project"
 )
 
-// ErrProjectQuotaExceeded 表示本次变更会超过 project 配额。
-var ErrProjectQuotaExceeded = errors.New("project quota exceeded")
+// ErrResourceGuardrailExceeded 表示本次变更会超过 resource guardrail。
+var ErrResourceGuardrailExceeded = errors.New("resource guardrail exceeded")
 
 const (
-	// RejectReasonServicesQuotaExceeded 表示 service 数量会超过 project 配额。
+	// RejectReasonServicesQuotaExceeded 表示 service 数量会超过 resource guardrail。
 	RejectReasonServicesQuotaExceeded = "services_quota_exceeded"
-	// RejectReasonCPUQuotaExceeded 表示 CPU 请求量会超过 project 配额。
+	// RejectReasonCPUQuotaExceeded 表示 CPU 请求量会超过 resource guardrail。
 	RejectReasonCPUQuotaExceeded = "cpu_quota_exceeded"
-	// RejectReasonMemoryQuotaExceeded 表示内存请求量会超过 project 配额。
+	// RejectReasonMemoryQuotaExceeded 表示内存请求量会超过 resource guardrail。
 	RejectReasonMemoryQuotaExceeded = "memory_quota_exceeded"
 )
 
-// RejectReason 描述某一项配额拒绝原因和计算过程。
+// RejectReason 描述某一项 resource guardrail 拒绝原因和计算过程。
 type RejectReason struct {
-	// Code 是配额拒绝原因的机器可读编码。
+	// Code 是 resource guardrail 拒绝原因的机器可读编码。
 	Code string `json:"code"`
 	// Message 是面向用户展示的拒绝原因。
 	Message string `json:"message"`
@@ -34,11 +33,11 @@ type RejectReason struct {
 	RequestedDelta int `json:"requestedDelta"`
 	// Projected 是应用本次变更后的预计用量。
 	Projected int `json:"projected"`
-	// Limit 是该资源维度的配额上限。
+	// Limit 是该资源维度的 resource guardrail 上限。
 	Limit int `json:"limit"`
 }
 
-// ServiceUsageItem 表示单个 service 当前占用的配额资源。
+// ServiceUsageItem 表示单个 service 当前占用的资源。
 type ServiceUsageItem struct {
 	// ServiceID 表示所属 service 的唯一标识。
 	ServiceID string `json:"serviceID"`
@@ -56,18 +55,26 @@ type ServiceUsageItem struct {
 	RequestedMemoryMi int `json:"requestedMemoryMi"`
 }
 
-// ProjectUsage 汇总一个 project 当前已使用的服务数、CPU 和内存。
-type ProjectUsage struct {
-	// Services 是当前已占用配额的 service 数量。
+// Guardrails 描述 single-tenant control plane 的全局资源上限。
+// 字段为 0 时表示该维度不设置软件层上限。
+type Guardrails struct {
+	MaxServices int `json:"maxServices"`
+	CPUMilli    int `json:"cpuMilli"`
+	MemoryMi    int `json:"memoryMi"`
+}
+
+// ResourceUsage 汇总当前已使用的服务数、CPU 和内存。
+type ResourceUsage struct {
+	// Services 是当前已运行的 service 数量。
 	Services int `json:"services"`
-	// CPUMilli 是当前已占用配额的 CPU 毫核数。
+	// CPUMilli 是当前已占用的 CPU 毫核数。
 	CPUMilli int `json:"cpuMilli"`
-	// MemoryMi 是当前已占用配额的内存 MiB 数。
+	// MemoryMi 是当前已占用的内存 MiB 数。
 	MemoryMi int `json:"memoryMi"`
 }
 
-// ProjectUsageDelta 表示一次变更对 project 用量造成的增量。
-type ProjectUsageDelta struct {
+// ResourceUsageDelta 表示一次变更对 resource usage 造成的增量。
+type ResourceUsageDelta struct {
 	// Services 是本次变更带来的 service 数量增量。
 	Services int `json:"services"`
 	// CPUMilli 是本次变更带来的 CPU 毫核数增量，可为负数。
@@ -76,26 +83,24 @@ type ProjectUsageDelta struct {
 	MemoryMi int `json:"memoryMi"`
 }
 
-// ProjectRemaining 表示配额上限减去用量后的差值，超限时字段可能为负数。
-type ProjectRemaining struct {
-	// Services 是 service 数量配额剩余差值，超限时为负数。
+// ResourceRemaining 表示 resource guardrail 上限减去用量后的差值，超限时字段可能为负数。
+type ResourceRemaining struct {
+	// Services 是 service 数量剩余差值，超限时为负数。
 	Services int `json:"services"`
-	// CPUMilli 是 CPU 配额剩余差值，超限时为负数。
+	// CPUMilli 是 CPU 剩余差值，超限时为负数。
 	CPUMilli int `json:"cpuMilli"`
-	// MemoryMi 是内存配额剩余差值，超限时为负数。
+	// MemoryMi 是内存剩余差值，超限时为负数。
 	MemoryMi int `json:"memoryMi"`
 }
 
-// ProjectUsageSummary 汇总 project 配额、当前用量、quota-usage 差值和 service 明细。
-type ProjectUsageSummary struct {
-	// Project 是本次统计所属的 project。
-	Project project.Project `json:"project"`
-	// Guardrails 是 project 配置的配额上限。
-	Guardrails project.Quota `json:"guardrails"`
-	// Usage 是 project 当前总用量。
-	Usage ProjectUsage `json:"usage"`
-	// Remaining 是 project 当前 quota-usage 差值，超限时字段可能为负数。
-	Remaining ProjectRemaining `json:"remaining"`
+// ResourceUsageSummary 汇总全局 guardrails、当前用量、guardrail-usage 差值和 service 明细。
+type ResourceUsageSummary struct {
+	// Guardrails 是当前 control plane 配置的资源上限。
+	Guardrails Guardrails `json:"guardrails"`
+	// Usage 是当前全局总用量。
+	Usage ResourceUsage `json:"usage"`
+	// Remaining 是当前全局 guardrail-usage 差值，超限时字段可能为负数。
+	Remaining ResourceRemaining `json:"remaining"`
 	// Services 是参与统计的 service 用量明细。
 	Services []ServiceUsageItem `json:"services"`
 }
@@ -120,99 +125,96 @@ type ServicePlanPreview struct {
 	RequestedMemoryMi int `json:"requestedMemoryMi"`
 }
 
-// ProjectQuotaPreview 表示一次候选变更对 project 配额的影响预演。
-type ProjectQuotaPreview struct {
-	// Project 是本次统计所属的 project。
-	Project project.Project `json:"project"`
-	// Guardrails 是 project 配置的配额上限。
-	Guardrails project.Quota `json:"guardrails"`
+// ResourceGuardrailPreview 表示一次候选变更对全局资源 guardrail 的影响预演。
+type ResourceGuardrailPreview struct {
+	// Guardrails 是当前 control plane 配置的资源上限。
+	Guardrails Guardrails `json:"guardrails"`
 	// Candidate 是本次预演的候选 service plan。
 	Candidate ServicePlanPreview `json:"candidate"`
-	// CurrentUsage 是变更前 project 当前用量。
-	CurrentUsage ProjectUsage `json:"currentUsage"`
+	// CurrentUsage 是变更前全局用量。
+	CurrentUsage ResourceUsage `json:"currentUsage"`
 	// RequestedDelta 是本次候选变更带来的用量增量。
-	RequestedDelta ProjectUsageDelta `json:"requestedDelta"`
-	// ProjectedUsage 是应用候选变更后的预计 project 用量。
-	ProjectedUsage ProjectUsage `json:"projectedUsage"`
-	// Remaining 是应用候选变更后的 quota-usage 差值，超限时字段可能为负数。
-	Remaining ProjectRemaining `json:"remaining"`
-	// Allowed 表示候选变更是否未超过配额。
+	RequestedDelta ResourceUsageDelta `json:"requestedDelta"`
+	// ProjectedUsage 是应用候选变更后的预计 resource usage。
+	ProjectedUsage ResourceUsage `json:"projectedUsage"`
+	// Remaining 是应用候选变更后的 guardrail-usage 差值，超限时字段可能为负数。
+	Remaining ResourceRemaining `json:"remaining"`
+	// Allowed 表示候选变更是否未超过 resource guardrail。
 	Allowed bool `json:"allowed"`
-	// RejectReasons 记录候选变更被拒绝的具体配额原因。
+	// RejectReasons 记录候选变更被拒绝的具体 resource guardrail 原因。
 	RejectReasons []RejectReason `json:"rejectReasons"`
 }
 
-// QuotaExceededError 携带一个或多个配额拒绝原因。
+// QuotaExceededError 携带一个或多个 resource guardrail 拒绝原因。
 type QuotaExceededError struct {
-	// RejectReasons 记录候选变更被拒绝的具体配额原因。
+	// RejectReasons 记录候选变更被拒绝的具体 resource guardrail 原因。
 	RejectReasons []RejectReason
 }
 
 // Error 返回错误的文本描述。
 func (e *QuotaExceededError) Error() string {
-	// 没有具体拒绝原因时，返回通用配额超限错误文本。
+	// 没有具体拒绝原因时，返回通用 resource guardrail 超限错误文本。
 	if len(e.RejectReasons) == 0 {
-		return ErrProjectQuotaExceeded.Error()
+		return ErrResourceGuardrailExceeded.Error()
 	}
 	// 将每条拒绝原因转换为 code/message 片段。
 	parts := make([]string, 0, len(e.RejectReasons))
 	for _, reason := range e.RejectReasons {
 		parts = append(parts, fmt.Sprintf("%s: %s", reason.Code, reason.Message))
 	}
-	// 用分号拼接多维度配额拒绝原因。
-	return fmt.Sprintf("%s: %s", ErrProjectQuotaExceeded.Error(), strings.Join(parts, "; "))
+	// 用分号拼接多维度 resource guardrail 拒绝原因。
+	return fmt.Sprintf("%s: %s", ErrResourceGuardrailExceeded.Error(), strings.Join(parts, "; "))
 }
 
 // Unwrap 返回包装的底层错误。
 func (e *QuotaExceededError) Unwrap() error {
-	return ErrProjectQuotaExceeded
+	return ErrResourceGuardrailExceeded
 }
 
-// BuildProjectUsageSummary 根据 project 配额和 service 列表计算当前用量、quota-usage 差值和明细。
-// 参数说明：prj 是目标 project；services 是参与配额计算的 service 列表。
-func BuildProjectUsageSummary(prj project.Project, services []workload.Service) (ProjectUsageSummary, error) {
-	// items 保存每个 service 的用量明细，aggregate 累加项目总用量。
+// BuildResourceUsageSummary 根据全局 guardrails 和 service 列表计算当前用量、guardrail-usage 差值和明细。
+// 参数说明：guardrails 是全局资源上限；services 是参与 resource guardrail 计算的 service 列表。
+func BuildResourceUsageSummary(guardrails Guardrails, services []workload.Service) (ResourceUsageSummary, error) {
+	// items 保存每个 service 的用量明细，aggregate 累加全局用量。
 	items := make([]ServiceUsageItem, 0, len(services))
-	aggregate := ProjectUsage{}
+	aggregate := ResourceUsage{}
 
 	// 逐个 service 计算当前规格对应的资源请求。
 	for _, item := range services {
 		serviceUsage, err := buildServiceUsageItem(item)
 		if err != nil {
-			return ProjectUsageSummary{}, err
+			return ResourceUsageSummary{}, err
 		}
-		// 明细用于展示，aggregate 用于 quota-usage 差值和配额判断。
+		// 明细用于展示，aggregate 用于 guardrail-usage 差值和 resource guardrail 判断。
 		items = append(items, serviceUsage)
 		accumulateUsage(&aggregate, serviceUsage)
 	}
 
-	// 返回当前用量、quota-usage 差值和每个 service 的用量明细。
-	return ProjectUsageSummary{
-		Project:    prj,
-		Guardrails: prj.Quota,
+	// 返回当前用量、guardrail-usage 差值和每个 service 的用量明细。
+	return ResourceUsageSummary{
+		Guardrails: guardrails,
 		Usage:      aggregate,
-		Remaining:  buildRemaining(prj.Quota, aggregate),
+		Remaining:  buildRemaining(guardrails, aggregate),
 		Services:   items,
 	}, nil
 }
 
-// PreviewServicePlan 预演 service plan 是否会超过项目配额。
-// 参数说明：prj 是目标 project；services 是参与配额计算的 service 列表；input 是候选 service plan。
-func PreviewServicePlan(prj project.Project, services []workload.Service, input ServicePlanPreviewInput) (ProjectQuotaPreview, error) {
+// PreviewServicePlan 预演 service plan 是否会超过全局资源 guardrail。
+// 参数说明：guardrails 是全局资源上限；services 是参与 resource guardrail 计算的 service 列表；input 是候选 service plan。
+func PreviewServicePlan(guardrails Guardrails, services []workload.Service, input ServicePlanPreviewInput) (ResourceGuardrailPreview, error) {
 	candidate, err := DescribeServicePlan(input)
 	if err != nil {
-		return ProjectQuotaPreview{}, err
+		return ResourceGuardrailPreview{}, err
 	}
-	return PreviewCapacityChange(prj, services, candidate, projectUsageDeltaFromPlan(candidate))
+	return PreviewCapacityChange(guardrails, services, candidate, resourceUsageDeltaFromPlan(candidate))
 }
 
-// PreviewCapacityChange 预演容量变更后的项目用量和 quota-usage 差值。
-// 参数说明：prj 是目标 project；services 是参与配额计算的 service 列表；candidate 是候选 service 规格；delta 是本次变更的用量增量。
-func PreviewCapacityChange(prj project.Project, services []workload.Service, candidate ServicePlanPreview, delta ProjectUsageDelta) (ProjectQuotaPreview, error) {
+// PreviewCapacityChange 预演容量变更后的全局用量和 guardrail-usage 差值。
+// 参数说明：guardrails 是全局资源上限；services 是参与 resource guardrail 计算的 service 列表；candidate 是候选 service 规格；delta 是本次变更的用量增量。
+func PreviewCapacityChange(guardrails Guardrails, services []workload.Service, candidate ServicePlanPreview, delta ResourceUsageDelta) (ResourceGuardrailPreview, error) {
 	// 先基于当前 service 列表计算现有用量。
-	summary, err := BuildProjectUsageSummary(prj, services)
+	summary, err := BuildResourceUsageSummary(guardrails, services)
 	if err != nil {
-		return ProjectQuotaPreview{}, err
+		return ResourceGuardrailPreview{}, err
 	}
 	// projected 从当前用量复制，再叠加本次变更增量。
 	projected := summary.Usage
@@ -220,18 +222,17 @@ func PreviewCapacityChange(prj project.Project, services []workload.Service, can
 	projected.CPUMilli += delta.CPUMilli
 	projected.MemoryMi += delta.MemoryMi
 
-	// 根据 projected 用量判断是否超过各配额维度。
-	rejectReasons := evaluateQuota(prj.Quota, summary.Usage, delta, projected)
+	// 根据 projected 用量判断是否超过各 resource guardrail 维度。
+	rejectReasons := evaluateQuota(guardrails, summary.Usage, delta, projected)
 
 	// 返回预演视图；Allowed 只取决于是否产生拒绝原因。
-	return ProjectQuotaPreview{
-		Project:        prj,
-		Guardrails:     prj.Quota,
+	return ResourceGuardrailPreview{
+		Guardrails:     guardrails,
 		Candidate:      candidate,
 		CurrentUsage:   summary.Usage,
 		RequestedDelta: delta,
 		ProjectedUsage: projected,
-		Remaining:      buildRemaining(prj.Quota, projected),
+		Remaining:      buildRemaining(guardrails, projected),
 		Allowed:        len(rejectReasons) == 0,
 		RejectReasons:  append([]RejectReason(nil), rejectReasons...),
 	}, nil
@@ -239,22 +240,22 @@ func PreviewCapacityChange(prj project.Project, services []workload.Service, can
 
 // DeltaBetweenPlans 计算两个 service plan 之间的用量差异。
 // 参数说明：current 是变更前 plan；desired 是变更后 plan；serviceCountDelta 是 service 数量增量。
-func DeltaBetweenPlans(current ServicePlanPreview, desired ServicePlanPreview, serviceCountDelta int) ProjectUsageDelta {
-	return ProjectUsageDelta{
+func DeltaBetweenPlans(current ServicePlanPreview, desired ServicePlanPreview, serviceCountDelta int) ResourceUsageDelta {
+	return ResourceUsageDelta{
 		Services: serviceCountDelta,
 		CPUMilli: desired.RequestedCPUMilli - current.RequestedCPUMilli,
 		MemoryMi: desired.RequestedMemoryMi - current.RequestedMemoryMi,
 	}
 }
 
-// HasPositiveCapacityDelta 判断本次用量增量是否会增加任一配额维度。
+// HasPositiveCapacityDelta 判断本次用量增量是否会增加任一 resource guardrail 维度。
 // 参数说明：delta 是本次变更的用量增量。
-func HasPositiveCapacityDelta(delta ProjectUsageDelta) bool {
+func HasPositiveCapacityDelta(delta ResourceUsageDelta) bool {
 	return delta.Services > 0 || delta.CPUMilli > 0 || delta.MemoryMi > 0
 }
 
-// NewQuotaExceededError 根据拒绝原因构造配额超限错误；没有拒绝原因时返回 nil。
-// 参数说明：rejectReasons 是配额预演产生的拒绝原因列表。
+// NewQuotaExceededError 根据拒绝原因构造 resource guardrail 超限错误；没有拒绝原因时返回 nil。
+// 参数说明：rejectReasons 是 resource guardrail 预演产生的拒绝原因列表。
 func NewQuotaExceededError(rejectReasons []RejectReason) error {
 	if len(rejectReasons) == 0 {
 		return nil
@@ -263,7 +264,7 @@ func NewQuotaExceededError(rejectReasons []RejectReason) error {
 }
 
 // buildServiceUsageItem 根据 service 当前规格计算单服务用量明细。
-// 参数说明：item 是要纳入配额统计的 service 当前规格。
+// 参数说明：item 是要纳入 resource guardrail 统计的 service 当前规格。
 func buildServiceUsageItem(item workload.Service) (ServiceUsageItem, error) {
 	// 复用 DescribeServicePlan，将 instance class + replicas 转为资源请求。
 	preview, err := DescribeServicePlan(ServicePlanPreviewInput{
@@ -308,70 +309,70 @@ func DescribeServicePlan(input ServicePlanPreviewInput) (ServicePlanPreview, err
 	}, nil
 }
 
-// projectUsageDeltaFromPlan 把 service plan 转换为项目用量增量。
+// resourceUsageDeltaFromPlan 把 service plan 转换为 resource usage delta。
 // 参数说明：plan 是待转换的 service plan。
-func projectUsageDeltaFromPlan(plan ServicePlanPreview) ProjectUsageDelta {
-	return ProjectUsageDelta{
+func resourceUsageDeltaFromPlan(plan ServicePlanPreview) ResourceUsageDelta {
+	return ResourceUsageDelta{
 		Services: 1,
 		CPUMilli: plan.RequestedCPUMilli,
 		MemoryMi: plan.RequestedMemoryMi,
 	}
 }
 
-// accumulateUsage 把单个 service 用量累加到项目总用量。
-// 参数说明：aggregate 是项目用量累计器；item 是单个 service 的配额用量。
-func accumulateUsage(aggregate *ProjectUsage, item ServiceUsageItem) {
+// accumulateUsage 把单个 service 用量累加到全局用量。
+// 参数说明：aggregate 是全局用量累计器；item 是单个 service 的资源用量。
+func accumulateUsage(aggregate *ResourceUsage, item ServiceUsageItem) {
 	aggregate.Services++
 	aggregate.CPUMilli += item.RequestedCPUMilli
 	aggregate.MemoryMi += item.RequestedMemoryMi
 }
 
-// buildRemaining 根据配额和用量计算 quota-usage 差值，超限时会返回负数。
-// 参数说明：quota 是项目配额；usage 是当前用量。
-func buildRemaining(quota project.Quota, usage ProjectUsage) ProjectRemaining {
-	return ProjectRemaining{
-		Services: quota.MaxServices - usage.Services,
-		CPUMilli: quota.CPUMilli - usage.CPUMilli,
-		MemoryMi: quota.MemoryMi - usage.MemoryMi,
+// buildRemaining 根据 resource guardrail 和用量计算 guardrail-usage 差值，超限时会返回负数。
+// 参数说明：guardrails 是全局资源护栏；usage 是当前用量。
+func buildRemaining(guardrails Guardrails, usage ResourceUsage) ResourceRemaining {
+	return ResourceRemaining{
+		Services: guardrails.MaxServices - usage.Services,
+		CPUMilli: guardrails.CPUMilli - usage.CPUMilli,
+		MemoryMi: guardrails.MemoryMi - usage.MemoryMi,
 	}
 }
 
-// evaluateQuota 根据 quota、当前用量和增量生成拒绝原因。
-// 参数说明：quota 是项目配额；current 是变更前当前用量；delta 是本次变更的用量增量；projected 是变更后的预计用量。
-func evaluateQuota(quota project.Quota, current ProjectUsage, delta ProjectUsageDelta, projected ProjectUsage) []RejectReason {
+// evaluateQuota 根据资源护栏、当前用量和增量生成拒绝原因。
+// 参数说明：guardrails 是全局资源护栏；current 是变更前当前用量；delta 是本次变更的用量增量；projected 是变更后的预计用量。
+func evaluateQuota(guardrails Guardrails, current ResourceUsage, delta ResourceUsageDelta, projected ResourceUsage) []RejectReason {
 	// reasons 收集所有超限维度，而不是遇到第一个超限就返回。
 	var reasons []RejectReason
 	// service 数量超过上限时记录 services 维度拒绝原因。
-	if projected.Services > quota.MaxServices {
+	if guardrails.MaxServices > 0 && projected.Services > guardrails.MaxServices {
 		reasons = append(reasons, RejectReason{
 			Code:           RejectReasonServicesQuotaExceeded,
-			Message:        "project services quota would be exceeded",
+			Message:        "service count guardrail would be exceeded",
 			Current:        current.Services,
 			RequestedDelta: delta.Services,
 			Projected:      projected.Services,
-			Limit:          quota.MaxServices,
+			Limit:          guardrails.MaxServices,
 		})
 	}
-	// CPU projected 用量超过项目 CPU 配额时记录 CPU 维度拒绝原因。
-	if projected.CPUMilli > quota.CPUMilli {
+	// CPU projected 用量超过全局 CPU 护栏时记录 CPU 维度拒绝原因。
+	if guardrails.CPUMilli > 0 && projected.CPUMilli > guardrails.CPUMilli {
 		reasons = append(reasons, RejectReason{
 			Code:           RejectReasonCPUQuotaExceeded,
-			Message:        "project cpu quota would be exceeded",
+			Message:        "cpu guardrail would be exceeded",
 			Current:        current.CPUMilli,
 			RequestedDelta: delta.CPUMilli,
 			Projected:      projected.CPUMilli,
-			Limit:          quota.CPUMilli,
+			Limit:          guardrails.CPUMilli,
 		})
 	}
-	// 内存 projected 用量超过项目内存配额时记录 memory 维度拒绝原因。
-	if projected.MemoryMi > quota.MemoryMi {
+	// 内存 projected 用量超过全局内存护栏时记录 memory 维度拒绝原因。
+	if guardrails.MemoryMi > 0 && projected.MemoryMi > guardrails.MemoryMi {
 		reasons = append(reasons, RejectReason{
 			Code:           RejectReasonMemoryQuotaExceeded,
-			Message:        "project memory quota would be exceeded",
+			Message:        "memory guardrail would be exceeded",
 			Current:        current.MemoryMi,
 			RequestedDelta: delta.MemoryMi,
 			Projected:      projected.MemoryMi,
-			Limit:          quota.MemoryMi,
+			Limit:          guardrails.MemoryMi,
 		})
 	}
 

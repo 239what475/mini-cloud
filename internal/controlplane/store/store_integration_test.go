@@ -7,11 +7,10 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/controlplane/incident"
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/projectresource"
+	"mini-cloud/internal/controlplane/resource"
 	"mini-cloud/internal/controlplane/runtimepool"
 	controlservice "mini-cloud/internal/controlplane/service"
 	controlplanestore "mini-cloud/internal/controlplane/store"
@@ -348,35 +347,26 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "projected-files",
-		DisplayName: "Projected Files",
-		OwnerUserID: "usr-owner-002",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-	configSet, err := db.Store.CreateProjectConfigSet(ctx, projectItem.ID, projectresource.CreateConfigSetInput{
+	configSet, err := db.Store.CreateConfigSet(ctx, resource.CreateConfigSetInput{
 		Name: "cliproxy-config",
 		Values: map[string]string{
 			"config.yaml": "listen: :8317\n",
 		},
 	})
 	if err != nil {
-		t.Fatalf("CreateProjectConfigSet returned error: %v", err)
+		t.Fatalf("CreateConfigSet returned error: %v", err)
 	}
-	secretSet, err := db.Store.CreateProjectSecretSet(ctx, projectItem.ID, projectresource.CreateSecretSetInput{
+	secretSet, err := db.Store.CreateSecretSet(ctx, resource.CreateSecretSetInput{
 		Name: "cliproxy-secret",
 		Values: map[string]string{
 			"token": "token-v1",
 		},
 	})
 	if err != nil {
-		t.Fatalf("CreateProjectSecretSet returned error: %v", err)
+		t.Fatalf("CreateSecretSet returned error: %v", err)
 	}
 
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
 		Spec: controlservice.Spec{
@@ -427,17 +417,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeAfterRevision
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "persistent-dir-update-block",
-		DisplayName: "Persistent Dir Update Block",
-		OwnerUserID: "usr-owner-004",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "cliproxy",
 		DisplayName: "CLIProxy",
 		Spec: controlservice.Spec{
@@ -508,17 +488,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeWhenLockedWit
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "persistent-dir-update-block-locked",
-		DisplayName: "Persistent Dir Update Block Locked",
-		OwnerUserID: "usr-owner-005",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "cliproxy-locked",
 		DisplayName: "CLIProxy Locked",
 		Spec: controlservice.Spec{
@@ -581,17 +551,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWi
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "persistent-dir-placement-block-locked",
-		DisplayName: "Persistent Dir Placement Block Locked",
-		OwnerUserID: "usr-owner-006",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "cliproxy-placement-locked",
 		DisplayName: "CLIProxy Placement Locked",
 		Spec: controlservice.Spec{
@@ -656,17 +616,7 @@ func TestIntegrationCreateServicePersistsPersistentDirs(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	projectItem, err := db.Store.CreateProject(ctx, project.CreateProjectInput{
-		Name:        "persistent-dirs",
-		DisplayName: "Persistent Dirs",
-		OwnerUserID: "usr-owner-003",
-	})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
-		ProjectID:   projectItem.ID,
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
 		Spec: controlservice.Spec{

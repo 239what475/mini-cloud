@@ -24,8 +24,6 @@ const (
 	OperatorService_ListPlanes_FullMethodName    = "/minicloud.controlplane.v1.OperatorService/ListPlanes"
 	OperatorService_GetPlane_FullMethodName      = "/minicloud.controlplane.v1.OperatorService/GetPlane"
 	OperatorService_SyncPlane_FullMethodName     = "/minicloud.controlplane.v1.OperatorService/SyncPlane"
-	OperatorService_ListProjects_FullMethodName  = "/minicloud.controlplane.v1.OperatorService/ListProjects"
-	OperatorService_GetProject_FullMethodName    = "/minicloud.controlplane.v1.OperatorService/GetProject"
 	OperatorService_ListServices_FullMethodName  = "/minicloud.controlplane.v1.OperatorService/ListServices"
 	OperatorService_GetService_FullMethodName    = "/minicloud.controlplane.v1.OperatorService/GetService"
 	OperatorService_CreateService_FullMethodName = "/minicloud.controlplane.v1.OperatorService/CreateService"
@@ -39,9 +37,7 @@ type OperatorServiceClient interface {
 	ListPlanes(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListPlanesResponse, error)
 	GetPlane(ctx context.Context, in *GetPlaneRequest, opts ...grpc.CallOption) (*Plane, error)
 	SyncPlane(ctx context.Context, in *SyncPlaneRequest, opts ...grpc.CallOption) (*SyncPlaneResponse, error)
-	ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error)
-	GetProject(ctx context.Context, in *GetProjectRequest, opts ...grpc.CallOption) (*Project, error)
-	ListServices(ctx context.Context, in *ListServicesRequest, opts ...grpc.CallOption) (*ListServicesResponse, error)
+	ListServices(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListServicesResponse, error)
 	GetService(ctx context.Context, in *GetServiceRequest, opts ...grpc.CallOption) (*Service, error)
 	CreateService(ctx context.Context, in *CreateServiceRequest, opts ...grpc.CallOption) (*Service, error)
 }
@@ -94,27 +90,7 @@ func (c *operatorServiceClient) SyncPlane(ctx context.Context, in *SyncPlaneRequ
 	return out, nil
 }
 
-func (c *operatorServiceClient) ListProjects(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListProjectsResponse, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ListProjectsResponse)
-	err := c.cc.Invoke(ctx, OperatorService_ListProjects_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *operatorServiceClient) GetProject(ctx context.Context, in *GetProjectRequest, opts ...grpc.CallOption) (*Project, error) {
-	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(Project)
-	err := c.cc.Invoke(ctx, OperatorService_GetProject_FullMethodName, in, out, cOpts...)
-	if err != nil {
-		return nil, err
-	}
-	return out, nil
-}
-
-func (c *operatorServiceClient) ListServices(ctx context.Context, in *ListServicesRequest, opts ...grpc.CallOption) (*ListServicesResponse, error) {
+func (c *operatorServiceClient) ListServices(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*ListServicesResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListServicesResponse)
 	err := c.cc.Invoke(ctx, OperatorService_ListServices_FullMethodName, in, out, cOpts...)
@@ -152,9 +128,7 @@ type OperatorServiceServer interface {
 	ListPlanes(context.Context, *emptypb.Empty) (*ListPlanesResponse, error)
 	GetPlane(context.Context, *GetPlaneRequest) (*Plane, error)
 	SyncPlane(context.Context, *SyncPlaneRequest) (*SyncPlaneResponse, error)
-	ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error)
-	GetProject(context.Context, *GetProjectRequest) (*Project, error)
-	ListServices(context.Context, *ListServicesRequest) (*ListServicesResponse, error)
+	ListServices(context.Context, *emptypb.Empty) (*ListServicesResponse, error)
 	GetService(context.Context, *GetServiceRequest) (*Service, error)
 	CreateService(context.Context, *CreateServiceRequest) (*Service, error)
 	mustEmbedUnimplementedOperatorServiceServer()
@@ -179,13 +153,7 @@ func (UnimplementedOperatorServiceServer) GetPlane(context.Context, *GetPlaneReq
 func (UnimplementedOperatorServiceServer) SyncPlane(context.Context, *SyncPlaneRequest) (*SyncPlaneResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SyncPlane not implemented")
 }
-func (UnimplementedOperatorServiceServer) ListProjects(context.Context, *emptypb.Empty) (*ListProjectsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ListProjects not implemented")
-}
-func (UnimplementedOperatorServiceServer) GetProject(context.Context, *GetProjectRequest) (*Project, error) {
-	return nil, status.Error(codes.Unimplemented, "method GetProject not implemented")
-}
-func (UnimplementedOperatorServiceServer) ListServices(context.Context, *ListServicesRequest) (*ListServicesResponse, error) {
+func (UnimplementedOperatorServiceServer) ListServices(context.Context, *emptypb.Empty) (*ListServicesResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListServices not implemented")
 }
 func (UnimplementedOperatorServiceServer) GetService(context.Context, *GetServiceRequest) (*Service, error) {
@@ -287,44 +255,8 @@ func _OperatorService_SyncPlane_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
-func _OperatorService_ListProjects_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(emptypb.Empty)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OperatorServiceServer).ListProjects(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: OperatorService_ListProjects_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OperatorServiceServer).ListProjects(ctx, req.(*emptypb.Empty))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
-func _OperatorService_GetProject_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(GetProjectRequest)
-	if err := dec(in); err != nil {
-		return nil, err
-	}
-	if interceptor == nil {
-		return srv.(OperatorServiceServer).GetProject(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: OperatorService_GetProject_FullMethodName,
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OperatorServiceServer).GetProject(ctx, req.(*GetProjectRequest))
-	}
-	return interceptor(ctx, in, info, handler)
-}
-
 func _OperatorService_ListServices_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ListServicesRequest)
+	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -336,7 +268,7 @@ func _OperatorService_ListServices_Handler(srv interface{}, ctx context.Context,
 		FullMethod: OperatorService_ListServices_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(OperatorServiceServer).ListServices(ctx, req.(*ListServicesRequest))
+		return srv.(OperatorServiceServer).ListServices(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -399,14 +331,6 @@ var OperatorService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncPlane",
 			Handler:    _OperatorService_SyncPlane_Handler,
-		},
-		{
-			MethodName: "ListProjects",
-			Handler:    _OperatorService_ListProjects_Handler,
-		},
-		{
-			MethodName: "GetProject",
-			Handler:    _OperatorService_GetProject_Handler,
 		},
 		{
 			MethodName: "ListServices",

@@ -15,9 +15,6 @@ const (
 
 // Overview 汇总 cloud-plane 当前资源数量和状态分布。
 type Overview struct {
-	// ProjectsTotal 是当前 project 总数。
-	ProjectsTotal int `json:"projectsTotal"`
-
 	// ServicesTotal 是当前 service 总数。
 	ServicesTotal int `json:"servicesTotal"`
 	// ServicesIdle 是处于 idle 状态的 service 数量。

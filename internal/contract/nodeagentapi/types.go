@@ -50,7 +50,6 @@ var (
 	ErrReceivedAtRequired         = errors.New("receivedAt is required")
 	ErrWorkExecutionIDRequired    = errors.New("executionID is required")
 	ErrDeploymentIDRequired       = errors.New("deploymentID is required")
-	ErrProjectIDRequired          = errors.New("projectID is required")
 	ErrServiceIDRequired          = errors.New("serviceID is required")
 	ErrImageRequired              = errors.New("image is required")
 	ErrContainerPortInvalid       = errors.New("containerPort must be greater than 0")
@@ -100,7 +99,6 @@ type WorkItem struct {
 	DeploymentID        string                `json:"deploymentID"`
 	ReplicaIndex        int                   `json:"replicaIndex"`
 	NodeID              string                `json:"nodeID"`
-	ProjectID           string                `json:"projectID"`
 	ServiceID           string                `json:"serviceID"`
 	ServiceName         string                `json:"serviceName"`
 	RevisionID          string                `json:"revisionID"`
@@ -281,9 +279,6 @@ func (in WorkItem) Validate() error {
 	}
 	if strings.TrimSpace(in.NodeID) == "" {
 		return ErrNodeIDRequired
-	}
-	if strings.TrimSpace(in.ProjectID) == "" {
-		return ErrProjectIDRequired
 	}
 	if strings.TrimSpace(in.ServiceID) == "" {
 		return ErrServiceIDRequired

@@ -95,7 +95,6 @@ func protoService(item cloudplaneapi.Service) *cloudplanev1.Service {
 	return &cloudplanev1.Service{
 		Metadata: &cloudplanev1.ServiceMetadata{
 			Id:          item.Metadata.ID,
-			ProjectId:   item.Metadata.ProjectID,
 			Name:        item.Metadata.Name,
 			DisplayName: item.Metadata.DisplayName,
 		},

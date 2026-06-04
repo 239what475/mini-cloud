@@ -165,8 +165,8 @@ func (m *Manager) reconcileServiceDesired(ctx context.Context, item desired.Serv
 	if err != nil {
 		return err
 	}
-	// serviceID 命中的 service 必须仍属于 desired 声明的 project/name；serviceID 不允许被复用或改绑。
-	if serviceItem.Metadata.ProjectID != item.ProjectID || serviceItem.Metadata.Name != item.Name {
+	// serviceID 命中的 service 必须仍使用 desired 声明的 name；serviceID 不允许被复用或改名。
+	if serviceItem.Metadata.Name != item.Name {
 		return workload.ErrServiceIdentityConflict
 	}
 
@@ -182,7 +182,7 @@ func (m *Manager) reconcileServiceDesired(ctx context.Context, item desired.Serv
 // createServiceFromDesired 按 desired spec 创建本地 service，并由 cloud-plane 本地 scheduler 选择 runtime node。
 // 参数说明：ctx 控制创建流程；item 是 desired state。
 func (m *Manager) createServiceFromDesired(ctx context.Context, item desired.Service) (lifecycle.CreateResult, error) {
-	return m.lifecycle.Mutations.Create(ctx, item.ServiceID, item.ProjectID, item.Name, item.DisplayName, item.Spec)
+	return m.lifecycle.Mutations.Create(ctx, item.ServiceID, item.Name, item.DisplayName, item.Spec)
 }
 
 // updateServiceFromDesired 按 desired spec 更新已有 service，并由 cloud-plane 本地 scheduler 处理副本放置。

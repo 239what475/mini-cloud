@@ -20,17 +20,9 @@ func (s *Server) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServ
 		return nil, err
 	}
 
-	projectID := strings.TrimSpace(req.GetProjectId())
 	serviceID := strings.TrimSpace(req.GetServiceId())
-	if projectID == "" || serviceID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID and serviceID are required")
-	}
-	serviceItem, err := s.store.GetService(ctx, serviceID)
-	if err != nil {
-		return nil, s.deleteStatusError("verify service before delete", projectID, serviceID, err)
-	}
-	if serviceItem.Metadata.ProjectID != projectID {
-		return nil, status.Error(codes.NotFound, store.ErrServiceNotFound.Error())
+	if serviceID == "" {
+		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
 
 	// lifecycle mutation 自己按 serviceID 定位删除目标，API 层不再提前加载完整 service 对象。

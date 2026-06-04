@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
@@ -23,14 +22,13 @@ import (
 func TestCreateReconcilesServiceToPlacement(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
-	projectItem := mustCreateProject(t, db, "svc-create")
 	planeItem := mustCreateReadyPlane(t, db, "plane-create")
 
-	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID, ProjectID: projectItem.ID}}}
+	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID}}}
 	deployer := newFakeDeploy()
 	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, planner, deployer)
 
-	view, err := controller.Create(ctx, projectItem.ID, createInput("web", "Web", "nginx:1.27-alpine"))
+	view, err := controller.Create(ctx, createInput("web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -51,18 +49,17 @@ func TestCreateReconcilesServiceToPlacement(t *testing.T) {
 func TestUpdateReusesCurrentPlacement(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
-	projectItem := mustCreateProject(t, db, "svc-update")
 	planeItem := mustCreateReadyPlane(t, db, "plane-update")
 
-	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID, ProjectID: projectItem.ID}}}
+	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID}}}
 	deployer := newFakeDeploy()
 	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, planner, deployer)
 
-	created, err := controller.Create(ctx, projectItem.ID, createInput("api", "API", "nginx:1.27-alpine"))
+	created, err := controller.Create(ctx, createInput("api", "API", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	updated, err := controller.Update(ctx, projectItem.ID, created.Service.Metadata.ID, updateInput("API v2", "nginx:1.28-alpine"))
+	updated, err := controller.Update(ctx, created.Service.Metadata.ID, updateInput("API v2", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -80,19 +77,18 @@ func TestUpdateReusesCurrentPlacement(t *testing.T) {
 func TestDeleteRemovesServiceAndPlacement(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
-	projectItem := mustCreateProject(t, db, "svc-delete")
 	planeItem := mustCreateReadyPlane(t, db, "plane-delete")
 
-	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID, ProjectID: projectItem.ID}}}
+	planner := &fakePlanner{previewResult: planeselector.SelectionResult{Decision: &planeselector.Decision{PlaneID: planeItem.ID}}}
 	deployer := newFakeDeploy()
 	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, planner, deployer)
 
-	created, err := controller.Create(ctx, projectItem.ID, createInput("gone", "Gone", "nginx:1.27-alpine"))
+	created, err := controller.Create(ctx, createInput("gone", "Gone", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
 	serviceID := created.Service.Metadata.ID
-	if _, err := controller.Delete(ctx, projectItem.ID, serviceID); err != nil {
+	if _, err := controller.Delete(ctx, serviceID); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 	if _, err := db.Store.GetService(ctx, serviceID); !errors.Is(err, store.ErrServiceNotFound) {
@@ -130,7 +126,7 @@ type fakePlanner struct {
 	lastInput      planeselector.SelectionInput
 }
 
-func (f *fakePlanner) PreviewProjectSelection(_ context.Context, _ string, input planeselector.SelectionInput) (planeselector.SelectionResult, error) {
+func (f *fakePlanner) PreviewSelection(_ context.Context, input planeselector.SelectionInput) (planeselector.SelectionResult, error) {
 	f.previewCalls++
 	f.lastInput = input
 	if f.previewErr != nil {
@@ -158,18 +154,18 @@ func newFakeDeploy() *fakeDeploy {
 
 func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
 	f.applyInputs = append(f.applyInputs, input)
-	response := planeServiceResponse(input.Metadata.ProjectID, input.Metadata.Name, cloudplaneapi.ObservedRolloutStatus{Phase: controlservice.RolloutPhaseIdle, StableRevisionID: "rev-1", StableDesiredReplicas: input.Spec.Replicas, StableReadyReplicas: input.Spec.Replicas, StableAvailableReplicas: input.Spec.Replicas})
+	response := planeServiceResponse(input.Metadata.Name, cloudplaneapi.ObservedRolloutStatus{Phase: controlservice.RolloutPhaseIdle, StableRevisionID: "rev-1", StableDesiredReplicas: input.Spec.Replicas, StableReadyReplicas: input.Spec.Replicas, StableAvailableReplicas: input.Spec.Replicas})
 	f.remoteByKey[planeServiceKey(planeID, input.Metadata.ID)] = response
-	return deploy.ApplyResult{PlaneID: planeID, ProjectID: input.Metadata.ProjectID, Action: deploy.ApplyActionUpdated, DesiredGeneration: int64(len(f.applyInputs))}, nil
+	return deploy.ApplyResult{PlaneID: planeID, Action: deploy.ApplyActionUpdated, DesiredGeneration: int64(len(f.applyInputs))}, nil
 }
 
-func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, _ string, serviceID string) error {
+func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, serviceID string) error {
 	f.deleteCalls++
 	delete(f.remoteByKey, planeServiceKey(planeID, serviceID))
 	return nil
 }
 
-func (f *fakeDeploy) GetService(_ context.Context, planeID string, _ string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
+func (f *fakeDeploy) GetService(_ context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
 	item, ok := f.remoteByKey[planeServiceKey(planeID, serviceID)]
 	if !ok {
 		return cloudplaneapi.ServiceResponse{}, planeclient.ErrNotFound
@@ -177,14 +173,14 @@ func (f *fakeDeploy) GetService(_ context.Context, planeID string, _ string, ser
 	return item, nil
 }
 
-func planeServiceResponse(projectID string, serviceID string, rollout cloudplaneapi.ObservedRolloutStatus) cloudplaneapi.ServiceResponse {
+func planeServiceResponse(serviceID string, rollout cloudplaneapi.ObservedRolloutStatus) cloudplaneapi.ServiceResponse {
 	currentRevisionID := rollout.StableRevisionID
 	if strings.TrimSpace(currentRevisionID) == "" {
 		currentRevisionID = rollout.CandidateRevisionID
 	}
 	return cloudplaneapi.ServiceResponse{
 		Service: cloudplaneapi.Service{
-			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, ProjectID: projectID, Name: serviceID, DisplayName: serviceID},
+			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, Name: serviceID, DisplayName: serviceID},
 			Spec:     cloudplaneapi.ServiceSpec{Region: "cn-beijing", Replicas: 1, InstanceClass: controlservice.InstanceClassSmall, Exposure: "public", Image: "nginx:1.27-alpine", DefaultPort: 80, ReadinessPath: "/"},
 			Status:   cloudplaneapi.ServiceStatus{Phase: "running", CurrentRevisionID: currentRevisionID},
 		},
@@ -193,15 +189,6 @@ func planeServiceResponse(projectID string, serviceID string, rollout cloudplane
 }
 
 func planeServiceKey(planeID string, serviceID string) string { return planeID + "/" + serviceID }
-
-func mustCreateProject(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) project.Project {
-	t.Helper()
-	item, err := db.Store.CreateProject(context.Background(), project.CreateProjectInput{Name: name, DisplayName: name, OwnerUserID: "usr-owner-001"})
-	if err != nil {
-		t.Fatalf("CreateProject returned error: %v", err)
-	}
-	return item
-}
 
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) plane.Detail {
 	t.Helper()

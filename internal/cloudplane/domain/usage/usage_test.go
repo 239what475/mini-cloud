@@ -4,21 +4,17 @@ import (
 	"testing"
 
 	"mini-cloud/internal/cloudplane/domain/workload"
-	"mini-cloud/internal/common/project"
 )
 
-// TestPreviewServicePlanAllowsWithinQuota 验证 service plan 在配额内时允许创建。
-func TestPreviewServicePlanAllowsWithinQuota(t *testing.T) {
+// TestPreviewServicePlanAllowsWithinGuardrail 验证 service plan 在 resource guardrail 内时允许创建。
+func TestPreviewServicePlanAllowsWithinGuardrail(t *testing.T) {
 	t.Parallel()
 
-	// project quota 足够容纳现有服务和新增 small 单副本服务。
-	preview, err := PreviewServicePlan(project.Project{
-		ID: "prj_01",
-		Quota: project.Quota{
-			MaxServices: 3,
-			CPUMilli:    2000,
-			MemoryMi:    4096,
-		},
+	// resource guardrail 足够容纳现有服务和新增 small 单副本服务。
+	preview, err := PreviewServicePlan(Guardrails{
+		MaxServices: 3,
+		CPUMilli:    2000,
+		MemoryMi:    4096,
 	}, []workload.Service{
 		{
 			Metadata: workload.Metadata{ID: "service_01", Name: "demo-one", DisplayName: "Demo One"},
@@ -48,18 +44,15 @@ func TestPreviewServicePlanAllowsWithinQuota(t *testing.T) {
 	}
 }
 
-// TestPreviewServicePlanRejectsServicesQuotaOverflow 验证 service 数量超限会被 quota admission 拒绝。
-func TestPreviewServicePlanRejectsServicesQuotaOverflow(t *testing.T) {
+// TestPreviewServicePlanRejectsServiceCountGuardrailOverflow 验证 service 数量超限会被 guardrail admission 拒绝。
+func TestPreviewServicePlanRejectsServiceCountGuardrailOverflow(t *testing.T) {
 	t.Parallel()
 
-	// project 已达到 max services，新增服务应被 services quota 拒绝。
-	preview, err := PreviewServicePlan(project.Project{
-		ID: "prj_01",
-		Quota: project.Quota{
-			MaxServices: 1,
-			CPUMilli:    4000,
-			MemoryMi:    8192,
-		},
+	// 当前服务数已达到 max services，新增服务应被 service count guardrail 拒绝。
+	preview, err := PreviewServicePlan(Guardrails{
+		MaxServices: 1,
+		CPUMilli:    4000,
+		MemoryMi:    8192,
 	}, []workload.Service{
 		{
 			Metadata: workload.Metadata{ID: "service_01", Name: "demo-one", DisplayName: "Demo One"},
@@ -73,15 +66,15 @@ func TestPreviewServicePlanRejectsServicesQuotaOverflow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PreviewServicePlan returned error: %v", err)
 	}
-	// 请求语义合法但配额不允许，因此 preview.Allowed=false。
+	// 请求语义合法但resource guardrail不允许，因此 preview.Allowed=false。
 	if preview.Allowed {
 		t.Fatalf("expected preview to be rejected")
 	}
 	if len(preview.RejectReasons) == 0 {
 		t.Fatalf("expected at least one rejection reason")
 	}
-	// 第一条拒绝原因应明确指向 service 数量配额。
+	// 第一条拒绝原因应明确指向 service 数量resource guardrail。
 	if preview.RejectReasons[0].Code != RejectReasonServicesQuotaExceeded {
-		t.Fatalf("expected services quota rejection, got %+v", preview.RejectReasons)
+		t.Fatalf("expected service count guardrail rejection, got %+v", preview.RejectReasons)
 	}
 }

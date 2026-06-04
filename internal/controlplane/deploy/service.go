@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"time"
 
-	controlproject "mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
@@ -67,11 +66,6 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	globalProject, err := s.store.GetProject(ctx, input.Metadata.ProjectID)
-	if err != nil {
-		return ApplyResult{}, err
-	}
-
 	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
 	if err != nil {
 		return ApplyResult{}, err
@@ -85,43 +79,39 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	requestCtx, cancel := context.WithTimeout(ctx, defaultApplyServiceTimeout)
 	defer cancel()
 
-	project, err := s.buildProject(requestCtx, globalProject, &request)
+	resources, err := s.buildResourceBundle(requestCtx, &request)
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := s.applyProject(requestCtx, client, project); err != nil {
+	if err := s.applyResources(requestCtx, client, resources); err != nil {
 		return ApplyResult{}, err
 	}
 
-	accepted, err := client.ApplyService(requestCtx, input.Metadata.ProjectID, input.Metadata.ID, input.Metadata.Name, request)
+	accepted, err := client.ApplyService(requestCtx, input.Metadata.ID, input.Metadata.Name, request)
 	if err != nil {
 		return ApplyResult{}, fmt.Errorf("apply service: %w", err)
 	}
 
 	return ApplyResult{
 		PlaneID:           planeID,
-		ProjectID:         input.Metadata.ProjectID,
 		Action:            accepted.Action,
 		DesiredGeneration: accepted.DesiredGeneration,
 	}, nil
 }
 
-func (s *Service) applyProject(ctx context.Context, client *planeclient.Client, project cloudplaneapi.Project) error {
-	if _, err := client.ApplyProject(ctx, project); err != nil {
-		return fmt.Errorf("apply project to plane: %w", err)
+func (s *Service) applyResources(ctx context.Context, client *planeclient.Client, resources cloudplaneapi.ResourceBundle) error {
+	if _, err := client.ApplyResources(ctx, resources); err != nil {
+		return fmt.Errorf("apply resources to plane: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) DeleteService(ctx context.Context, planeID string, projectID string, serviceID string) error {
+func (s *Service) DeleteService(ctx context.Context, planeID string, serviceID string) error {
 	if s == nil || s.store == nil {
 		return fmt.Errorf("deploy service is not configured")
 	}
 	if planeID == "" {
 		return ErrPlaneIDRequired
-	}
-	if projectID == "" {
-		return ErrProjectIDRequired
 	}
 	if serviceID == "" {
 		return ErrServiceIDRequired
@@ -148,21 +138,18 @@ func (s *Service) DeleteService(ctx context.Context, planeID string, projectID s
 	requestCtx, cancel := context.WithTimeout(ctx, defaultDeleteServiceTimeout)
 	defer cancel()
 
-	if err := client.DeleteService(requestCtx, projectID, serviceID); err != nil {
+	if err := client.DeleteService(requestCtx, serviceID); err != nil {
 		return fmt.Errorf("delete service: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) GetService(ctx context.Context, planeID string, projectID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
+func (s *Service) GetService(ctx context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
 	if s == nil || s.store == nil {
 		return cloudplaneapi.ServiceResponse{}, fmt.Errorf("deploy service is not configured")
 	}
 	if planeID == "" {
 		return cloudplaneapi.ServiceResponse{}, ErrPlaneIDRequired
-	}
-	if projectID == "" {
-		return cloudplaneapi.ServiceResponse{}, ErrProjectIDRequired
 	}
 	if serviceID == "" {
 		return cloudplaneapi.ServiceResponse{}, ErrServiceIDRequired
@@ -189,25 +176,19 @@ func (s *Service) GetService(ctx context.Context, planeID string, projectID stri
 	requestCtx, cancel := context.WithTimeout(ctx, defaultReadServiceTimeout)
 	defer cancel()
 
-	response, err := client.GetService(requestCtx, projectID, serviceID)
+	response, err := client.GetService(requestCtx, serviceID)
 	if err != nil {
 		return cloudplaneapi.ServiceResponse{}, fmt.Errorf("get service: %w", err)
 	}
 	return response, nil
 }
 
-func (s *Service) buildProject(ctx context.Context, project controlproject.Project, serviceRequest *cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.Project, error) {
-	request := cloudplaneapi.Project{
-		ID:          project.ID,
-		Name:        project.Name,
-		DisplayName: project.DisplayName,
-		OwnerUserID: project.OwnerUserID,
-		Quota:       project.Quota,
-	}
+func (s *Service) buildResourceBundle(ctx context.Context, serviceRequest *cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.ResourceBundle, error) {
+	request := cloudplaneapi.ResourceBundle{}
 	if serviceRequest == nil {
 		return request, nil
 	}
-	collector := projectResourceCollector{}
+	collector := resourceCollector{}
 	if serviceRequest.Spec.ConfigSetID != "" {
 		collector.addConfigSet(serviceRequest.Spec.ConfigSetID)
 	}
@@ -224,38 +205,38 @@ func (s *Service) buildProject(ctx context.Context, project controlproject.Proje
 		case projectedfile.SourceKindSecretSet:
 			collector.addSecretSet(item.SourceID)
 		default:
-			return cloudplaneapi.Project{}, projectedfile.ErrSourceKindInvalid
+			return cloudplaneapi.ResourceBundle{}, projectedfile.ErrSourceKindInvalid
 		}
 	}
 
 	for _, id := range collector.configSetIDs {
-		local, err := s.store.GetProjectConfigSet(ctx, project.ID, id)
+		local, err := s.store.GetConfigSet(ctx, id)
 		if err != nil {
-			return cloudplaneapi.Project{}, err
+			return cloudplaneapi.ResourceBundle{}, err
 		}
-		request.ConfigSets = append(request.ConfigSets, cloudplaneapi.ProjectConfigSet{
+		request.ConfigSets = append(request.ConfigSets, cloudplaneapi.ConfigSet{
 			ID:     local.ID,
 			Name:   local.Name,
 			Values: local.Values,
 		})
 	}
 	for _, id := range collector.secretSetIDs {
-		local, err := s.store.GetProjectSecretSet(ctx, project.ID, id)
+		local, err := s.store.GetSecretSet(ctx, id)
 		if err != nil {
-			return cloudplaneapi.Project{}, err
+			return cloudplaneapi.ResourceBundle{}, err
 		}
-		request.SecretSets = append(request.SecretSets, cloudplaneapi.ProjectSecretSet{
+		request.SecretSets = append(request.SecretSets, cloudplaneapi.SecretSet{
 			ID:     local.ID,
 			Name:   local.Name,
 			Values: local.Values,
 		})
 	}
 	for _, id := range collector.registryCredentialIDs {
-		local, err := s.store.GetProjectRegistryCredential(ctx, project.ID, id)
+		local, err := s.store.GetRegistryCredential(ctx, id)
 		if err != nil {
-			return cloudplaneapi.Project{}, err
+			return cloudplaneapi.ResourceBundle{}, err
 		}
-		request.RegistryCredentials = append(request.RegistryCredentials, cloudplaneapi.ProjectRegistryCredential{
+		request.RegistryCredentials = append(request.RegistryCredentials, cloudplaneapi.RegistryCredential{
 			ID:       local.ID,
 			Name:     local.Name,
 			Server:   local.Server,
@@ -266,7 +247,7 @@ func (s *Service) buildProject(ctx context.Context, project controlproject.Proje
 	return request, nil
 }
 
-type projectResourceCollector struct {
+type resourceCollector struct {
 	configSetIDs           []string
 	secretSetIDs           []string
 	registryCredentialIDs  []string
@@ -275,7 +256,7 @@ type projectResourceCollector struct {
 	seenRegistryCredential map[string]struct{}
 }
 
-func (c *projectResourceCollector) addConfigSet(id string) {
+func (c *resourceCollector) addConfigSet(id string) {
 	if id == "" {
 		return
 	}
@@ -289,7 +270,7 @@ func (c *projectResourceCollector) addConfigSet(id string) {
 	c.configSetIDs = append(c.configSetIDs, id)
 }
 
-func (c *projectResourceCollector) addSecretSet(id string) {
+func (c *resourceCollector) addSecretSet(id string) {
 	if id == "" {
 		return
 	}
@@ -303,7 +284,7 @@ func (c *projectResourceCollector) addSecretSet(id string) {
 	c.secretSetIDs = append(c.secretSetIDs, id)
 }
 
-func (c *projectResourceCollector) addRegistryCredential(id string) {
+func (c *resourceCollector) addRegistryCredential(id string) {
 	if id == "" {
 		return
 	}

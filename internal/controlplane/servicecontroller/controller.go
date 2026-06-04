@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
@@ -30,19 +29,17 @@ type View struct {
 }
 
 type planeSelector interface {
-	PreviewProjectSelection(context.Context, string, planeselector.SelectionInput) (planeselector.SelectionResult, error)
+	PreviewSelection(context.Context, planeselector.SelectionInput) (planeselector.SelectionResult, error)
 }
 
 type deploymentManager interface {
 	ApplyService(context.Context, string, deploy.ApplyServiceInput) (deploy.ApplyResult, error)
-	DeleteService(context.Context, string, string, string) error
-	GetService(context.Context, string, string, string) (cloudplaneapi.ServiceResponse, error)
+	DeleteService(context.Context, string, string) error
+	GetService(context.Context, string, string) (cloudplaneapi.ServiceResponse, error)
 }
 
 type serviceStore interface {
-	GetProject(context.Context, string) (project.Project, error)
 	CreateService(context.Context, controlservice.CreateInput) (controlservice.Service, error)
-	ListServicesByProject(context.Context, string) ([]controlservice.Service, error)
 	ListServices(context.Context) ([]controlservice.Service, error)
 	GetService(context.Context, string) (controlservice.Service, error)
 	UpdateService(context.Context, string, controlservice.UpdateInput) (controlservice.Service, error)
@@ -91,12 +88,8 @@ func (c *Controller) SetReconcileTimeout(timeout time.Duration) {
 	c.timeout = timeout
 }
 
-func (c *Controller) Create(ctx context.Context, projectID string, input controlservice.CreateInput) (View, error) {
+func (c *Controller) Create(ctx context.Context, input controlservice.CreateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
-		return View{}, err
-	}
-	input.ProjectID = projectID
-	if _, err := c.store.GetProject(ctx, projectID); err != nil {
 		return View{}, err
 	}
 	created, err := c.store.CreateService(ctx, input)
@@ -113,11 +106,11 @@ func (c *Controller) Create(ctx context.Context, projectID string, input control
 	return c.buildView(ctx, reloaded)
 }
 
-func (c *Controller) ListByProject(ctx context.Context, projectID string) ([]View, error) {
+func (c *Controller) List(ctx context.Context) ([]View, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("service controller is not configured")
 	}
-	items, err := c.store.ListServicesByProject(ctx, projectID)
+	items, err := c.store.ListServices(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +125,7 @@ func (c *Controller) ListByProject(ctx context.Context, projectID string) ([]Vie
 	return out, nil
 }
 
-func (c *Controller) Get(ctx context.Context, projectID string, serviceID string) (View, error) {
+func (c *Controller) Get(ctx context.Context, serviceID string) (View, error) {
 	if c == nil || c.store == nil {
 		return View{}, fmt.Errorf("service controller is not configured")
 	}
@@ -140,22 +133,12 @@ func (c *Controller) Get(ctx context.Context, projectID string, serviceID string
 	if err != nil {
 		return View{}, err
 	}
-	if item.Metadata.ProjectID != projectID {
-		return View{}, store.ErrServiceNotFound
-	}
 	return c.buildView(ctx, item)
 }
 
-func (c *Controller) Update(ctx context.Context, projectID string, serviceID string, input controlservice.UpdateInput) (View, error) {
+func (c *Controller) Update(ctx context.Context, serviceID string, input controlservice.UpdateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
-	}
-	current, err := c.store.GetService(ctx, serviceID)
-	if err != nil {
-		return View{}, err
-	}
-	if current.Metadata.ProjectID != projectID {
-		return View{}, store.ErrServiceNotFound
 	}
 	updated, err := c.store.UpdateService(ctx, serviceID, input)
 	if err != nil {
@@ -171,16 +154,12 @@ func (c *Controller) Update(ctx context.Context, projectID string, serviceID str
 	return c.buildView(ctx, reloaded)
 }
 
-func (c *Controller) Delete(ctx context.Context, projectID string, serviceID string) (View, error) {
+func (c *Controller) Delete(ctx context.Context, serviceID string) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
 	}
-	current, err := c.store.GetService(ctx, serviceID)
-	if err != nil {
+	if _, err := c.store.GetService(ctx, serviceID); err != nil {
 		return View{}, err
-	}
-	if current.Metadata.ProjectID != projectID {
-		return View{}, store.ErrServiceNotFound
 	}
 	deleting, err := c.store.MarkServiceDeletionRequested(ctx, serviceID)
 	if err != nil {

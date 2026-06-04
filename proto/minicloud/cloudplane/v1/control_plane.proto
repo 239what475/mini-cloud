@@ -7,8 +7,7 @@ option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloud
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "minicloud/cloudplane/v1/project.proto";
-import "minicloud/cloudplane/v1/project_resources.proto";
+import "minicloud/cloudplane/v1/resources.proto";
 import "minicloud/cloudplane/v1/service.proto";
 
 message PlaneSummary {
@@ -25,26 +24,25 @@ message PlaneHealth {
 }
 
 message PlaneOverview {
-  int32 projects_total = 1 [json_name = "projectsTotal"];
-  int32 services_total = 2 [json_name = "servicesTotal"];
-  int32 services_idle = 3 [json_name = "servicesIdle"];
-  int32 services_deploying = 4 [json_name = "servicesDeploying"];
-  int32 services_running = 5 [json_name = "servicesRunning"];
-  int32 services_degraded = 6 [json_name = "servicesDegraded"];
-  int32 services_failed = 7 [json_name = "servicesFailed"];
-  int32 nodes_total = 8 [json_name = "nodesTotal"];
-  int32 nodes_registering = 9 [json_name = "nodesRegistering"];
-  int32 nodes_ready = 10 [json_name = "nodesReady"];
-  int32 nodes_not_ready = 11 [json_name = "nodesNotReady"];
-  int32 nodes_draining = 12 [json_name = "nodesDraining"];
-  int32 nodes_offline = 13 [json_name = "nodesOffline"];
-  int32 deployments_total = 14 [json_name = "deploymentsTotal"];
-  int32 deployments_pending = 15 [json_name = "deploymentsPending"];
-  int32 deployments_scheduling = 16 [json_name = "deploymentsScheduling"];
-  int32 deployments_assigned = 17 [json_name = "deploymentsAssigned"];
-  int32 deployments_deploying = 18 [json_name = "deploymentsDeploying"];
-  int32 deployments_running = 19 [json_name = "deploymentsRunning"];
-  int32 deployments_failed = 20 [json_name = "deploymentsFailed"];
+  int32 services_total = 1 [json_name = "servicesTotal"];
+  int32 services_idle = 2 [json_name = "servicesIdle"];
+  int32 services_deploying = 3 [json_name = "servicesDeploying"];
+  int32 services_running = 4 [json_name = "servicesRunning"];
+  int32 services_degraded = 5 [json_name = "servicesDegraded"];
+  int32 services_failed = 6 [json_name = "servicesFailed"];
+  int32 nodes_total = 7 [json_name = "nodesTotal"];
+  int32 nodes_registering = 8 [json_name = "nodesRegistering"];
+  int32 nodes_ready = 9 [json_name = "nodesReady"];
+  int32 nodes_not_ready = 10 [json_name = "nodesNotReady"];
+  int32 nodes_draining = 11 [json_name = "nodesDraining"];
+  int32 nodes_offline = 12 [json_name = "nodesOffline"];
+  int32 deployments_total = 13 [json_name = "deploymentsTotal"];
+  int32 deployments_pending = 14 [json_name = "deploymentsPending"];
+  int32 deployments_scheduling = 15 [json_name = "deploymentsScheduling"];
+  int32 deployments_assigned = 16 [json_name = "deploymentsAssigned"];
+  int32 deployments_deploying = 17 [json_name = "deploymentsDeploying"];
+  int32 deployments_running = 18 [json_name = "deploymentsRunning"];
+  int32 deployments_failed = 19 [json_name = "deploymentsFailed"];
 }
 
 message PlaneCapacity {
@@ -103,12 +101,6 @@ message PlaneSnapshot {
   PlaneRuntimeConfig runtime_config = 8 [json_name = "runtimeConfig"];
 }
 
-message Project {
-  string id = 1;
-  string name = 2;
-  string display_name = 3 [json_name = "displayName"];
-}
-
 message PlaneProjectedFileSpec {
   string mount_path = 1 [json_name = "mountPath"];
   string source_kind = 2 [json_name = "sourceKind"];
@@ -121,19 +113,19 @@ message PlanePersistentDirSpec {
   string mount_path = 2 [json_name = "mountPath"];
 }
 
-message ProjectConfigSet {
+message ResourceConfigSet {
   string id = 1;
   string name = 2;
   map<string, string> values = 3;
 }
 
-message ProjectSecretSet {
+message ResourceSecretSet {
   string id = 1;
   string name = 2;
   map<string, string> values = 3;
 }
 
-message ProjectRegistryCredential {
+message ResourceRegistryCredential {
   string id = 1;
   string name = 2;
   string server = 3;
@@ -141,25 +133,18 @@ message ProjectRegistryCredential {
   string password = 5;
 }
 
-message ApplyProjectRequest {
-  string project_id = 1 [json_name = "projectID"];
-  string name = 2;
-  string display_name = 3 [json_name = "displayName"];
-  ProjectQuota quota = 4;
-  string owner_user_id = 5 [json_name = "ownerUserID"];
-  repeated ProjectConfigSet config_sets = 6 [json_name = "configSets"];
-  repeated ProjectSecretSet secret_sets = 7 [json_name = "secretSets"];
-  repeated ProjectRegistryCredential registry_credentials = 8 [json_name = "registryCredentials"];
+message ApplyResourcesRequest {
+  repeated ResourceConfigSet config_sets = 1 [json_name = "configSets"];
+  repeated ResourceSecretSet secret_sets = 2 [json_name = "secretSets"];
+  repeated ResourceRegistryCredential registry_credentials = 3 [json_name = "registryCredentials"];
 }
 
-message ApplyProjectResponse {
+message ApplyResourcesResponse {
   string action = 1;
-  string project_id = 2 [json_name = "projectID"];
 }
 
 message ServiceMetadata {
   string id = 1;
-  string project_id = 2 [json_name = "projectID"];
   string name = 3;
   string display_name = 4 [json_name = "displayName"];
 }
@@ -200,11 +185,10 @@ message ObservedRolloutStatus {
 }
 
 message ApplyServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
-  string service_id = 2 [json_name = "serviceID"];
-  string name = 3;
-  string display_name = 4 [json_name = "displayName"];
-  ServiceSpec spec = 5;
+  string service_id = 1 [json_name = "serviceID"];
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  ServiceSpec spec = 4;
 }
 
 message ApplyServiceResponse {
@@ -213,8 +197,7 @@ message ApplyServiceResponse {
 }
 
 message DeleteServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
-  string service_id = 2 [json_name = "serviceID"];
+  string service_id = 1 [json_name = "serviceID"];
 }
 
 message DeleteServiceResponse {
@@ -223,8 +206,7 @@ message DeleteServiceResponse {
 }
 
 message GetServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
-  string service_id = 2 [json_name = "serviceID"];
+  string service_id = 1 [json_name = "serviceID"];
 }
 
 message GetServiceResponse {
@@ -236,8 +218,8 @@ service ControlPlaneSnapshotService {
   rpc GetSnapshot(google.protobuf.Empty) returns (PlaneSnapshot);
 }
 
-service ControlPlaneProjectService {
-  rpc ApplyProject(ApplyProjectRequest) returns (ApplyProjectResponse);
+service ControlPlaneResourceService {
+  rpc ApplyResources(ApplyResourcesRequest) returns (ApplyResourcesResponse);
 }
 
 service ControlPlaneWorkloadService {

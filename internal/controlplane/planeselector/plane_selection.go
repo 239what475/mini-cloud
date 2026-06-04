@@ -9,9 +9,8 @@ import (
 )
 
 var (
-	ErrProjectIDRequired = errors.New("projectID is required")
-	ErrProviderRequired  = errors.New("provider is required")
-	ErrRegionRequired    = errors.New("region is required")
+	ErrProviderRequired = errors.New("provider is required")
+	ErrRegionRequired   = errors.New("region is required")
 )
 
 type SelectionInput struct {
@@ -52,7 +51,6 @@ type Candidate struct {
 	Registered                  bool   `json:"registered"`
 	Status                      string `json:"status"`
 	OperationState              string `json:"operationState"`
-	ProjectID                   string `json:"projectID,omitempty"`
 	AcceptingNewDeployments     bool   `json:"acceptingNewDeployments"`
 	CPUMilliFree                int    `json:"cpuMilliFree"`
 	MemoryMiFree                int    `json:"memoryMiFree"`
@@ -71,7 +69,6 @@ type Decision struct {
 	PlaneDisplayName            string `json:"planeDisplayName"`
 	Provider                    string `json:"provider"`
 	Region                      string `json:"region"`
-	ProjectID                   string `json:"projectID"`
 	BasedOnInventorySyncVersion int64  `json:"basedOnInventorySyncVersion"`
 	Score                       int64  `json:"score"`
 	Reason                      string `json:"reason"`
@@ -126,7 +123,7 @@ func (in ApplyServiceInput) SelectionInput() SelectionInput {
 	}
 }
 
-func (in ApplyServiceInput) Validate(projectID string) error {
+func (in ApplyServiceInput) Validate() error {
 	if strings.TrimSpace(in.Provider) == "" {
 		return ErrProviderRequired
 	}
@@ -134,16 +131,14 @@ func (in ApplyServiceInput) Validate(projectID string) error {
 		Metadata: in.Metadata,
 		Spec:     in.Spec,
 	}
-	deployInput.Metadata.ProjectID = projectID
 	return deployInput.Validate()
 }
 
-func (in ApplyServiceInput) ToDeployInput(projectID string, region string) deploy.ApplyServiceInput {
+func (in ApplyServiceInput) ToDeployInput(region string) deploy.ApplyServiceInput {
 	out := deploy.ApplyServiceInput{
 		Metadata: in.Metadata,
 		Spec:     in.Spec,
 	}
-	out.Metadata.ProjectID = projectID
 	out.Spec.Region = region
 	return out
 }

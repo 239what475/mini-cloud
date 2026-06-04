@@ -44,8 +44,6 @@ type WorkItem struct {
 	ReplicaIndex int `json:"replicaIndex"`
 	// NodeID 是该副本任务被分配到的 node 标识。
 	NodeID string `json:"nodeID"`
-	// ProjectID 表示所属 project 的唯一标识。
-	ProjectID string `json:"projectID"`
 	// ServiceID 表示所属 service 的唯一标识。
 	ServiceID string `json:"serviceID"`
 	// ServiceName 表示 service 名称。

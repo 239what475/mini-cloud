@@ -24,7 +24,7 @@ import (
 
 type stubControlPlaneSouthbound struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
-	cloudplanev1.UnimplementedControlPlaneProjectServiceServer
+	cloudplanev1.UnimplementedControlPlaneResourceServiceServer
 	cloudplanev1.UnimplementedControlPlaneWorkloadServiceServer
 
 	t                 *testing.T
@@ -56,7 +56,6 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 			Database: "ok",
 		},
 		Overview: &cloudplanev1.PlaneOverview{
-			ProjectsTotal: 3,
 			ServicesTotal: 7,
 		},
 		Capacity: &cloudplanev1.PlaneCapacity{
@@ -72,25 +71,21 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 	}, nil
 }
 
-func (s *stubControlPlaneSouthbound) ApplyProject(ctx context.Context, req *cloudplanev1.ApplyProjectRequest) (*cloudplanev1.ApplyProjectResponse, error) {
+func (s *stubControlPlaneSouthbound) ApplyResources(ctx context.Context, req *cloudplanev1.ApplyResourcesRequest) (*cloudplanev1.ApplyResourcesResponse, error) {
 	s.assertAuthorization(ctx)
-	if req.GetProjectId() != "proj-global" {
-		s.t.Fatalf("unexpected project id: %q", req.GetProjectId())
+	if len(req.GetConfigSets()) != 1 || req.GetConfigSets()[0].GetId() != "cfg-1" {
+		s.t.Fatalf("unexpected config sets: %+v", req.GetConfigSets())
 	}
-	if req.GetOwnerUserId() != "usr-owner-001" {
-		s.t.Fatalf("unexpected owner user id: %q", req.GetOwnerUserId())
+	if len(req.GetSecretSets()) != 1 || req.GetSecretSets()[0].GetValues()["token"] != "secret" {
+		s.t.Fatalf("unexpected secret sets: %+v", req.GetSecretSets())
 	}
-	return &cloudplanev1.ApplyProjectResponse{
-		Action:    "created",
-		ProjectId: req.GetProjectId(),
+	return &cloudplanev1.ApplyResourcesResponse{
+		Action: "updated",
 	}, nil
 }
 
 func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
 	s.assertAuthorization(ctx)
-	if req.GetProjectId() != "proj-global" {
-		s.t.Fatalf("unexpected project id: %q", req.GetProjectId())
-	}
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
 	}
@@ -105,9 +100,6 @@ func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *clou
 
 func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	s.assertAuthorization(ctx)
-	if req.GetProjectId() != "proj-global" {
-		s.t.Fatalf("unexpected project id: %q", req.GetProjectId())
-	}
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
 	}
@@ -144,7 +136,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		wantAuthorization: "Bearer test-token",
 	}
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, stub)
-	cloudplanev1.RegisterControlPlaneProjectServiceServer(grpcServer, stub)
+	cloudplanev1.RegisterControlPlaneResourceServiceServer(grpcServer, stub)
 	cloudplanev1.RegisterControlPlaneWorkloadServiceServer(grpcServer, stub)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
@@ -172,20 +164,18 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.RuntimeConfig)
 	}
 
-	projectResp, err := client.ApplyProject(context.Background(), cloudplaneapi.Project{
-		ID:          "proj-global",
-		Name:        "demo",
-		DisplayName: "Demo",
-		OwnerUserID: "usr-owner-001",
+	resourceResp, err := client.ApplyResources(context.Background(), cloudplaneapi.ResourceBundle{
+		ConfigSets: []cloudplaneapi.ConfigSet{{ID: "cfg-1", Name: "cfg", Values: map[string]string{"app": "demo"}}},
+		SecretSets: []cloudplaneapi.SecretSet{{ID: "sec-1", Name: "sec", Values: map[string]string{"token": "secret"}}},
 	})
 	if err != nil {
-		t.Fatalf("ApplyProject returned error: %v", err)
+		t.Fatalf("ApplyResources returned error: %v", err)
 	}
-	if projectResp.Action != cloudplaneapi.ApplyActionCreated || projectResp.ProjectID != "proj-global" {
-		t.Fatalf("unexpected apply project response: %+v", projectResp)
+	if resourceResp.Action != cloudplaneapi.ApplyActionUpdated {
+		t.Fatalf("unexpected apply resources response: %+v", resourceResp)
 	}
 
-	applyResp, err := client.ApplyService(context.Background(), "proj-global", "svc-1", "svc-demo", cloudplaneapi.ApplyServiceRequest{
+	applyResp, err := client.ApplyService(context.Background(), "svc-1", "svc-demo", cloudplaneapi.ApplyServiceRequest{
 		DisplayName: "Demo Service",
 		Spec: cloudplaneapi.ServiceSpec{
 			Region:        "cn-beijing",
@@ -208,7 +198,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected service response: %+v", applyResp)
 	}
 
-	if err := client.DeleteService(context.Background(), "proj-global", "svc-1"); err != nil {
+	if err := client.DeleteService(context.Background(), "svc-1"); err != nil {
 		t.Fatalf("DeleteService returned error: %v", err)
 	}
 }

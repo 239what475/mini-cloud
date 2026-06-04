@@ -58,7 +58,6 @@ func ParseLogQueryInput(r *http.Request, forced logquery.Filters) (logquery.Quer
 		Component:     firstNonEmpty(forced.Component, query.Get("component")),
 		PlatformName:  firstNonEmpty(forced.PlatformName, query.Get("platformName")),
 		PlaneID:       firstNonEmpty(forced.PlaneID, query.Get("planeID")),
-		ProjectID:     firstNonEmpty(forced.ProjectID, query.Get("projectID")),
 		ServiceID:     firstNonEmpty(forced.ServiceID, query.Get("serviceID")),
 		DeploymentID:  firstNonEmpty(forced.DeploymentID, query.Get("deploymentID")),
 		NodeID:        firstNonEmpty(forced.NodeID, query.Get("nodeID")),

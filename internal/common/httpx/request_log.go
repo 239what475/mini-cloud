@@ -32,7 +32,6 @@ func pathLogFields(r *http.Request) logctx.Fields {
 	}
 	return logctx.Fields{
 		PlaneID:       r.PathValue("planeID"),
-		ProjectID:     r.PathValue("projectID"),
 		ServiceID:     firstNonEmptyPathValue(r, "serviceID"),
 		NodeID:        r.PathValue("nodeID"),
 		RuntimeNodeID: r.PathValue("runtimeNodeID"),

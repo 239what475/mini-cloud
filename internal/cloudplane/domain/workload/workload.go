@@ -48,11 +48,9 @@ const (
 var (
 	// ErrServiceIDRequired 表示 service 输入缺少 service 标识。
 	ErrServiceIDRequired = errors.New("serviceID is required")
-	// ErrProjectIDRequired 表示 service 输入缺少 project 标识。
-	ErrProjectIDRequired = errors.New("projectID is required")
 	// ErrInvalidServiceName 表示 service 名称不符合平台命名规则。
 	ErrInvalidServiceName = errors.New("name must use lowercase letters, digits, and hyphens")
-	// ErrServiceIdentityConflict 表示同一个 serviceID 对应的 projectID 或 name 与现有记录冲突。
+	// ErrServiceIdentityConflict 表示同一个 serviceID 对应的 name 与现有记录冲突。
 	ErrServiceIdentityConflict = errors.New("service identity conflicts with existing service")
 	// ErrServiceDisplayNameRequired 表示 service 输入缺少展示名称。
 	ErrServiceDisplayNameRequired = errors.New("displayName is required")
@@ -101,9 +99,7 @@ type Service struct {
 type Metadata struct {
 	// ID 是 service 记录的唯一标识。
 	ID string `json:"id"`
-	// ProjectID 表示所属 project 的唯一标识。
-	ProjectID string `json:"projectID"`
-	// Name 是 project 内唯一的 service 机器可读名称。
+	// Name 是全局唯一的 service 机器可读名称。
 	Name string `json:"name"`
 	// DisplayName 表示面向用户展示的名称。
 	DisplayName string `json:"displayName"`
@@ -158,11 +154,7 @@ type ServiceStatus struct {
 }
 
 // ValidateIdentity 校验 service 身份字段。
-func ValidateIdentity(projectID string, name string) error {
-	// service 必须属于一个 project。
-	if strings.TrimSpace(projectID) == "" {
-		return ErrProjectIDRequired
-	}
+func ValidateIdentity(name string) error {
 	// service name 使用机器可读命名规则，按 trim 后内容校验。
 	if !serviceNamePattern.MatchString(strings.TrimSpace(name)) {
 		return ErrInvalidServiceName
@@ -171,8 +163,8 @@ func ValidateIdentity(projectID string, name string) error {
 }
 
 // ValidateMetadata 校验 service 元数据字段。
-func ValidateMetadata(projectID string, name string, displayName string) error {
-	if err := ValidateIdentity(projectID, name); err != nil {
+func ValidateMetadata(name string, displayName string) error {
+	if err := ValidateIdentity(name); err != nil {
 		return err
 	}
 	if strings.TrimSpace(displayName) == "" {
@@ -352,8 +344,7 @@ func ResourceRequest(class string) (cpuMilli int, memoryMi int, err error) {
 // 参数说明：err 是待判断的错误。
 func IsInputError(err error) bool {
 	// service 基础字段校验错误。
-	return errors.Is(err, ErrProjectIDRequired) ||
-		errors.Is(err, ErrServiceIDRequired) ||
+	return errors.Is(err, ErrServiceIDRequired) ||
 		errors.Is(err, ErrInvalidServiceName) ||
 		errors.Is(err, ErrServiceDisplayNameRequired) ||
 		errors.Is(err, ErrServiceRegionRequired) ||

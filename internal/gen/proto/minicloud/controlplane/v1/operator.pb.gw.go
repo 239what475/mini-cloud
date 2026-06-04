@@ -162,82 +162,13 @@ func local_request_OperatorService_SyncPlane_0(ctx context.Context, marshaler ru
 	return msg, metadata, err
 }
 
-func request_OperatorService_ListProjects_0(ctx context.Context, marshaler runtime.Marshaler, client OperatorServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq emptypb.Empty
-		metadata runtime.ServerMetadata
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	msg, err := client.ListProjects(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_OperatorService_ListProjects_0(ctx context.Context, marshaler runtime.Marshaler, server OperatorServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq emptypb.Empty
-		metadata runtime.ServerMetadata
-	)
-	msg, err := server.ListProjects(ctx, &protoReq)
-	return msg, metadata, err
-}
-
-func request_OperatorService_GetProject_0(ctx context.Context, marshaler runtime.Marshaler, client OperatorServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetProjectRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	if req.Body != nil {
-		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
-	}
-	msg, err := client.GetProject(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-}
-
-func local_request_OperatorService_GetProject_0(ctx context.Context, marshaler runtime.Marshaler, server OperatorServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var (
-		protoReq GetProjectRequest
-		metadata runtime.ServerMetadata
-		err      error
-	)
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
-	}
-	msg, err := server.GetProject(ctx, &protoReq)
-	return msg, metadata, err
-}
-
 func request_OperatorService_ListServices_0(ctx context.Context, marshaler runtime.Marshaler, client OperatorServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListServicesRequest
+		protoReq emptypb.Empty
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
 	}
 	msg, err := client.ListServices(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -245,18 +176,9 @@ func request_OperatorService_ListServices_0(ctx context.Context, marshaler runti
 
 func local_request_OperatorService_ListServices_0(ctx context.Context, marshaler runtime.Marshaler, server OperatorServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
-		protoReq ListServicesRequest
+		protoReq emptypb.Empty
 		metadata runtime.ServerMetadata
-		err      error
 	)
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
-	}
 	msg, err := server.ListServices(ctx, &protoReq)
 	return msg, metadata, err
 }
@@ -270,15 +192,7 @@ func request_OperatorService_GetService_0(ctx context.Context, marshaler runtime
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
 	}
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
-	}
-	val, ok = pathParams["service_id"]
+	val, ok := pathParams["service_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "service_id")
 	}
@@ -296,15 +210,7 @@ func local_request_OperatorService_GetService_0(ctx context.Context, marshaler r
 		metadata runtime.ServerMetadata
 		err      error
 	)
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
-	}
-	val, ok = pathParams["service_id"]
+	val, ok := pathParams["service_id"]
 	if !ok {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "service_id")
 	}
@@ -320,21 +226,12 @@ func request_OperatorService_CreateService_0(ctx context.Context, marshaler runt
 	var (
 		protoReq CreateServiceRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
 	}
 	if req.Body != nil {
 		_, _ = io.Copy(io.Discard, req.Body)
-	}
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
 	}
 	msg, err := client.CreateService(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
 	return msg, metadata, err
@@ -344,18 +241,9 @@ func local_request_OperatorService_CreateService_0(ctx context.Context, marshale
 	var (
 		protoReq CreateServiceRequest
 		metadata runtime.ServerMetadata
-		err      error
 	)
 	if err := marshaler.NewDecoder(req.Body).Decode(&protoReq); err != nil && !errors.Is(err, io.EOF) {
 		return nil, metadata, status.Errorf(codes.InvalidArgument, "%v", err)
-	}
-	val, ok := pathParams["project_id"]
-	if !ok {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "missing parameter %s", "project_id")
-	}
-	protoReq.ProjectId, err = runtime.String(val)
-	if err != nil {
-		return nil, metadata, status.Errorf(codes.InvalidArgument, "type mismatch, parameter: %s, error: %v", "project_id", err)
 	}
 	msg, err := server.CreateService(ctx, &protoReq)
 	return msg, metadata, err
@@ -447,53 +335,13 @@ func RegisterOperatorServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		}
 		forward_OperatorService_SyncPlane_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OperatorService_ListProjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListProjects", runtime.WithHTTPPathPattern("/api/operator/v1/projects"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_OperatorService_ListProjects_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_OperatorService_ListProjects_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_OperatorService_GetProject_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetProject", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_OperatorService_GetProject_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_OperatorService_GetProject_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_OperatorService_ListServices_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListServices", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListServices", runtime.WithHTTPPathPattern("/api/operator/v1/services"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -513,7 +361,7 @@ func RegisterOperatorServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetService", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services/{service_id}"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetService", runtime.WithHTTPPathPattern("/api/operator/v1/services/{service_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -533,7 +381,7 @@ func RegisterOperatorServiceHandlerServer(ctx context.Context, mux *runtime.Serv
 		var stream runtime.ServerTransportStream
 		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/CreateService", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services"))
+		annotatedContext, err := runtime.AnnotateIncomingContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/CreateService", runtime.WithHTTPPathPattern("/api/operator/v1/services"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -655,45 +503,11 @@ func RegisterOperatorServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		}
 		forward_OperatorService_SyncPlane_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 	})
-	mux.Handle(http.MethodGet, pattern_OperatorService_ListProjects_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListProjects", runtime.WithHTTPPathPattern("/api/operator/v1/projects"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_OperatorService_ListProjects_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_OperatorService_ListProjects_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
-	mux.Handle(http.MethodGet, pattern_OperatorService_GetProject_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetProject", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_OperatorService_GetProject_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		forward_OperatorService_GetProject_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-	})
 	mux.Handle(http.MethodGet, pattern_OperatorService_ListServices_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListServices", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/ListServices", runtime.WithHTTPPathPattern("/api/operator/v1/services"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -710,7 +524,7 @@ func RegisterOperatorServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetService", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services/{service_id}"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/GetService", runtime.WithHTTPPathPattern("/api/operator/v1/services/{service_id}"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -727,7 +541,7 @@ func RegisterOperatorServiceHandlerClient(ctx context.Context, mux *runtime.Serv
 		ctx, cancel := context.WithCancel(req.Context())
 		defer cancel()
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/CreateService", runtime.WithHTTPPathPattern("/api/operator/v1/projects/{project_id}/services"))
+		annotatedContext, err := runtime.AnnotateContext(ctx, mux, req, "/minicloud.controlplane.v1.OperatorService/CreateService", runtime.WithHTTPPathPattern("/api/operator/v1/services"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -748,11 +562,9 @@ var (
 	pattern_OperatorService_ListPlanes_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "operator", "v1", "planes"}, ""))
 	pattern_OperatorService_GetPlane_0      = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"api", "operator", "v1", "planes", "plane_id"}, ""))
 	pattern_OperatorService_SyncPlane_0     = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"api", "operator", "v1", "planes", "plane_id"}, "sync"))
-	pattern_OperatorService_ListProjects_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "operator", "v1", "projects"}, ""))
-	pattern_OperatorService_GetProject_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"api", "operator", "v1", "projects", "project_id"}, ""))
-	pattern_OperatorService_ListServices_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"api", "operator", "v1", "projects", "project_id", "services"}, ""))
-	pattern_OperatorService_GetService_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5, 1, 0, 4, 1, 5, 6}, []string{"api", "operator", "v1", "projects", "project_id", "services", "service_id"}, ""))
-	pattern_OperatorService_CreateService_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4, 2, 5}, []string{"api", "operator", "v1", "projects", "project_id", "services"}, ""))
+	pattern_OperatorService_ListServices_0  = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "operator", "v1", "services"}, ""))
+	pattern_OperatorService_GetService_0    = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 1, 0, 4, 1, 5, 4}, []string{"api", "operator", "v1", "services", "service_id"}, ""))
+	pattern_OperatorService_CreateService_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"api", "operator", "v1", "services"}, ""))
 )
 
 var (
@@ -760,8 +572,6 @@ var (
 	forward_OperatorService_ListPlanes_0    = runtime.ForwardResponseMessage
 	forward_OperatorService_GetPlane_0      = runtime.ForwardResponseMessage
 	forward_OperatorService_SyncPlane_0     = runtime.ForwardResponseMessage
-	forward_OperatorService_ListProjects_0  = runtime.ForwardResponseMessage
-	forward_OperatorService_GetProject_0    = runtime.ForwardResponseMessage
 	forward_OperatorService_ListServices_0  = runtime.ForwardResponseMessage
 	forward_OperatorService_GetService_0    = runtime.ForwardResponseMessage
 	forward_OperatorService_CreateService_0 = runtime.ForwardResponseMessage

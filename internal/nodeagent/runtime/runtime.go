@@ -33,8 +33,6 @@ type RunInput struct {
 	ExecutionID string `json:"executionID,omitempty"`
 	// DeploymentID 是执行所属部署 ID，会写入运行时标签。
 	DeploymentID string `json:"deploymentID,omitempty"`
-	// ProjectID 是执行所属项目 ID，会写入运行时标签。
-	ProjectID string `json:"projectID,omitempty"`
 	// ServiceID 是执行所属服务 ID，会写入运行时标签。
 	ServiceID string `json:"serviceID,omitempty"`
 	// RevisionID 是执行使用的服务修订 ID，会写入运行时标签。

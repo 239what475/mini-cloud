@@ -1,4 +1,4 @@
-package projectresource
+package resource
 
 import (
 	"errors"
@@ -27,7 +27,6 @@ var (
 
 type ConfigSet struct {
 	ID        string            `json:"id"`
-	ProjectID string            `json:"projectID"`
 	Name      string            `json:"name"`
 	Values    map[string]string `json:"values"`
 	CreatedAt time.Time         `json:"createdAt"`
@@ -59,7 +58,6 @@ func (in CreateConfigSetInput) Validate() error {
 
 type SecretSet struct {
 	ID        string            `json:"id"`
-	ProjectID string            `json:"projectID"`
 	Name      string            `json:"name"`
 	Keys      []string          `json:"keys"`
 	Values    map[string]string `json:"values,omitempty"`
@@ -92,7 +90,6 @@ func (in CreateSecretSetInput) Validate() error {
 
 type RegistryCredential struct {
 	ID                 string    `json:"id"`
-	ProjectID          string    `json:"projectID"`
 	Name               string    `json:"name"`
 	Server             string    `json:"server"`
 	Username           string    `json:"username"`

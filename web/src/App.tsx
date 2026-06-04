@@ -9,7 +9,6 @@ type HealthzResponse = {
 };
 
 type PlatformOverview = {
-  projectsTotal: number;
   servicesTotal: number;
   servicesIdle: number;
   servicesDeploying: number;
@@ -29,22 +28,6 @@ type PlatformOverview = {
   deploymentsDeploying: number;
   deploymentsRunning: number;
   deploymentsFailed: number;
-};
-
-type Project = {
-  id: string;
-  name: string;
-  displayName: string;
-  quota: {
-    maxServices: number;
-    cpuMilli: number;
-    memoryMi: number;
-  };
-  createdAt: string;
-};
-
-type ProjectListResponse = {
-  items: Project[];
 };
 
 type ServiceSpec = {
@@ -84,7 +67,6 @@ type ServiceStatus = {
 
 type ServiceResource = {
   id: string;
-  projectID: string;
   name: string;
   displayName: string;
   spec: ServiceSpec;
@@ -153,7 +135,6 @@ type DeploymentListResponse = {
 
 type ConfigSetResource = {
   id: string;
-  projectID: string;
   name: string;
   values: Record<string, string>;
   createdAt: string;
@@ -166,7 +147,6 @@ type ConfigSetListResponse = {
 
 type SecretSetResource = {
   id: string;
-  projectID: string;
   name: string;
   keys: string[];
   createdAt: string;
@@ -179,7 +159,6 @@ type SecretSetListResponse = {
 
 type RegistryCredentialResource = {
   id: string;
-  projectID: string;
   name: string;
   server: string;
   username: string;
@@ -190,11 +169,6 @@ type RegistryCredentialResource = {
 
 type RegistryCredentialListResponse = {
   items: RegistryCredentialResource[];
-};
-
-type ProjectFormState = {
-  name: string;
-  displayName: string;
 };
 
 type ConfigSetFormState = {
@@ -272,13 +246,6 @@ async function fetchJSON<T>(
   }
 
   return payload as T;
-}
-
-function defaultProjectForm(): ProjectFormState {
-  return {
-    name: "",
-    displayName: "",
-  };
 }
 
 function defaultConfigSetForm(): ConfigSetFormState {
@@ -469,11 +436,7 @@ function formatTime(value?: string | null) {
 function App() {
   const queryClient = useQueryClient();
 
-  const [selectedProjectID, setSelectedProjectID] = useState("");
   const [selectedServiceID, setSelectedServiceID] = useState("");
-  const [projectForm, setProjectForm] = useState<ProjectFormState>(
-    defaultProjectForm(),
-  );
   const [configSetForm, setConfigSetForm] = useState<ConfigSetFormState>(
     defaultConfigSetForm(),
   );
@@ -488,7 +451,6 @@ function App() {
   const [editForm, setEditForm] = useState<ServiceEditFormState>(
     defaultEditServiceForm(),
   );
-  const [createFormProjectID, setCreateFormProjectID] = useState("");
   const [editFormSourceServiceID, setEditFormSourceServiceID] = useState("");
   const [isEditFormDirty, setIsEditFormDirty] = useState(false);
 
@@ -504,48 +466,27 @@ function App() {
     refetchInterval: 5_000,
   });
 
-  const projectsQuery = useQuery({
-    queryKey: ["projects"],
-    queryFn: () => fetchJSON<ProjectListResponse>("/api/v1/projects"),
-  });
-
-  const effectiveProjectID =
-    selectedProjectID || projectsQuery.data?.items[0]?.id || "";
-
   const servicesQuery = useQuery({
-    queryKey: ["services", effectiveProjectID],
-    queryFn: () =>
-      fetchJSON<ServiceListResponse>(
-        `/api/v1/projects/${effectiveProjectID}/services`,
-      ),
-    enabled: effectiveProjectID !== "",
+    queryKey: ["services"],
+    queryFn: () => fetchJSON<ServiceListResponse>("/api/v1/services"),
   });
 
   const configSetsQuery = useQuery({
-    queryKey: ["config-sets", effectiveProjectID],
-    queryFn: () =>
-      fetchJSON<ConfigSetListResponse>(
-        `/api/v1/projects/${effectiveProjectID}/config-sets`,
-      ),
-    enabled: effectiveProjectID !== "",
+    queryKey: ["config-sets"],
+    queryFn: () => fetchJSON<ConfigSetListResponse>("/api/v1/config-sets"),
   });
 
   const secretSetsQuery = useQuery({
-    queryKey: ["secret-sets", effectiveProjectID],
-    queryFn: () =>
-      fetchJSON<SecretSetListResponse>(
-        `/api/v1/projects/${effectiveProjectID}/secret-sets`,
-      ),
-    enabled: effectiveProjectID !== "",
+    queryKey: ["secret-sets"],
+    queryFn: () => fetchJSON<SecretSetListResponse>("/api/v1/secret-sets"),
   });
 
   const registryCredentialsQuery = useQuery({
-    queryKey: ["registry-credentials", effectiveProjectID],
+    queryKey: ["registry-credentials"],
     queryFn: () =>
       fetchJSON<RegistryCredentialListResponse>(
-        `/api/v1/projects/${effectiveProjectID}/registry-credentials`,
+        "/api/v1/registry-credentials",
       ),
-    enabled: effectiveProjectID !== "",
   });
 
   const serviceItems = servicesQuery.data?.items ?? [];
@@ -582,29 +523,6 @@ function App() {
   const currentService = serviceDetailQuery.data?.service ?? null;
 
   useEffect(() => {
-    const projects = projectsQuery.data?.items ?? [];
-    if (projects.length === 0) {
-      if (selectedProjectID !== "") {
-        setSelectedProjectID("");
-      }
-      return;
-    }
-    if (selectedProjectID === "") {
-      setSelectedProjectID(projects[0].id);
-      return;
-    }
-    if (!projects.some((item) => item.id === selectedProjectID)) {
-      setSelectedProjectID(projects[0].id);
-    }
-  }, [projectsQuery.data, selectedProjectID]);
-
-  useEffect(() => {
-    if (effectiveProjectID === "") {
-      if (selectedServiceID !== "") {
-        setSelectedServiceID("");
-      }
-      return;
-    }
     if (serviceItems.length === 0) {
       if (selectedServiceID !== "") {
         setSelectedServiceID("");
@@ -618,15 +536,7 @@ function App() {
     if (!serviceItems.some((item) => item.service.id === selectedServiceID)) {
       setSelectedServiceID(serviceItems[0].service.id);
     }
-  }, [serviceItems, effectiveProjectID, selectedServiceID]);
-
-  useEffect(() => {
-    if (effectiveProjectID === createFormProjectID) {
-      return;
-    }
-    setServiceForm(defaultCreateServiceForm());
-    setCreateFormProjectID(effectiveProjectID);
-  }, [effectiveProjectID, createFormProjectID]);
+  }, [serviceItems, selectedServiceID]);
 
   useEffect(() => {
     if (!currentService) {
@@ -641,19 +551,13 @@ function App() {
     setIsEditFormDirty(false);
   }, [currentService, editFormSourceServiceID, isEditFormDirty]);
 
-  const invalidateProjectArea = async (
-    projectID: string,
-    serviceID?: string,
-  ) => {
+  const invalidateResourceArea = async (serviceID?: string) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["platform-overview"] }),
-      queryClient.invalidateQueries({ queryKey: ["projects"] }),
-      queryClient.invalidateQueries({ queryKey: ["services", projectID] }),
-      queryClient.invalidateQueries({ queryKey: ["config-sets", projectID] }),
-      queryClient.invalidateQueries({ queryKey: ["secret-sets", projectID] }),
-      queryClient.invalidateQueries({
-        queryKey: ["registry-credentials", projectID],
-      }),
+      queryClient.invalidateQueries({ queryKey: ["services"] }),
+      queryClient.invalidateQueries({ queryKey: ["config-sets"] }),
+      queryClient.invalidateQueries({ queryKey: ["secret-sets"] }),
+      queryClient.invalidateQueries({ queryKey: ["registry-credentials"] }),
       serviceID
         ? queryClient.invalidateQueries({ queryKey: ["service", serviceID] })
         : Promise.resolve(),
@@ -668,98 +572,66 @@ function App() {
     ]);
   };
 
-  const createProject = useMutation({
-    mutationFn: (input: ProjectFormState) =>
-      fetchJSON<Project>("/api/v1/projects", {
+  const createConfigSet = useMutation({
+    mutationFn: (form: ConfigSetFormState) =>
+      fetchJSON<ConfigSetResource>("/api/v1/config-sets", {
         method: "POST",
         body: JSON.stringify({
-          name: input.name.trim(),
-          displayName: input.displayName.trim(),
+          name: form.name.trim(),
+          values: parseKeyValueText(form.valuesText),
         }),
       }),
-    onSuccess: async (project) => {
-      setProjectForm(defaultProjectForm());
-      setSelectedProjectID(project.id);
-      setSelectedServiceID("");
-      await invalidateProjectArea(project.id);
-    },
-  });
-
-  const createConfigSet = useMutation({
-    mutationFn: (input: { projectID: string; form: ConfigSetFormState }) =>
-      fetchJSON<ConfigSetResource>(
-        `/api/v1/projects/${input.projectID}/config-sets`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: input.form.name.trim(),
-            values: parseKeyValueText(input.form.valuesText),
-          }),
-        },
-      ),
-    onSuccess: async (_, variables) => {
+    onSuccess: async () => {
       setConfigSetForm(defaultConfigSetForm());
-      await invalidateProjectArea(variables.projectID);
+      await invalidateResourceArea();
     },
   });
 
   const createSecretSet = useMutation({
-    mutationFn: (input: { projectID: string; form: SecretSetFormState }) =>
-      fetchJSON<SecretSetResource>(
-        `/api/v1/projects/${input.projectID}/secret-sets`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: input.form.name.trim(),
-            values: parseKeyValueText(input.form.valuesText),
-          }),
-        },
-      ),
-    onSuccess: async (_, variables) => {
+    mutationFn: (form: SecretSetFormState) =>
+      fetchJSON<SecretSetResource>("/api/v1/secret-sets", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          values: parseKeyValueText(form.valuesText),
+        }),
+      }),
+    onSuccess: async () => {
       setSecretSetForm(defaultSecretSetForm());
-      await invalidateProjectArea(variables.projectID);
+      await invalidateResourceArea();
     },
   });
 
   const createRegistryCredential = useMutation({
-    mutationFn: (input: {
-      projectID: string;
-      form: RegistryCredentialFormState;
-    }) =>
+    mutationFn: (form: RegistryCredentialFormState) =>
       fetchJSON<RegistryCredentialResource>(
-        `/api/v1/projects/${input.projectID}/registry-credentials`,
+        "/api/v1/registry-credentials",
         {
           method: "POST",
           body: JSON.stringify({
-            name: input.form.name.trim(),
-            server: input.form.server.trim(),
-            username: input.form.username.trim(),
-            password: input.form.password,
+            name: form.name.trim(),
+            server: form.server.trim(),
+            username: form.username.trim(),
+            password: form.password,
           }),
         },
       ),
-    onSuccess: async (_, variables) => {
+    onSuccess: async () => {
       setRegistryCredentialForm(defaultRegistryCredentialForm());
-      await invalidateProjectArea(variables.projectID);
+      await invalidateResourceArea();
     },
   });
 
   const createService = useMutation({
-    mutationFn: (input: { projectID: string; form: ServiceFormState }) =>
-      fetchJSON<ServiceMutationResponse>(
-        `/api/v1/projects/${input.projectID}/services`,
-        {
-          method: "POST",
-          body: JSON.stringify(toCreateServicePayload(input.form)),
-        },
-      ),
+    mutationFn: (form: ServiceFormState) =>
+      fetchJSON<ServiceMutationResponse>("/api/v1/services", {
+        method: "POST",
+        body: JSON.stringify(toCreateServicePayload(form)),
+      }),
     onSuccess: async (response) => {
       setServiceForm(defaultCreateServiceForm());
       setSelectedServiceID(response.service.id);
-      await invalidateProjectArea(
-        response.service.projectID,
-        response.service.id,
-      );
+      await invalidateResourceArea(response.service.id);
     },
   });
 
@@ -776,10 +648,7 @@ function App() {
       setEditForm(editFormFromService(response.service));
       setEditFormSourceServiceID(response.service.id);
       setIsEditFormDirty(false);
-      await invalidateProjectArea(
-        response.service.projectID,
-        response.service.id,
-      );
+      await invalidateResourceArea(response.service.id);
     },
   });
 
@@ -792,16 +661,10 @@ function App() {
         },
       ),
     onSuccess: async (response) => {
-      await invalidateProjectArea(
-        response.service.projectID,
-        response.service.id,
-      );
+      await invalidateResourceArea(response.service.id);
     },
   });
 
-  const selectedProject =
-    projectsQuery.data?.items.find((item) => item.id === effectiveProjectID) ??
-    null;
   const selectedServiceDetail = serviceDetailQuery.data ?? null;
   const selectedStatus = selectedServiceDetail?.service.status ?? null;
   const revisions = revisionsQuery.data?.items ?? [];
@@ -824,7 +687,7 @@ function App() {
         <h1 className="brand">mini-cloud</h1>
         <nav className="nav">
           <a href="#overview">概览</a>
-          <a href="#projects">项目</a>
+          <a href="#resources">资源</a>
           <a href="#services">服务</a>
           <a href="#detail">详情</a>
         </nav>
@@ -833,9 +696,9 @@ function App() {
       <main className="content">
         <section className="hero">
           <p className="eyebrow">control-plane</p>
-          <h1>project / service / revision / deployment</h1>
+          <h1>service / resource / revision / deployment</h1>
           <p>
-            control-plane 对外只保留项目、服务、修订和部署视图；cloud-plane 只作为内部 gRPC 执行面。
+            control-plane 对外保留全局资源、服务、修订和部署视图；cloud-plane 只作为内部 gRPC 执行面。
           </p>
         </section>
 
@@ -856,10 +719,6 @@ function App() {
                   ? `DB ${healthQuery.data.database}`
                   : "-"}
               </p>
-            </div>
-            <div className="status-card">
-              <span className="status-card__label">Projects</span>
-              <strong>{overviewQuery.data?.projectsTotal ?? "-"}</strong>
             </div>
             <div className="status-card">
               <span className="status-card__label">Services</span>
@@ -895,124 +754,27 @@ function App() {
           ) : null}
         </section>
 
-        <section id="projects" className="panel" style={{ marginTop: 24 }}>
+        <section id="resources" className="panel" style={{ marginTop: 24 }}>
           <div className="panel__header">
             <div>
-              <p className="eyebrow">projects</p>
-              <h2>项目入口</h2>
+              <p className="eyebrow">global resources</p>
+              <h2>运行时资源</h2>
             </div>
           </div>
 
-          <form
-            className="project-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              createProject.mutate(projectForm);
-            }}
-          >
-            <label>
-              <span>项目名</span>
-              <input
-                value={projectForm.name}
-                onChange={(event) =>
-                  setProjectForm((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-                placeholder="team-a"
-              />
-            </label>
-            <label>
-              <span>显示名</span>
-              <input
-                value={projectForm.displayName}
-                onChange={(event) =>
-                  setProjectForm((current) => ({
-                    ...current,
-                    displayName: event.target.value,
-                  }))
-                }
-                placeholder="Team A"
-              />
-            </label>
-            <button type="submit" disabled={createProject.isPending}>
-              {createProject.isPending ? "创建中..." : "创建项目"}
-            </button>
-          </form>
-
-          {createProject.error instanceof Error ? (
-            <p className="error-text">{createProject.error.message}</p>
-          ) : null}
-
-          <div className="project-list">
-            {(projectsQuery.data?.items ?? []).map((project) => (
-              <article key={project.id} className="app-card">
-                <div className="app-card__header">
-                  <div>
-                    <strong>{project.displayName}</strong>
-                    <p>
-                      {project.name} · 创建于 {formatTime(project.createdAt)}
-                    </p>
-                  </div>
-                  <button
-                    className="inline-button"
-                    type="button"
-                    onClick={() => {
-                      setSelectedProjectID(project.id);
-                      setSelectedServiceID("");
-                    }}
-                  >
-                    {project.id === effectiveProjectID ? "当前项目" : "切换"}
-                  </button>
-                </div>
-                <div className="app-card__section">
-                  <p className="app-card__section-title">guardrails</p>
-                  <p>
-                    services {project.quota.maxServices} · cpu{" "}
-                    {project.quota.cpuMilli}m · memory {project.quota.memoryMi}
-                    Mi
-                  </p>
-                </div>
-              </article>
-            ))}
-          </div>
-
-          {projectsQuery.error instanceof Error ? (
-            <p className="error-text">{projectsQuery.error.message}</p>
-          ) : null}
-        </section>
-
-        <section id="services" className="panel" style={{ marginTop: 24 }}>
-          <div className="panel__header">
-            <div>
-              <p className="eyebrow">services</p>
-              <h2>
-                {selectedProject
-                  ? `${selectedProject.displayName} 下的服务`
-                  : "先选择一个项目"}
-              </h2>
-            </div>
-          </div>
-
-          {selectedProject ? (
-            <>
               <div className="app-grid" style={{ marginBottom: 24 }}>
                 <article className="app-card">
                   <div className="app-card__header">
                     <div>
                       <strong>Config Sets</strong>
-                      <p>项目级非敏感运行配置</p>
+                      <p>全局非敏感运行配置</p>
                     </div>
                   </div>
                   <form
                     className="project-form"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      createConfigSet.mutate({
-                        projectID: selectedProject.id,
-                        form: configSetForm,
-                      });
+                      createConfigSet.mutate(configSetForm);
                     }}
                   >
                     <label>
@@ -1071,17 +833,14 @@ function App() {
                   <div className="app-card__header">
                     <div>
                       <strong>Secret Sets</strong>
-                      <p>项目级敏感运行配置</p>
+                      <p>全局敏感运行配置</p>
                     </div>
                   </div>
                   <form
                     className="project-form"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      createSecretSet.mutate({
-                        projectID: selectedProject.id,
-                        form: secretSetForm,
-                      });
+                      createSecretSet.mutate(secretSetForm);
                     }}
                   >
                     <label>
@@ -1147,10 +906,7 @@ function App() {
                     className="project-form"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      createRegistryCredential.mutate({
-                        projectID: selectedProject.id,
-                        form: registryCredentialForm,
-                      });
+                      createRegistryCredential.mutate(registryCredentialForm);
                     }}
                   >
                     <label>
@@ -1239,15 +995,21 @@ function App() {
                   ) : null}
                 </article>
               </div>
+        </section>
+
+        <section id="services" className="panel" style={{ marginTop: 24 }}>
+          <div className="panel__header">
+            <div>
+              <p className="eyebrow">services</p>
+              <h2>服务</h2>
+            </div>
+          </div>
 
               <form
                 className="project-form"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  createService.mutate({
-                    projectID: selectedProject.id,
-                    form: serviceForm,
-                  });
+                  createService.mutate(serviceForm);
                 }}
               >
                 <label>
@@ -1516,12 +1278,6 @@ function App() {
               {servicesQuery.error instanceof Error ? (
                 <p className="error-text">{servicesQuery.error.message}</p>
               ) : null}
-            </>
-          ) : (
-            <div className="callout">
-              <p>还没有项目。先创建一个项目，再在项目作用域下创建 service。</p>
-            </div>
-          )}
         </section>
 
         <section id="detail" className="panel" style={{ marginTop: 24 }}>

@@ -10,8 +10,6 @@ import (
 
 	"mini-cloud/internal/common/httpx"
 	"mini-cloud/internal/common/operationhistory"
-	"mini-cloud/internal/common/project"
-	"mini-cloud/internal/controlplane/projecttoken"
 	"mini-cloud/internal/controlplane/serviceaccount"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -20,21 +18,17 @@ const (
 	authPrincipalKindAnonymous      = "anonymous"
 	authPrincipalKindBreakGlass     = "break_glass"
 	authPrincipalKindServiceAccount = "service_account"
-	authPrincipalKindProjectToken   = "project_token"
 )
 
 const (
 	authPermissionControlRead       = "control.read"
 	authPermissionControlWrite      = "control.write"
-	authPermissionProjectRead       = "project.read"
-	authPermissionProjectWrite      = "project.write"
-	authPermissionProjectDeploy     = "project.deploy.write"
-	authPermissionProjectAPIToken   = "project.api_token.write"
-	authPermissionProjectOwnership  = "project.ownership.write"
+	authPermissionResourceRead      = "resource.read"
+	authPermissionResourceWrite     = "resource.write"
+	authPermissionServiceDeploy     = "service.deploy.write"
 	authPermissionSelfRead          = "auth.self.read"
 	authPermissionOperationsRead    = "operations.read"
 	authScopeTypeControl            = "control"
-	authScopeTypeProject            = "project"
 	authDecisionAllowed             = "allowed"
 	authDecisionDenied              = "denied"
 	authDecisionFailed              = "failed"
@@ -43,7 +37,6 @@ const (
 	authMatchedRolePlatformOwner    = "platform_owner"
 	authMatchedRolePlatformOperator = "platform_operator"
 	authMatchedRolePlatformAuditor  = "platform_auditor"
-	authMatchedRoleProjectOperator  = "project_operator"
 	authMatchedRoleAuthDisabled     = "auth_disabled"
 )
 
@@ -64,7 +57,6 @@ type authFailure struct {
 type authPrincipal struct {
 	Kind           string
 	ServiceAccount *serviceaccount.Account
-	ProjectToken   *projecttoken.Token
 }
 
 type authzDecision struct {
@@ -87,27 +79,17 @@ type authWhoAmIResponse struct {
 	AuthenticationEnabled bool                  `json:"authenticationEnabled"`
 	Principal             authPrincipalResponse `json:"principal"`
 	Permissions           []string              `json:"permissions"`
-	Project               *project.Project      `json:"project,omitempty"`
 }
 
 type authPrincipalResponse struct {
 	Kind           string                      `json:"kind"`
 	ServiceAccount *authServiceAccountResponse `json:"serviceAccount,omitempty"`
-	ProjectToken   *authProjectTokenResponse   `json:"projectToken,omitempty"`
 }
 
 type authServiceAccountResponse struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Role        string  `json:"role"`
-	TokenPrefix string  `json:"tokenPrefix"`
-	LastUsedAt  *string `json:"lastUsedAt,omitempty"`
-}
-
-type authProjectTokenResponse struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	ProjectID   string  `json:"projectID"`
 	TokenPrefix string  `json:"tokenPrefix"`
 	LastUsedAt  *string `json:"lastUsedAt,omitempty"`
 }
@@ -186,32 +168,11 @@ func (a authController) resolveRequest(r *http.Request) authState {
 		}
 	}
 
-	projectToken, err := a.store.ResolveProjectAPITokenBySecret(r.Context(), secret)
-	if err == nil {
-		return authState{
-			Enabled: true,
-			Principal: authPrincipal{
-				Kind:         authPrincipalKindProjectToken,
-				ProjectToken: &projectToken,
-			},
-		}
-	}
-	if errors.Is(err, store.ErrProjectAPITokenNotFound) {
-		return authState{
-			Enabled: true,
-			Failure: &authFailure{
-				StatusCode: http.StatusUnauthorized,
-				Message:    "invalid bearer token",
-			},
-		}
-	}
-
-	requestScopedLogger(r, a.logger).Error("resolve control-plane bearer token failed", "error", err)
 	return authState{
 		Enabled: true,
 		Failure: &authFailure{
-			StatusCode: http.StatusInternalServerError,
-			Message:    "internal server error",
+			StatusCode: http.StatusUnauthorized,
+			Message:    "invalid bearer token",
 		},
 	}
 }
@@ -234,17 +195,6 @@ func (a authController) breakGlassOnlyFunc(requiredPermission string, next http.
 		}
 		if principal.Kind != authPrincipalKindBreakGlass {
 			a.deny(w, r, requiredPermission, authScopeTypeControl, "", http.StatusForbidden, "break-glass admin token required", principal)
-			return
-		}
-		next(w, authzRequest)
-	}
-}
-
-func (a authController) projectAccessByPathFunc(requiredPermission string, pathParam string, next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		projectID := strings.TrimSpace(r.PathValue(pathParam))
-		authzRequest, _, ok := a.authorizeProjectAccess(w, r, requiredPermission, projectID)
-		if !ok {
 			return
 		}
 		next(w, authzRequest)
@@ -288,29 +238,6 @@ func (a authController) whoAmI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if principal.ProjectToken != nil {
-		var lastUsedAt *string
-		if principal.ProjectToken.LastUsedAt != nil {
-			formatted := principal.ProjectToken.LastUsedAt.UTC().Format(http.TimeFormat)
-			lastUsedAt = &formatted
-		}
-		response.Principal.ProjectToken = &authProjectTokenResponse{
-			ID:          principal.ProjectToken.ID,
-			Name:        principal.ProjectToken.Name,
-			ProjectID:   principal.ProjectToken.ProjectID,
-			TokenPrefix: principal.ProjectToken.TokenPrefix,
-			LastUsedAt:  lastUsedAt,
-		}
-
-		projectItem, err := a.store.GetProject(r.Context(), principal.ProjectToken.ProjectID)
-		if err != nil {
-			requestScopedLogger(r, a.logger).Error("load project for control-plane whoami failed", "project_id", principal.ProjectToken.ProjectID, "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-		response.Project = &projectItem
-	}
-
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -345,54 +272,6 @@ func (a authController) authorizePlatform(w http.ResponseWriter, r *http.Request
 		Decision:           authDecisionAllowed,
 		MatchedRoles:       matchedRolesForPrincipal(principal),
 	}), principal, true
-}
-
-func (a authController) authorizeProjectAccess(w http.ResponseWriter, r *http.Request, requiredPermission string, projectID string) (*http.Request, authPrincipal, bool) {
-	state := authStateFromRequest(r)
-	if !state.Enabled {
-		return withAuthzDecision(r, authzDecision{
-			RequiredPermission: requiredPermission,
-			ScopeType:          authScopeTypeProject,
-			ScopeID:            projectID,
-			Decision:           authDecisionAllowed,
-			Reason:             "authentication is disabled",
-			MatchedRoles:       []string{authMatchedRoleAuthDisabled},
-		}), state.Principal, true
-	}
-
-	principal, ok := a.requireAuthenticated(w, r, requiredPermission, authScopeTypeProject, projectID)
-	if !ok {
-		return nil, authPrincipal{}, false
-	}
-	if principal.Kind == authPrincipalKindBreakGlass || principal.Kind == authPrincipalKindServiceAccount {
-		if !principalAllowsPermission(principal, requiredPermission) {
-			a.deny(w, r, requiredPermission, authScopeTypeProject, projectID, http.StatusForbidden, "token lacks required permission", principal)
-			return nil, authPrincipal{}, false
-		}
-		return withAuthzDecision(r, authzDecision{
-			RequiredPermission: requiredPermission,
-			ScopeType:          authScopeTypeProject,
-			ScopeID:            projectID,
-			Decision:           authDecisionAllowed,
-			MatchedRoles:       matchedRolesForPrincipal(principal),
-		}), principal, true
-	}
-	if principal.ProjectToken != nil && principal.ProjectToken.ProjectID == projectID {
-		if !principalAllowsPermission(principal, requiredPermission) {
-			a.deny(w, r, requiredPermission, authScopeTypeProject, projectID, http.StatusForbidden, "token lacks required permission", principal)
-			return nil, authPrincipal{}, false
-		}
-		return withAuthzDecision(r, authzDecision{
-			RequiredPermission: requiredPermission,
-			ScopeType:          authScopeTypeProject,
-			ScopeID:            projectID,
-			Decision:           authDecisionAllowed,
-			MatchedRoles:       matchedRolesForPrincipal(principal),
-		}), principal, true
-	}
-
-	a.deny(w, r, requiredPermission, authScopeTypeProject, projectID, http.StatusForbidden, "token cannot access this project", principal)
-	return nil, authPrincipal{}, false
 }
 
 func (a authController) requireAuthenticated(w http.ResponseWriter, r *http.Request, requiredPermission string, scopeType string, scopeID string) (authPrincipal, bool) {
@@ -434,11 +313,10 @@ func (a authController) reject(w http.ResponseWriter, r *http.Request, requiredP
 		HTTPStatus:         statusCode,
 	}
 	if a.store != nil {
-		auditRequest := withAuthzDecision(r, decision)
-		recordOperationEvent(a.logger, a.store, auditRequest, operationhistory.CreateInput{
-			ProjectID:  deniedProjectID(scopeType, scopeID),
-			Action:     deniedAction(scopeType),
-			TargetType: deniedTargetType(scopeType),
+			auditRequest := withAuthzDecision(r, decision)
+			recordOperationEvent(a.logger, a.store, auditRequest, operationhistory.CreateInput{
+				Action:     deniedAction(scopeType),
+				TargetType: deniedTargetType(scopeType),
 			TargetID:   deniedTargetID(requiredPermission, scopeID),
 			TargetName: deniedTargetName(scopeID),
 			Result:     result,
@@ -486,11 +364,9 @@ func permissionsForPrincipal(principal authPrincipal) []string {
 			authPermissionSelfRead,
 			authPermissionControlRead,
 			authPermissionControlWrite,
-			authPermissionProjectRead,
-			authPermissionProjectWrite,
-			authPermissionProjectAPIToken,
-			authPermissionProjectOwnership,
-			authPermissionProjectDeploy,
+			authPermissionResourceRead,
+			authPermissionResourceWrite,
+			authPermissionServiceDeploy,
 			authPermissionOperationsRead,
 		}
 	case authPrincipalKindServiceAccount:
@@ -503,11 +379,9 @@ func permissionsForPrincipal(principal authPrincipal) []string {
 				authPermissionSelfRead,
 				authPermissionControlRead,
 				authPermissionControlWrite,
-				authPermissionProjectRead,
-				authPermissionProjectWrite,
-				authPermissionProjectAPIToken,
-				authPermissionProjectOwnership,
-				authPermissionProjectDeploy,
+				authPermissionResourceRead,
+				authPermissionResourceWrite,
+				authPermissionServiceDeploy,
 				authPermissionOperationsRead,
 			}
 		case serviceaccount.PlatformRoleAdmin:
@@ -515,35 +389,28 @@ func permissionsForPrincipal(principal authPrincipal) []string {
 				authPermissionSelfRead,
 				authPermissionControlRead,
 				authPermissionControlWrite,
-				authPermissionProjectRead,
-				authPermissionProjectWrite,
-				authPermissionProjectDeploy,
+				authPermissionResourceRead,
+				authPermissionResourceWrite,
+				authPermissionServiceDeploy,
 				authPermissionOperationsRead,
 			}
 		case serviceaccount.PlatformRoleOperator:
 			return []string{
 				authPermissionSelfRead,
 				authPermissionControlRead,
-				authPermissionProjectRead,
-				authPermissionProjectDeploy,
+				authPermissionResourceRead,
+				authPermissionServiceDeploy,
 				authPermissionOperationsRead,
 			}
 		case serviceaccount.PlatformRoleAuditor:
 			return []string{
 				authPermissionSelfRead,
 				authPermissionControlRead,
-				authPermissionProjectRead,
+				authPermissionResourceRead,
 				authPermissionOperationsRead,
 			}
 		default:
 			return []string{}
-		}
-	case authPrincipalKindProjectToken:
-		return []string{
-			authPermissionSelfRead,
-			authPermissionProjectRead,
-			authPermissionProjectDeploy,
-			authPermissionOperationsRead,
 		}
 	default:
 		return []string{}
@@ -582,31 +449,16 @@ func matchedRolesForPrincipal(principal authPrincipal) []string {
 		default:
 			return nil
 		}
-	case authPrincipalKindProjectToken:
-		return []string{authMatchedRoleProjectOperator}
 	default:
 		return nil
 	}
 }
 
-func deniedProjectID(scopeType string, scopeID string) string {
-	if scopeType == authScopeTypeProject {
-		return scopeID
-	}
-	return ""
-}
-
 func deniedAction(scopeType string) string {
-	if scopeType == authScopeTypeProject {
-		return "project.auth.denied"
-	}
 	return "control.auth.denied"
 }
 
 func deniedTargetType(scopeType string) string {
-	if scopeType == authScopeTypeProject {
-		return "project"
-	}
 	return "authorization"
 }
 

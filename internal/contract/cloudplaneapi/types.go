@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/persistentdir"
-	commonproject "mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -47,7 +46,7 @@ var (
 	// ErrRegistryCredentialPasswordRequired 表示 registry credential 缺少密码。
 	ErrRegistryCredentialPasswordRequired = errors.New("registry password is required")
 
-	projectResourceNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	resourceNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 type QuotaRejectReason struct {
@@ -85,8 +84,6 @@ type HealthSummary struct {
 type OverviewSummary struct {
 	// Overview 描述 plane 的整体运行概况。
 	// 这里的 Nodes* 是“所有已知 node”的计数，不区分是否承担 runtime 供给。
-	ProjectsTotal int `json:"projectsTotal"`
-
 	ServicesTotal     int `json:"servicesTotal"`
 	ServicesIdle      int `json:"servicesIdle"`
 	ServicesDeploying int `json:"servicesDeploying"`
@@ -159,30 +156,25 @@ type RuntimeConfigSnapshot struct {
 	Summary     map[string]any `json:"summary"`
 }
 
-type Project struct {
-	ID                  string                      `json:"projectID"`
-	Name                string                      `json:"name"`
-	DisplayName         string                      `json:"displayName"`
-	OwnerUserID         string                      `json:"ownerUserID"`
-	Quota               commonproject.Quota         `json:"quota"`
-	ConfigSets          []ProjectConfigSet          `json:"configSets"`
-	SecretSets          []ProjectSecretSet          `json:"secretSets"`
-	RegistryCredentials []ProjectRegistryCredential `json:"registryCredentials"`
+type ResourceBundle struct {
+	ConfigSets          []ConfigSet          `json:"configSets"`
+	SecretSets          []SecretSet          `json:"secretSets"`
+	RegistryCredentials []RegistryCredential `json:"registryCredentials"`
 }
 
-type ProjectConfigSet struct {
+type ConfigSet struct {
 	ID     string            `json:"configSetID"`
 	Name   string            `json:"name"`
 	Values map[string]string `json:"values"`
 }
 
-type ProjectSecretSet struct {
+type SecretSet struct {
 	ID     string            `json:"secretSetID"`
 	Name   string            `json:"name"`
 	Values map[string]string `json:"values"`
 }
 
-type ProjectRegistryCredential struct {
+type RegistryCredential struct {
 	ID       string `json:"registryCredentialID"`
 	Name     string `json:"name"`
 	Server   string `json:"server"`
@@ -190,15 +182,15 @@ type ProjectRegistryCredential struct {
 	Password string `json:"password"`
 }
 
-// Validate 校验 config set 期望状态是否满足 cloud-plane 项目资源约束。
-func (s ProjectConfigSet) Validate() error {
+// Validate 校验 config set 期望状态是否满足 cloud-plane 资源约束。
+func (s ConfigSet) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return ErrConfigSetIDRequired
 	}
 	if strings.TrimSpace(s.Name) == "" {
 		return ErrConfigSetNameRequired
 	}
-	if !projectResourceNamePattern.MatchString(strings.TrimSpace(s.Name)) {
+	if !resourceNamePattern.MatchString(strings.TrimSpace(s.Name)) {
 		return ErrConfigSetNameInvalid
 	}
 	if len(s.Values) == 0 {
@@ -212,15 +204,15 @@ func (s ProjectConfigSet) Validate() error {
 	return nil
 }
 
-// Validate 校验 secret set 期望状态是否满足 cloud-plane 项目资源约束。
-func (s ProjectSecretSet) Validate() error {
+// Validate 校验 secret set 期望状态是否满足 cloud-plane 资源约束。
+func (s SecretSet) Validate() error {
 	if strings.TrimSpace(s.ID) == "" {
 		return ErrSecretSetIDRequired
 	}
 	if strings.TrimSpace(s.Name) == "" {
 		return ErrSecretSetNameRequired
 	}
-	if !projectResourceNamePattern.MatchString(strings.TrimSpace(s.Name)) {
+	if !resourceNamePattern.MatchString(strings.TrimSpace(s.Name)) {
 		return ErrSecretSetNameInvalid
 	}
 	if len(s.Values) == 0 {
@@ -234,15 +226,15 @@ func (s ProjectSecretSet) Validate() error {
 	return nil
 }
 
-// Validate 校验 registry credential 期望状态是否满足 cloud-plane 项目资源约束。
-func (c ProjectRegistryCredential) Validate() error {
+// Validate 校验 registry credential 期望状态是否满足 cloud-plane 资源约束。
+func (c RegistryCredential) Validate() error {
 	if strings.TrimSpace(c.ID) == "" {
 		return ErrRegistryCredentialIDRequired
 	}
 	if strings.TrimSpace(c.Name) == "" {
 		return ErrRegistryCredentialNameRequired
 	}
-	if !projectResourceNamePattern.MatchString(strings.TrimSpace(c.Name)) {
+	if !resourceNamePattern.MatchString(strings.TrimSpace(c.Name)) {
 		return ErrRegistryCredentialNameInvalid
 	}
 	if strings.TrimSpace(c.Server) == "" {
@@ -257,9 +249,8 @@ func (c ProjectRegistryCredential) Validate() error {
 	return nil
 }
 
-type ApplyProjectResponse struct {
-	Action    string `json:"action"`
-	ProjectID string `json:"projectID"`
+type ApplyResourcesResponse struct {
+	Action string `json:"action"`
 }
 
 type ApplyServiceResponse struct {
@@ -289,7 +280,6 @@ type Service struct {
 
 type ServiceMetadata struct {
 	ID          string `json:"id"`
-	ProjectID   string `json:"projectID"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 }

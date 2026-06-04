@@ -28,7 +28,6 @@ func newControlDeployHandler(logger *slog.Logger, stores *store.Store, svc *depl
 
 type targetedServiceApplyResponse struct {
 	PlaneID           string `json:"planeID"`
-	ProjectID         string `json:"projectID"`
 	Action            string `json:"action"`
 	DesiredGeneration int64  `json:"desiredGeneration"`
 }
@@ -44,26 +43,19 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
 		return
 	}
-	projectID := r.PathValue("projectID")
-	if projectID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "projectID is required"})
-		return
-	}
 
 	var input deploy.ApplyServiceInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	input.Metadata.ProjectID = projectID
-	r = withRequestLogFields(r, logctx.Fields{PlaneID: planeID, ProjectID: projectID})
+	r = withRequestLogFields(r, logctx.Fields{PlaneID: planeID})
 	logger := requestScopedLogger(r, h.logger)
 
 	result, err := h.svc.ApplyService(r.Context(), planeID, input)
 	if err != nil {
 		switch {
 		case errors.Is(err, deploy.ErrPlaneIDRequired),
-			errors.Is(err, deploy.ErrProjectIDRequired),
 			errors.Is(err, deploy.ErrServiceNameRequired),
 			errors.Is(err, deploy.ErrInvalidServiceName),
 			errors.Is(err, deploy.ErrDisplayNameRequired),
@@ -77,10 +69,9 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound),
-			errors.Is(err, store.ErrProjectNotFound),
-			errors.Is(err, store.ErrProjectConfigSetNotFound),
-			errors.Is(err, store.ErrProjectSecretSetNotFound),
-			errors.Is(err, store.ErrProjectRegistryCredentialNotFound):
+			errors.Is(err, store.ErrConfigSetNotFound),
+			errors.Is(err, store.ErrSecretSetNotFound),
+			errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, deploy.ErrPlaneNotRegistered),
@@ -98,7 +89,6 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 	}
 
 	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		ProjectID:  projectID,
 		Action:     "control.service.apply",
 		TargetType: "service_apply",
 		TargetID:   input.Metadata.ID,
@@ -113,7 +103,6 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 
 	writeJSON(w, http.StatusOK, targetedServiceApplyResponse{
 		PlaneID:           result.PlaneID,
-		ProjectID:         result.ProjectID,
 		Action:            result.Action,
 		DesiredGeneration: result.DesiredGeneration,
 	})

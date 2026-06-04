@@ -2,7 +2,6 @@ package operatorapi
 
 import (
 	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/project"
 	"mini-cloud/internal/common/projectedfile"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/servicecontroller"
@@ -35,7 +34,6 @@ func protoOverview(item overviewCounts) *controlplanev1.Overview {
 		PlanesReady:         int32(item.PlanesReady),
 		PlanesDegraded:      int32(item.PlanesDegraded),
 		PlanesOffline:       int32(item.PlanesOffline),
-		ProjectsTotal:       int32(item.ProjectsTotal),
 		ServicesTotal:       int32(item.ServicesTotal),
 		ServicesPending:     int32(item.ServicesPending),
 		ServicesProgressing: int32(item.ServicesProgressing),
@@ -116,26 +114,10 @@ func protoPlane(item plane.Detail) *controlplanev1.Plane {
 	return out
 }
 
-func protoProject(item project.Project) *controlplanev1.Project {
-	return &controlplanev1.Project{
-		Id:          item.ID,
-		Name:        item.Name,
-		DisplayName: item.DisplayName,
-		OwnerUserId: item.OwnerUserID,
-		Quota: &controlplanev1.ProjectQuota{
-			MaxServices: int32(item.Quota.MaxServices),
-			CpuMilli:    int32(item.Quota.CPUMilli),
-			MemoryMi:    int32(item.Quota.MemoryMi),
-		},
-		CreatedAt: requiredTimestamp(item.CreatedAt),
-	}
-}
-
 func protoService(view servicecontroller.View) *controlplanev1.Service {
 	out := &controlplanev1.Service{
 		Metadata: &controlplanev1.ServiceMetadata{
 			Id:          view.Service.Metadata.ID,
-			ProjectId:   view.Service.Metadata.ProjectID,
 			Name:        view.Service.Metadata.Name,
 			DisplayName: view.Service.Metadata.DisplayName,
 			Generation:  view.Service.Metadata.Generation,

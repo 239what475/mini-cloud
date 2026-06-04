@@ -2,7 +2,7 @@
 // versions:
 // 	protoc-gen-go v1.36.11
 // 	protoc        (unknown)
-// source: minicloud/cloudplane/v1/project_resources.proto
+// source: minicloud/cloudplane/v1/resources.proto
 
 package cloudplanev1
 
@@ -36,7 +36,7 @@ type QuotaRejectReason struct {
 
 func (x *QuotaRejectReason) Reset() {
 	*x = QuotaRejectReason{}
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[0]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -48,7 +48,7 @@ func (x *QuotaRejectReason) String() string {
 func (*QuotaRejectReason) ProtoMessage() {}
 
 func (x *QuotaRejectReason) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[0]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -61,7 +61,7 @@ func (x *QuotaRejectReason) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaRejectReason.ProtoReflect.Descriptor instead.
 func (*QuotaRejectReason) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP(), []int{0}
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *QuotaRejectReason) GetCode() string {
@@ -115,7 +115,7 @@ type QuotaAdmissionRejected struct {
 
 func (x *QuotaAdmissionRejected) Reset() {
 	*x = QuotaAdmissionRejected{}
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[1]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -127,7 +127,7 @@ func (x *QuotaAdmissionRejected) String() string {
 func (*QuotaAdmissionRejected) ProtoMessage() {}
 
 func (x *QuotaAdmissionRejected) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[1]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -140,7 +140,7 @@ func (x *QuotaAdmissionRejected) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuotaAdmissionRejected.ProtoReflect.Descriptor instead.
 func (*QuotaAdmissionRejected) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP(), []int{1}
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *QuotaAdmissionRejected) GetRejectReasons() []*QuotaRejectReason {
@@ -153,7 +153,6 @@ func (x *QuotaAdmissionRejected) GetRejectReasons() []*QuotaRejectReason {
 type ConfigSet struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectID,proto3" json:"project_id,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Values        map[string]string      `protobuf:"bytes,4,rep,name=values,proto3" json:"values,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -164,7 +163,7 @@ type ConfigSet struct {
 
 func (x *ConfigSet) Reset() {
 	*x = ConfigSet{}
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[2]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -176,7 +175,7 @@ func (x *ConfigSet) String() string {
 func (*ConfigSet) ProtoMessage() {}
 
 func (x *ConfigSet) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[2]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -189,19 +188,12 @@ func (x *ConfigSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigSet.ProtoReflect.Descriptor instead.
 func (*ConfigSet) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP(), []int{2}
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *ConfigSet) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *ConfigSet) GetProjectId() string {
-	if x != nil {
-		return x.ProjectId
 	}
 	return ""
 }
@@ -237,7 +229,6 @@ func (x *ConfigSet) GetUpdatedAt() *timestamppb.Timestamp {
 type SecretSet struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId     string                 `protobuf:"bytes,2,opt,name=project_id,json=projectID,proto3" json:"project_id,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Keys          []string               `protobuf:"bytes,4,rep,name=keys,proto3" json:"keys,omitempty"`
 	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
@@ -248,7 +239,7 @@ type SecretSet struct {
 
 func (x *SecretSet) Reset() {
 	*x = SecretSet{}
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[3]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -260,7 +251,7 @@ func (x *SecretSet) String() string {
 func (*SecretSet) ProtoMessage() {}
 
 func (x *SecretSet) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[3]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -273,19 +264,12 @@ func (x *SecretSet) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretSet.ProtoReflect.Descriptor instead.
 func (*SecretSet) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP(), []int{3}
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *SecretSet) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *SecretSet) GetProjectId() string {
-	if x != nil {
-		return x.ProjectId
 	}
 	return ""
 }
@@ -321,7 +305,6 @@ func (x *SecretSet) GetUpdatedAt() *timestamppb.Timestamp {
 type RegistryCredential struct {
 	state              protoimpl.MessageState `protogen:"open.v1"`
 	Id                 string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	ProjectId          string                 `protobuf:"bytes,2,opt,name=project_id,json=projectID,proto3" json:"project_id,omitempty"`
 	Name               string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	Server             string                 `protobuf:"bytes,4,opt,name=server,proto3" json:"server,omitempty"`
 	Username           string                 `protobuf:"bytes,5,opt,name=username,proto3" json:"username,omitempty"`
@@ -334,7 +317,7 @@ type RegistryCredential struct {
 
 func (x *RegistryCredential) Reset() {
 	*x = RegistryCredential{}
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[4]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +329,7 @@ func (x *RegistryCredential) String() string {
 func (*RegistryCredential) ProtoMessage() {}
 
 func (x *RegistryCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_project_resources_proto_msgTypes[4]
+	mi := &file_minicloud_cloudplane_v1_resources_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,19 +342,12 @@ func (x *RegistryCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegistryCredential.ProtoReflect.Descriptor instead.
 func (*RegistryCredential) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP(), []int{4}
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegistryCredential) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *RegistryCredential) GetProjectId() string {
-	if x != nil {
-		return x.ProjectId
 	}
 	return ""
 }
@@ -418,11 +394,11 @@ func (x *RegistryCredential) GetUpdatedAt() *timestamppb.Timestamp {
 	return nil
 }
 
-var File_minicloud_cloudplane_v1_project_resources_proto protoreflect.FileDescriptor
+var File_minicloud_cloudplane_v1_resources_proto protoreflect.FileDescriptor
 
-const file_minicloud_cloudplane_v1_project_resources_proto_rawDesc = "" +
+const file_minicloud_cloudplane_v1_resources_proto_rawDesc = "" +
 	"\n" +
-	"/minicloud/cloudplane/v1/project_resources.proto\x12\x17minicloud.cloudplane.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb8\x01\n" +
+	"'minicloud/cloudplane/v1/resources.proto\x12\x17minicloud.cloudplane.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xb8\x01\n" +
 	"\x11QuotaRejectReason\x12\x12\n" +
 	"\x04code\x18\x01 \x01(\tR\x04code\x12\x18\n" +
 	"\amessage\x18\x02 \x01(\tR\amessage\x12\x18\n" +
@@ -431,11 +407,9 @@ const file_minicloud_cloudplane_v1_project_resources_proto_rawDesc = "" +
 	"\tprojected\x18\x05 \x01(\x05R\tprojected\x12\x14\n" +
 	"\x05limit\x18\x06 \x01(\x05R\x05limit\"k\n" +
 	"\x16QuotaAdmissionRejected\x12Q\n" +
-	"\x0ereject_reasons\x18\x01 \x03(\v2*.minicloud.cloudplane.v1.QuotaRejectReasonR\rrejectReasons\"\xc7\x02\n" +
+	"\x0ereject_reasons\x18\x01 \x03(\v2*.minicloud.cloudplane.v1.QuotaRejectReasonR\rrejectReasons\"\xa8\x02\n" +
 	"\tConfigSet\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x02 \x01(\tR\tprojectID\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12F\n" +
 	"\x06values\x18\x04 \x03(\v2..minicloud.cloudplane.v1.ConfigSet.ValuesEntryR\x06values\x129\n" +
 	"\n" +
@@ -444,21 +418,17 @@ const file_minicloud_cloudplane_v1_project_resources_proto_rawDesc = "" +
 	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x1a9\n" +
 	"\vValuesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xd8\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xb9\x01\n" +
 	"\tSecretSet\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x02 \x01(\tR\tprojectID\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x12\n" +
 	"\x04keys\x18\x04 \x03(\tR\x04keys\x129\n" +
 	"\n" +
 	"created_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb2\x02\n" +
+	"updated_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x93\x02\n" +
 	"\x12RegistryCredential\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1d\n" +
-	"\n" +
-	"project_id\x18\x02 \x01(\tR\tprojectID\x12\x12\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x16\n" +
 	"\x06server\x18\x04 \x01(\tR\x06server\x12\x1a\n" +
 	"\busername\x18\x05 \x01(\tR\busername\x12/\n" +
@@ -469,19 +439,19 @@ const file_minicloud_cloudplane_v1_project_resources_proto_rawDesc = "" +
 	"updated_at\x18\b \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAtBDZBmini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1b\x06proto3"
 
 var (
-	file_minicloud_cloudplane_v1_project_resources_proto_rawDescOnce sync.Once
-	file_minicloud_cloudplane_v1_project_resources_proto_rawDescData []byte
+	file_minicloud_cloudplane_v1_resources_proto_rawDescOnce sync.Once
+	file_minicloud_cloudplane_v1_resources_proto_rawDescData []byte
 )
 
-func file_minicloud_cloudplane_v1_project_resources_proto_rawDescGZIP() []byte {
-	file_minicloud_cloudplane_v1_project_resources_proto_rawDescOnce.Do(func() {
-		file_minicloud_cloudplane_v1_project_resources_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_project_resources_proto_rawDesc), len(file_minicloud_cloudplane_v1_project_resources_proto_rawDesc)))
+func file_minicloud_cloudplane_v1_resources_proto_rawDescGZIP() []byte {
+	file_minicloud_cloudplane_v1_resources_proto_rawDescOnce.Do(func() {
+		file_minicloud_cloudplane_v1_resources_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_resources_proto_rawDesc), len(file_minicloud_cloudplane_v1_resources_proto_rawDesc)))
 	})
-	return file_minicloud_cloudplane_v1_project_resources_proto_rawDescData
+	return file_minicloud_cloudplane_v1_resources_proto_rawDescData
 }
 
-var file_minicloud_cloudplane_v1_project_resources_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
-var file_minicloud_cloudplane_v1_project_resources_proto_goTypes = []any{
+var file_minicloud_cloudplane_v1_resources_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_minicloud_cloudplane_v1_resources_proto_goTypes = []any{
 	(*QuotaRejectReason)(nil),      // 0: minicloud.cloudplane.v1.QuotaRejectReason
 	(*QuotaAdmissionRejected)(nil), // 1: minicloud.cloudplane.v1.QuotaAdmissionRejected
 	(*ConfigSet)(nil),              // 2: minicloud.cloudplane.v1.ConfigSet
@@ -490,7 +460,7 @@ var file_minicloud_cloudplane_v1_project_resources_proto_goTypes = []any{
 	nil,                            // 5: minicloud.cloudplane.v1.ConfigSet.ValuesEntry
 	(*timestamppb.Timestamp)(nil),  // 6: google.protobuf.Timestamp
 }
-var file_minicloud_cloudplane_v1_project_resources_proto_depIdxs = []int32{
+var file_minicloud_cloudplane_v1_resources_proto_depIdxs = []int32{
 	0, // 0: minicloud.cloudplane.v1.QuotaAdmissionRejected.reject_reasons:type_name -> minicloud.cloudplane.v1.QuotaRejectReason
 	5, // 1: minicloud.cloudplane.v1.ConfigSet.values:type_name -> minicloud.cloudplane.v1.ConfigSet.ValuesEntry
 	6, // 2: minicloud.cloudplane.v1.ConfigSet.created_at:type_name -> google.protobuf.Timestamp
@@ -506,26 +476,26 @@ var file_minicloud_cloudplane_v1_project_resources_proto_depIdxs = []int32{
 	0, // [0:8] is the sub-list for field type_name
 }
 
-func init() { file_minicloud_cloudplane_v1_project_resources_proto_init() }
-func file_minicloud_cloudplane_v1_project_resources_proto_init() {
-	if File_minicloud_cloudplane_v1_project_resources_proto != nil {
+func init() { file_minicloud_cloudplane_v1_resources_proto_init() }
+func file_minicloud_cloudplane_v1_resources_proto_init() {
+	if File_minicloud_cloudplane_v1_resources_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_project_resources_proto_rawDesc), len(file_minicloud_cloudplane_v1_project_resources_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_resources_proto_rawDesc), len(file_minicloud_cloudplane_v1_resources_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_minicloud_cloudplane_v1_project_resources_proto_goTypes,
-		DependencyIndexes: file_minicloud_cloudplane_v1_project_resources_proto_depIdxs,
-		MessageInfos:      file_minicloud_cloudplane_v1_project_resources_proto_msgTypes,
+		GoTypes:           file_minicloud_cloudplane_v1_resources_proto_goTypes,
+		DependencyIndexes: file_minicloud_cloudplane_v1_resources_proto_depIdxs,
+		MessageInfos:      file_minicloud_cloudplane_v1_resources_proto_msgTypes,
 	}.Build()
-	File_minicloud_cloudplane_v1_project_resources_proto = out.File
-	file_minicloud_cloudplane_v1_project_resources_proto_goTypes = nil
-	file_minicloud_cloudplane_v1_project_resources_proto_depIdxs = nil
+	File_minicloud_cloudplane_v1_resources_proto = out.File
+	file_minicloud_cloudplane_v1_resources_proto_goTypes = nil
+	file_minicloud_cloudplane_v1_resources_proto_depIdxs = nil
 }

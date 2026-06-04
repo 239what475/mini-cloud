@@ -12,7 +12,6 @@ func TestCreateInputValidateRejectsProjectedFileOverlapWithPersistentDir(t *test
 	t.Parallel()
 
 	err := (CreateInput{
-		ProjectID:   "prj-1",
 		Name:        "demo",
 		DisplayName: "Demo",
 		Spec: Spec{

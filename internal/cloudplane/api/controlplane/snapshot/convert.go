@@ -27,7 +27,6 @@ func protoSnapshot(item cloudplaneapi.SnapshotResponse) *cloudplanev1.PlaneSnaps
 		},
 		// Overview 是资源数量和状态分布，只做类型转换，不改变统计口径。
 		Overview: &cloudplanev1.PlaneOverview{
-			ProjectsTotal:         int32(item.Overview.ProjectsTotal),
 			ServicesTotal:         int32(item.Overview.ServicesTotal),
 			ServicesIdle:          int32(item.Overview.ServicesIdle),
 			ServicesDeploying:     int32(item.Overview.ServicesDeploying),

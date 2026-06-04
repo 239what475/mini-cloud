@@ -269,7 +269,6 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) 
 		NodeID:          e.opts.NodeID,
 		ExecutionID:     item.ExecutionID,
 		DeploymentID:    item.DeploymentID,
-		ProjectID:       item.ProjectID,
 		ServiceID:       item.ServiceID,
 		RevisionID:      item.RevisionID,
 		ProjectionRef:   item.ExecutionID,
@@ -433,7 +432,6 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runRes
 		return
 	}
 	e.opts.WorkloadLogs(workloadlogs.StartRequest{
-		ProjectID:     item.ProjectID,
 		ServiceID:     item.ServiceID,
 		ServiceName:   item.ServiceName,
 		DeploymentID:  item.DeploymentID,

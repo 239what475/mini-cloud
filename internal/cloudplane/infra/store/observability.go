@@ -11,17 +11,9 @@ import (
 // GetPlatformOverview 读取平台核心资源的状态计数概览。
 // 参数说明：ctx 控制数据库请求生命周期。
 func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview, error) {
-	// 复杂流程说明：overview 聚合 project、service、node、deployment 多张表的状态计数。
+	// 复杂流程说明：overview 聚合 service、node、deployment 多张表的状态计数。
 	// 查询保持只读聚合，不在这里推导或修正业务状态。
 	var out observability.Overview
-
-	// 统计项目总数。
-	if err := s.db.QueryRowContext(ctx, `
-		SELECT COUNT(*)
-		FROM projects
-	`).Scan(&out.ProjectsTotal); err != nil {
-		return observability.Overview{}, fmt.Errorf("count projects: %w", err)
-	}
 
 	// 统计 service 总数及各状态数量。
 	if err := s.db.QueryRowContext(ctx, `

@@ -10,7 +10,6 @@ import (
 	"mini-cloud/internal/cloudplane/domain/deployment"
 	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/domain/workload"
-	"mini-cloud/internal/cloudplane/infra/store"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
@@ -25,20 +24,15 @@ func (s *Server) GetService(ctx context.Context, req *cloudplanev1.GetServiceReq
 	if err := s.auth.Authorize(ctx); err != nil {
 		return nil, err
 	}
-	projectID := strings.TrimSpace(req.GetProjectId())
 	serviceID := strings.TrimSpace(req.GetServiceId())
-	if projectID == "" || serviceID == "" {
-		return nil, status.Error(codes.InvalidArgument, "projectID and serviceID are required")
+	if serviceID == "" {
+		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
 
 	serviceItem, err := s.store.GetService(ctx, serviceID)
 	if err != nil {
 		return nil, s.getStatusError("get accepted service", serviceID, err)
 	}
-	if serviceItem.Metadata.ProjectID != projectID {
-		return nil, status.Error(codes.NotFound, store.ErrServiceNotFound.Error())
-	}
-
 	return &cloudplanev1.GetServiceResponse{
 		Service: protoService(serviceFromDomain(serviceItem)),
 		Status:  protoObservedServiceStatus(s.observedServiceStatus(ctx, serviceItem)),
@@ -51,7 +45,6 @@ func serviceFromDomain(serviceItem workload.Service) cloudplaneapi.Service {
 	return cloudplaneapi.Service{
 		Metadata: cloudplaneapi.ServiceMetadata{
 			ID:          serviceItem.Metadata.ID,
-			ProjectID:   serviceItem.Metadata.ProjectID,
 			Name:        serviceItem.Metadata.Name,
 			DisplayName: serviceItem.Metadata.DisplayName,
 		},
