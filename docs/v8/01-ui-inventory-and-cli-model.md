@@ -2,24 +2,21 @@
 
 本文完成两件事：
 
-- 盘点当前 Web 和 TUI 已覆盖的操作。
+- 盘点当前 Web 已覆盖的操作。
 - 定义 `minicloud` CLI 的资源模型和命令树。
 
-`v8` 的方向是删除传统 UI，把 operator-facing 操作统一收敛到 CLI。后续 MCP、skill 或 agent 可以复用 CLI，但不在本阶段实现。
+`v8` 的方向是保留 Web，删除已经不再维护的 Go TUI。后续如果新增 `minicloud` CLI，应优先复用当前 HTTP API，并和 Web 保持一致的资源模型。
 
 ## 现有入口
 
-当前有两套 UI：
+当前保留一套 UI：
 
 - Web UI
   - 位置：`web/`
   - 入口：control-plane 通过 `UIDir` 静态托管。
   - 协议：HTTP JSON API，主要是 `/api/v1/**`。
-- Go TUI
-  - 位置：`cmd/tui`、`internal/tui`
-  - 协议：operator gRPC，经 `internal/operatorclient` 调用 `OperatorService`。
 
-两套 UI 覆盖范围不一致。Web 覆盖资源更宽，TUI 更偏 operator 总览和少量操作。
+Go TUI 已移除。历史上它位于 `cmd/tui` 和 `internal/tui`，通过 `internal/operatorclient` 调用 `OperatorService` gRPC；当前不再作为 operator-facing 入口维护。
 
 ## Web 覆盖面
 
@@ -69,30 +66,6 @@ Web 里实际出现的 operator-facing 资源有：
 
 Web 没有覆盖当前 control-plane router 中大量 control 侧能力，例如 plane 管理、runtime node pool、operation history、incident、platform service account、project API token、logs query、inventory。
 
-## TUI 覆盖面
-
-TUI 当前由 `internal/tui/app` 驱动，使用 `internal/operatorclient` 访问 `OperatorService`。
-
-### 只读能力
-
-| Tab | gRPC | 当前展示 |
-| --- | --- | --- |
-| Overview | `GetOverview` | plane / project / service 总览计数 |
-| Planes | `ListPlanes` | provider、region、status、operation、capacity、runtime inventory、runtime config |
-| Projects | `ListProjects` | ID、name、owner、quota、创建时间 |
-| Services | `ListServices` | image、status、rollout、spec、placement |
-
-TUI 代码中有 `GetPlane`、`GetProject`、`GetService` 对应 proto 能力，但当前界面主要通过列表和选中项展示详情。
-
-### 写操作
-
-| 能力 | gRPC | 输入 |
-| --- | --- | --- |
-| 同步 plane | `SyncPlane` | `planeID` |
-| 创建服务 | `CreateService` | project ID、name、displayName、provider、region、replicas、instanceClass、exposure、image、defaultPort、readinessPath、projectedFiles、persistentDirs |
-
-TUI 不覆盖项目创建、config set、secret set、registry credential、服务更新、删除、日志、operation history、incident、runtime node pool 等能力。
-
 ## 服务端当前 API 面
 
 `minicloud` CLI 应以 control-plane 当前服务端 API 为准。
@@ -120,7 +93,7 @@ TUI 不覆盖项目创建、config set、secret set、registry credential、服�
 - incidents
 - control operations
 
-这说明 CLI 不应该只复制 Web/TUI。v8 第一阶段要先覆盖 UI 已有能力，但命令树应为完整 control-plane API 预留位置。
+这说明 CLI 不应该只复制 Web。v8 第一阶段要先覆盖 Web 已有能力，但命令树应为完整 control-plane API 预留位置。
 
 ### operator gRPC 已有资源
 
@@ -131,7 +104,7 @@ TUI 不覆盖项目创建、config set、secret set、registry credential、服�
 - projects list/get
 - services list/get/create
 
-它适合作为早期 CLI 的只读和少量写操作入口。但如果 CLI 要完全替代 Web，并覆盖 config set、secret set、registry credential、logs、operations、incidents 等能力，需要扩展 operator gRPC，或者让 CLI 暂时直接调用 HTTP API。
+它适合作为早期 CLI 的只读和少量写操作入口。但如果 CLI 要覆盖 config set、secret set、registry credential、logs、operations、incidents 等能力，需要扩展 operator gRPC，或者让 CLI 暂时直接调用 HTTP API。
 
 v8 推荐策略：
 
@@ -155,15 +128,14 @@ cmd/cloud-plane
 cmd/node-agent
 ```
 
-删除目标：
+已删除的 TUI 目标：
 
 ```text
 cmd/tui
 internal/tui
-web
 ```
 
-删除动作必须等 CLI 覆盖现有 UI 后执行。
+Web 继续保留，不作为本阶段删除目标。
 
 ## CLI 全局约定
 
@@ -587,7 +559,7 @@ minicloud logs query
 
 - 默认 table 输出可读。
 - `-o json` 可被脚本消费。
-- 能覆盖 Web/TUI 的核心查看路径。
+- 能覆盖 Web 的核心查看路径。
 
 ### 阶段 2：基础写操作
 
@@ -606,7 +578,7 @@ minicloud plane sync
 验收标准：
 
 - 覆盖 Web 的创建 / 更新操作。
-- 覆盖 TUI 的 plane sync 和 service create。
+- plane sync 和 service create 走当前服务端 API，不再依赖 TUI。
 - 危险操作具备确认和 `--yes`。
 
 ### 阶段 3：运维写操作
@@ -628,22 +600,24 @@ minicloud service rollback
 - 能完成常见运维操作。
 - 对尚未有服务端 API 的语义先补 API，再实现 CLI。
 
-### 阶段 4：删除旧 UI
+### 阶段 4：CLI 完善和文档收敛
 
-删除：
+已删除：
 
-- `web/`
 - `cmd/tui`
 - `internal/tui`
+
+保留：
+
+- `web/`
 - `Makefile` 中的 web check / build 入口
 - control-plane 静态 UI serving 配置
-- README 和部署文档里的 Web / TUI 入口说明
 
-删除前必须满足：
+后续如果实现 CLI，验收标准是：
 
-- CLI 覆盖 Web 和 TUI 当前已有操作。
-- `make check` 不再依赖 Web 工具链。
-- 文档只保留 CLI 作为 operator-facing 入口。
+- CLI 覆盖 Web 中适合脚本化的查看和变更操作。
+- `make check` 可以继续同时覆盖 Go 和 Web 工具链。
+- 文档同时保留 Web 和 CLI 入口说明。
 
 ## 需要先澄清的 API 缺口
 
