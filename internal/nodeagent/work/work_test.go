@@ -501,7 +501,7 @@ func (f *fakeRuntime) Logs(context.Context, string, int) (string, error) {
 	return f.logs, nil
 }
 
-func (f *fakeRuntime) FollowLogs(context.Context, string, runtime.LogEmitter) error {
+func (f *fakeRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
 	return nil
 }
 

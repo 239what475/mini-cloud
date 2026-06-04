@@ -87,12 +87,13 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 	defer server.Close()
 
 	manager := &Manager{
-		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		platform: "mini-cloud-lab",
-		loki:     newLokiClient(server.URL, "tenant-demo", server.Client()),
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		platform:    "mini-cloud-lab",
+		loki:        newLokiClient(server.URL, "tenant-demo", server.Client()),
+		pushTimeout: time.Second,
 	}
 
-	manager.pushLine(StartRequest{
+	manager.pushLine(context.Background(), StartRequest{
 		ProjectID:     "prj_demo",
 		ServiceID:     "svc_demo",
 		ServiceName:   "hello",
@@ -135,14 +136,14 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 
 // fakeLogFollower 是测试用的固定日志记录 LogFollower。
 type fakeLogFollower struct {
-	// records 是 FollowLogs 调用时依次发出的日志记录。
+	// records 是 StreamLogs 调用时依次发出的日志记录。
 	records []runtime.LogRecord
 	// done 在所有测试日志记录发出后关闭。
 	done chan struct{}
 }
 
-// FollowLogs 实现测试用日志跟随接口。
-func (f fakeLogFollower) FollowLogs(ctx context.Context, containerID string, emit runtime.LogEmitter) error {
+// StreamLogs 实现测试用日志跟随接口。
+func (f fakeLogFollower) StreamLogs(ctx context.Context, containerID string, emit runtime.LogEmitter) error {
 	defer func() {
 		if f.done != nil {
 			close(f.done)
@@ -178,52 +179,11 @@ func (f fakeLogFollower) Close() error {
 	return nil
 }
 
-// TestPushBatchSendsMultipleStreamsInOneLokiRequest 验证批量推送会按 stdout/stderr 分成多个 Loki stream。
-func TestPushBatchSendsMultipleStreamsInOneLokiRequest(t *testing.T) {
+// TestStartStreamsLogsToLoki 验证启动日志采集后会逐行推送到 Loki。
+func TestStartStreamsLogsToLoki(t *testing.T) {
 	t.Parallel()
 
-	var gotPayload pushPayload
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		defer func() { _ = r.Body.Close() }()
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("read request body: %v", err)
-		}
-		if err := json.Unmarshal(body, &gotPayload); err != nil {
-			t.Fatalf("decode request body: %v", err)
-		}
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer server.Close()
-
-	manager := &Manager{
-		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
-		platform: "mini-cloud-lab",
-		loki:     newLokiClient(server.URL, "", server.Client()),
-	}
-	manager.pushBatch(StartRequest{ExecutionID: "exec_demo"}, []queuedLog{
-		{stream: "stdout", timestamp: time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), line: "one"},
-		{stream: "stdout", timestamp: time.Date(2026, 4, 16, 12, 0, 1, 0, time.UTC), line: "two"},
-		{stream: "stderr", timestamp: time.Date(2026, 4, 16, 12, 0, 2, 0, time.UTC), line: "err"},
-	})
-
-	if len(gotPayload.Streams) != 2 {
-		t.Fatalf("streams length = %d, want 2", len(gotPayload.Streams))
-	}
-	counts := map[string]int{}
-	for _, stream := range gotPayload.Streams {
-		counts[stream.Stream["stream"]] = len(stream.Values)
-	}
-	if counts["stdout"] != 2 || counts["stderr"] != 1 {
-		t.Fatalf("stream value counts = %+v, want stdout=2 stderr=1", counts)
-	}
-}
-
-// TestStartReturnsHandleAndCloseFlushesQueuedLogs 验证关闭日志采集句柄会刷新队列中日志。
-func TestStartReturnsHandleAndCloseFlushesQueuedLogs(t *testing.T) {
-	t.Parallel()
-
-	payloads := make(chan pushPayload, 1)
+	payloads := make(chan pushPayload, 2)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() { _ = r.Body.Close() }()
 		var payload pushPayload
@@ -242,8 +202,6 @@ func TestStartReturnsHandleAndCloseFlushesQueuedLogs(t *testing.T) {
 	followDone := make(chan struct{})
 	manager, err := NewManager(slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
 		LokiURL:     server.URL,
-		BatchSize:   10,
-		BatchWait:   time.Hour,
 		PushTimeout: time.Second,
 	}, fakeLogFollower{records: []runtime.LogRecord{
 		{Timestamp: time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), Stream: "stdout", Line: "one"},
@@ -253,20 +211,25 @@ func TestStartReturnsHandleAndCloseFlushesQueuedLogs(t *testing.T) {
 		t.Fatalf("NewManager: %v", err)
 	}
 
-	handle := manager.Start(StartRequest{ExecutionID: "exec_demo", ContainerID: "container_demo"})
+	manager.Start(StartRequest{ExecutionID: "exec_demo", ContainerID: "container_demo"})
 	<-followDone
 	closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := handle.Close(closeCtx); err != nil {
-		t.Fatalf("handle.Close: %v", err)
+	if err := manager.Close(closeCtx); err != nil {
+		t.Fatalf("manager.Close: %v", err)
 	}
 
-	select {
-	case payload := <-payloads:
-		if len(payload.Streams) != 1 || len(payload.Streams[0].Values) != 2 {
-			t.Fatalf("payload streams = %+v, want one stdout stream with two values", payload.Streams)
+	for i := 0; i < 2; i++ {
+		select {
+		case payload := <-payloads:
+			if len(payload.Streams) != 1 || len(payload.Streams[0].Values) != 1 {
+				t.Fatalf("payload streams = %+v, want one stdout stream with one value", payload.Streams)
+			}
+			if payload.Streams[0].Stream["stream"] != "stdout" {
+				t.Fatalf("stream label = %q, want stdout", payload.Streams[0].Stream["stream"])
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for Loki payload")
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for flushed Loki payload")
 	}
 }

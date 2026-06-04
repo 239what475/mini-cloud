@@ -186,12 +186,6 @@ type nodeAgentObservabilityConfig struct {
 	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
 	// WorkloadOTLPEndpoint 是注入工作负载环境变量的 OTLP HTTP endpoint。
 	WorkloadOTLPEndpoint string `yaml:"workloadOTLPEndpoint"`
-	// LogQueueSize 是每个执行的工作负载日志内存队列大小。
-	LogQueueSize int `yaml:"logQueueSize"`
-	// LogBatchMaxEntries 是单次 Loki push 最多包含的日志条目数。
-	LogBatchMaxEntries int `yaml:"logBatchMaxEntries"`
-	// LogBatchMaxWait 是未达到最大条目数时批次等待刷新的最长时间。
-	LogBatchMaxWait string `yaml:"logBatchMaxWait"`
 	// LogPushTimeout 是单次 Loki push 请求的超时时间。
 	LogPushTimeout string `yaml:"logPushTimeout"`
 }
@@ -230,7 +224,7 @@ type Config struct {
 	Network NetworkConfig
 	// Timeouts 汇总 daemon 各类外部操作超时。
 	Timeouts TimeoutsConfig
-	// Logs 汇总工作负载日志队列和推送参数。
+	// Logs 汇总工作负载日志推送参数。
 	Logs LogsConfig
 }
 
@@ -298,14 +292,8 @@ type TimeoutsConfig struct {
 	CleanupHard time.Duration
 }
 
-// LogsConfig 汇总工作负载日志采集和推送配置。
+// LogsConfig 汇总工作负载日志推送配置。
 type LogsConfig struct {
-	// QueueSize 是每个执行的内存日志队列大小。
-	QueueSize int
-	// BatchMaxEntries 是单次 Loki push 最多包含的日志条目数。
-	BatchMaxEntries int
-	// BatchMaxWait 是批次未满时等待刷新的最长时间。
-	BatchMaxWait time.Duration
 	// PushTimeout 限制单次 Loki push 请求耗时。
 	PushTimeout time.Duration
 }
@@ -345,10 +333,7 @@ func defaultNodeAgentFileConfig() nodeAgentFileConfig {
 			LogTail:            20,
 		},
 		Observability: nodeAgentObservabilityConfig{
-			LogQueueSize:       10000,
-			LogBatchMaxEntries: 200,
-			LogBatchMaxWait:    "1s",
-			LogPushTimeout:     "5s",
+			LogPushTimeout: "5s",
 		},
 	}
 }
@@ -457,10 +442,6 @@ func build(fileCfg nodeAgentFileConfig) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	logBatchMaxWait, err := parsePositiveDuration("observability.logBatchMaxWait", fileCfg.Observability.LogBatchMaxWait)
-	if err != nil {
-		return Config{}, err
-	}
 	logPushTimeout, err := parsePositiveDuration("observability.logPushTimeout", fileCfg.Observability.LogPushTimeout)
 	if err != nil {
 		return Config{}, err
@@ -470,12 +451,6 @@ func build(fileCfg nodeAgentFileConfig) (Config, error) {
 	}
 	if fileCfg.Work.LogTail < 0 {
 		return Config{}, fmt.Errorf("work.logTail must be greater than or equal to 0")
-	}
-	if fileCfg.Observability.LogQueueSize <= 0 {
-		return Config{}, fmt.Errorf("observability.logQueueSize must be greater than 0")
-	}
-	if fileCfg.Observability.LogBatchMaxEntries <= 0 {
-		return Config{}, fmt.Errorf("observability.logBatchMaxEntries must be greater than 0")
 	}
 	if fileCfg.Network.EgressProxy.Enabled {
 		endpoint := strings.TrimSpace(fileCfg.Network.EgressProxy.Endpoint)
@@ -553,10 +528,7 @@ func build(fileCfg nodeAgentFileConfig) (Config, error) {
 			CleanupHard:   cleanupHard,
 		},
 		Logs: LogsConfig{
-			QueueSize:       fileCfg.Observability.LogQueueSize,
-			BatchMaxEntries: fileCfg.Observability.LogBatchMaxEntries,
-			BatchMaxWait:    logBatchMaxWait,
-			PushTimeout:     logPushTimeout,
+			PushTimeout: logPushTimeout,
 		},
 	}, nil
 }

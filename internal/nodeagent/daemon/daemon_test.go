@@ -205,7 +205,8 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	var heartbeatCalls int
 	var pollCalls int
 	var lastHeartbeat nodeagentapi.HeartbeatRequest
-	done := make(chan struct{})
+	heartbeatDone := make(chan struct{})
+	pollDone := make(chan struct{})
 	client := newDaemonTestClient(t, agentclient.Config{}, &nodeAgentTestService{
 		registerNode: func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			registerCalls++
@@ -218,6 +219,9 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		},
 		recordHeartbeat: func(_ context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 			heartbeatCalls++
+			if heartbeatCalls == 1 {
+				close(heartbeatDone)
+			}
 			lastHeartbeat = nodeagentapi.HeartbeatRequest{
 				AgentVersion:        req.GetAgentVersion(),
 				CPUMilliAllocatable: int(req.GetCpuMilliAllocatable()),
@@ -234,7 +238,9 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		},
 		pollWork: func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 			pollCalls++
-			close(done)
+			if pollCalls == 1 {
+				close(pollDone)
+			}
 			return &nodeagentv1.PollWorkResponse{}, nil
 		},
 	})
@@ -274,13 +280,9 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			workloadLogs,
 		).Run(ctx)
 	}()
-	select {
-	case <-done:
-		cancel()
-	case <-time.After(time.Second):
-		cancel()
-		t.Fatal("timed out waiting for first work poll")
-	}
+	waitForTestSignal(t, heartbeatDone, cancel, "first heartbeat")
+	waitForTestSignal(t, pollDone, cancel, "first work poll")
+	cancel()
 
 	err = <-errCh
 	if err != nil {
@@ -388,6 +390,17 @@ func firstIncomingMetadata(ctx context.Context, key string) string {
 	return values[0]
 }
 
+func waitForTestSignal(t *testing.T, signal <-chan struct{}, cancel context.CancelFunc, label string) {
+	t.Helper()
+
+	select {
+	case <-signal:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatalf("timed out waiting for %s", label)
+	}
+}
+
 // Run 实现测试用运行时启动接口。
 func (s stubRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
 	return runtime.RunResult{}, nil
@@ -408,8 +421,8 @@ func (s stubRuntime) CountRunning(context.Context) (int, error) {
 	return s.runningContainers, nil
 }
 
-// FollowLogs 实现测试用日志跟随接口。
-func (s stubRuntime) FollowLogs(context.Context, string, runtime.LogEmitter) error {
+// StreamLogs 实现测试用日志跟随接口。
+func (s stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
 	return nil
 }
 

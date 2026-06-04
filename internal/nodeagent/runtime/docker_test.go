@@ -282,7 +282,7 @@ func TestDockerEngineCloseCleansTrackedProjectionDirs(t *testing.T) {
 		t.Fatalf("MkdirAll(projectionDir) returned error: %v", err)
 	}
 
-	engine := &DockerEngine{
+	engine := &Docker{
 		projectionDirs: map[string]trackedProjection{
 			"container-close": {
 				ExecutionID: "exec-close",

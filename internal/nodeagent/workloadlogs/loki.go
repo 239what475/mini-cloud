@@ -25,12 +25,6 @@ type Config struct {
 	// PlatformName 是非空时写入工作负载日志内容的平台名称。
 	PlatformName string
 
-	// QueueSize 控制每个执行的内存日志队列大小，零值使用默认值。
-	QueueSize int
-	// BatchSize 控制一次 Loki push 最多发送的日志行数，零值使用默认值。
-	BatchSize int
-	// BatchWait 控制未满批次等待推送的最长时间，零值使用默认值。
-	BatchWait time.Duration
 	// PushTimeout 控制单次 Loki HTTP push 请求超时时间，零值使用默认值。
 	PushTimeout time.Duration
 }
@@ -58,17 +52,11 @@ type StartRequest struct {
 }
 
 const (
-	// defaultQueueSize 是每个执行日志队列的默认长度。
-	defaultQueueSize = 1024
-	// defaultBatchSize 是默认单次 Loki push 日志条目数。
-	defaultBatchSize = 100
-	// defaultBatchWait 是默认批次最大等待时间。
-	defaultBatchWait = time.Second
 	// defaultPushTimeout 是默认单次 Loki push 超时时间。
 	defaultPushTimeout = 5 * time.Second
 )
 
-// Manager 管理工作负载容器日志跟随、批处理和 Loki 推送。
+// Manager 管理工作负载容器日志跟随和 Loki 推送。
 type Manager struct {
 	// logger 记录日志采集和推送失败。
 	logger *slog.Logger
@@ -76,14 +64,8 @@ type Manager struct {
 	platform string
 	// loki 是 Loki HTTP push 客户端。
 	loki *lokiClient
-	// logs 是底层工作负载运行时。
-	logs runtime.Runtime
-	// queueSize 是每个执行的内存日志队列大小。
-	queueSize int
-	// batchSize 是单批次最多推送的日志行数。
-	batchSize int
-	// batchWait 是未满批次等待推送的最长时间。
-	batchWait time.Duration
+	// runtime 是底层工作负载运行时。
+	runtime runtime.Runtime
 	// pushTimeout 是单次 Loki push 请求超时时间。
 	pushTimeout time.Duration
 	// ctx 是 Manager 生命周期根上下文。
@@ -94,103 +76,44 @@ type Manager struct {
 	wg sync.WaitGroup
 	// mu 保护 active。
 	mu sync.Mutex
-	// active 保存当前正在采集日志的执行句柄，key 为 executionID。
-	active map[string]*Handle
+	// active 记录当前正在采集日志的执行，避免重复启动。
+	active map[string]struct{}
 }
 
-// Handle 表示一次工作负载日志采集任务。
-type Handle struct {
-	// cancel 停止该执行的日志跟随上下文。
-	cancel context.CancelFunc
-	// done 在该执行的推送 goroutine 退出时关闭。
-	done chan struct{}
-	// once 保证 Close 只取消一次。
-	once sync.Once
-}
-
-// queuedLog 是进入批处理队列的一条容器日志。
-type queuedLog struct {
-	// stream 是日志流名称，例如 stdout 或 stderr。
-	stream string
-	// timestamp 是日志记录时间。
-	timestamp time.Time
-	// line 是日志正文。
-	line string
-}
-
-// NewManager 创建工作负载日志 Manager；未配置 Loki 时返回禁用但可安全调用的 Manager。
-func NewManager(logger *slog.Logger, cfg Config, logs runtime.Runtime) (*Manager, error) {
-	rootCtx, cancel := context.WithCancel(context.Background())
+// NewManager 创建工作负载日志 Manager；未配置 Loki 时返回 nil。
+func NewManager(logger *slog.Logger, cfg Config, containerRuntime runtime.Runtime) (*Manager, error) {
+	lokiURL := strings.TrimSpace(cfg.LokiURL)
+	if lokiURL == "" {
+		return nil, nil
+	}
+	if containerRuntime == nil {
+		return nil, fmt.Errorf("workload log runtime follower is required")
+	}
 	if logger == nil {
 		logger = slog.Default()
-	}
-	if cfg.QueueSize <= 0 {
-		cfg.QueueSize = defaultQueueSize
-	}
-	if cfg.BatchSize <= 0 {
-		cfg.BatchSize = defaultBatchSize
-	}
-	if cfg.BatchWait <= 0 {
-		cfg.BatchWait = defaultBatchWait
 	}
 	if cfg.PushTimeout <= 0 {
 		cfg.PushTimeout = defaultPushTimeout
 	}
-	loki := newLokiClient(cfg.LokiURL, cfg.LokiTenantID, &http.Client{
-		Timeout: cfg.PushTimeout,
-	})
-	manager := &Manager{
-		logger:      logger,
-		platform:    strings.TrimSpace(cfg.PlatformName),
-		loki:        loki,
-		queueSize:   cfg.QueueSize,
-		batchSize:   cfg.BatchSize,
-		batchWait:   cfg.BatchWait,
+
+	rootCtx, cancel := context.WithCancel(context.Background())
+	return &Manager{
+		logger:   logger,
+		platform: strings.TrimSpace(cfg.PlatformName),
+		loki: newLokiClient(lokiURL, cfg.LokiTenantID, &http.Client{
+			Timeout: cfg.PushTimeout,
+		}),
 		pushTimeout: cfg.PushTimeout,
 		ctx:         rootCtx,
 		cancel:      cancel,
-		active:      map[string]*Handle{},
-		logs:        logs,
-	}
-	if !manager.Configured() {
-		return manager, nil
-	}
-	if manager.logs == nil {
-		cancel()
-		return nil, fmt.Errorf("workload log runtime follower is required")
-	}
-	return manager, nil
-}
-
-// Configured 返回工作负载日志推送是否已配置并启用。
-func (m *Manager) Configured() bool {
-	return m != nil && m.loki != nil && m.loki.Configured()
+		active:      map[string]struct{}{},
+		runtime:     containerRuntime,
+	}, nil
 }
 
 // Close 停止所有活动日志采集任务，并等待后台 goroutine 退出或关闭上下文取消。
 func (m *Manager) Close(closeCtx context.Context) error {
-	if m == nil {
-		return nil
-	}
-	if closeCtx == nil {
-		closeCtx = context.Background()
-	}
-	if m.cancel != nil {
-		m.cancel()
-	}
-
-	m.mu.Lock()
-	handles := make([]*Handle, 0, len(m.active))
-	for _, handle := range m.active {
-		handles = append(handles, handle)
-	}
-	m.mu.Unlock()
-
-	for _, handle := range handles {
-		if err := handle.Close(closeCtx); err != nil {
-			return err
-		}
-	}
+	m.cancel()
 
 	done := make(chan struct{})
 	go func() {
@@ -205,175 +128,46 @@ func (m *Manager) Close(closeCtx context.Context) error {
 	}
 }
 
-// Start 启动指定执行的容器日志采集；未配置或参数不足时返回已关闭句柄。
-func (m *Manager) Start(req StartRequest) *Handle {
-	if !m.Configured() || strings.TrimSpace(req.ExecutionID) == "" || strings.TrimSpace(req.ContainerID) == "" {
-		return closedHandle()
+// Start 启动指定执行的容器日志采集；未配置、参数不足或已启动时直接返回。
+func (m *Manager) Start(req StartRequest) {
+	if strings.TrimSpace(req.ExecutionID) == "" || strings.TrimSpace(req.ContainerID) == "" {
+		return
 	}
 
 	m.mu.Lock()
-	if handle, exists := m.active[req.ExecutionID]; exists {
+	if _, exists := m.active[req.ExecutionID]; exists {
 		m.mu.Unlock()
-		return handle
+		return
 	}
-	ctx, cancel := context.WithCancel(m.ctx)
-	handle := &Handle{cancel: cancel, done: make(chan struct{})}
-	m.active[req.ExecutionID] = handle
-	queue := make(chan queuedLog, m.queueSize)
-	m.wg.Add(2)
+	m.active[req.ExecutionID] = struct{}{}
+	m.wg.Add(1)
 	m.mu.Unlock()
 
 	go func() {
 		defer m.wg.Done()
-		defer close(queue)
-		m.followExecution(ctx, req, queue)
-	}()
-
-	go func() {
-		defer m.wg.Done()
-		defer close(handle.done)
 		defer func() {
 			m.mu.Lock()
 			delete(m.active, req.ExecutionID)
 			m.mu.Unlock()
 		}()
-		m.pushQueued(req, queue)
-	}()
-	return handle
-}
-
-// closedHandle 返回一个已经完成的空日志采集句柄。
-func closedHandle() *Handle {
-	done := make(chan struct{})
-	close(done)
-	return &Handle{done: done}
-}
-
-// Close 停止该执行的日志采集，并等待队列中日志完成推送或上下文取消。
-func (h *Handle) Close(ctx context.Context) error {
-	if h == nil {
-		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	h.once.Do(func() {
-		if h.cancel != nil {
-			h.cancel()
-		}
-	})
-	select {
-	case <-h.done:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
-}
-
-// followExecution 从运行时持续读取容器日志，并写入批处理队列。
-func (m *Manager) followExecution(ctx context.Context, req StartRequest, queue chan<- queuedLog) {
-	err := m.logs.FollowLogs(ctx, req.ContainerID, func(record runtime.LogRecord) {
-		line := strings.TrimSpace(record.Line)
-		if line == "" {
-			return
-		}
-		if record.Timestamp.IsZero() {
-			record.Timestamp = time.Now().UTC()
-		}
-		item := queuedLog{stream: record.Stream, timestamp: record.Timestamp.UTC(), line: line}
-		select {
-		case queue <- item:
-		case <-ctx.Done():
-		default:
-			m.logger.Warn("drop workload container log because queue is full", "execution_id", req.ExecutionID)
-		}
-	})
-	if err != nil && ctx.Err() == nil {
-		m.logger.Warn("open workload container log stream failed",
-			"execution_id", req.ExecutionID,
-			"container_id", req.ContainerID,
-			"error", err,
-		)
-	}
-}
-
-// pushQueued 从队列读取日志，按大小或时间窗口聚合后推送，直到队列关闭并完成最后一次刷新。
-func (m *Manager) pushQueued(req StartRequest, queue <-chan queuedLog) {
-	batchSize := m.batchSize
-	if batchSize <= 0 {
-		batchSize = defaultBatchSize
-	}
-	batchWait := m.batchWait
-	if batchWait <= 0 {
-		batchWait = defaultBatchWait
-	}
-	ticker := time.NewTicker(batchWait)
-	defer ticker.Stop()
-
-	batch := make([]queuedLog, 0, batchSize)
-	flush := func() {
-		if len(batch) == 0 {
-			return
-		}
-		m.pushBatch(req, batch)
-		batch = batch[:0]
-	}
-
-	for {
-		select {
-		case item, ok := <-queue:
-			if !ok {
-				flush()
+		err := m.runtime.StreamLogs(m.ctx, req.ContainerID, func(record runtime.LogRecord) {
+			if m.ctx.Err() != nil {
 				return
 			}
-			batch = append(batch, item)
-			if len(batch) >= batchSize {
-				flush()
-			}
-		case <-ticker.C:
-			flush()
-		}
-	}
-}
-
-// pushBatch 将一批日志按 stream 分组，并使用内部 pushTimeout 上下文推送到 Loki。
-func (m *Manager) pushBatch(req StartRequest, items []queuedLog) {
-	streams := map[string][]lokiEntry{}
-	for _, item := range items {
-		line := formatLogfmtLine(m.platform, req, item.stream, item.timestamp.UTC(), item.line)
-		if line == "" {
-			continue
-		}
-		streams[item.stream] = append(streams[item.stream], lokiEntry{Timestamp: item.timestamp.UTC(), Line: line})
-	}
-	if len(streams) == 0 {
-		return
-	}
-	payloadStreams := make([]lokiStream, 0, len(streams))
-	for stream, entries := range streams {
-		payloadStreams = append(payloadStreams, lokiStream{
-			Labels: map[string]string{
-				"job":        "mini-cloud",
-				"component":  "workload",
-				"log_source": "container",
-				"stream":     stream,
-			},
-			Entries: entries,
+			m.pushLine(m.ctx, req, record.Stream, record.Timestamp, record.Line)
 		})
-	}
-	pushTimeout := m.pushTimeout
-	if pushTimeout <= 0 {
-		pushTimeout = defaultPushTimeout
-	}
-	reqCtx, cancel := context.WithTimeout(context.Background(), pushTimeout)
-	defer cancel()
-	if err := m.loki.PushStreams(reqCtx, payloadStreams); err != nil && reqCtx.Err() == nil {
-		m.logger.Warn("push workload container log batch to Loki failed", "execution_id", req.ExecutionID, "error", err)
-	}
+		if err != nil && m.ctx.Err() == nil {
+			m.logger.Warn("open workload container log stream failed",
+				"execution_id", req.ExecutionID,
+				"container_id", req.ContainerID,
+				"error", err,
+			)
+		}
+	}()
 }
 
-// pushLine 规范化单行日志并通过批量路径推送，主要用于测试和小批量场景。
-func (m *Manager) pushLine(req StartRequest, stream string, timestamp time.Time, rawLine string) {
+// pushLine 规范化单行日志并推送到 Loki。
+func (m *Manager) pushLine(ctx context.Context, req StartRequest, stream string, timestamp time.Time, rawLine string) {
 	rawLine = strings.TrimSpace(rawLine)
 	if rawLine == "" {
 		return
@@ -381,7 +175,24 @@ func (m *Manager) pushLine(req StartRequest, stream string, timestamp time.Time,
 	if timestamp.IsZero() {
 		timestamp = time.Now().UTC()
 	}
-	m.pushBatch(req, []queuedLog{{stream: stream, timestamp: timestamp.UTC(), line: rawLine}})
+	timestamp = timestamp.UTC()
+	line := formatLogfmtLine(m.platform, req, stream, timestamp, rawLine)
+	reqCtx, cancel := context.WithTimeout(ctx, m.pushTimeout)
+	defer cancel()
+	err := m.loki.push(
+		reqCtx,
+		map[string]string{
+			"job":        "mini-cloud",
+			"component":  "workload",
+			"log_source": "container",
+			"stream":     stream,
+		},
+		timestamp,
+		line,
+	)
+	if err != nil && reqCtx.Err() == nil {
+		m.logger.Warn("push workload container log to Loki failed", "execution_id", req.ExecutionID, "error", err)
+	}
 }
 
 // lokiClient 是最小 Loki push API HTTP 客户端。
@@ -394,22 +205,6 @@ type lokiClient struct {
 	httpClient *http.Client
 }
 
-// lokiStream 表示一次 Loki push payload 中的一个 stream。
-type lokiStream struct {
-	// Labels 是 Loki stream labels。
-	Labels map[string]string
-	// Entries 是该 stream 下的日志条目。
-	Entries []lokiEntry
-}
-
-// lokiEntry 表示一条准备发送给 Loki 的日志。
-type lokiEntry struct {
-	// Timestamp 是 Loki value 使用的日志时间。
-	Timestamp time.Time
-	// Line 是 Loki value 使用的日志内容。
-	Line string
-}
-
 // newLokiClient 创建 Loki HTTP push 客户端。
 func newLokiClient(rawURL string, tenantID string, httpClient *http.Client) *lokiClient {
 	return &lokiClient{
@@ -419,40 +214,17 @@ func newLokiClient(rawURL string, tenantID string, httpClient *http.Client) *lok
 	}
 }
 
-// Configured 返回 Loki push 地址是否已配置。
-func (c *lokiClient) Configured() bool {
-	return c != nil && c.pushURL != ""
-}
-
-// Push 推送单个 Loki stream。
-func (c *lokiClient) Push(ctx context.Context, stream lokiStream) error {
-	return c.PushStreams(ctx, []lokiStream{stream})
-}
-
-// PushStreams 将多个 Loki stream 编码为 push payload 并发送。
-func (c *lokiClient) PushStreams(ctx context.Context, streams []lokiStream) error {
-	if !c.Configured() {
-		return nil
+// push 将单条日志编码为 Loki push payload 并发送。
+func (c *lokiClient) push(ctx context.Context, labels map[string]string, timestamp time.Time, line string) error {
+	payload := map[string]any{
+		"streams": []map[string]any{{
+			"stream": labels,
+			"values": [][]string{{
+				strconv.FormatInt(timestamp.UTC().UnixNano(), 10),
+				line,
+			}},
+		}},
 	}
-	if c.httpClient == nil {
-		c.httpClient = http.DefaultClient
-	}
-
-	payloadStreams := make([]map[string]any, 0, len(streams))
-	for _, stream := range streams {
-		values := lokiValues(stream.Entries)
-		if len(values) == 0 {
-			continue
-		}
-		payloadStreams = append(payloadStreams, map[string]any{
-			"stream": stream.Labels,
-			"values": values,
-		})
-	}
-	if len(payloadStreams) == 0 {
-		return nil
-	}
-	payload := map[string]any{"streams": payloadStreams}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal Loki push payload: %w", err)
@@ -483,26 +255,6 @@ func (c *lokiClient) PushStreams(ctx context.Context, streams []lokiStream) erro
 		return fmt.Errorf("loki rejected push: %s", message)
 	}
 	return nil
-}
-
-// lokiValues 将日志条目转换为 Loki values 数组。
-func lokiValues(entries []lokiEntry) [][]string {
-	values := make([][]string, 0, len(entries))
-	for _, entry := range entries {
-		timestamp := entry.Timestamp
-		if timestamp.IsZero() {
-			timestamp = time.Now().UTC()
-		}
-		line := strings.TrimSpace(entry.Line)
-		if line == "" {
-			continue
-		}
-		values = append(values, []string{
-			strconv.FormatInt(timestamp.UTC().UnixNano(), 10),
-			line,
-		})
-	}
-	return values
 }
 
 // formatLogfmtLine 将工作负载日志和执行上下文格式化为 logfmt 文本。

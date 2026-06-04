@@ -99,8 +99,8 @@ type Runtime interface {
 	Stop(context.Context, string) error
 	// Logs 返回指定容器尾部日志文本。
 	Logs(context.Context, string, int) (string, error)
-	// FollowLogs 从指定容器读取持续日志流，并将每行日志交给 emit。
-	FollowLogs(context.Context, string, LogEmitter) error
+	// StreamLogs 从指定容器读取持续日志流，并将每行日志交给 emit。
+	StreamLogs(context.Context, string, LogEmitter) error
 	// CountRunning 汇报当前 runtime 可见的所有运行中容器。
 	CountRunning(context.Context) (int, error)
 	// GarbageCollect 清理 runtime 本地孤儿资源。
@@ -120,7 +120,7 @@ type ImageCredential struct {
 }
 
 // New 根据配置创建工作负载运行时实现。
-func New(logger *slog.Logger, cfg Config) (*DockerEngine, error) {
+func New(logger *slog.Logger, cfg Config) (*Docker, error) {
 	runtimeType := strings.TrimSpace(cfg.Type)
 	if runtimeType == "" {
 		runtimeType = TypeDocker

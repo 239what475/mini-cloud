@@ -55,9 +55,6 @@ func Run(ctx context.Context, logger *slog.Logger, cfg agentconfig.Config) error
 		LokiURL:      cfg.WorkloadLogLokiURL,
 		LokiTenantID: cfg.WorkloadLogLokiTenant,
 		PlatformName: cfg.PlatformName,
-		QueueSize:    cfg.Logs.QueueSize,
-		BatchSize:    cfg.Logs.BatchMaxEntries,
-		BatchWait:    cfg.Logs.BatchMaxWait,
 		PushTimeout:  cfg.Logs.PushTimeout,
 	}, containerRuntime)
 	if err != nil {

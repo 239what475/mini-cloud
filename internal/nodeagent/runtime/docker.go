@@ -71,8 +71,8 @@ const (
 	dockerLabelProjectionRef = "mini-cloud.projection-ref"
 )
 
-// DockerEngine 基于 Docker Engine API 实现 Runtime。
-type DockerEngine struct {
+// Docker 基于 Docker Engine API 实现 Runtime。
+type Docker struct {
 	// logger 记录 Docker 运行时操作日志。
 	logger *slog.Logger
 	// client 是 Docker Engine API 客户端。
@@ -93,7 +93,7 @@ type trackedProjection struct {
 }
 
 // NewDockerEngine 创建使用环境变量配置的 Docker Engine 客户端。
-func NewDockerEngine(logger *slog.Logger) (*DockerEngine, error) {
+func NewDockerEngine(logger *slog.Logger) (*Docker, error) {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
 		client.WithAPIVersionNegotiation(),
@@ -101,7 +101,7 @@ func NewDockerEngine(logger *slog.Logger) (*DockerEngine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create docker engine client: %w", err)
 	}
-	return &DockerEngine{
+	return &Docker{
 		logger:         logger,
 		client:         dockerClient,
 		projectionDirs: make(map[string]trackedProjection),
@@ -109,7 +109,7 @@ func NewDockerEngine(logger *slog.Logger) (*DockerEngine, error) {
 }
 
 // Run 确保镜像可用、创建投影和持久化目录挂载、启动 Docker 容器并返回宿主机端口。
-func (d *DockerEngine) Run(ctx context.Context, input RunInput) (RunResult, error) {
+func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	registryAuth, err := buildRegistryAuth(input.ImageCredential)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("build docker registry auth: %w", err)
@@ -213,7 +213,7 @@ func (d *DockerEngine) Run(ctx context.Context, input RunInput) (RunResult, erro
 }
 
 // Stop 停止指定 Docker 容器，并清理该容器关联的投影文件目录。
-func (d *DockerEngine) Stop(ctx context.Context, containerID string) error {
+func (d *Docker) Stop(ctx context.Context, containerID string) error {
 	defer d.cleanupContainerProjectionDir(containerID)
 	if strings.TrimSpace(containerID) == "" {
 		return nil
@@ -228,7 +228,7 @@ func (d *DockerEngine) Stop(ctx context.Context, containerID string) error {
 }
 
 // Logs 读取指定 Docker 容器的 stdout/stderr 尾部日志。
-func (d *DockerEngine) Logs(ctx context.Context, containerID string, tail int) (string, error) {
+func (d *Docker) Logs(ctx context.Context, containerID string, tail int) (string, error) {
 	if tail <= 0 {
 		tail = 50
 	}
@@ -263,8 +263,8 @@ func (d *DockerEngine) Logs(ctx context.Context, containerID string, tail int) (
 	return strings.Join(parts, "\n"), nil
 }
 
-// FollowLogs 持续读取指定 Docker 容器日志流，并逐行发给 emit。
-func (d *DockerEngine) FollowLogs(ctx context.Context, containerID string, emit LogEmitter) error {
+// StreamLogs 持续读取指定 Docker 容器日志流，并逐行发给 emit。
+func (d *Docker) StreamLogs(ctx context.Context, containerID string, emit LogEmitter) error {
 	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
 		ShowStderr: true,
@@ -292,7 +292,7 @@ func (d *DockerEngine) FollowLogs(ctx context.Context, containerID string, emit 
 }
 
 // CountRunning 返回 Docker 当前可见的运行中容器数量。
-func (d *DockerEngine) CountRunning(ctx context.Context) (int, error) {
+func (d *Docker) CountRunning(ctx context.Context) (int, error) {
 	items, err := d.client.ContainerList(ctx, container.ListOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("docker list containers failed: %w", err)
@@ -301,7 +301,7 @@ func (d *DockerEngine) CountRunning(ctx context.Context) (int, error) {
 }
 
 // Close 清理已跟踪的投影文件目录，并关闭 Docker 客户端。
-func (d *DockerEngine) Close() error {
+func (d *Docker) Close() error {
 	if d == nil {
 		return nil
 	}
@@ -316,12 +316,12 @@ func (d *DockerEngine) Close() error {
 }
 
 // GarbageCollect 清理不再被当前跟踪状态或 Docker 容器标签引用的投影文件目录。
-func (d *DockerEngine) GarbageCollect(ctx context.Context) error {
+func (d *Docker) GarbageCollect(ctx context.Context) error {
 	return d.CleanupOrphans(ctx)
 }
 
 // CleanupOrphans 删除没有被当前跟踪状态或 Docker 容器标签引用的投影文件目录。
-func (d *DockerEngine) CleanupOrphans(ctx context.Context) error {
+func (d *Docker) CleanupOrphans(ctx context.Context) error {
 	if d == nil {
 		return nil
 	}
@@ -368,7 +368,7 @@ func (d *DockerEngine) CleanupOrphans(ctx context.Context) error {
 }
 
 // ensureImageAvailable 确保镜像本地可用；不存在时按重试策略拉取镜像。
-func (d *DockerEngine) ensureImageAvailable(ctx context.Context, imageRef string, registryAuth string) error {
+func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, registryAuth string) error {
 	if _, err := d.client.ImageInspect(ctx, imageRef); err == nil {
 		return nil
 	} else if !cerrdefs.IsNotFound(err) {
@@ -435,7 +435,7 @@ func (d *DockerEngine) ensureImageAvailable(ctx context.Context, imageRef string
 }
 
 // detectHostPort 轮询 Docker inspect，读取容器端口映射到宿主机后的端口。
-func (d *DockerEngine) detectHostPort(ctx context.Context, containerID string, portSpec nat.Port) (int, error) {
+func (d *Docker) detectHostPort(ctx context.Context, containerID string, portSpec nat.Port) (int, error) {
 	var lastErr error
 	for attempt := 1; attempt <= 10; attempt++ {
 		inspected, err := d.client.ContainerInspect(ctx, containerID)
@@ -733,7 +733,7 @@ func buildRegistryAuth(credential *ImageCredential) (string, error) {
 }
 
 // trackProjectionDir 记录容器和投影文件目录的关系，供后续清理使用。
-func (d *DockerEngine) trackProjectionDir(containerID string, dir string) {
+func (d *Docker) trackProjectionDir(containerID string, dir string) {
 	if strings.TrimSpace(containerID) == "" || strings.TrimSpace(dir) == "" {
 		return
 	}
@@ -746,7 +746,7 @@ func (d *DockerEngine) trackProjectionDir(containerID string, dir string) {
 }
 
 // removeCreatedContainer 强制删除已创建但启动失败的 Docker 容器。
-func (d *DockerEngine) removeCreatedContainer(ctx context.Context, containerID string) {
+func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string) {
 	if strings.TrimSpace(containerID) == "" {
 		return
 	}
@@ -761,7 +761,7 @@ func (d *DockerEngine) removeCreatedContainer(ctx context.Context, containerID s
 }
 
 // cleanupContainerProjectionDir 清理指定容器已跟踪的投影文件目录。
-func (d *DockerEngine) cleanupContainerProjectionDir(containerID string) {
+func (d *Docker) cleanupContainerProjectionDir(containerID string) {
 	if strings.TrimSpace(containerID) == "" {
 		return
 	}
@@ -773,7 +773,7 @@ func (d *DockerEngine) cleanupContainerProjectionDir(containerID string) {
 }
 
 // cleanupTrackedProjectionDirs 清理当前进程内仍被跟踪的全部投影文件目录。
-func (d *DockerEngine) cleanupTrackedProjectionDirs() {
+func (d *Docker) cleanupTrackedProjectionDirs() {
 	d.mu.Lock()
 	items := make(map[string]trackedProjection, len(d.projectionDirs))
 	for containerID, projection := range d.projectionDirs {
@@ -787,7 +787,7 @@ func (d *DockerEngine) cleanupTrackedProjectionDirs() {
 }
 
 // activeTrackedExecutions 返回当前进程内仍被跟踪的执行 ID 集合。
-func (d *DockerEngine) activeTrackedExecutions() map[string]struct{} {
+func (d *Docker) activeTrackedExecutions() map[string]struct{} {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	active := make(map[string]struct{}, len(d.projectionDirs))
@@ -800,7 +800,7 @@ func (d *DockerEngine) activeTrackedExecutions() map[string]struct{} {
 }
 
 // cleanupProjectionDir 删除指定投影文件目录并记录失败日志。
-func (d *DockerEngine) cleanupProjectionDir(containerID string, dir string) {
+func (d *Docker) cleanupProjectionDir(containerID string, dir string) {
 	if strings.TrimSpace(dir) == "" {
 		return
 	}
