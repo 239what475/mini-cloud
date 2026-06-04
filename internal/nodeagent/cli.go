@@ -39,7 +39,6 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		"instance_id", cfg.RegisterInput.InstanceID,
 		"heartbeat_interval", cfg.HeartbeatInterval,
 		"work_interval", cfg.WorkInterval,
-		"state_file", cfg.StateFile,
 	)
 	return daemon.Run(ctx, logger, cfg)
 }

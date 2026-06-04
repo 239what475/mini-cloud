@@ -18,7 +18,6 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
@@ -29,8 +28,6 @@ import (
 type Client struct {
 	// target 是 gRPC dial 使用的 host 或 passthrough 目标。
 	target string
-	// useTLS 表示 target 是否应使用 TLS 传输凭据。
-	useTLS bool
 	// bootstrapToken 是节点注册前使用的启动令牌。
 	bootstrapToken string
 	// sessionToken 是注册成功后用于心跳、拉取任务和上报结果的节点会话令牌。
@@ -38,17 +35,15 @@ type Client struct {
 	// dialer 是测试可注入的 gRPC 底层连接建立函数。
 	dialer func(context.Context, string) (net.Conn, error)
 
-	// mu 保护 sessionToken、conn 和 client 的并发访问。
+	// mu 保护 sessionToken 和 conn 的并发访问。
 	mu sync.Mutex
 	// conn 是复用的 gRPC 客户端连接。
 	conn *grpc.ClientConn
-	// client 是基于 conn 创建的 protobuf gRPC stub。
-	client nodeagentv1.NodeAgentServiceClient
 }
 
 // Config 配置 node-agent 控制面客户端。
 type Config struct {
-	// ServerURL 是控制面的 HTTP 或 HTTPS 基础地址。
+	// ServerURL 是控制面的内网明文 gRPC 地址，可使用 host:port 或 http://host:port。
 	ServerURL string
 	// BootstrapToken 是首次注册节点时发送的启动令牌。
 	BootstrapToken string
@@ -90,10 +85,8 @@ func (e *ControlError) Error() string {
 
 // New 根据控制面地址和启动令牌创建客户端。
 func New(cfg Config) *Client {
-	target, useTLS := normalizeTarget(cfg.ServerURL)
 	return &Client{
-		target:         target,
-		useTLS:         useTLS,
+		target:         normalizeTarget(cfg.ServerURL),
 		bootstrapToken: strings.TrimSpace(cfg.BootstrapToken),
 		dialer:         cfg.Dialer,
 	}
@@ -113,17 +106,15 @@ func (c *Client) getSessionToken() string {
 	return c.sessionToken
 }
 
-// Close 关闭当前 gRPC 连接，并清空可复用的客户端 stub。
+// Close 关闭当前 gRPC 连接。
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn == nil {
-		c.client = nil
 		return nil
 	}
 	conn := c.conn
 	c.conn = nil
-	c.client = nil
 	return conn.Close()
 }
 
@@ -273,20 +264,15 @@ func (c *Client) ReportExecution(ctx context.Context, nodeID string, executionID
 	return out, nil
 }
 
-// grpcClient 返回可复用的 NodeAgentService gRPC stub，必要时创建 ClientConn 和 stub。
+// grpcClient 返回基于复用 ClientConn 的 NodeAgentService gRPC stub。
 func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.client != nil {
-		return c.client, nil
+	if c.conn != nil {
+		return nodeagentv1.NewNodeAgentServiceClient(c.conn), nil
 	}
 
-	dialOptions := []grpc.DialOption{}
-	if c.useTLS {
-		dialOptions = append(dialOptions, grpc.WithTransportCredentials(credentials.NewTLS(nil)))
-	} else {
-		dialOptions = append(dialOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	}
+	dialOptions := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
 	if c.dialer != nil {
 		dialOptions = append(dialOptions, grpc.WithContextDialer(c.dialer))
 	}
@@ -300,8 +286,7 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 		return nil, fmt.Errorf("dial grpc server: %w", err)
 	}
 	c.conn = conn
-	c.client = nodeagentv1.NewNodeAgentServiceClient(conn)
-	return c.client, nil
+	return nodeagentv1.NewNodeAgentServiceClient(conn), nil
 }
 
 // withOutgoingMetadata 在 gRPC metadata 中追加 request id 和可选 bearer token。
@@ -331,17 +316,17 @@ func grpcControlError(err error, operation string) error {
 	}
 }
 
-// normalizeTarget 从控制面服务地址中提取 gRPC dial target 和 TLS 开关。
-func normalizeTarget(serverURL string) (string, bool) {
+// normalizeTarget 从控制面服务地址中提取明文 gRPC dial target。
+func normalizeTarget(serverURL string) string {
 	trimmed := strings.TrimSpace(serverURL)
 	if trimmed == "" {
-		return "", false
+		return ""
 	}
 	parsed, err := url.Parse(trimmed)
 	if err != nil || parsed.Host == "" {
-		return strings.TrimPrefix(strings.TrimPrefix(trimmed, "http://"), "https://"), false
+		return strings.TrimPrefix(trimmed, "http://")
 	}
-	return parsed.Host, strings.EqualFold(parsed.Scheme, "https")
+	return parsed.Host
 }
 
 // timestampOrNil 将非零 time.Time 转为 protobuf Timestamp，零值返回 nil。

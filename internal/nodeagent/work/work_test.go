@@ -509,6 +509,10 @@ func (f *fakeRuntime) CountRunning(context.Context) (int, error) {
 	return 0, nil
 }
 
+func (f *fakeRuntime) ResetNode(context.Context, string) error {
+	return nil
+}
+
 func (f *fakeRuntime) GarbageCollect(context.Context) error {
 	return nil
 }

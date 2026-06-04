@@ -103,6 +103,8 @@ type Runtime interface {
 	StreamLogs(context.Context, string, LogEmitter) error
 	// CountRunning 汇报当前 runtime 可见的所有运行中容器。
 	CountRunning(context.Context) (int, error)
+	// ResetNode 停止当前节点上由 mini-cloud 管理的旧工作负载容器。
+	ResetNode(context.Context, string) error
 	// GarbageCollect 清理 runtime 本地孤儿资源。
 	GarbageCollect(context.Context) error
 	// Close 释放运行时客户端资源和本地跟踪的临时资源。

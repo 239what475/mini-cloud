@@ -171,6 +171,10 @@ func (f fakeLogFollower) CountRunning(context.Context) (int, error) {
 	return 0, nil
 }
 
+func (f fakeLogFollower) ResetNode(context.Context, string) error {
+	return nil
+}
+
 func (f fakeLogFollower) GarbageCollect(context.Context) error {
 	return nil
 }

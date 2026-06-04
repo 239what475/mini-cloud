@@ -227,6 +227,46 @@ func (d *Docker) Stop(ctx context.Context, containerID string) error {
 	return nil
 }
 
+// ResetNode 停止当前节点上由 mini-cloud 管理的旧工作负载容器。
+func (d *Docker) ResetNode(ctx context.Context, nodeID string) error {
+	if d == nil {
+		return nil
+	}
+	nodeID = strings.TrimSpace(nodeID)
+	if nodeID == "" {
+		return fmt.Errorf("nodeID is required for runtime reset")
+	}
+	filter := filters.NewArgs()
+	filter.Add("label", dockerLabelManagedBy+"=node-agent")
+	filter.Add("label", dockerLabelNodeID+"="+nodeID)
+	items, err := d.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filter,
+	})
+	if err != nil {
+		return fmt.Errorf("docker list mini-cloud node containers failed: %w", err)
+	}
+	for _, item := range items {
+		if err := d.client.ContainerStop(ctx, item.ID, container.StopOptions{}); err != nil {
+			if cerrdefs.IsNotFound(err) || isContainerAlreadyStopped(err) {
+				// Continue to remove below; a stopped-but-present container can still hold its name.
+			} else {
+				return fmt.Errorf("docker stop mini-cloud node container %s failed: %w", item.ID, err)
+			}
+		}
+		if err := d.client.ContainerRemove(ctx, item.ID, container.RemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
+			return fmt.Errorf("docker remove mini-cloud node container %s failed: %w", item.ID, err)
+		}
+		d.cleanupContainerProjectionDir(item.ID)
+		d.logger.Info("stopped stale mini-cloud container during node runtime reset",
+			"node_id", nodeID,
+			"container_id", item.ID,
+			"execution_id", item.Labels[dockerLabelExecutionID],
+		)
+	}
+	return nil
+}
+
 // Logs 读取指定 Docker 容器的 stdout/stderr 尾部日志。
 func (d *Docker) Logs(ctx context.Context, containerID string, tail int) (string, error) {
 	if tail <= 0 {
@@ -566,6 +606,17 @@ func shouldRetryHostPortCreate(err error, input RunInput) bool {
 		strings.Contains(message, "ports are not available") ||
 		strings.Contains(message, "address already in use") ||
 		strings.Contains(message, "bind: address already in use")
+}
+
+// isContainerAlreadyStopped 判断 Docker stop 对非运行容器返回的幂等错误。
+func isContainerAlreadyStopped(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "not modified") ||
+		strings.Contains(message, "is not running") ||
+		strings.Contains(message, "already stopped")
 }
 
 // prepareProjectedMounts 在默认投影根目录下准备 Docker bind mount。

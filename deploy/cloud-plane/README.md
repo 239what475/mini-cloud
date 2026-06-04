@@ -48,7 +48,6 @@ v7 起 ingress/egress 数据面统一外置：
   - `/etc/systemd/system/mini-cloud-cloud-plane.service`
   - `/etc/systemd/system/mini-cloud-node-agent.service`
 - 运行状态：
-  - `/var/lib/mini-cloud/node-agent/state.json`
   - `/var/lib/mini-cloud/node-agent/projected-files/`
   - `/var/lib/mini-cloud/persistent-dirs/`
 - 日志：

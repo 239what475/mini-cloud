@@ -12,7 +12,6 @@ import (
 	"mini-cloud/internal/contract/nodeagentapi"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/workloadlogs"
 )
 
@@ -25,14 +24,7 @@ type ReadinessWaiter interface {
 // WorkloadLogStarter 是启动工作负载日志采集的函数。
 type WorkloadLogStarter func(workloadlogs.StartRequest)
 
-// ExecutionRecorder 定义执行状态机向本地状态存储写入恢复点所需的能力。
-type ExecutionRecorder interface {
-	// SaveExecution 保存指定执行的最新恢复状态。
-	SaveExecution(state.ExecutionState) error
-}
-
-// ExecutionPhase 表示执行状态机阶段，其中部分阶段会作为恢复点持久化。
-
+// ExecutionPhase 表示执行状态机阶段。
 const (
 	// PhasePolled 表示执行任务已从控制面拉取。
 	PhasePolled = "polled"
@@ -102,8 +94,6 @@ type Options struct {
 	EgressProxyNoProxy []string
 	// ReadinessWaiter 是可注入的 workload readiness 等待实现。
 	ReadinessWaiter ReadinessWaiter
-	// Recorder 是可选的执行恢复状态记录器。
-	Recorder ExecutionRecorder
 }
 
 // Result 描述一次 ExecuteNext 调用的执行结果和最终阶段。
@@ -178,9 +168,6 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	result.Phase = PhasePolled
 	workLogger := e.workLogger(item)
 	workLogger.Info("claimed execution work", "request_id", logctx.RequestID(pollCtx))
-	if err := e.record(item, PhasePolled, runtime.RunResult{}, ""); err != nil {
-		return result, err
-	}
 
 	if err := item.Validate(); err != nil {
 		report, reason, reportErr := e.reportValidationFailure(ctx, item, err)
@@ -193,14 +180,8 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		return result, fmt.Errorf("%s", reason)
 	}
 	result.Phase = PhaseValidated
-	if err := e.record(item, PhaseValidated, runtime.RunResult{}, ""); err != nil {
-		return result, err
-	}
 
 	result.Phase = PhaseStarting
-	if err := e.record(item, PhaseStarting, runtime.RunResult{}, ""); err != nil {
-		return result, err
-	}
 	runResult, err := e.runWorkItem(ctx, item)
 	if err != nil {
 		report, reason, reportErr := e.reportRuntimeStartFailure(ctx, item, err)
@@ -214,9 +195,6 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 
 	result.RuntimeRun = &runResult
 	result.Phase = PhaseStarted
-	if err := e.record(item, PhaseStarted, runResult, ""); err != nil {
-		return result, err
-	}
 	workLogger.Info("runtime container started",
 		"container_name", runResult.ContainerName,
 		"container_id", runResult.ContainerID,
@@ -224,9 +202,6 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	)
 	e.startWorkloadLogForwarding(item, runResult)
 	result.Phase = PhaseLogsAttached
-	if err := e.record(item, PhaseLogsAttached, runResult, ""); err != nil {
-		return result, err
-	}
 
 	readinessHost := strings.TrimSpace(opts.NodePrivateIP)
 	if readinessHost == "" {
@@ -234,9 +209,6 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	}
 	readinessURL := fmt.Sprintf("http://%s%s", net.JoinHostPort(readinessHost, fmt.Sprintf("%d", runResult.HostPort)), item.ReadinessPath)
 	result.Phase = PhaseReadinessChecking
-	if err := e.record(item, PhaseReadinessChecking, runResult, ""); err != nil {
-		return result, err
-	}
 	readinessResult := e.readinessWaiter.Wait(ctx, ReadinessConfig{
 		URL:      readinessURL,
 		Attempts: opts.ReadinessAttempts,
@@ -247,13 +219,7 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 
 	if readinessResult.Passed {
 		result.Phase = PhasePromoting
-		if err := e.record(item, PhasePromoting, runResult, ""); err != nil {
-			return result, err
-		}
 		result.Phase = PhaseReportingRun
-		if err := e.record(item, PhaseReportingRun, runResult, ""); err != nil {
-			return result, err
-		}
 		report, err := e.reportRunning(ctx, item, runResult, readinessURL)
 		if err != nil {
 			result.Report = &report
@@ -261,26 +227,17 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		}
 		result.Report = &report
 		result.Phase = PhaseRunningReported
-		if err := e.record(item, PhaseRunningReported, runResult, string(report.Ack.Execution.Status)); err != nil {
-			return result, err
-		}
 		e.logReport(workLogger, report)
 		return result, nil
 	}
 
 	result.Phase = PhaseCleaningFailed
-	if err := e.record(item, PhaseCleaningFailed, runResult, ""); err != nil {
-		return result, err
-	}
 	report, reason, err := e.cleanupFailedRun(ctx, item, runResult, readinessResult)
 	if err != nil {
 		return result, err
 	}
 	result.Report = &report
 	result.Phase = PhaseFailedReported
-	if err := e.record(item, PhaseFailedReported, runResult, string(report.Ack.Execution.Status)); err != nil {
-		return result, err
-	}
 	e.logReport(workLogger, report)
 	return result, fmt.Errorf("%s", reason)
 }
@@ -521,30 +478,6 @@ func (e Executor) detachedWorkContext(item *nodeagentapi.WorkItem) context.Conte
 // logReport 记录控制面确认后的执行状态。
 func (e Executor) logReport(logger *slog.Logger, report nodeagentapi.ReportExecutionResponse) {
 	logger.Info("reported execution status", "status", report.Ack.Execution.Status)
-}
-
-// record 将当前执行阶段保存为本地恢复点。
-func (e Executor) record(item *nodeagentapi.WorkItem, phase string, runResult runtime.RunResult, reportStatus string) error {
-	if e.opts.Recorder == nil || item == nil {
-		return nil
-	}
-	return e.opts.Recorder.SaveExecution(state.ExecutionState{
-		ExecutionID:      item.ExecutionID,
-		DeploymentID:     item.DeploymentID,
-		ProjectID:        item.ProjectID,
-		ServiceID:        item.ServiceID,
-		ServiceName:      item.ServiceName,
-		ReplicaIndex:     item.ReplicaIndex,
-		RevisionID:       item.RevisionID,
-		NodeID:           e.opts.NodeID,
-		Phase:            phase,
-		ContainerID:      runResult.ContainerID,
-		ContainerName:    runResult.ContainerName,
-		HostPort:         runResult.HostPort,
-		ProjectionRef:    item.ExecutionID,
-		LastReportStatus: reportStatus,
-		UpdatedAt:        time.Now().UTC(),
-	})
 }
 
 // timeout 返回显式超时，或按清理、运行时、1 秒的顺序选择兜底值。

@@ -5,7 +5,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/workloadlogs"
 
 	"google.golang.org/grpc"
@@ -25,8 +23,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// TestHandleNodeErrorClearsStateOnInvalidNodeSession 验证无效节点会话错误会清除本地状态和 session token。
-func TestHandleNodeErrorClearsStateOnInvalidNodeSession(t *testing.T) {
+// TestHandleNodeErrorClearsInMemorySessionOnInvalidNodeSession 验证无效节点会话错误会清除内存 nodeID 和 session token。
+func TestHandleNodeErrorClearsInMemorySessionOnInvalidNodeSession(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -52,52 +50,37 @@ func TestHandleNodeErrorClearsStateOnInvalidNodeSession(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			path := filepath.Join(t.TempDir(), "agent-state.json")
-			if err := state.Save(path, state.State{
-				NodeID:       "node_stale",
-				SessionToken: "mcws_stale_secret",
-			}); err != nil {
-				t.Fatalf("state.Save returned error: %v", err)
-			}
-
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 			client := agentclient.New(agentclient.Config{})
 			client.SetSessionToken("mcws_stale_secret")
 			runner := NewRunner(
 				logger,
-				agentconfig.Config{StateFile: path},
+				agentconfig.Config{},
 				client,
-				stubRuntime{},
+				&stubRuntime{},
 				nil,
 			)
+			runner.nodeID = "node_stale"
+			runner.runtimeResetDone = true
 			runner.handleNodeError("node_stale", &agentclient.ControlError{
 				Operation: "send heartbeat",
 				Code:      tc.code,
 				Message:   tc.message,
 			})
 
-			loaded, err := state.Load(path)
-			if err != nil {
-				t.Fatalf("state.Load returned error: %v", err)
+			if runner.nodeID != "" {
+				t.Fatalf("nodeID = %q, want empty after invalid session", runner.nodeID)
 			}
-			if loaded.NodeID != "" || loaded.SessionToken != "" {
-				t.Fatalf("expected cleared state file, got %+v", loaded)
+			if runner.runtimeResetDone {
+				t.Fatal("runtimeResetDone = true, want false after invalid session")
 			}
 		})
 	}
 }
 
-// TestTryHeartbeatCycleReRegistersAfterInvalidSession 验证心跳发现会话失效后下一轮会重新注册。
+// TestTryHeartbeatCycleReRegistersAfterInvalidSession 验证心跳发现会话失效后下一轮会重新注册并重置本地 runtime。
 func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 	t.Parallel()
-
-	path := filepath.Join(t.TempDir(), "agent-state.json")
-	if err := state.Save(path, state.State{
-		NodeID:       "node-stale",
-		SessionToken: "stale-session",
-	}); err != nil {
-		t.Fatalf("state.Save returned error: %v", err)
-	}
 
 	var registerCalls int
 	var heartbeatCalls int
@@ -153,47 +136,33 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 2000,
 		MemoryMiAllocatable: 4096,
-		StateFile:           path,
 		Timeouts: agentconfig.TimeoutsConfig{
 			RuntimeStart: time.Second,
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	containerRuntime := stubRuntime{runningContainers: 0}
+	containerRuntime := &stubRuntime{runningContainers: 0}
 	runner := NewRunner(logger, cfg, client, containerRuntime, nil)
-	runner.state = state.State{
-		NodeID:       "node-stale",
-		SessionToken: "stale-session",
+	runner.nodeID = "node-stale"
+	runner.runtimeResetDone = true
+
+	runner.tryHeartbeatCycle(context.Background())
+	if runner.nodeID != "" {
+		t.Fatalf("first heartbeat cycle nodeID = %q, want empty string after invalid session", runner.nodeID)
 	}
 
 	runner.tryHeartbeatCycle(context.Background())
-	if runner.state.NodeID != "" {
-		t.Fatalf("first heartbeat cycle nodeID = %q, want empty string after invalid session", runner.state.NodeID)
-	}
-	clearedState, err := state.Load(path)
-	if err != nil {
-		t.Fatalf("state.Load after invalid session returned error: %v", err)
-	}
-	if clearedState.NodeID != "" || clearedState.SessionToken != "" {
-		t.Fatalf("expected cleared state after invalid session, got %+v", clearedState)
-	}
-
-	runner.tryHeartbeatCycle(context.Background())
-	if runner.state.NodeID != "node-renewed" {
-		t.Fatalf("second heartbeat cycle nodeID = %q, want node-renewed", runner.state.NodeID)
-	}
-	renewedState, err := state.Load(path)
-	if err != nil {
-		t.Fatalf("state.Load after re-register returned error: %v", err)
-	}
-	if renewedState.NodeID != "node-renewed" || renewedState.SessionToken != "session-new" {
-		t.Fatalf("unexpected renewed state: %+v", renewedState)
+	if runner.nodeID != "node-renewed" {
+		t.Fatalf("second heartbeat cycle nodeID = %q, want node-renewed", runner.nodeID)
 	}
 	if registerCalls != 1 {
 		t.Fatalf("registerCalls = %d, want 1", registerCalls)
 	}
 	if heartbeatCalls != 2 {
 		t.Fatalf("heartbeatCalls = %d, want 2", heartbeatCalls)
+	}
+	if containerRuntime.resetNodeIDs[0] != "node-renewed" {
+		t.Fatalf("runtime reset nodeIDs = %v, want [node-renewed]", containerRuntime.resetNodeIDs)
 	}
 }
 
@@ -262,7 +231,6 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1000,
 		MemoryMiAllocatable: 1024,
-		StateFile:           filepath.Join(t.TempDir(), "state.json"),
 		HeartbeatInterval:   time.Hour,
 		WorkInterval:        time.Hour,
 		Timeouts: agentconfig.TimeoutsConfig{
@@ -276,7 +244,7 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			testDaemonLogger(),
 			cfg,
 			client,
-			stubRuntime{runningContainers: 3},
+			&stubRuntime{runningContainers: 3},
 			workloadLogs,
 		).Run(ctx)
 	}()
@@ -306,6 +274,8 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 type stubRuntime struct {
 	// runningContainers 是 CountRunning 返回的预设值。
 	runningContainers int
+	// resetNodeIDs 记录 ResetNode 调用收到的 nodeID。
+	resetNodeIDs []string
 }
 
 // testDaemonLogger 返回丢弃输出的 daemon 测试 logger。
@@ -402,36 +372,42 @@ func waitForTestSignal(t *testing.T, signal <-chan struct{}, cancel context.Canc
 }
 
 // Run 实现测试用运行时启动接口。
-func (s stubRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
+func (s *stubRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
 	return runtime.RunResult{}, nil
 }
 
 // Stop 实现测试用运行时停止接口。
-func (s stubRuntime) Stop(context.Context, string) error {
+func (s *stubRuntime) Stop(context.Context, string) error {
 	return nil
 }
 
 // Logs 实现测试用运行时日志接口。
-func (s stubRuntime) Logs(context.Context, string, int) (string, error) {
+func (s *stubRuntime) Logs(context.Context, string, int) (string, error) {
 	return "", nil
 }
 
 // CountRunning 返回预设的运行中容器数量。
-func (s stubRuntime) CountRunning(context.Context) (int, error) {
+func (s *stubRuntime) CountRunning(context.Context) (int, error) {
 	return s.runningContainers, nil
 }
 
+// ResetNode 记录测试中的节点 runtime reset 调用。
+func (s *stubRuntime) ResetNode(_ context.Context, nodeID string) error {
+	s.resetNodeIDs = append(s.resetNodeIDs, nodeID)
+	return nil
+}
+
 // StreamLogs 实现测试用日志跟随接口。
-func (s stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
+func (s *stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
 	return nil
 }
 
 // GarbageCollect 实现测试用运行时垃圾回收接口。
-func (s stubRuntime) GarbageCollect(context.Context) error {
+func (s *stubRuntime) GarbageCollect(context.Context) error {
 	return nil
 }
 
 // Close 实现测试用运行时关闭接口。
-func (s stubRuntime) Close() error {
+func (s *stubRuntime) Close() error {
 	return nil
 }

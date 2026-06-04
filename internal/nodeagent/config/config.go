@@ -27,7 +27,7 @@ type nodeAgentFileConfig struct {
 	Node nodeAgentNodeConfig `yaml:"node"`
 	// Capacity 配置节点上报的 CPU、内存容量和预留量。
 	Capacity nodeAgentCapacityConfig `yaml:"capacity"`
-	// Agent 配置 node-agent 进程行为和本地状态文件。
+	// Agent 配置 node-agent 进程行为。
 	Agent nodeAgentRuntimeConfig `yaml:"agent"`
 	// Runtime 选择本机工作负载运行时实现。
 	Runtime nodeAgentRuntimeProvider `yaml:"runtime"`
@@ -108,8 +108,6 @@ type nodeAgentResourceConfig struct {
 type nodeAgentRuntimeConfig struct {
 	// Version 是通过心跳上报的 node-agent 版本。
 	Version string `yaml:"version"`
-	// StateFile 是保存节点会话和执行恢复状态的本地文件路径。
-	StateFile string `yaml:"stateFile"`
 	// HeartbeatInterval 是心跳循环的间隔。
 	HeartbeatInterval string `yaml:"heartbeatInterval"`
 	// WorkInterval 是执行拉取循环的间隔。
@@ -194,7 +192,7 @@ type nodeAgentObservabilityConfig struct {
 type Config struct {
 	// PlatformName 是平台名称，用于日志标签和工作负载遥测资源属性。
 	PlatformName string
-	// ServerURL 是已校验的 cloud-plane gRPC endpoint；可使用 host:port、http://host:port 或 https://host:port。
+	// ServerURL 是已校验的 cloud-plane 明文 gRPC endpoint；可使用 host:port 或 http://host:port。
 	ServerURL string
 	// BootstrapToken 是节点获得会话令牌前使用的注册令牌。
 	BootstrapToken string
@@ -206,8 +204,6 @@ type Config struct {
 	CPUMilliAllocatable int
 	// MemoryMiAllocatable 是 node-agent 承诺给 mini-cloud 调度器使用的静态内存预算。
 	MemoryMiAllocatable int
-	// StateFile 是本地持久化 node-agent 状态的文件路径。
-	StateFile string
 	// HeartbeatInterval 是心跳循环间隔。
 	HeartbeatInterval time.Duration
 	// WorkInterval 是执行拉取循环间隔。
@@ -306,7 +302,6 @@ func defaultNodeAgentFileConfig() nodeAgentFileConfig {
 		},
 		Agent: nodeAgentRuntimeConfig{
 			Version:             "0.1.0",
-			StateFile:           ".mini-cloud-node-agent/state.json",
 			HeartbeatInterval:   "15s",
 			WorkInterval:        "5s",
 			ShutdownGracePeriod: "30s",
@@ -491,7 +486,6 @@ func build(fileCfg nodeAgentFileConfig) (Config, error) {
 		AgentVersion:          fileCfg.Agent.Version,
 		CPUMilliAllocatable:   resolvedCapacity.Allocatable.CPUMilli,
 		MemoryMiAllocatable:   resolvedCapacity.Allocatable.MemoryMi,
-		StateFile:             fileCfg.Agent.StateFile,
 		HeartbeatInterval:     heartbeatInterval,
 		WorkInterval:          workInterval,
 		WorkloadLogLokiURL:    fileCfg.Observability.WorkloadLogLokiURL,
@@ -554,7 +548,7 @@ func trimStringList(values []string) []string {
 	return out
 }
 
-// validateServerURL 校验 server.url 非空，并允许 host:port 或带 http/https scheme 的 gRPC endpoint。
+// validateServerURL 校验 server.url 非空，并允许 host:port 或 http://host:port 明文 gRPC endpoint。
 func validateServerURL(value string) (string, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -567,8 +561,8 @@ func validateServerURL(value string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse server.url: %w", err)
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return "", fmt.Errorf("server.url must be host:port or use http/https gRPC URI")
+	if parsed.Scheme != "http" {
+		return "", fmt.Errorf("server.url must be host:port or use http gRPC URI")
 	}
 	if parsed.Host == "" {
 		return "", fmt.Errorf("server.url must include host")

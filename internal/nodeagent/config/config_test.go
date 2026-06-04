@@ -40,7 +40,6 @@ capacity:
     memoryMi: 512
 agent:
   version: test-version
-  stateFile: /tmp/node-agent-state.json
   heartbeatInterval: 10s
   workInterval: 3s
 runtime:
@@ -251,12 +250,17 @@ capacity:
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsInvalidServerURL 验证 server.url 必须是 gRPC endpoint。
+// TestLoadNodeAgentConfigRejectsInvalidServerURL 验证 server.url 必须是明文 gRPC endpoint。
 func TestLoadNodeAgentConfigRejectsInvalidServerURL(t *testing.T) {
 	t.Parallel()
 
-	path := writeNodeAgentConfigForTest(t, `server:
-  url: ftp://127.0.0.1:18081
+	for _, rawURL := range []string{"ftp://127.0.0.1:18081", "https://127.0.0.1:18081"} {
+		rawURL := rawURL
+		t.Run(rawURL, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeNodeAgentConfigForTest(t, `server:
+  url: `+rawURL+`
 auth:
   bootstrapToken: bootstrap-secret
 node:
@@ -271,8 +275,10 @@ capacity:
     memoryMi: 8192
 `)
 
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load returned nil error for invalid server.url")
+			if _, err := Load(path); err == nil {
+				t.Fatal("Load returned nil error for invalid server.url")
+			}
+		})
 	}
 }
 

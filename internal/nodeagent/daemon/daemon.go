@@ -3,7 +3,6 @@ package daemon
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 
@@ -12,7 +11,6 @@ import (
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/state"
 	"mini-cloud/internal/nodeagent/work"
 	"mini-cloud/internal/nodeagent/workloadlogs"
 )
@@ -30,10 +28,16 @@ type Runner struct {
 	// workloadLogs 管理工作负载日志采集。
 	workloadLogs *workloadlogs.Manager
 
-	// mu 保护 state。
+	// registerMu 串行化进程内注册，避免 heartbeat/work 并发重新注册。
+	registerMu sync.Mutex
+	// mu 保护 nodeID。
 	mu sync.Mutex
-	// state 保存当前节点会话和执行恢复状态。
-	state state.State
+	// nodeID 是本次进程启动后 cloud-plane 返回的稳定节点 ID。
+	nodeID string
+	// resetMu 串行化启动期 runtime reset，避免 heartbeat/work 并发重置。
+	resetMu sync.Mutex
+	// runtimeResetDone 表示本进程拿到当前 nodeID 后已经清理过旧 workload 容器。
+	runtimeResetDone bool
 }
 
 // Run 根据配置创建生产组件，并运行 node-agent daemon 主循环。
@@ -86,124 +90,62 @@ func NewRunner(
 	}
 }
 
-// Run 加载本地状态、尝试注册和恢复，然后运行心跳与任务循环直到上下文取消。
+// Run 注册当前进程、重置本地 runtime，并运行心跳与任务循环直到上下文取消。
 func (r *Runner) Run(ctx context.Context) error {
-	// 无论 Run 以什么路径返回，都先释放控制面客户端连接。
 	defer func() {
-		// 关闭失败不改变 daemon 退出结果，只记录日志，避免掩盖主流程错误。
 		if err := r.controlClient.Close(); err != nil {
 			r.logger.Warn("close node control client failed", "error", err)
 		}
 	}()
-	// 无论 Run 以什么路径返回，都释放本机容器运行时资源。
 	defer func() {
-		// 运行时关闭失败同样只记录日志；此时 daemon 已经进入退出路径。
 		if err := r.containerRuntime.Close(); err != nil {
 			r.logger.Warn("close node runtime failed", "error", err)
 		}
 	}()
-	// 工作负载日志采集是可选能力；没有配置时不需要关闭。
 	if r.workloadLogs != nil {
-		// 确保所有日志采集 goroutine 在 daemon 退出前有机会 flush 和停止。
 		defer func() {
-			// 关闭日志管理器使用独立后台 context，避免外部 ctx 已取消导致无法清理。
 			closeCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.CleanupHard))
-			// 释放 timeout context 的 timer 资源。
 			defer cancel()
-			// 日志关闭失败不阻止 daemon 退出，只记录 warning。
 			if err := r.workloadLogs.Close(closeCtx); err != nil {
 				r.logger.Warn("close workload log manager failed", "error", err)
 			}
 		}()
 	}
 
-	// 从本地状态文件读取节点会话和执行恢复点；文件不存在时底层会返回空状态。
-	storedState, err := state.Load(r.cfg.StateFile)
-	if err != nil {
-		// 状态文件读取失败会影响注册身份和恢复语义，因此直接返回错误。
-		return err
-	}
-	// 有 NodeID 但没有 session token 的状态不可用于后续请求，需要强制重新注册。
-	if storedState.NodeID != "" && strings.TrimSpace(storedState.SessionToken) == "" {
-		r.logger.Info("node agent state is missing session token, forcing re-registration",
-			"state_file", r.cfg.StateFile,
-			"node_id", storedState.NodeID,
-		)
-		// 清空内存状态，使后面的 ensureNodeRegistration 走注册路径。
-		storedState = state.State{}
-	}
-	// Runner.state 会被心跳循环、任务循环和恢复逻辑访问，写入时需要加锁。
-	r.mu.Lock()
-	// 将磁盘状态同步到 Runner 内存状态。
-	r.state = storedState
-	// 内存状态写入完成后立即释放锁。
-	r.mu.Unlock()
-	// 把本地恢复出的 session token 同步到控制面客户端，供心跳和任务请求使用。
-	r.controlClient.SetSessionToken(storedState.SessionToken)
-
-	// 启动时先尝试注册一次，尽早发现配置或控制面问题。
-	if _, err := r.ensureNodeRegistration(ctx); err != nil {
-		// 初始注册失败不退出；后续心跳和任务循环会继续重试注册。
+	// 后台循环启动前先注册并重置本机 runtime，避免心跳和任务循环并发触发首次注册。
+	if nodeID, err := r.registerNode(ctx); err != nil {
 		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
+	} else if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
+		r.logger.Warn("node agent initial runtime reset failed", "node_id", nodeID, "error", err)
 	}
-	// 启动后执行一次运行时垃圾回收，例如清理孤儿投影文件目录。
-	r.reconcileRuntime(ctx)
-	// 根据本地执行恢复点恢复日志跟随，或把中断的执行上报为失败。
-	r.recoverExecutions(ctx)
 
-	// 为两个后台循环派生一个可单独取消的运行 context。
-	runCtx, cancelRun := context.WithCancel(ctx)
-	// 防御性兜底：即使 Run 在其他路径返回，也确保后台循环收到取消信号。
-	defer cancelRun()
-	// WaitGroup 用于等待心跳循环和任务循环都退出。
 	var wg sync.WaitGroup
-	// 当前会启动两个后台 goroutine：heartbeat loop 和 worker loop。
 	wg.Add(2)
-	// 启动心跳循环 goroutine。
 	go func() {
-		// 心跳循环退出时标记一个后台任务完成。
 		defer wg.Done()
-		// 心跳循环会立即执行一次，然后按 HeartbeatInterval 周期运行。
-		r.runHeartbeatLoop(runCtx)
+		r.runHeartbeatLoop(ctx)
 	}()
-	// 启动任务执行循环 goroutine。
 	go func() {
-		// 任务循环退出时标记一个后台任务完成。
 		defer wg.Done()
-		// 任务循环会立即执行一次，然后按 WorkInterval 周期运行。
-		r.runWorkerLoop(runCtx)
+		r.runWorkerLoop(ctx)
 	}()
 
-	// 阻塞等待外部取消 daemon，例如进程收到退出信号或上层 context 超时。
 	<-ctx.Done()
-	// 记录主循环停止原因，通常是 context canceled 或 context deadline exceeded。
 	r.logger.Info("node agent loop stopped", "reason", ctx.Err())
-	// 主 context 已结束，显式取消派生 context，通知两个后台循环尽快退出。
-	cancelRun()
 
-	// 创建关闭宽限期 timer，避免后台循环卡住时 Run 永久阻塞。
 	shutdownTimer := time.NewTimer(r.timeout(r.cfg.Timeouts.ShutdownGrace))
-	// Run 返回前停止 timer，释放 timer 资源。
 	defer shutdownTimer.Stop()
-	// stopped 用于把 wg.Wait() 的完成事件转换成 select 可以等待的 channel。
 	stopped := make(chan struct{})
-	// 在单独 goroutine 中等待两个后台循环退出。
 	go func() {
-		// wg.Wait() 返回后关闭 stopped，通知下面的 select：所有后台循环已停止。
 		defer close(stopped)
-		// 等待 heartbeat loop 和 worker loop 都执行完 wg.Done()。
 		wg.Wait()
 	}()
-	// 等待“两个后台循环都退出”或“关闭宽限期超时”两者之一先发生。
 	select {
 	case <-stopped:
-		// 两个后台循环都已正常退出，Run 可以继续返回。
 	case <-shutdownTimer.C:
-		// 超过关闭宽限期仍未全部退出，不再等待，避免 daemon 退出被无限阻塞。
 		r.logger.Warn("node agent shutdown grace period elapsed")
 		return nil
 	}
-	// daemon 主循环完成正常关闭。
 	return nil
 }
 
@@ -244,6 +186,10 @@ func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 		r.logger.Warn("node agent registration failed", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
 		return
 	}
+	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
+		r.logger.Warn("node runtime reset failed before heartbeat", "node_id", nodeID, "error", err)
+		return
+	}
 
 	if err := r.sendHeartbeat(ctx, nodeID); err != nil {
 		r.handleNodeError(nodeID, err)
@@ -256,6 +202,10 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
 		r.logger.Warn("node agent registration failed before work poll", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
+		return
+	}
+	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
+		r.logger.Warn("node runtime reset failed before work poll", "node_id", nodeID, "error", err)
 		return
 	}
 
@@ -280,7 +230,6 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		EgressProxyEnabled:   r.cfg.Network.EgressProxy.Enabled,
 		EgressProxyEndpoint:  r.cfg.Network.EgressProxy.Endpoint,
 		EgressProxyNoProxy:   r.cfg.Network.EgressProxy.NoProxy,
-		Recorder:             r,
 	})
 	if err != nil {
 		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
@@ -314,16 +263,24 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 	}
 }
 
-// ensureNodeRegistration 返回当前节点 ID；本地无有效节点时向控制面注册。
+// ensureNodeRegistration 返回当前进程内节点 ID；没有有效会话时向控制面重新注册。
 func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
+	r.registerMu.Lock()
+	defer r.registerMu.Unlock()
+
 	r.mu.Lock()
-	if r.state.NodeID != "" {
-		nodeID := r.state.NodeID
+	if r.nodeID != "" {
+		nodeID := r.nodeID
 		r.mu.Unlock()
 		return nodeID, nil
 	}
 	r.mu.Unlock()
 
+	return r.registerNode(ctx)
+}
+
+// registerNode 使用 bootstrap token 注册当前进程，并只在内存中保存 nodeID 和 session token。
+func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.Register))
 	defer cancel()
 	reqCtx = logctx.WithFields(reqCtx, logctx.Fields{
@@ -335,15 +292,10 @@ func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
 	}
 
 	r.mu.Lock()
-	r.state.NodeID = registered.NodeID
-	r.state.SessionToken = registered.SessionToken
-	r.state.LastSyncedAt = time.Now().UTC()
-	nextState := r.state
+	r.nodeID = registered.NodeID
+	r.runtimeResetDone = false
 	r.mu.Unlock()
 
-	if err := state.Save(r.cfg.StateFile, nextState); err != nil {
-		return "", err
-	}
 	r.controlClient.SetSessionToken(registered.SessionToken)
 
 	logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: registered.NodeID}).Info("node agent registered",
@@ -403,106 +355,30 @@ func (r *Runner) heartbeatStatus() string {
 	return nodeagentapi.NodeStatusReady
 }
 
-// reconcileRuntime 执行启动期 runtime 垃圾回收。
-func (r *Runner) reconcileRuntime(ctx context.Context) {
-	gcCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.CleanupHard))
-	defer cancel()
-	if err := r.containerRuntime.GarbageCollect(gcCtx); err != nil {
-		r.logger.Warn("node runtime garbage collection failed", "error", err)
-	}
-}
+// resetRuntimeOnce 在当前进程注册后停止本节点旧 workload 容器，并清理孤儿本地资源。
+func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
+	r.resetMu.Lock()
+	defer r.resetMu.Unlock()
 
-// recoverExecutions 根据本地恢复点恢复日志跟随、清理终态或失败上报。
-func (r *Runner) recoverExecutions(ctx context.Context) {
 	r.mu.Lock()
-	executions := make([]state.ExecutionState, 0, len(r.state.Executions))
-	for _, execution := range r.state.Executions {
-		executions = append(executions, execution)
+	if r.runtimeResetDone {
+		r.mu.Unlock()
+		return nil
 	}
 	r.mu.Unlock()
 
-	for _, execution := range executions {
-		switch execution.Phase {
-		case string(work.PhaseRunningReported):
-			r.recoverRunningExecution(execution)
-		case string(work.PhaseFailedReported):
-			if err := r.ClearExecution(execution.ExecutionID); err != nil {
-				r.logger.Warn("clear recovered terminal execution state failed", "execution_id", execution.ExecutionID, "error", err)
-			}
-		default:
-			r.failRecoveredExecution(ctx, execution)
-		}
-	}
-}
-
-// recoverRunningExecution 为已上报 running 的执行恢复工作负载日志跟随。
-func (r *Runner) recoverRunningExecution(execution state.ExecutionState) {
-	if r.workloadLogs == nil || strings.TrimSpace(execution.ContainerID) == "" {
-		return
-	}
-	r.startWorkloadLogs(workloadlogs.StartRequest{
-		ProjectID:     execution.ProjectID,
-		ServiceID:     execution.ServiceID,
-		ServiceName:   execution.ServiceName,
-		DeploymentID:  execution.DeploymentID,
-		ExecutionID:   execution.ExecutionID,
-		ReplicaIndex:  execution.ReplicaIndex,
-		NodeID:        execution.NodeID,
-		ContainerID:   execution.ContainerID,
-		ContainerName: execution.ContainerName,
-	})
-	r.logger.Info("recovered running execution log follower",
-		"execution_id", execution.ExecutionID,
-		"container_id", execution.ContainerID,
-	)
-}
-
-// failRecoveredExecution 尝试清理重启前未到达已上报终态的执行，并向控制面上报 failed。
-func (r *Runner) failRecoveredExecution(ctx context.Context, execution state.ExecutionState) {
-	if strings.TrimSpace(execution.ContainerID) != "" {
-		stopCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.RuntimeStop))
-		if err := r.containerRuntime.Stop(stopCtx, execution.ContainerID); err != nil {
-			r.logger.Warn("stop recovered in-flight execution failed",
-				"execution_id", execution.ExecutionID,
-				"container_id", execution.ContainerID,
-				"error", err,
-			)
-		}
-		cancel()
-	}
-
-	nodeID := execution.NodeID
-	if strings.TrimSpace(nodeID) == "" {
-		r.mu.Lock()
-		nodeID = r.state.NodeID
-		r.mu.Unlock()
-	}
-	reportCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.Report))
+	gcCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.CleanupHard))
 	defer cancel()
-	reportCtx = logctx.WithFields(reportCtx, logctx.Fields{
-		RequestID:    logctx.EnsureRequestID(""),
-		NodeID:       nodeID,
-		ServiceID:    execution.ServiceID,
-		DeploymentID: execution.DeploymentID,
-		ExecutionID:  execution.ExecutionID,
-	})
-	_, err := r.controlClient.ReportExecution(reportCtx, nodeID, execution.ExecutionID, nodeagentapi.ReportExecutionRequest{
-		Status:        nodeagentapi.ExecutionStatusFailed,
-		Reason:        "node-agent restarted before execution reached a reported terminal state",
-		ContainerID:   execution.ContainerID,
-		ContainerName: fallback(execution.ContainerName, execution.ExecutionID),
-		HostPort:      execution.HostPort,
-	})
-	if err != nil {
-		r.logger.Warn("report recovered in-flight execution failed",
-			"execution_id", execution.ExecutionID,
-			"error", err,
-		)
-		return
+	if err := r.containerRuntime.ResetNode(gcCtx, nodeID); err != nil {
+		return err
 	}
-	if err := r.ClearExecution(execution.ExecutionID); err != nil {
-		r.logger.Warn("clear recovered failed execution state failed", "execution_id", execution.ExecutionID, "error", err)
+	if err := r.containerRuntime.GarbageCollect(gcCtx); err != nil {
+		return err
 	}
+	r.mu.Lock()
+	r.runtimeResetDone = true
+	r.mu.Unlock()
+	return nil
 }
 
 // handleNodeError 在控制面认为节点会话无效时清除本地注册状态。
@@ -510,41 +386,15 @@ func (r *Runner) handleNodeError(nodeID string, err error) {
 	if agentclient.IsInvalidSession(err) {
 		r.logger.Warn("node session is no longer valid, clearing local state",
 			"node_id", nodeID,
-			"state_file", r.cfg.StateFile,
 			"error", err,
 		)
-		if clearErr := state.Clear(r.cfg.StateFile); clearErr != nil {
-			r.logger.Warn("clear node state failed", "state_file", r.cfg.StateFile, "error", clearErr)
-		}
 		r.mu.Lock()
-		r.state = state.State{}
+		r.nodeID = ""
+		r.runtimeResetDone = false
 		r.mu.Unlock()
 		r.controlClient.SetSessionToken("")
 		return
 	}
-}
-
-// SaveExecution 保存执行恢复点，供 daemon 重启后恢复处理。
-func (r *Runner) SaveExecution(execution state.ExecutionState) error {
-	r.mu.Lock()
-	if r.state.Executions == nil {
-		r.state.Executions = map[string]state.ExecutionState{}
-	}
-	r.state.Executions[execution.ExecutionID] = execution
-	nextState := r.state
-	r.mu.Unlock()
-	return state.Save(r.cfg.StateFile, nextState)
-}
-
-// ClearExecution 删除指定执行的本地恢复点。
-func (r *Runner) ClearExecution(executionID string) error {
-	r.mu.Lock()
-	if r.state.Executions != nil {
-		delete(r.state.Executions, executionID)
-	}
-	nextState := r.state
-	r.mu.Unlock()
-	return state.Save(r.cfg.StateFile, nextState)
 }
 
 // startWorkloadLogs 在日志管理器存在时启动指定执行的日志采集。
@@ -561,12 +411,4 @@ func (r *Runner) timeout(value time.Duration) time.Duration {
 		return value
 	}
 	return time.Second
-}
-
-// fallback 返回非空 value，否则返回 fallbackValue。
-func fallback(value string, fallbackValue string) string {
-	if strings.TrimSpace(value) != "" {
-		return value
-	}
-	return fallbackValue
 }
