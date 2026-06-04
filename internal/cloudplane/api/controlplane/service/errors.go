@@ -18,8 +18,7 @@ func (s *Server) acceptDesiredStatusError(action string, projectID string, servi
 	var quotaErr *usage.QuotaExceededError
 	// workload 输入错误说明请求 spec 不合法，映射为 InvalidArgument。
 	switch {
-	case errors.Is(err, errServiceIDRequired),
-		errors.Is(err, errRevisionIDRequired):
+	case errors.Is(err, errServiceIDRequired):
 		return status.Error(codes.InvalidArgument, err.Error())
 	case workload.IsInputError(err):
 		return status.Error(codes.InvalidArgument, err.Error())
@@ -79,10 +78,6 @@ func quotaAdmissionStatusError(quotaErr *usage.QuotaExceededError) error {
 var (
 	// errServiceIDRequired 表示按本地 service 执行的 desired 操作缺少 serviceID。
 	errServiceIDRequired = errors.New("serviceID is required")
-	// errRevisionIDRequired 表示 rollback desired 缺少目标 revisionID。
-	errRevisionIDRequired = errors.New("revisionID is required")
-	// errRevisionAlreadyCurrent 表示 rollback 目标 revision 已经是当前 revision。
-	errRevisionAlreadyCurrent = errors.New("revision is already current")
 )
 
 // isDesiredReferenceNotFound 判断 desired accept 是否引用了不存在的 project/config/secret/registry credential。

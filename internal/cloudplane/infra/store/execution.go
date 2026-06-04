@@ -539,7 +539,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	allReplicasReady := runningReplicas == currentDeployment.DesiredReplicas
 	hasRunningReplica := runningReplicas > 0
 	// candidate revision 的全部副本 ready 后由 cloud-plane 在本地事务中自动转正。
-	// control-plane 不再暴露手动发布控制 API；rollout 的唯一外部入口是 ApplyService/RollbackService，
+	// control-plane 不再暴露手动发布控制 API；rollout 的唯一外部入口是 ApplyService，
 	// 因此转正条件必须绑定到 node-agent 上报的真实 running 状态，避免把“已接受 desired”误认为“已上线”。
 	if input.Status == execution.StatusRunning &&
 		allReplicasReady &&

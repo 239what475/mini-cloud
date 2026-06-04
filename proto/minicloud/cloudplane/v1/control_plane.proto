@@ -232,17 +232,6 @@ message GetServiceResponse {
   ObservedServiceStatus status = 2;
 }
 
-message RollbackServiceRequest {
-  string project_id = 1 [json_name = "projectID"];
-  string service_id = 2 [json_name = "serviceID"];
-  string revision_id = 3 [json_name = "revisionID"];
-}
-
-message RollbackServiceResponse {
-  string action = 1;
-  int64 desired_generation = 2 [json_name = "desiredGeneration"];
-}
-
 service ControlPlaneSnapshotService {
   rpc GetSnapshot(google.protobuf.Empty) returns (PlaneSnapshot);
 }
@@ -257,6 +246,4 @@ service ControlPlaneWorkloadService {
   rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);
 
   rpc GetService(GetServiceRequest) returns (GetServiceResponse);
-
-  rpc RollbackService(RollbackServiceRequest) returns (RollbackServiceResponse);
 }

@@ -93,7 +93,6 @@ const (
 	ReasonPlaneServiceMissing    = "PlaneServiceMissing"
 	ReasonObservationFailed      = "ObservationFailed"
 	ReasonReconcileFailed        = "ReconcileFailed"
-	ReasonRollbackPrepared       = "RollbackPrepared"
 )
 
 type Service struct {

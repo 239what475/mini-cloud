@@ -359,7 +359,7 @@ scale 链路完成后，再考虑 provider runtime node scale out / scale in 的
 
 - 新增文档和测试目标。
 - 停止新增 cloud-plane service lifecycle 功能。
-- 删除 rollback 入口或标记为废弃。
+- 删除 rollback 入口。
 
 ### 阶段 2：新增 execution-oriented southbound API
 

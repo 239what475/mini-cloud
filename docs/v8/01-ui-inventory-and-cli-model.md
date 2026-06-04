@@ -592,7 +592,6 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 minicloud incident apply -f incident.yaml
 minicloud incident resolve
 minicloud service retry
-minicloud service rollback
 ```
 
 验收标准：
@@ -626,7 +625,7 @@ minicloud service rollback
 - Web 使用的 `/api/v1/platform/overview` 和当前 router 是否仍一致。
 - Web 使用的非项目作用域 service detail / revisions / deployments 路径是否已经废弃。
 - `service retry` 是否应该保留；当前 router 片段没有 `/actions/retry`。
-- `service rollback` 目标语义和服务端 API 需要补齐。
+- `service rollback` 不进入 v8 核心能力；需要恢复旧版本时重新 apply 旧 spec。
 - `node drain` 是否指 runtime node、plane operation，还是 node-agent 侧节点维护；当前 router 明确支持 plane operation，但没有独立 node drain 命令。
 
 这些缺口不阻塞 v8 文档，但会影响 CLI 写操作实现顺序。
