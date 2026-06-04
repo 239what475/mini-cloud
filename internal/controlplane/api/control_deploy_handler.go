@@ -27,9 +27,9 @@ func newControlDeployHandler(logger *slog.Logger, stores *store.Store, svc *depl
 }
 
 type targetedServiceApplyResponse struct {
-	PlaneID           string `json:"planeID"`
-	Action            string `json:"action"`
-	DesiredGeneration int64  `json:"desiredGeneration"`
+	PlaneID string `json:"planeID"`
+	Action  string `json:"action"`
+	PlanID  string `json:"planID"`
 }
 
 func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Request) {
@@ -94,16 +94,16 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 		TargetID:   input.Metadata.ID,
 		TargetName: input.Metadata.Name,
 		Details: map[string]any{
-			"planeID":           result.PlaneID,
-			"action":            result.Action,
-			"serviceID":         input.Metadata.ID,
-			"desiredGeneration": result.DesiredGeneration,
+			"planeID":   result.PlaneID,
+			"action":    result.Action,
+			"serviceID": input.Metadata.ID,
+			"planID":    result.PlanID,
 		},
 	})
 
 	writeJSON(w, http.StatusOK, targetedServiceApplyResponse{
-		PlaneID:           result.PlaneID,
-		Action:            result.Action,
-		DesiredGeneration: result.DesiredGeneration,
+		PlaneID: result.PlaneID,
+		Action:  result.Action,
+		PlanID:  result.PlanID,
 	})
 }

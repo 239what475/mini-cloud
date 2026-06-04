@@ -66,6 +66,7 @@ type SnapshotResponse struct {
 	Reliability   ReliabilitySummary    `json:"reliability"`
 	Runtime       RuntimeInventory      `json:"runtimeInventory"`
 	RuntimeConfig RuntimeConfigSnapshot `json:"runtimeConfig"`
+	Executions    []ExecutionSnapshot   `json:"executions"`
 }
 
 type PlaneSummary struct {
@@ -154,6 +155,20 @@ type RuntimeConfigSnapshot struct {
 	ObservedAt  time.Time      `json:"observedAt"`
 	Fingerprint string         `json:"fingerprint"`
 	Summary     map[string]any `json:"summary"`
+}
+
+type ExecutionSnapshot struct {
+	PlanID             string    `json:"planID"`
+	ServiceID          string    `json:"serviceID"`
+	ServiceName        string    `json:"serviceName"`
+	ServiceGeneration  int64     `json:"serviceGeneration"`
+	DesiredReplicas    int       `json:"desiredReplicas"`
+	DeployingReplicas  int       `json:"deployingReplicas"`
+	RunningReplicas    int       `json:"runningReplicas"`
+	FailedReplicas     int       `json:"failedReplicas"`
+	SupersededReplicas int       `json:"supersededReplicas"`
+	LastStatusReason   string    `json:"lastStatusReason"`
+	ObservedAt         time.Time `json:"observedAt"`
 }
 
 type ResourceBundle struct {
@@ -249,41 +264,6 @@ func (c RegistryCredential) Validate() error {
 	return nil
 }
 
-type ApplyResourcesResponse struct {
-	Action string `json:"action"`
-}
-
-type ApplyServiceResponse struct {
-	Action            string `json:"action"`
-	DesiredGeneration int64  `json:"desiredGeneration"`
-}
-
-type ServiceMutationResponse struct {
-	ServiceID string `json:"serviceID"`
-}
-
-type ServiceResponse struct {
-	Service Service               `json:"service"`
-	Status  ObservedServiceStatus `json:"status"`
-}
-
-type ApplyServiceRequest struct {
-	DisplayName string      `json:"displayName"`
-	Spec        ServiceSpec `json:"spec"`
-}
-
-type Service struct {
-	Metadata ServiceMetadata `json:"metadata"`
-	Spec     ServiceSpec     `json:"spec"`
-	Status   ServiceStatus   `json:"status"`
-}
-
-type ServiceMetadata struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-}
-
 type ServiceSpec struct {
 	Region               string               `json:"region"`
 	Replicas             int                  `json:"replicas"`
@@ -302,37 +282,49 @@ type ServiceSpec struct {
 	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 }
 
-type ServiceStatus struct {
-	Phase               string `json:"phase"`
-	CurrentRevisionID   string `json:"currentRevisionID,omitempty"`
-	CandidateRevisionID string `json:"candidateRevisionID,omitempty"`
-	RolloutPhase        string `json:"rolloutPhase,omitempty"`
-	RolloutMessage      string `json:"rolloutMessage,omitempty"`
-}
-
-type ObservedServiceStatus struct {
-	CurrentRevisionID string                `json:"currentRevisionID,omitempty"`
-	Healthy           bool                  `json:"healthy"`
-	Message           string                `json:"message"`
-	Rollout           ObservedRolloutStatus `json:"rollout"`
-}
-
-type ObservedRolloutStatus struct {
-	Phase                      string    `json:"phase"`
-	Message                    string    `json:"message"`
-	StableRevisionID           string    `json:"stableRevisionID,omitempty"`
-	CandidateRevisionID        string    `json:"candidateRevisionID,omitempty"`
-	StableDesiredReplicas      int       `json:"stableDesiredReplicas"`
-	StableReadyReplicas        int       `json:"stableReadyReplicas"`
-	StableAvailableReplicas    int       `json:"stableAvailableReplicas"`
-	CandidateDesiredReplicas   int       `json:"candidateDesiredReplicas"`
-	CandidateReadyReplicas     int       `json:"candidateReadyReplicas"`
-	CandidateAvailableReplicas int       `json:"candidateAvailableReplicas"`
-	ObservedAt                 time.Time `json:"observedAt"`
-}
-
 const (
 	ApplyActionCreated = "created"
 	ApplyActionUpdated = "updated"
-	ApplyActionNoop    = "noop"
 )
+
+type ExecutionProjectedFile struct {
+	MountPath string `json:"mountPath"`
+	Content   string `json:"content"`
+	Mode      uint32 `json:"mode"`
+	Sensitive bool   `json:"sensitive"`
+}
+
+type ExecutionPersistentDir struct {
+	Name       string `json:"name"`
+	MountPath  string `json:"mountPath"`
+	SourcePath string `json:"sourcePath"`
+}
+
+type ExecutionImageCredential struct {
+	Server   string `json:"server"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type ExecutionPlanRequest struct {
+	PlanID            string                    `json:"planID"`
+	ServiceID         string                    `json:"serviceID"`
+	ServiceName       string                    `json:"serviceName"`
+	ServiceGeneration int64                     `json:"serviceGeneration"`
+	Image             string                    `json:"image"`
+	Command           []string                  `json:"command"`
+	Args              []string                  `json:"args"`
+	Env               map[string]string         `json:"env"`
+	ProjectedFiles    []ExecutionProjectedFile  `json:"projectedFiles,omitempty"`
+	PersistentDirs    []ExecutionPersistentDir  `json:"persistentDirs,omitempty"`
+	ImageCredential   *ExecutionImageCredential `json:"imageCredential,omitempty"`
+	ContainerPort     int                       `json:"containerPort"`
+	ReadinessPath     string                    `json:"readinessPath"`
+	Replicas          int                       `json:"replicas"`
+	InstanceClass     string                    `json:"instanceClass"`
+}
+
+type ExecutionPlanResponse struct {
+	Action string `json:"action"`
+	PlanID string `json:"planID"`
+}

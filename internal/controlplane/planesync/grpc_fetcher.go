@@ -49,11 +49,13 @@ func (f *grpcPlaneSnapshotFetcher) Fetch(ctx context.Context, grpcEndpoint strin
 	}
 
 	return planeSnapshot{
-		Plane:       snapshotResp.Plane,
-		Health:      snapshotResp.Health,
-		Overview:    snapshotResp.Overview,
-		Capacity:    snapshotResp.Capacity,
-		Reliability: snapshotResp.Reliability,
-		Runtime:     snapshotResp.Runtime,
+		Plane:         snapshotResp.Plane,
+		Health:        snapshotResp.Health,
+		Overview:      snapshotResp.Overview,
+		Capacity:      snapshotResp.Capacity,
+		Reliability:   snapshotResp.Reliability,
+		Runtime:       snapshotResp.Runtime,
+		RuntimeConfig: snapshotResp.RuntimeConfig,
+		Executions:    snapshotResp.Executions,
 	}, nil
 }

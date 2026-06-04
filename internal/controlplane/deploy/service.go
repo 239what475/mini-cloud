@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
@@ -21,7 +22,6 @@ type clientFactory func(grpcEndpoint string, bearerToken string) (*planeclient.C
 const (
 	defaultApplyServiceTimeout  = 20 * time.Minute
 	defaultDeleteServiceTimeout = 2 * time.Minute
-	defaultReadServiceTimeout   = 2 * time.Minute
 )
 
 type Service struct {
@@ -62,7 +62,7 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	if !plane.Operation.AcceptingNewDeployments() {
 		return ApplyResult{}, fmt.Errorf("%w: plane operation state is %s", ErrPlaneNotAcceptingNewDeployments, plane.Operation.ResolvedState())
 	}
-	request, err := input.ResolvedApplyRequest(plane.Region)
+	spec, err := input.ResolvedSpec(plane.Region)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -79,31 +79,20 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	requestCtx, cancel := context.WithTimeout(ctx, defaultApplyServiceTimeout)
 	defer cancel()
 
-	resources, err := s.buildResourceBundle(requestCtx, &request)
+	plan, err := s.buildExecutionPlan(requestCtx, input, spec)
 	if err != nil {
 		return ApplyResult{}, err
 	}
-	if err := s.applyResources(requestCtx, client, resources); err != nil {
-		return ApplyResult{}, err
-	}
-
-	accepted, err := client.ApplyService(requestCtx, input.Metadata.ID, input.Metadata.Name, request)
+	accepted, err := client.ApplyExecutionPlan(requestCtx, plan)
 	if err != nil {
-		return ApplyResult{}, fmt.Errorf("apply service: %w", err)
+		return ApplyResult{}, fmt.Errorf("apply execution plan: %w", err)
 	}
 
 	return ApplyResult{
-		PlaneID:           planeID,
-		Action:            accepted.Action,
-		DesiredGeneration: accepted.DesiredGeneration,
+		PlaneID: planeID,
+		Action:  accepted.Action,
+		PlanID:  accepted.PlanID,
 	}, nil
-}
-
-func (s *Service) applyResources(ctx context.Context, client *planeclient.Client, resources cloudplaneapi.ResourceBundle) error {
-	if _, err := client.ApplyResources(ctx, resources); err != nil {
-		return fmt.Errorf("apply resources to plane: %w", err)
-	}
-	return nil
 }
 
 func (s *Service) DeleteService(ctx context.Context, planeID string, serviceID string) error {
@@ -138,113 +127,150 @@ func (s *Service) DeleteService(ctx context.Context, planeID string, serviceID s
 	requestCtx, cancel := context.WithTimeout(ctx, defaultDeleteServiceTimeout)
 	defer cancel()
 
-	if err := client.DeleteService(requestCtx, serviceID); err != nil {
-		return fmt.Errorf("delete service: %w", err)
+	if err := client.DeleteExecutionPlan(requestCtx, serviceID); err != nil {
+		return fmt.Errorf("delete execution plan: %w", err)
 	}
 	return nil
 }
 
-func (s *Service) GetService(ctx context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
-	if s == nil || s.store == nil {
-		return cloudplaneapi.ServiceResponse{}, fmt.Errorf("deploy service is not configured")
-	}
-	if planeID == "" {
-		return cloudplaneapi.ServiceResponse{}, ErrPlaneIDRequired
-	}
-	if serviceID == "" {
-		return cloudplaneapi.ServiceResponse{}, ErrServiceIDRequired
-	}
-
-	plane, err := s.store.GetPlane(ctx, planeID)
-	if err != nil {
-		return cloudplaneapi.ServiceResponse{}, err
-	}
-	if !plane.Registration.Registered {
-		return cloudplaneapi.ServiceResponse{}, ErrPlaneNotRegistered
-	}
-
-	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
-	if err != nil {
-		return cloudplaneapi.ServiceResponse{}, err
-	}
-	client, err := s.applyClientFactory(plane.GRPCEndpoint, token)
-	if err != nil {
-		return cloudplaneapi.ServiceResponse{}, err
-	}
-	defer util.CloseAndLog(s.logger, "plane client", client, "plane_id", planeID)
-
-	requestCtx, cancel := context.WithTimeout(ctx, defaultReadServiceTimeout)
-	defer cancel()
-
-	response, err := client.GetService(requestCtx, serviceID)
-	if err != nil {
-		return cloudplaneapi.ServiceResponse{}, fmt.Errorf("get service: %w", err)
-	}
-	return response, nil
-}
-
-func (s *Service) buildResourceBundle(ctx context.Context, serviceRequest *cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.ResourceBundle, error) {
-	request := cloudplaneapi.ResourceBundle{}
-	if serviceRequest == nil {
-		return request, nil
-	}
+func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
 	collector := resourceCollector{}
-	if serviceRequest.Spec.ConfigSetID != "" {
-		collector.addConfigSet(serviceRequest.Spec.ConfigSetID)
+	if spec.ConfigSetID != "" {
+		collector.addConfigSet(spec.ConfigSetID)
 	}
-	if serviceRequest.Spec.SecretSetID != "" {
-		collector.addSecretSet(serviceRequest.Spec.SecretSetID)
+	if spec.SecretSetID != "" {
+		collector.addSecretSet(spec.SecretSetID)
 	}
-	if serviceRequest.Spec.RegistryCredentialID != "" {
-		collector.addRegistryCredential(serviceRequest.Spec.RegistryCredentialID)
+	if spec.RegistryCredentialID != "" {
+		collector.addRegistryCredential(spec.RegistryCredentialID)
 	}
-	for _, item := range projectedfile.CloneSpecs(serviceRequest.Spec.ProjectedFiles) {
+	for _, item := range projectedfile.CloneSpecs(spec.ProjectedFiles) {
 		switch item.SourceKind {
 		case projectedfile.SourceKindConfigSet:
 			collector.addConfigSet(item.SourceID)
 		case projectedfile.SourceKindSecretSet:
 			collector.addSecretSet(item.SourceID)
 		default:
-			return cloudplaneapi.ResourceBundle{}, projectedfile.ErrSourceKindInvalid
+			return cloudplaneapi.ExecutionPlanRequest{}, projectedfile.ErrSourceKindInvalid
 		}
 	}
 
+	configs := map[string]map[string]string{}
 	for _, id := range collector.configSetIDs {
 		local, err := s.store.GetConfigSet(ctx, id)
 		if err != nil {
-			return cloudplaneapi.ResourceBundle{}, err
+			return cloudplaneapi.ExecutionPlanRequest{}, err
 		}
-		request.ConfigSets = append(request.ConfigSets, cloudplaneapi.ConfigSet{
-			ID:     local.ID,
-			Name:   local.Name,
-			Values: local.Values,
-		})
+		configs[id] = local.Values
 	}
+	secrets := map[string]map[string]string{}
 	for _, id := range collector.secretSetIDs {
 		local, err := s.store.GetSecretSet(ctx, id)
 		if err != nil {
-			return cloudplaneapi.ResourceBundle{}, err
+			return cloudplaneapi.ExecutionPlanRequest{}, err
 		}
-		request.SecretSets = append(request.SecretSets, cloudplaneapi.SecretSet{
-			ID:     local.ID,
-			Name:   local.Name,
-			Values: local.Values,
-		})
+		secrets[id] = local.Values
 	}
+	var imageCredential *cloudplaneapi.ExecutionImageCredential
 	for _, id := range collector.registryCredentialIDs {
 		local, err := s.store.GetRegistryCredential(ctx, id)
 		if err != nil {
-			return cloudplaneapi.ResourceBundle{}, err
+			return cloudplaneapi.ExecutionPlanRequest{}, err
 		}
-		request.RegistryCredentials = append(request.RegistryCredentials, cloudplaneapi.RegistryCredential{
-			ID:       local.ID,
-			Name:     local.Name,
-			Server:   local.Server,
-			Username: local.Username,
-			Password: local.Password,
+		if id == spec.RegistryCredentialID {
+			imageCredential = &cloudplaneapi.ExecutionImageCredential{
+				Server:   local.Server,
+				Username: local.Username,
+				Password: local.Password,
+			}
+		}
+	}
+	env := cloneStringMap(spec.Env)
+	if spec.SecretSetID != "" {
+		for key, value := range secrets[spec.SecretSetID] {
+			env[key] = value
+		}
+	}
+	projectedFiles, err := materializeProjectedFiles(spec.ProjectedFiles, configs, secrets)
+	if err != nil {
+		return cloudplaneapi.ExecutionPlanRequest{}, err
+	}
+	persistentDirs, err := materializePersistentDirs(input.Metadata.ID, spec.PersistentDirs)
+	if err != nil {
+		return cloudplaneapi.ExecutionPlanRequest{}, err
+	}
+	return cloudplaneapi.ExecutionPlanRequest{
+		PlanID:            fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation),
+		ServiceID:         input.Metadata.ID,
+		ServiceName:       input.Metadata.Name,
+		ServiceGeneration: input.Metadata.Generation,
+		Image:             spec.Image,
+		Command:           append([]string(nil), spec.Command...),
+		Args:              append([]string(nil), spec.Args...),
+		Env:               env,
+		ProjectedFiles:    projectedFiles,
+		PersistentDirs:    persistentDirs,
+		ImageCredential:   imageCredential,
+		ContainerPort:     spec.DefaultPort,
+		ReadinessPath:     spec.ReadinessPath,
+		Replicas:          spec.Replicas,
+		InstanceClass:     spec.InstanceClass,
+	}, nil
+}
+
+func cloneStringMap(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return map[string]string{}
+	}
+	out := make(map[string]string, len(input))
+	for key, value := range input {
+		out[key] = value
+	}
+	return out
+}
+
+func materializeProjectedFiles(specs []projectedfile.Spec, configs map[string]map[string]string, secrets map[string]map[string]string) ([]cloudplaneapi.ExecutionProjectedFile, error) {
+	out := make([]cloudplaneapi.ExecutionProjectedFile, 0, len(specs))
+	for _, item := range projectedfile.CloneSpecs(specs) {
+		var values map[string]string
+		sensitive := false
+		switch item.SourceKind {
+		case projectedfile.SourceKindConfigSet:
+			values = configs[item.SourceID]
+		case projectedfile.SourceKindSecretSet:
+			values = secrets[item.SourceID]
+			sensitive = true
+		default:
+			return nil, projectedfile.ErrSourceKindInvalid
+		}
+		value, ok := values[item.SourceKey]
+		if !ok {
+			return nil, fmt.Errorf("projected file source %s does not contain key %s", item.SourceID, item.SourceKey)
+		}
+		out = append(out, cloudplaneapi.ExecutionProjectedFile{
+			MountPath: item.MountPath,
+			Content:   value,
+			Mode:      projectedfile.DefaultMode(item.SourceKind),
+			Sensitive: sensitive,
 		})
 	}
-	return request, nil
+	return out, nil
+}
+
+func materializePersistentDirs(serviceID string, specs []persistentdir.Spec) ([]cloudplaneapi.ExecutionPersistentDir, error) {
+	mounts, err := persistentdir.MaterializeMounts("", serviceID, specs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]cloudplaneapi.ExecutionPersistentDir, 0, len(mounts))
+	for _, item := range mounts {
+		out = append(out, cloudplaneapi.ExecutionPersistentDir{
+			Name:       item.Name,
+			MountPath:  item.MountPath,
+			SourcePath: item.SourcePath,
+		})
+	}
+	return out, nil
 }
 
 type resourceCollector struct {

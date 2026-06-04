@@ -32,7 +32,73 @@ var (
 	ErrContainerNameRequired = errors.New("containerName is required")
 	// ErrHostPortInvalid 表示 running 状态缺少有效宿主机端口。
 	ErrHostPortInvalid = errors.New("hostPort must be greater than 0 when status is running")
+	ErrPlanIDRequired  = errors.New("planID is required")
+	ErrServiceIDRequired = errors.New("serviceID is required")
+	ErrServiceNameRequired = errors.New("serviceName is required")
+	ErrImageRequired = errors.New("image is required")
+	ErrInvalidContainerPort = errors.New("containerPort must be between 1 and 65535")
+	ErrInvalidReplicas = errors.New("replicas must be greater than 0")
 )
+
+const (
+	PlanActionCreated = "created"
+	PlanActionUpdated = "updated"
+)
+
+type PlanInput struct {
+	PlanID            string                 `json:"planID"`
+	ServiceID         string                 `json:"serviceID"`
+	ServiceName       string                 `json:"serviceName"`
+	ServiceGeneration int64                  `json:"serviceGeneration"`
+	Image             string                 `json:"image"`
+	Command           []string               `json:"command"`
+	Args              []string               `json:"args"`
+	Env               map[string]string      `json:"env"`
+	ProjectedFiles    []projectedfile.File   `json:"projectedFiles,omitempty"`
+	PersistentDirs    []persistentdir.Mount  `json:"persistentDirs,omitempty"`
+	ImageCredential   *ImageCredential       `json:"imageCredential,omitempty"`
+	ContainerPort     int                    `json:"containerPort"`
+	ReadinessPath     string                 `json:"readinessPath"`
+	Replicas          int                    `json:"replicas"`
+	InstanceClass     string                 `json:"instanceClass"`
+}
+
+type PlanResult struct {
+	Action string `json:"action"`
+	PlanID string `json:"planID"`
+}
+
+func (in PlanInput) Validate() error {
+	if strings.TrimSpace(in.PlanID) == "" {
+		return ErrPlanIDRequired
+	}
+	if strings.TrimSpace(in.ServiceID) == "" {
+		return ErrServiceIDRequired
+	}
+	if strings.TrimSpace(in.ServiceName) == "" {
+		return ErrServiceNameRequired
+	}
+	if strings.TrimSpace(in.Image) == "" {
+		return ErrImageRequired
+	}
+	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
+		return ErrInvalidContainerPort
+	}
+	if in.Replicas <= 0 {
+		return ErrInvalidReplicas
+	}
+	for _, item := range projectedfile.CloneFiles(in.ProjectedFiles) {
+		if err := item.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, item := range persistentdir.CloneMounts(in.PersistentDirs) {
+		if err := item.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // WorkItem 是 cloud-plane 下发给 node-agent 执行的单副本任务。
 type WorkItem struct {

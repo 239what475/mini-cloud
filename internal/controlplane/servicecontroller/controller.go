@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"time"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planeselector"
@@ -35,7 +34,6 @@ type planeSelector interface {
 type deploymentManager interface {
 	ApplyService(context.Context, string, deploy.ApplyServiceInput) (deploy.ApplyResult, error)
 	DeleteService(context.Context, string, string) error
-	GetService(context.Context, string, string) (cloudplaneapi.ServiceResponse, error)
 }
 
 type serviceStore interface {

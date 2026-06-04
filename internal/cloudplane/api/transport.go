@@ -6,11 +6,9 @@ import (
 	"strings"
 
 	cloudplanecontrolapi "mini-cloud/internal/cloudplane/api/controlplane"
-	cloudplaneresourceapi "mini-cloud/internal/cloudplane/api/controlplane/resource"
-	cloudplaneserviceapi "mini-cloud/internal/cloudplane/api/controlplane/service"
+	cloudplaneexecutionapi "mini-cloud/internal/cloudplane/api/controlplane/execution"
 	cloudplanesnapshotapi "mini-cloud/internal/cloudplane/api/controlplane/snapshot"
 	cloudplaneagentapi "mini-cloud/internal/cloudplane/api/nodeagent"
-	"mini-cloud/internal/cloudplane/control/lifecycle"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
@@ -23,17 +21,10 @@ import (
 func NewGRPCServer(opts Options, logger *slog.Logger, db *sql.DB, stores *store.Store) *grpc.Server {
 	// controlPlaneAuth 校验 control-plane 到 cloud-plane 的内部 southbound 调用身份。
 	controlPlaneAuth := cloudplanecontrolapi.NewAuthenticator(opts.Config.ControlPlane.Auth.BearerToken)
-	// lifecycle controller 封装 workload service 查询、删除和 rollout 等同步流程。
-	lifecycleControllers := lifecycle.NewControllers(logger, stores, lifecycle.Options{
-		Config:        opts.Config,
-		RuntimeDriver: opts.RuntimeDriver,
-	})
 	// snapshotService 承载 control-plane 拉取 cloud-plane 快照的内部 API。
 	snapshotService := cloudplanesnapshotapi.NewServer(logger, db, stores, opts.Config, controlPlaneAuth)
-	// resourceService 承载 control-plane 同步全局 config、secret 和 registry credential 的内部 API。
-	resourceService := cloudplaneresourceapi.NewServer(logger, stores, controlPlaneAuth)
-	// workloadService 承载 control-plane 同步、查询和回滚 workload service 的内部 API。
-	workloadService := cloudplaneserviceapi.NewServer(logger, stores, controlPlaneAuth, lifecycleControllers)
+	// executionService 只接收 control-plane 已经决定好的执行计划，不保存 service lifecycle truth。
+	executionService := cloudplaneexecutionapi.NewServer(logger, stores, controlPlaneAuth)
 	// agentService 承载 node-agent 注册、心跳、拉取 work item 和上报 execution 的内部 API。
 	agentService := cloudplaneagentapi.NewServer(
 		logger,
@@ -46,10 +37,9 @@ func NewGRPCServer(opts Options, logger *slog.Logger, db *sql.DB, stores *store.
 
 	// 创建裸 gRPC server；当前 cloud-plane 不在这里挂载 HTTP gateway 或额外拦截器。
 	grpcServer := grpc.NewServer()
-	// 注册 control-plane 内部服务；resource、workload、snapshot 拆成独立 gRPC service，避免单个接口混杂多类职责。
+	// 注册 control-plane 内部服务；snapshot 负责 plane-local fact 读取，execution 负责接收已物化执行计划。
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, snapshotService)
-	cloudplanev1.RegisterControlPlaneResourceServiceServer(grpcServer, resourceService)
-	cloudplanev1.RegisterControlPlaneWorkloadServiceServer(grpcServer, workloadService)
+	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, executionService)
 	// 注册 node-agent 内部服务，供运行节点接入 cloud-plane。
 	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, agentService)
 	// 返回已注册全部内部服务的 gRPC server，由上层 CLI 负责监听地址和生命周期。

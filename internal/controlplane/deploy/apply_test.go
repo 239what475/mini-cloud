@@ -8,15 +8,16 @@ import (
 	"mini-cloud/internal/common/projectedfile"
 )
 
-func TestApplyServiceInputResolvedApplyRequestRejectsProjectedFileOverlapWithPersistentDir(t *testing.T) {
+func TestApplyServiceInputResolvedSpecRejectsProjectedFileOverlapWithPersistentDir(t *testing.T) {
 	t.Parallel()
 
-		_, err := (ApplyServiceInput{
-			Metadata: ServiceMetadata{
-				ID:          "svc-1",
-				Name:        "demo",
-				DisplayName: "Demo",
-			},
+	_, err := (ApplyServiceInput{
+		Metadata: ServiceMetadata{
+			ID:          "svc-1",
+			Name:        "demo",
+			DisplayName: "Demo",
+			Generation:  1,
+		},
 		Spec: ServiceSpec{
 			Region:        "cn-beijing",
 			Replicas:      1,
@@ -32,8 +33,8 @@ func TestApplyServiceInputResolvedApplyRequestRejectsProjectedFileOverlapWithPer
 				{Name: "data", MountPath: "/var/lib/app"},
 			},
 		},
-	}).ResolvedApplyRequest("")
+	}).ResolvedSpec("")
 	if !errors.Is(err, persistentdir.ErrProjectedConflict) {
-		t.Fatalf("ResolvedApplyRequest() error = %v, want %v", err, persistentdir.ErrProjectedConflict)
+		t.Fatalf("ResolvedSpec() error = %v, want %v", err, persistentdir.ErrProjectedConflict)
 	}
 }

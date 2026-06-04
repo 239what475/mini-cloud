@@ -20,7 +20,7 @@ var ErrExecutionNotFound = errors.New("execution not found")
 
 // CreateExecutionClaim 为指定 node 原子领取一个尚未执行的 deployment replica。
 // 参数说明：ctx 控制本次请求或后台操作生命周期；nodeID 是 node 唯一标识。
-func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execution.WorkItem, error) {
+func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID string) (*execution.WorkItem, error) {
 	// node-agent claim work 必须在事务内完成，避免多个节点领取同一 replica。
 	// 阶段一：锁定最早可执行的 deployment，并排除已有 deploying/running execution 的 replica。
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -102,10 +102,10 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		LIMIT 1
 		FOR UPDATE OF d, n
 		`, deployment.StatusAssigned, deployment.StatusDeploying, deployment.StatusRunning, execution.StatusDeploying, execution.StatusRunning, nodeID, node.StatusReady).Scan(
-			&work.DeploymentID,
-			&currentStatus,
-			&work.ServiceID,
-			&work.ServiceName,
+		&work.DeploymentID,
+		&currentStatus,
+		&work.ServiceID,
+		&work.ServiceName,
 		&work.RevisionID,
 		&work.RevisionLabel,
 		&work.Image,
@@ -151,12 +151,12 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		return nil, fmt.Errorf("decode secret env: %w", err)
 	}
 	work.Env = mergeStringMaps(revisionEnv, secretEnv)
-		// projected file 需要读取全局 config/secret 实际值后才能下发给 node-agent。
-		var projectedSpecs []projectedfile.Spec
-		if err := unmarshalJSON(projectedFilesJSON, &projectedSpecs, []projectedfile.Spec{}); err != nil {
-			return nil, fmt.Errorf("decode projected files: %w", err)
-		}
-		projectedFiles, err := s.materializeProjectedFiles(ctx, projectedSpecs)
+	// projected file 需要读取全局 config/secret 实际值后才能下发给 node-agent。
+	var projectedSpecs []projectedfile.Spec
+	if err := unmarshalJSON(projectedFilesJSON, &projectedSpecs, []projectedfile.Spec{}); err != nil {
+		return nil, fmt.Errorf("decode projected files: %w", err)
+	}
+	projectedFiles, err := s.materializeProjectedFiles(ctx, projectedSpecs)
 	if err != nil {
 		return nil, err
 	}
@@ -334,7 +334,7 @@ func (s *Store) materializeProjectedFiles(ctx context.Context, specs []projected
 
 // UpdateExecutionFromNodeReport 接收 node-agent 执行结果，并原子推进 execution、deployment、service 和节点占用状态。
 // 参数说明：ctx 控制本次请求或后台操作生命周期；nodeID 是 node 唯一标识；executionID 表示 execution 的唯一标识；input 是本次操作的输入结构。
-func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string, executionID string, input execution.ReportInput) (execution.ReportAck, deployment.Deployment, workload.Service, error) {
+func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Context, nodeID string, executionID string, input execution.ReportInput) (execution.ReportAck, deployment.Deployment, workload.Service, error) {
 	// execution report 会同时影响 execution、deployment、service rollout 和 node allocation。
 	// 阶段一：校验上报并锁定 execution、deployment，同时读取 selection 资源占用。
 	if err := input.Validate(); err != nil {
@@ -536,9 +536,9 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	// ready/available 当前都按 running 且已分配 host_port 的 execution 数量计算。
 	allReplicasReady := runningReplicas == currentDeployment.DesiredReplicas
 	hasRunningReplica := runningReplicas > 0
-	// candidate revision 的全部副本 ready 后由 cloud-plane 在本地事务中自动转正。
-	// control-plane 不再暴露手动发布控制 API；rollout 的唯一外部入口是 ApplyService，
-	// 因此转正条件必须绑定到 node-agent 上报的真实 running 状态，避免把“已接受 desired”误认为“已上线”。
+	// candidate revision 的全部副本 ready 后由 legacy cloud-plane lifecycle 在本地事务中自动转正。
+	// 这段逻辑仅服务迁移期旧表路径；v8 southbound 主链路已经改为 ApplyExecutionPlan。
+	// 因此转正条件仍必须绑定到 node-agent 上报的真实 running 状态，避免把“已接受 desired”误认为“已上线”。
 	if input.Status == execution.StatusRunning &&
 		allReplicasReady &&
 		nextCandidateRevisionID != "" &&
@@ -1066,8 +1066,8 @@ func updateServiceRevisionStateTx(
 			created_at,
 			updated_at
 		`, serviceID, nullableString(currentRevisionIDValue), nullableString(candidateRevisionIDValue), statusValue, workload.NormalizeRolloutPhase(rolloutPhase), rolloutMessage).Scan(
-			&updated.Metadata.ID,
-			&updated.Metadata.Name,
+		&updated.Metadata.ID,
+		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
 		&updated.Spec.Replicas,

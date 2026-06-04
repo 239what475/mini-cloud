@@ -19,9 +19,9 @@ type controlPlaneSelectionHandler struct {
 }
 
 type autoServiceApplyResponse struct {
-	Action            string                        `json:"action,omitempty"`
-	DesiredGeneration int64                         `json:"desiredGeneration,omitempty"`
-	Selection         planeselector.SelectionResult `json:"selection"`
+	Action    string                        `json:"action,omitempty"`
+	PlanID    string                        `json:"planID,omitempty"`
+	Selection planeselector.SelectionResult `json:"selection"`
 }
 
 func newControlPlaneSelectionHandler(logger *slog.Logger, stores *store.Store, svc *planeselector.Service) controlPlaneSelectionHandler {
@@ -145,14 +145,14 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 			"selectedPlaneID":   result.Selection.Decision.PlaneID,
 			"action":            result.Accepted.Action,
 			"serviceID":         input.Metadata.ID,
-			"desiredGeneration": result.Accepted.DesiredGeneration,
+			"planID":            result.Accepted.PlanID,
 		},
 	})
 
 	writeJSON(w, http.StatusOK, autoServiceApplyResponse{
-		Action:            result.Accepted.Action,
-		DesiredGeneration: result.Accepted.DesiredGeneration,
-		Selection:         result.Selection,
+		Action:    result.Accepted.Action,
+		PlanID:    result.Accepted.PlanID,
+		Selection: result.Selection,
 	})
 }
 

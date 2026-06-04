@@ -368,7 +368,7 @@ scale 链路完成后，再考虑 provider runtime node scale out / scale in 的
 - cloud-plane 分发给 node-agent。
 - cloud-plane 上报 execution result。
 
-旧 `ApplyService` 路径暂时保留但不继续扩展。
+旧 southbound `ApplyService` / `GetService` / `ApplyResources` API 已删除；迁移期旧 Go 包和旧表可以暂时保留，但 cloud-plane 主进程不再启动 service desired reconciler，也不再暴露全量 resource 同步入口。
 
 ### 阶段 3：control-plane status 改为 execution 聚合
 

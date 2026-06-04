@@ -39,7 +39,8 @@ type storedRegistryCredential struct {
 	cloudplaneapi.RegistryCredential
 }
 
-// ApplyResources 同步 single-tenant 全局资源期望状态，并返回是否产生写入。
+// ApplyResources 是迁移期 legacy store helper；v8 southbound 不再暴露全量资源同步 API。
+// 新 execution plan 在 control-plane 侧物化 config/secret/registry credential 后下发。
 // 参数说明：ctx 控制数据库请求生命周期；resources 是全局资源期望状态。
 func (s *Store) ApplyResources(ctx context.Context, resources cloudplaneapi.ResourceBundle) (bool, error) {
 	// 逐个资源组应用；每组内部负责校验、冲突判断和 create/update。

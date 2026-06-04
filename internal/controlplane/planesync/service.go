@@ -11,6 +11,7 @@ import (
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	plane "mini-cloud/internal/controlplane/plane"
+	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -56,6 +57,8 @@ type serviceStore interface {
 	RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error)
 	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
 	RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error)
+	GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error)
+	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
 }
 
 type planeSnapshot struct {
@@ -66,6 +69,7 @@ type planeSnapshot struct {
 	Reliability   cloudplaneapi.ReliabilitySummary
 	Runtime       cloudplaneapi.RuntimeInventory
 	RuntimeConfig cloudplaneapi.RuntimeConfigSnapshot
+	Executions    []cloudplaneapi.ExecutionSnapshot
 }
 
 type planeSnapshotFetcher interface {
@@ -234,6 +238,9 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 	if _, err := s.store.RecordPlaneCapacitySnapshot(ctx, planeID, buildCapacitySnapshot(snapshot)); err != nil {
 		return Result{}, err
 	}
+	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.Executions); err != nil {
+		return Result{}, err
+	}
 
 	detail, err := s.store.GetPlane(ctx, planeID)
 	if err != nil {
@@ -249,6 +256,108 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 		Overview:         snapshot.Overview,
 		AlertsFiring:     alertsFiring,
 	}, nil
+}
+
+func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, executions []cloudplaneapi.ExecutionSnapshot) error {
+	for _, item := range executions {
+		if strings.TrimSpace(item.ServiceID) == "" || item.ServiceGeneration <= 0 {
+			continue
+		}
+		placement, err := s.store.GetServicePlacement(ctx, item.ServiceID)
+		if err != nil {
+			if errors.Is(err, store.ErrServicePlacementNotFound) || errors.Is(err, store.ErrServiceNotFound) {
+				continue
+			}
+			return err
+		}
+		if placement.PlaneID != planeID {
+			continue
+		}
+		status := serviceStatusFromExecutionSnapshot(item)
+		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateStatusInput{
+			ObservedGeneration: status.ObservedGeneration,
+			Phase:              status.Phase,
+			Healthy:            status.Healthy,
+			Message:            status.Message,
+			Conditions:         status.Conditions,
+			LastReconciledAt:   status.LastReconciledAt,
+			Rollout:            &status.Rollout,
+		}); err != nil {
+			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
+				continue
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+type executionDerivedStatus struct {
+	controlservice.Status
+	Rollout controlservice.RolloutStatus
+}
+
+func serviceStatusFromExecutionSnapshot(item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
+	now := item.ObservedAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	message := executionSnapshotMessage(item)
+	phase := controlservice.PhaseProgressing
+	healthy := false
+	readyCondition := controlservice.ConditionFalse
+	readyReason := controlservice.ReasonPlaneServiceNotHealthy
+	rolloutPhase := controlservice.RolloutPhaseProgressing
+
+	switch {
+	case item.FailedReplicas > 0:
+		phase = controlservice.PhaseDegraded
+		rolloutPhase = controlservice.RolloutPhaseFailed
+	case item.DesiredReplicas > 0 && item.RunningReplicas >= item.DesiredReplicas:
+		phase = controlservice.PhaseReady
+		healthy = true
+		readyCondition = controlservice.ConditionTrue
+		readyReason = controlservice.ReasonPlaneServiceReady
+		rolloutPhase = controlservice.RolloutPhaseIdle
+	}
+
+	return executionDerivedStatus{
+		Status: controlservice.Status{
+			ObservedGeneration: item.ServiceGeneration,
+			Phase:              phase,
+			Healthy:            healthy,
+			Message:            message,
+			Conditions: []controlservice.Condition{
+				controlservice.NewCondition(controlservice.ConditionPlacementReady, controlservice.ConditionTrue, controlservice.ReasonApplied, "service placement accepted by cloud-plane", item.ServiceGeneration, now),
+				controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionTrue, controlservice.ReasonApplied, "execution plan accepted by cloud-plane", item.ServiceGeneration, now),
+				controlservice.NewCondition(controlservice.ConditionReady, readyCondition, readyReason, message, item.ServiceGeneration, now),
+			},
+			LastReconciledAt: &now,
+		},
+		Rollout: controlservice.RolloutStatus{
+			Phase:                      rolloutPhase,
+			Message:                    message,
+			CandidateRevisionID:        item.PlanID,
+			CandidateDesiredReplicas:   item.DesiredReplicas,
+			CandidateReadyReplicas:     item.RunningReplicas,
+			CandidateAvailableReplicas: item.RunningReplicas,
+			LastObservedAt:             &now,
+		},
+	}
+}
+
+func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
+	if strings.TrimSpace(item.LastStatusReason) != "" {
+		return item.LastStatusReason
+	}
+	switch {
+	case item.FailedReplicas > 0:
+		return fmt.Sprintf("execution plan %s has %d failed replica(s)", item.PlanID, item.FailedReplicas)
+	case item.DesiredReplicas > 0 && item.RunningReplicas >= item.DesiredReplicas:
+		return fmt.Sprintf("execution plan %s is running %d/%d replica(s)", item.PlanID, item.RunningReplicas, item.DesiredReplicas)
+	default:
+		return fmt.Sprintf("execution plan %s is running %d/%d replica(s)", item.PlanID, item.RunningReplicas, item.DesiredReplicas)
+	}
 }
 
 func (s *Service) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {

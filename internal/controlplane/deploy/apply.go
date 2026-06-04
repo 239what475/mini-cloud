@@ -46,6 +46,7 @@ type ServiceMetadata struct {
 	ID          string `json:"serviceID"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
+	Generation  int64  `json:"generation"`
 }
 
 type ServiceSpec struct {
@@ -67,93 +68,90 @@ type ServiceSpec struct {
 }
 
 type ApplyResult struct {
-	PlaneID           string `json:"planeID"`
-	Action            string `json:"action"`
-	DesiredGeneration int64  `json:"desiredGeneration"`
+	PlaneID string `json:"planeID"`
+	Action  string `json:"action"`
+	PlanID  string `json:"planID"`
 }
 
 func (in ApplyServiceInput) Validate() error {
-	_, err := in.ResolvedApplyRequest("")
+	_, err := in.ResolvedSpec("")
 	return err
 }
 
-func (in ApplyServiceInput) ResolvedApplyRequest(defaultRegion string) (cloudplaneapi.ApplyServiceRequest, error) {
+func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.ServiceSpec, error) {
 	resolvedRegion := strings.TrimSpace(in.Spec.Region)
 	if resolvedRegion == "" {
 		resolvedRegion = strings.TrimSpace(defaultRegion)
 	}
 
 	if strings.TrimSpace(in.Metadata.ID) == "" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrServiceIDRequired
+		return cloudplaneapi.ServiceSpec{}, ErrServiceIDRequired
 	}
 	if strings.TrimSpace(in.Metadata.Name) == "" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrServiceNameRequired
+		return cloudplaneapi.ServiceSpec{}, ErrServiceNameRequired
 	}
 	if !serviceNamePattern.MatchString(strings.TrimSpace(in.Metadata.Name)) {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidServiceName
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidServiceName
 	}
 	if strings.TrimSpace(in.Metadata.DisplayName) == "" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrDisplayNameRequired
+		return cloudplaneapi.ServiceSpec{}, ErrDisplayNameRequired
 	}
 	if strings.TrimSpace(resolvedRegion) == "" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrRegionRequired
+		return cloudplaneapi.ServiceSpec{}, ErrRegionRequired
 	}
 	if in.Spec.Replicas <= 0 {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidReplicas
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidReplicas
 	}
 	if !IsInstanceClass(in.Spec.InstanceClass) {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidInstanceClass
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidInstanceClass
 	}
 	resolvedExposure := strings.ToLower(strings.TrimSpace(in.Spec.Exposure))
 	if resolvedExposure == "" {
 		resolvedExposure = "public"
 	}
 	if resolvedExposure != "public" && resolvedExposure != "private" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidExposure
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidExposure
 	}
 	if strings.TrimSpace(in.Spec.Image) == "" {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrImageRequired
+		return cloudplaneapi.ServiceSpec{}, ErrImageRequired
 	}
 	if in.Spec.DefaultPort <= 0 || in.Spec.DefaultPort > 65535 {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidDefaultPort
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidDefaultPort
 	}
 	if !strings.HasPrefix(strings.TrimSpace(in.Spec.ReadinessPath), "/") {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidReadinessPath
+		return cloudplaneapi.ServiceSpec{}, ErrInvalidReadinessPath
 	}
 	for key := range in.Spec.Env {
 		if strings.TrimSpace(key) == "" {
-			return cloudplaneapi.ApplyServiceRequest{}, ErrInvalidEnvironmentKey
+			return cloudplaneapi.ServiceSpec{}, ErrInvalidEnvironmentKey
 		}
 	}
 	if err := projectedfile.ValidateSpecs(in.Spec.ProjectedFiles); err != nil {
-		return cloudplaneapi.ApplyServiceRequest{}, err
+		return cloudplaneapi.ServiceSpec{}, err
 	}
 	if err := persistentdir.ValidateContainerInputs(in.Spec.PersistentDirs, in.Spec.ProjectedFiles); err != nil {
-		return cloudplaneapi.ApplyServiceRequest{}, err
+		return cloudplaneapi.ServiceSpec{}, err
 	}
 	if len(in.Spec.PersistentDirs) > 0 && in.Spec.Replicas != 1 {
-		return cloudplaneapi.ApplyServiceRequest{}, ErrPersistentDirsReplicaLimit
+		return cloudplaneapi.ServiceSpec{}, ErrPersistentDirsReplicaLimit
 	}
 
-	return cloudplaneapi.ApplyServiceRequest{
-		DisplayName: in.Metadata.DisplayName,
-		Spec: cloudplaneapi.ServiceSpec{
-			Region:               resolvedRegion,
-			Replicas:             in.Spec.Replicas,
-			InstanceClass:        in.Spec.InstanceClass,
-			Exposure:             resolvedExposure,
-			Image:                in.Spec.Image,
-			Command:              in.Spec.Command,
-			Args:                 in.Spec.Args,
-			DefaultPort:          in.Spec.DefaultPort,
-			ReadinessPath:        in.Spec.ReadinessPath,
-			Env:                  in.Spec.Env,
-			ConfigSetID:          in.Spec.ConfigSetID,
-			SecretSetID:          in.Spec.SecretSetID,
-			RegistryCredentialID: in.Spec.RegistryCredentialID,
-			ProjectedFiles:       projectedfile.CloneSpecs(in.Spec.ProjectedFiles),
-			PersistentDirs:       persistentdir.CloneSpecs(in.Spec.PersistentDirs),
-		},
+	return cloudplaneapi.ServiceSpec{
+		Region:               resolvedRegion,
+		Replicas:             in.Spec.Replicas,
+		InstanceClass:        in.Spec.InstanceClass,
+		Exposure:             resolvedExposure,
+		Image:                in.Spec.Image,
+		Command:              append([]string(nil), in.Spec.Command...),
+		Args:                 append([]string(nil), in.Spec.Args...),
+		DefaultPort:          in.Spec.DefaultPort,
+		ReadinessPath:        strings.TrimSpace(in.Spec.ReadinessPath),
+		Env:                  in.Spec.Env,
+		ConfigSetID:          in.Spec.ConfigSetID,
+		SecretSetID:          in.Spec.SecretSetID,
+		RegistryCredentialID: in.Spec.RegistryCredentialID,
+		ProjectedFiles:       projectedfile.CloneSpecs(in.Spec.ProjectedFiles),
+		PersistentDirs:       persistentdir.CloneSpecs(in.Spec.PersistentDirs),
 	}, nil
 }
 

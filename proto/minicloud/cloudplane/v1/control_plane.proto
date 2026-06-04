@@ -91,6 +91,20 @@ message PlaneRuntimeConfig {
   google.protobuf.Struct summary = 3;
 }
 
+message PlaneExecutionSnapshot {
+  string plan_id = 1 [json_name = "planID"];
+  string service_id = 2 [json_name = "serviceID"];
+  string service_name = 3 [json_name = "serviceName"];
+  int64 service_generation = 4 [json_name = "serviceGeneration"];
+  int32 desired_replicas = 5 [json_name = "desiredReplicas"];
+  int32 deploying_replicas = 6 [json_name = "deployingReplicas"];
+  int32 running_replicas = 7 [json_name = "runningReplicas"];
+  int32 failed_replicas = 8 [json_name = "failedReplicas"];
+  int32 superseded_replicas = 9 [json_name = "supersededReplicas"];
+  string last_status_reason = 10 [json_name = "lastStatusReason"];
+  google.protobuf.Timestamp observed_at = 11 [json_name = "observedAt"];
+}
+
 message PlaneSnapshot {
   PlaneSummary plane = 1;
   PlaneHealth health = 2;
@@ -99,6 +113,7 @@ message PlaneSnapshot {
   PlaneReliability reliability = 5;
   PlaneRuntimeInventory runtime_inventory = 7 [json_name = "runtimeInventory"];
   PlaneRuntimeConfig runtime_config = 8 [json_name = "runtimeConfig"];
+  repeated PlaneExecutionSnapshot executions = 9;
 }
 
 message PlaneProjectedFileSpec {
@@ -113,119 +128,63 @@ message PlanePersistentDirSpec {
   string mount_path = 2 [json_name = "mountPath"];
 }
 
-message ResourceConfigSet {
-  string id = 1;
-  string name = 2;
-  map<string, string> values = 3;
+message ExecutionProjectedFile {
+  string mount_path = 1 [json_name = "mountPath"];
+  string content = 2;
+  uint32 mode = 3;
+  bool sensitive = 4;
 }
 
-message ResourceSecretSet {
-  string id = 1;
-  string name = 2;
-  map<string, string> values = 3;
+message ExecutionPersistentDir {
+  string name = 1;
+  string mount_path = 2 [json_name = "mountPath"];
+  string source_path = 3 [json_name = "sourcePath"];
 }
 
-message ResourceRegistryCredential {
-  string id = 1;
-  string name = 2;
-  string server = 3;
-  string username = 4;
-  string password = 5;
+message ExecutionImageCredential {
+  string server = 1;
+  string username = 2;
+  string password = 3;
 }
 
-message ApplyResourcesRequest {
-  repeated ResourceConfigSet config_sets = 1 [json_name = "configSets"];
-  repeated ResourceSecretSet secret_sets = 2 [json_name = "secretSets"];
-  repeated ResourceRegistryCredential registry_credentials = 3 [json_name = "registryCredentials"];
-}
-
-message ApplyResourcesResponse {
-  string action = 1;
-}
-
-message ServiceMetadata {
-  string id = 1;
-  string name = 3;
-  string display_name = 4 [json_name = "displayName"];
-}
-
-message ServiceStatus {
-  string phase = 1;
-  string current_revision_id = 2 [json_name = "currentRevisionID"];
-  string candidate_revision_id = 3 [json_name = "candidateRevisionID"];
-  string rollout_phase = 4 [json_name = "rolloutPhase"];
-  string rollout_message = 5 [json_name = "rolloutMessage"];
-}
-
-message Service {
-  ServiceMetadata metadata = 1;
-  ServiceSpec spec = 2;
-  ServiceStatus status = 3;
-}
-
-message ObservedServiceStatus {
-  string current_revision_id = 1 [json_name = "currentRevisionID"];
-  bool healthy = 2;
-  string message = 3;
-  ObservedRolloutStatus rollout = 4;
-}
-
-message ObservedRolloutStatus {
-  string phase = 1;
-  string message = 2;
-  string stable_revision_id = 3 [json_name = "stableRevisionID"];
-  string candidate_revision_id = 4 [json_name = "candidateRevisionID"];
-  int32 stable_desired_replicas = 5 [json_name = "stableDesiredReplicas"];
-  int32 stable_ready_replicas = 6 [json_name = "stableReadyReplicas"];
-  int32 stable_available_replicas = 7 [json_name = "stableAvailableReplicas"];
-  int32 candidate_desired_replicas = 8 [json_name = "candidateDesiredReplicas"];
-  int32 candidate_ready_replicas = 9 [json_name = "candidateReadyReplicas"];
-  int32 candidate_available_replicas = 10 [json_name = "candidateAvailableReplicas"];
-  google.protobuf.Timestamp observed_at = 11 [json_name = "observedAt"];
-}
-
-message ApplyServiceRequest {
-  string service_id = 1 [json_name = "serviceID"];
-  string name = 2;
-  string display_name = 3 [json_name = "displayName"];
-  ServiceSpec spec = 4;
-}
-
-message ApplyServiceResponse {
-  string action = 1;
-  int64 desired_generation = 2 [json_name = "desiredGeneration"];
-}
-
-message DeleteServiceRequest {
-  string service_id = 1 [json_name = "serviceID"];
-}
-
-message DeleteServiceResponse {
-  bool deleted = 1;
+message ApplyExecutionPlanRequest {
+  string plan_id = 1 [json_name = "planID"];
   string service_id = 2 [json_name = "serviceID"];
+  string service_name = 3 [json_name = "serviceName"];
+  int64 service_generation = 4 [json_name = "serviceGeneration"];
+  string image = 5;
+  repeated string command = 6;
+  repeated string args = 7;
+  map<string, string> env = 8;
+  repeated ExecutionProjectedFile projected_files = 9 [json_name = "projectedFiles"];
+  repeated ExecutionPersistentDir persistent_dirs = 10 [json_name = "persistentDirs"];
+  ExecutionImageCredential image_credential = 11 [json_name = "imageCredential"];
+  int32 container_port = 12 [json_name = "containerPort"];
+  string readiness_path = 13 [json_name = "readinessPath"];
+  int32 replicas = 14;
+  string instance_class = 15 [json_name = "instanceClass"];
 }
 
-message GetServiceRequest {
+message ApplyExecutionPlanResponse {
+  string action = 1;
+  string plan_id = 2 [json_name = "planID"];
+}
+
+message DeleteExecutionPlanRequest {
   string service_id = 1 [json_name = "serviceID"];
 }
 
-message GetServiceResponse {
-  Service service = 1;
-  ObservedServiceStatus status = 2;
+message DeleteExecutionPlanResponse {
+  string service_id = 1 [json_name = "serviceID"];
+  bool deleted = 2;
 }
 
 service ControlPlaneSnapshotService {
   rpc GetSnapshot(google.protobuf.Empty) returns (PlaneSnapshot);
 }
 
-service ControlPlaneResourceService {
-  rpc ApplyResources(ApplyResourcesRequest) returns (ApplyResourcesResponse);
-}
+service ControlPlaneExecutionService {
+  rpc ApplyExecutionPlan(ApplyExecutionPlanRequest) returns (ApplyExecutionPlanResponse);
 
-service ControlPlaneWorkloadService {
-  rpc ApplyService(ApplyServiceRequest) returns (ApplyServiceResponse);
-
-  rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);
-
-  rpc GetService(GetServiceRequest) returns (GetServiceResponse);
+  rpc DeleteExecutionPlan(DeleteExecutionPlanRequest) returns (DeleteExecutionPlanResponse);
 }

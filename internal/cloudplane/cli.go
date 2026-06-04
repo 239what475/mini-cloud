@@ -74,7 +74,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		return err
 	}
 
-	// 打开 cloud-plane 本地数据库；数据库是 desired state、runtime 状态和同步视图的本地事实源。
+	// 打开 cloud-plane 本地数据库；数据库是 execution、node、runtime 状态和同步视图的本地事实源。
 	db, err := store.Open(cfg.Database.URL)
 	if err != nil {
 		return err
@@ -108,8 +108,8 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		ConfigPath:     cfg.Ingress.Caddy.ConfigPath,
 		ReloadCommand:  cfg.Ingress.Caddy.ReloadCommand,
 	}))
-	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 desired service 收敛和 node 心跳巡检。
-	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, cfg, driver, ingressController)
+	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 runtime node 缩容。
+	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController)
 	// gRPC server 是 cloud-plane 对 control-plane 和 node-agent 暴露的唯一进程入口。
 	grpcServer := cloudplaneapi.NewGRPCServer(cloudplaneapi.Options{
 		Config:        cfg,

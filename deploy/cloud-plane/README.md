@@ -2,7 +2,7 @@
 
 ## 当前入口模型
 
-cloud-plane 只监听内部 gRPC 地址，只注册 `ControlPlaneSnapshotService、ControlPlaneResourceService、ControlPlaneWorkloadService` 和 `NodeAgentService`。它不提供 northbound HTTP API、grpc-gateway、静态 UI、`/api/healthz`、`/metrics` 或 node-agent 二进制下载入口。
+cloud-plane 只监听内部 gRPC 地址，只注册 `ControlPlaneSnapshotService、ControlPlaneExecutionService` 和 `NodeAgentService`。它不提供 northbound HTTP API、grpc-gateway、静态 UI、`/api/healthz`、`/metrics` 或 node-agent 二进制下载入口。
 
 v7 起 ingress/egress 数据面统一外置：
 
@@ -153,7 +153,7 @@ readiness 使用 TCP/gRPC 探测内部 gRPC 端口：
 bash -c '</dev/tcp/127.0.0.1/18081'
 ```
 
-首次注册到 control-plane 时，control-plane 通过配置中的 `controlPlane.auth.bearerToken` 访问 cloud-plane 的 `ControlPlaneSnapshotService、ControlPlaneResourceService、ControlPlaneWorkloadService`。
+首次注册到 control-plane 时，control-plane 通过配置中的 `controlPlane.auth.bearerToken` 访问 cloud-plane 的 `ControlPlaneSnapshotService、ControlPlaneExecutionService`。
 
 ## runtime scale-out 的关系
 

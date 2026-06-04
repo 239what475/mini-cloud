@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	"mini-cloud/internal/controlplane/operatorapi"
 	plane "mini-cloud/internal/controlplane/plane"
@@ -176,34 +175,12 @@ type fakeDeploy struct{}
 
 func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
 	return deploy.ApplyResult{
-		PlaneID:           planeID,
-		Action:            deploy.ApplyActionCreated,
-		DesiredGeneration: 1,
+		PlaneID: planeID,
+		Action:  deploy.ApplyActionCreated,
+		PlanID:  input.Metadata.ID + "-g1",
 	}, nil
 }
 
 func (f *fakeDeploy) DeleteService(context.Context, string, string) error {
 	return nil
-}
-
-func (f *fakeDeploy) GetService(_ context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
-	return cloudplaneapi.ServiceResponse{
-		Service: cloudplaneapi.Service{
-			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, Name: serviceID, DisplayName: serviceID},
-			Spec:     cloudplaneapi.ServiceSpec{Region: "cn-beijing", Replicas: 1, InstanceClass: controlservice.InstanceClassSmall, Exposure: "public", Image: "nginx:1.27-alpine", DefaultPort: 8080, ReadinessPath: "/healthz"},
-			Status:   cloudplaneapi.ServiceStatus{Phase: "running", CurrentRevisionID: "rel-1"},
-		},
-		Status: cloudplaneapi.ObservedServiceStatus{
-			CurrentRevisionID: "rel-1",
-			Healthy:           true,
-			Message:           "ready",
-			Rollout: cloudplaneapi.ObservedRolloutStatus{
-				Phase:                   string(controlservice.RolloutPhaseIdle),
-				StableRevisionID:        "rel-1",
-				StableDesiredReplicas:   1,
-				StableReadyReplicas:     1,
-				StableAvailableReplicas: 1,
-			},
-		},
-	}, nil
 }

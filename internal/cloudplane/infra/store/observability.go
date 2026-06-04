@@ -11,20 +11,43 @@ import (
 // GetPlatformOverview 读取平台核心资源的状态计数概览。
 // 参数说明：ctx 控制数据库请求生命周期。
 func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview, error) {
-	// 复杂流程说明：overview 聚合 service、node、deployment 多张表的状态计数。
+	// 复杂流程说明：overview 聚合 node 和 execution intent 状态计数。
 	// 查询保持只读聚合，不在这里推导或修正业务状态。
 	var out observability.Overview
 
-	// 统计 service 总数及各状态数量。
+	// service 计数来自每个 service 最新 execution plan，不再读取 cloud-plane 本地 service lifecycle 表。
 	if err := s.db.QueryRowContext(ctx, `
+		WITH plan_counts AS (
+			SELECT
+				plan_id,
+				service_id,
+				service_generation,
+				COUNT(*)::int AS desired_replicas,
+				COUNT(*) FILTER (WHERE status IN ('pending', 'deploying'))::int AS active_replicas,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				MAX(updated_at) AS observed_at
+			FROM execution_intents
+			GROUP BY plan_id, service_id, service_generation
+		),
+		latest_plan AS (
+			SELECT DISTINCT ON (service_id)
+				service_id,
+				desired_replicas,
+				active_replicas,
+				running_replicas,
+				failed_replicas
+			FROM plan_counts
+			ORDER BY service_id, service_generation DESC, observed_at DESC, plan_id DESC
+		)
 		SELECT
 			COUNT(*),
-			COUNT(*) FILTER (WHERE status = 'idle'),
-			COUNT(*) FILTER (WHERE status = 'deploying'),
-			COUNT(*) FILTER (WHERE status = 'running'),
-			COUNT(*) FILTER (WHERE status = 'degraded'),
-			COUNT(*) FILTER (WHERE status = 'failed')
-		FROM services
+			0,
+			COUNT(*) FILTER (WHERE failed_replicas = 0 AND active_replicas > 0),
+			COUNT(*) FILTER (WHERE failed_replicas = 0 AND desired_replicas > 0 AND running_replicas >= desired_replicas),
+			COUNT(*) FILTER (WHERE failed_replicas > 0 AND running_replicas > 0),
+			COUNT(*) FILTER (WHERE failed_replicas > 0 AND running_replicas = 0)
+		FROM latest_plan
 	`).Scan(
 		&out.ServicesTotal,
 		&out.ServicesIdle,
@@ -57,17 +80,28 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		return observability.Overview{}, fmt.Errorf("count nodes overview: %w", err)
 	}
 
-	// 统计 deployment 总数及各状态数量。
+	// deployment 兼容字段按 execution plan 聚合，不再读取旧 deployments 表。
 	if err := s.db.QueryRowContext(ctx, `
+		WITH plan_counts AS (
+			SELECT
+				plan_id,
+				COUNT(*)::int AS desired_replicas,
+				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_replicas,
+				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_replicas,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas
+			FROM execution_intents
+			GROUP BY plan_id
+		)
 		SELECT
 			COUNT(*),
-			COUNT(*) FILTER (WHERE status = 'pending'),
-			COUNT(*) FILTER (WHERE status = 'scheduling'),
-			COUNT(*) FILTER (WHERE status = 'assigned'),
-			COUNT(*) FILTER (WHERE status = 'deploying'),
-			COUNT(*) FILTER (WHERE status = 'running'),
-			COUNT(*) FILTER (WHERE status = 'failed')
-		FROM deployments
+			COUNT(*) FILTER (WHERE pending_replicas > 0 AND deploying_replicas = 0 AND running_replicas = 0 AND failed_replicas = 0),
+			0,
+			0,
+			COUNT(*) FILTER (WHERE failed_replicas = 0 AND deploying_replicas > 0),
+			COUNT(*) FILTER (WHERE failed_replicas = 0 AND desired_replicas > 0 AND running_replicas >= desired_replicas),
+			COUNT(*) FILTER (WHERE failed_replicas > 0)
+		FROM plan_counts
 	`).Scan(
 		&out.DeploymentsTotal,
 		&out.DeploymentsPending,
@@ -80,14 +114,14 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		return observability.Overview{}, fmt.Errorf("count deployments overview: %w", err)
 	}
 
-	// 统计 execution 总数及主要状态数量。
+	// 统计 execution intent 总数及主要状态数量；pending 也属于尚未完成的 deploying 口径。
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
 			COUNT(*),
-			COUNT(*) FILTER (WHERE status = 'deploying'),
+			COUNT(*) FILTER (WHERE status IN ('pending', 'deploying')),
 			COUNT(*) FILTER (WHERE status = 'running'),
 			COUNT(*) FILTER (WHERE status = 'failed')
-		FROM deployment_executions
+		FROM execution_intents
 	`).Scan(
 		&out.ExecutionsTotal,
 		&out.ExecutionsDeploying,
@@ -101,7 +135,7 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 	return out, nil
 }
 
-// GetDeploymentStuckSignal 统计超过阈值仍处于非终态的 deployment。
+// GetDeploymentStuckSignal 统计超过阈值仍处于未完成状态的 execution plan。
 // 参数说明：ctx 控制数据库请求生命周期；threshold 表示卡住判定阈值。
 func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Duration) (observability.DeploymentStuckSignal, error) {
 	// 未传入阈值时使用领域层默认阈值。
@@ -113,29 +147,35 @@ func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Dur
 	out := observability.DeploymentStuckSignal{
 		ThresholdSeconds: int64(threshold / time.Second),
 	}
-	// 分状态统计超时 deployment，并计算最老非终态 deployment 的年龄。
+	// 分状态统计超时 execution plan，并计算最老未完成 plan 的年龄。
 	if err := s.db.QueryRowContext(ctx, `
+		WITH plan_counts AS (
+			SELECT
+				plan_id,
+				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_replicas,
+				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_replicas,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				MAX(updated_at) AS updated_at
+			FROM execution_intents
+			GROUP BY plan_id
+		),
+		stuck AS (
+			SELECT *
+			FROM plan_counts
+			WHERE failed_replicas = 0
+			  AND (pending_replicas > 0 OR deploying_replicas > 0)
+			  AND updated_at <= now() - ($1 * interval '1 second')
+		)
 		SELECT
-			COUNT(*) FILTER (
-				WHERE status = 'pending'
-				  AND updated_at <= now() - ($1 * interval '1 second')
-			),
-			COUNT(*) FILTER (
-				WHERE status = 'scheduling'
-				  AND updated_at <= now() - ($1 * interval '1 second')
-			),
-			COUNT(*) FILTER (
-				WHERE status = 'assigned'
-				  AND updated_at <= now() - ($1 * interval '1 second')
-			),
-			COUNT(*) FILTER (
-				WHERE status = 'deploying'
-				  AND updated_at <= now() - ($1 * interval '1 second')
-			),
+			COUNT(*) FILTER (WHERE pending_replicas > 0 AND deploying_replicas = 0),
+			0,
+			0,
+			COUNT(*) FILTER (WHERE deploying_replicas > 0),
 			COALESCE(MAX(EXTRACT(EPOCH FROM (now() - updated_at))) FILTER (
-				WHERE status IN ('pending', 'scheduling', 'assigned', 'deploying')
+				WHERE pending_replicas > 0 OR deploying_replicas > 0
 			), 0)::BIGINT
-		FROM deployments
+		FROM stuck
 	`, out.ThresholdSeconds).Scan(
 		&out.Pending,
 		&out.Scheduling,
@@ -222,12 +262,30 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		return observability.ReliabilityInputs{}, fmt.Errorf("count runtime node reliability overview: %w", err)
 	}
 
-	// deployment SLO 只看最近 24h 创建且当前为 running/failed 的终态 deployment。
+	// 发布 SLO 按最近 24h 创建且当前为 running/failed 的 execution plan 聚合。
 	if err := s.db.QueryRowContext(ctx, `
+		WITH plan_counts AS (
+			SELECT
+				plan_id,
+				COUNT(*)::int AS desired_replicas,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				MIN(created_at) AS created_at
+			FROM execution_intents
+			GROUP BY plan_id
+		)
 		SELECT
-			COUNT(*) FILTER (WHERE status IN ('running', 'failed') AND created_at >= now() - interval '24 hours'),
-			COUNT(*) FILTER (WHERE status = 'running' AND created_at >= now() - interval '24 hours')
-		FROM deployments
+			COUNT(*) FILTER (
+				WHERE created_at >= now() - interval '24 hours'
+				  AND (failed_replicas > 0 OR (desired_replicas > 0 AND running_replicas >= desired_replicas))
+			),
+			COUNT(*) FILTER (
+				WHERE created_at >= now() - interval '24 hours'
+				  AND failed_replicas = 0
+				  AND desired_replicas > 0
+				  AND running_replicas >= desired_replicas
+			)
+		FROM plan_counts
 	`).Scan(
 		&input.TerminalDeploymentsLast24h,
 		&input.SuccessfulDeploymentsLast24h,

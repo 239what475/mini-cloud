@@ -9,7 +9,6 @@ import (
 
 	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/planeselector"
@@ -33,7 +32,7 @@ func (c *Controller) reconcileService(ctx context.Context, item controlservice.S
 	case item.Metadata.Generation > item.Status.Observed.ObservedGeneration || shouldRetryDesiredSpec(item):
 		return c.reconcileServiceDesiredSpec(ctx, item, currentPlacement)
 	default:
-		return c.refreshObservedServiceStatus(ctx, item, currentPlacement)
+		return nil
 	}
 }
 
@@ -83,17 +82,6 @@ func (c *Controller) reconcileServiceWithoutPlacement(ctx context.Context, servi
 
 func (c *Controller) reconcileServiceDesiredSpec(ctx context.Context, serviceItem controlservice.Service, currentPlacement controlservice.ServicePlacement) error {
 	if c.canReusePlacement(ctx, serviceItem, currentPlacement) {
-		if serviceItem.Spec.PersistentDirsLocked {
-			remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ID)
-			if err != nil {
-				if errors.Is(err, planeclient.ErrNotFound) {
-					return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, ErrPersistentDirsAutoMoveBlocked))
-				}
-				statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, refreshFailureServiceStatus(serviceItem.Metadata.Generation, err))
-				return errors.Join(err, statusErr)
-			}
-			_ = remote
-		}
 		_, err := c.applyServiceToCurrentPlacement(ctx, serviceItem, currentPlacement)
 		return err
 	}
@@ -128,38 +116,8 @@ func (c *Controller) applyServiceToCurrentPlacement(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ID)
-	if err != nil {
-		return nil, err
-	}
-	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, observedPlaneServiceStatus(serviceItem.Metadata.Generation, updatedPlacement, remote), rolloutFromPlaneService(remote))
+	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result))
 	return &updatedPlacement, statusErr
-}
-
-func (c *Controller) refreshObservedServiceStatus(ctx context.Context, serviceItem controlservice.Service, currentPlacement controlservice.ServicePlacement) error {
-	remote, err := c.deploy.GetService(ctx, currentPlacement.PlaneID, serviceItem.Metadata.ID)
-	if err != nil {
-		if errors.Is(err, planeclient.ErrNotFound) {
-			if persistentDirsPlacementLocked(serviceItem) {
-				return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, ErrPersistentDirsAutoMoveBlocked))
-			}
-			_ = c.store.DeleteServicePlacementForGeneration(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation)
-			return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, remoteMissingServiceStatus(serviceItem.Metadata.Generation))
-		}
-		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, refreshFailureServiceStatus(serviceItem.Metadata.Generation, err))
-		return errors.Join(err, statusErr)
-	}
-
-	updatedPlacement, err := c.store.UpsertServicePlacementForGeneration(ctx, placementFromRemote(serviceItem.Metadata.ID, currentPlacement.PlaneID, remote), serviceItem.Metadata.Generation, false)
-	if err != nil {
-		if errors.Is(err, store.ErrServiceGenerationConflict) {
-			return nil
-		}
-		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, refreshFailureServiceStatus(serviceItem.Metadata.Generation, err))
-		return errors.Join(err, statusErr)
-	}
-	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, observedPlaneServiceStatus(serviceItem.Metadata.Generation, updatedPlacement, remote), rolloutFromPlaneService(remote))
-	return statusErr
 }
 
 func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem controlservice.Service, decision planeselector.Decision, previous *controlservice.ServicePlacement) (*controlservice.ServicePlacement, error) {
@@ -192,11 +150,7 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	remote, err := c.deploy.GetService(ctx, updatedPlacement.PlaneID, serviceItem.Metadata.ID)
-	if err != nil {
-		return nil, err
-	}
-	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, observedPlaneServiceStatus(serviceItem.Metadata.Generation, updatedPlacement, remote), rolloutFromPlaneService(remote))
+	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result))
 	return &updatedPlacement, statusErr
 }
 
@@ -247,9 +201,9 @@ func (c *Controller) getPlacement(ctx context.Context, serviceID string) (contro
 }
 
 func acceptedPlacementFromApplyResult(serviceID string, result deploy.ApplyResult) controlservice.ServicePlacement {
-	message := "desired accepted by cloud-plane; waiting for observed service state"
-	if result.DesiredGeneration > 0 {
-		message = fmt.Sprintf("desired generation %d accepted by cloud-plane; waiting for observed service state", result.DesiredGeneration)
+	message := "execution plan accepted by cloud-plane; waiting for node-agent execution"
+	if strings.TrimSpace(result.PlanID) != "" {
+		message = fmt.Sprintf("execution plan %s accepted by cloud-plane; waiting for node-agent execution", result.PlanID)
 	}
 	return controlservice.ServicePlacement{
 		ServiceID:     serviceID,
@@ -260,39 +214,8 @@ func acceptedPlacementFromApplyResult(serviceID string, result deploy.ApplyResul
 	}
 }
 
-func rolloutFromPlaneService(remote cloudplaneapi.ServiceResponse) *controlservice.RolloutStatus {
-	rollout := remote.Status.Rollout
-	out := controlservice.RolloutStatus{
-		Phase:                      controlservice.NormalizeRolloutPhase(rollout.Phase),
-		Message:                    strings.TrimSpace(rollout.Message),
-		StableRevisionID:           strings.TrimSpace(rollout.StableRevisionID),
-		CandidateRevisionID:        strings.TrimSpace(rollout.CandidateRevisionID),
-		StableDesiredReplicas:      rollout.StableDesiredReplicas,
-		StableReadyReplicas:        rollout.StableReadyReplicas,
-		StableAvailableReplicas:    rollout.StableAvailableReplicas,
-		CandidateDesiredReplicas:   rollout.CandidateDesiredReplicas,
-		CandidateReadyReplicas:     rollout.CandidateReadyReplicas,
-		CandidateAvailableReplicas: rollout.CandidateAvailableReplicas,
-	}
-	if !rollout.ObservedAt.IsZero() {
-		observedAt := rollout.ObservedAt.UTC()
-		out.LastObservedAt = &observedAt
-	}
-	return &out
-}
-
 func persistentDirsPlacementLocked(serviceItem controlservice.Service) bool {
 	return serviceItem.Spec.PersistentDirsLocked
-}
-
-func placementFromRemote(serviceID string, planeID string, remote cloudplaneapi.ServiceResponse) controlservice.ServicePlacement {
-	return controlservice.ServicePlacement{
-		ServiceID:     serviceID,
-		PlaneID:       planeID,
-		RemoteStatus:  remote.Service.Status.Phase,
-		RemoteHealthy: remote.Status.Healthy,
-		RemoteMessage: remote.Status.Message,
-	}
 }
 
 func shouldMovePlacement(current controlservice.ServicePlacement, next controlservice.ServicePlacement) bool {
@@ -316,6 +239,7 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 			ID:          serviceItem.Metadata.ID,
 			Name:        serviceItem.Metadata.Name,
 			DisplayName: serviceItem.Metadata.DisplayName,
+			Generation:  serviceItem.Metadata.Generation,
 		},
 		Spec: deploy.ServiceSpec{
 			Region:               serviceItem.Spec.Region,
@@ -357,44 +281,21 @@ func (c *Controller) updateServiceStatus(ctx context.Context, serviceID string, 
 	return err
 }
 
-func observedPlaneServiceStatus(generation int64, placementItem controlservice.ServicePlacement, remote cloudplaneapi.ServiceResponse) controlservice.Status {
+func executionPlanDispatchedStatus(generation int64, placementItem controlservice.ServicePlacement, result deploy.ApplyResult) controlservice.Status {
 	now := time.Now().UTC()
-	phase := controlservice.PhaseDegraded
-	switch {
-	case remote.Status.Healthy:
-		phase = controlservice.PhaseReady
-	case isRemoteProgressing(remote.Service.Status.Phase):
-		phase = controlservice.PhaseProgressing
+	message := "execution plan dispatched; waiting for node-agent execution result"
+	if strings.TrimSpace(result.PlanID) != "" {
+		message = fmt.Sprintf("execution plan %s dispatched; waiting for node-agent execution result", result.PlanID)
 	}
-
-	message := strings.TrimSpace(remote.Status.Message)
-	if message == "" {
-		switch phase {
-		case controlservice.PhaseReady:
-			message = "remote service is healthy"
-		case controlservice.PhaseProgressing:
-			message = fmt.Sprintf("remote status is %s", remote.Service.Status.Phase)
-		default:
-			message = "remote service is not healthy"
-		}
-	}
-
-	readyCondition := controlservice.ConditionFalse
-	readyReason := controlservice.ReasonPlaneServiceNotHealthy
-	if remote.Status.Healthy {
-		readyCondition = controlservice.ConditionTrue
-		readyReason = controlservice.ReasonPlaneServiceReady
-	}
-
 	return controlservice.Status{
 		ObservedGeneration: generation,
-		Phase:              phase,
-		Healthy:            remote.Status.Healthy,
+		Phase:              controlservice.PhaseProgressing,
+		Healthy:            false,
 		Message:            message,
 		Conditions: []controlservice.Condition{
 			controlservice.NewCondition(controlservice.ConditionPlacementReady, controlservice.ConditionTrue, controlservice.ReasonApplied, fmt.Sprintf("service placed on plane %s", placementItem.PlaneID), generation, now),
-			controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionTrue, controlservice.ReasonApplied, fmt.Sprintf("remote service %s is applied", placementItem.ServiceID), generation, now),
-			controlservice.NewCondition(controlservice.ConditionReady, readyCondition, readyReason, message, generation, now),
+			controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionTrue, controlservice.ReasonApplied, message, generation, now),
+			controlservice.NewCondition(controlservice.ConditionReady, controlservice.ConditionFalse, controlservice.ReasonPlaneServiceNotHealthy, "waiting for node-agent execution result", generation, now),
 		},
 		LastReconciledAt: &now,
 	}
@@ -417,23 +318,6 @@ func pendingPlaneSelectorStatus(generation int64, err error) controlservice.Stat
 			controlservice.NewCondition(controlservice.ConditionPlacementReady, controlservice.ConditionFalse, reason, message, generation, now),
 			controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionFalse, reason, message, generation, now),
 			controlservice.NewCondition(controlservice.ConditionReady, controlservice.ConditionFalse, reason, message, generation, now),
-		},
-		LastReconciledAt: &now,
-	}
-}
-
-func remoteMissingServiceStatus(generation int64) controlservice.Status {
-	now := time.Now().UTC()
-	message := "remote service disappeared; waiting for recreate"
-	return controlservice.Status{
-		ObservedGeneration: generation,
-		Phase:              controlservice.PhaseDegraded,
-		Healthy:            false,
-		Message:            message,
-		Conditions: []controlservice.Condition{
-			controlservice.NewCondition(controlservice.ConditionPlacementReady, controlservice.ConditionFalse, controlservice.ReasonPlaneServiceMissing, message, generation, now),
-			controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionFalse, controlservice.ReasonPlaneServiceMissing, message, generation, now),
-			controlservice.NewCondition(controlservice.ConditionReady, controlservice.ConditionFalse, controlservice.ReasonPlaneServiceMissing, message, generation, now),
 		},
 		LastReconciledAt: &now,
 	}

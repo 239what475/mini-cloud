@@ -10,6 +10,7 @@ import (
 
 	"mini-cloud/internal/contract/cloudplaneapi"
 	plane "mini-cloud/internal/controlplane/plane"
+	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/testutil"
 )
 
@@ -136,6 +137,110 @@ func TestBuildRuntimeConfigUsesObservedSnapshot(t *testing.T) {
 	provider, ok := input.Summary["provider"].(map[string]any)
 	if !ok || provider["name"] != "aliyun" {
 		t.Fatalf("unexpected runtime config summary: %+v", input.Summary)
+	}
+}
+
+func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	ctx := context.Background()
+	checkedAt := time.Now().UTC()
+
+	planeItem, err := db.Store.CreatePlane(ctx, plane.CreateInput{
+		Name:         "aliyun-prod-a",
+		DisplayName:  "Aliyun Prod A",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "plane-a.example.com:443",
+	})
+	if err != nil {
+		t.Fatalf("CreatePlane returned error: %v", err)
+	}
+	if _, err := db.Store.SetPlaneSouthboundToken(ctx, planeItem.ID, "southbound-a"); err != nil {
+		t.Fatalf("SetPlaneSouthboundToken returned error: %v", err)
+	}
+
+	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
+		Name:        "api",
+		DisplayName: "API",
+		Spec: controlservice.Spec{
+			Provider:      "aliyun",
+			Region:        "cn-beijing",
+			Replicas:      2,
+			InstanceClass: controlservice.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "nginx:latest",
+			DefaultPort:   8080,
+			ReadinessPath: "/healthz",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	if _, err := db.Store.UpsertServicePlacement(ctx, controlservice.ServicePlacement{
+		ServiceID: serviceItem.Metadata.ID,
+		PlaneID:   planeItem.ID,
+	}); err != nil {
+		t.Fatalf("UpsertServicePlacement returned error: %v", err)
+	}
+
+	service := NewServiceWithFetcher(logger, db.Store, fakePlaneSnapshotFetcher{
+		responses: map[string]fakePlaneSnapshotResponse{
+			"plane-a.example.com:443": {
+				snapshot: planeSnapshot{
+					Plane: cloudplaneapi.PlaneSummary{
+						Configured: true,
+						Provider:   "aliyun",
+						Region:     "cn-beijing",
+					},
+					Health: cloudplaneapi.HealthSummary{
+						CheckedAt: checkedAt,
+						Service:   "ok",
+						Database:  "ok",
+					},
+					Capacity: cloudplaneapi.CapacitySummary{
+						RuntimeNodesTotal:   1,
+						RuntimeNodesReady:   1,
+						CPUMilliAllocatable: 2000,
+						MemoryMiAllocatable: 4096,
+					},
+					Runtime: cloudplaneapi.RuntimeInventory{
+						SyncVersion: 1,
+						ObservedAt:  checkedAt,
+					},
+					RuntimeConfig: cloudplaneapi.RuntimeConfigSnapshot{
+						ObservedAt:  checkedAt,
+						Fingerprint: "runtime-fp-a",
+					},
+					Executions: []cloudplaneapi.ExecutionSnapshot{
+						{
+							PlanID:            serviceItem.Metadata.ID + "-g1",
+							ServiceID:         serviceItem.Metadata.ID,
+							ServiceName:       serviceItem.Metadata.Name,
+							ServiceGeneration: serviceItem.Metadata.Generation,
+							DesiredReplicas:   2,
+							RunningReplicas:   2,
+							ObservedAt:        checkedAt,
+						},
+					},
+				},
+			},
+		},
+	})
+
+	if _, err := service.SyncPlane(ctx, planeItem.ID); err != nil {
+		t.Fatalf("SyncPlane returned error: %v", err)
+	}
+
+	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if reloaded.Status.Observed.Phase != controlservice.PhaseReady || !reloaded.Status.Observed.Healthy {
+		t.Fatalf("service status = %+v, want ready healthy", reloaded.Status.Observed)
+	}
+	if reloaded.Status.Rollout.CandidateDesiredReplicas != 2 || reloaded.Status.Rollout.CandidateReadyReplicas != 2 {
+		t.Fatalf("service rollout = %+v, want 2/2 candidate replicas", reloaded.Status.Rollout)
 	}
 }
 

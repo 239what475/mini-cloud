@@ -230,6 +230,45 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_executions_deployment_replica
     ON deployment_executions (deployment_id, replica_index)
     WHERE status IN ('deploying', 'running');
 
+CREATE TABLE IF NOT EXISTS execution_intents (
+    id TEXT PRIMARY KEY,
+    plan_id TEXT NOT NULL,
+    service_id TEXT NOT NULL,
+    service_name TEXT NOT NULL,
+    service_generation BIGINT NOT NULL CHECK (service_generation > 0),
+    replica_index INTEGER NOT NULL CHECK (replica_index >= 0),
+    node_id TEXT NULL REFERENCES nodes(id) ON DELETE SET NULL,
+    image TEXT NOT NULL,
+    command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    projected_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    persistent_dirs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    image_credential_server TEXT NULL,
+    image_credential_username TEXT NULL,
+    image_credential_password TEXT NULL,
+    container_name TEXT NOT NULL DEFAULT '',
+    container_id TEXT NOT NULL DEFAULT '',
+    container_port INTEGER NOT NULL CHECK (container_port > 0 AND container_port <= 65535),
+    host_port INTEGER NOT NULL DEFAULT 0 CHECK (host_port >= 0),
+    readiness_path TEXT NOT NULL,
+    cpu_milli_request INTEGER NOT NULL CHECK (cpu_milli_request > 0),
+    memory_mi_request INTEGER NOT NULL CHECK (memory_mi_request > 0),
+    status TEXT NOT NULL,
+    status_reason TEXT NOT NULL DEFAULT '',
+    started_at TIMESTAMPTZ NULL,
+    finished_at TIMESTAMPTZ NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (plan_id, replica_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at
+    ON execution_intents (status, created_at ASC, id ASC);
+
+CREATE INDEX IF NOT EXISTS idx_execution_intents_service_status
+    ON execution_intents (service_id, status, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS runtime_nodes (
     id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
@@ -324,6 +363,7 @@ DROP TABLE IF EXISTS deployment_rollout_outcome_marks;
 DROP TABLE IF EXISTS deployment_rollout_metric_counters;
 DROP TABLE IF EXISTS service_desired;
 DROP TABLE IF EXISTS runtime_nodes;
+DROP TABLE IF EXISTS execution_intents;
 DROP TABLE IF EXISTS deployment_executions;
 DROP TABLE IF EXISTS placement_decisions;
 DROP TABLE IF EXISTS deployment_transitions;

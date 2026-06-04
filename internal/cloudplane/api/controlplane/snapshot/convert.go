@@ -65,6 +65,7 @@ func protoSnapshot(item cloudplaneapi.SnapshotResponse) *cloudplanev1.PlaneSnaps
 		// RuntimeInventory 和 RuntimeConfig 由专用转换函数处理嵌套结构和动态 summary。
 		RuntimeInventory: protoRuntimeInventory(item.Runtime),
 		RuntimeConfig:    protoRuntimeConfig(item.RuntimeConfig),
+		Executions:       protoExecutionSnapshots(item.Executions),
 	}
 }
 
@@ -121,6 +122,26 @@ func protoRuntimeConfig(item cloudplaneapi.RuntimeConfigSnapshot) *cloudplanev1.
 		if summary, err := structpb.NewStruct(item.Summary); err == nil {
 			out.Summary = summary
 		}
+	}
+	return out
+}
+
+func protoExecutionSnapshots(items []cloudplaneapi.ExecutionSnapshot) []*cloudplanev1.PlaneExecutionSnapshot {
+	out := make([]*cloudplanev1.PlaneExecutionSnapshot, 0, len(items))
+	for _, item := range items {
+		out = append(out, &cloudplanev1.PlaneExecutionSnapshot{
+			PlanId:             item.PlanID,
+			ServiceId:          item.ServiceID,
+			ServiceName:        item.ServiceName,
+			ServiceGeneration:  item.ServiceGeneration,
+			DesiredReplicas:    int32(item.DesiredReplicas),
+			DeployingReplicas:  int32(item.DeployingReplicas),
+			RunningReplicas:    int32(item.RunningReplicas),
+			FailedReplicas:     int32(item.FailedReplicas),
+			SupersededReplicas: int32(item.SupersededReplicas),
+			LastStatusReason:   item.LastStatusReason,
+			ObservedAt:         controlplane.ProtoTimestamp(item.ObservedAt),
+		})
 	}
 	return out
 }

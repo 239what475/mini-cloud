@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
@@ -37,11 +35,10 @@ func (e *RPCError) Error() string {
 }
 
 type Client struct {
-	bearerToken string
-	conn        *grpc.ClientConn
-	snapshotRPC cloudplanev1.ControlPlaneSnapshotServiceClient
-	resourceRPC cloudplanev1.ControlPlaneResourceServiceClient
-	workloadRPC cloudplanev1.ControlPlaneWorkloadServiceClient
+	bearerToken  string
+	conn         *grpc.ClientConn
+	snapshotRPC  cloudplanev1.ControlPlaneSnapshotServiceClient
+	executionRPC cloudplanev1.ControlPlaneExecutionServiceClient
 }
 
 func New(grpcEndpoint string, bearerToken string) (*Client, error) {
@@ -63,11 +60,10 @@ func NewWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...
 		return nil, fmt.Errorf("dial plane service: %w", err)
 	}
 	return &Client{
-		bearerToken: strings.TrimSpace(bearerToken),
-		conn:        conn,
-		snapshotRPC: cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
-		resourceRPC: cloudplanev1.NewControlPlaneResourceServiceClient(conn),
-		workloadRPC: cloudplanev1.NewControlPlaneWorkloadServiceClient(conn),
+		bearerToken:  strings.TrimSpace(bearerToken),
+		conn:         conn,
+		snapshotRPC:  cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
+		executionRPC: cloudplanev1.NewControlPlaneExecutionServiceClient(conn),
 	}, nil
 }
 
@@ -86,96 +82,32 @@ func (c *Client) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, 
 	return snapshotFromProto(resp), nil
 }
 
-func (c *Client) ApplyResources(ctx context.Context, resources cloudplaneapi.ResourceBundle) (cloudplaneapi.ApplyResourcesResponse, error) {
-	resp, err := c.resourceRPC.ApplyResources(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyResourcesRequest{
-		ConfigSets:          protoConfigSets(resources.ConfigSets),
-		SecretSets:          protoSecretSets(resources.SecretSets),
-		RegistryCredentials: protoRegistryCredentials(resources.RegistryCredentials),
+func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.ExecutionPlanRequest) (cloudplaneapi.ExecutionPlanResponse, error) {
+	resp, err := c.executionRPC.ApplyExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyExecutionPlanRequest{
+		PlanId:            strings.TrimSpace(input.PlanID),
+		ServiceId:         strings.TrimSpace(input.ServiceID),
+		ServiceName:       strings.TrimSpace(input.ServiceName),
+		ServiceGeneration: input.ServiceGeneration,
+		Image:             strings.TrimSpace(input.Image),
+		Command:           append([]string(nil), input.Command...),
+		Args:              append([]string(nil), input.Args...),
+		Env:               copyStringMap(input.Env),
+		ProjectedFiles:    protoExecutionProjectedFiles(input.ProjectedFiles),
+		PersistentDirs:    protoExecutionPersistentDirs(input.PersistentDirs),
+		ImageCredential:   protoExecutionImageCredential(input.ImageCredential),
+		ContainerPort:     int32(input.ContainerPort),
+		ReadinessPath:     strings.TrimSpace(input.ReadinessPath),
+		Replicas:          int32(input.Replicas),
+		InstanceClass:     strings.TrimSpace(input.InstanceClass),
 	})
 	if err != nil {
-		return cloudplaneapi.ApplyResourcesResponse{}, classifyRPCError(err)
+		return cloudplaneapi.ExecutionPlanResponse{}, classifyRPCError(err)
 	}
-	return applyResourcesResponseFromProto(resp), nil
+	return executionPlanResponseFromProto(resp), nil
 }
 
-func protoConfigSets(items []cloudplaneapi.ConfigSet) []*cloudplanev1.ResourceConfigSet {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*cloudplanev1.ResourceConfigSet, 0, len(items))
-	for _, item := range items {
-		out = append(out, &cloudplanev1.ResourceConfigSet{
-			Id:     strings.TrimSpace(item.ID),
-			Name:   strings.TrimSpace(item.Name),
-			Values: copyStringMap(item.Values),
-		})
-	}
-	return out
-}
-
-func protoSecretSets(items []cloudplaneapi.SecretSet) []*cloudplanev1.ResourceSecretSet {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*cloudplanev1.ResourceSecretSet, 0, len(items))
-	for _, item := range items {
-		out = append(out, &cloudplanev1.ResourceSecretSet{
-			Id:     strings.TrimSpace(item.ID),
-			Name:   strings.TrimSpace(item.Name),
-			Values: copyStringMap(item.Values),
-		})
-	}
-	return out
-}
-
-func protoRegistryCredentials(items []cloudplaneapi.RegistryCredential) []*cloudplanev1.ResourceRegistryCredential {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*cloudplanev1.ResourceRegistryCredential, 0, len(items))
-	for _, item := range items {
-		out = append(out, &cloudplanev1.ResourceRegistryCredential{
-			Id:       strings.TrimSpace(item.ID),
-			Name:     strings.TrimSpace(item.Name),
-			Server:   strings.TrimSpace(item.Server),
-			Username: strings.TrimSpace(item.Username),
-			Password: item.Password,
-		})
-	}
-	return out
-}
-
-func (c *Client) ApplyService(ctx context.Context, serviceID string, serviceName string, input cloudplaneapi.ApplyServiceRequest) (cloudplaneapi.ApplyServiceResponse, error) {
-	resp, err := c.workloadRPC.ApplyService(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyServiceRequest{
-		ServiceId:   strings.TrimSpace(serviceID),
-		Name:        strings.TrimSpace(serviceName),
-		DisplayName: input.DisplayName,
-		Spec: &cloudplanev1.ServiceSpec{
-			Region:               input.Spec.Region,
-			Replicas:             int32(input.Spec.Replicas),
-			InstanceClass:        input.Spec.InstanceClass,
-			Exposure:             input.Spec.Exposure,
-			Image:                input.Spec.Image,
-			Command:              append([]string(nil), input.Spec.Command...),
-			Args:                 append([]string(nil), input.Spec.Args...),
-			DefaultPort:          int32(input.Spec.DefaultPort),
-			ReadinessPath:        input.Spec.ReadinessPath,
-			Env:                  copyStringMap(input.Spec.Env),
-			ConfigSetId:          input.Spec.ConfigSetID,
-			SecretSetId:          input.Spec.SecretSetID,
-			RegistryCredentialId: input.Spec.RegistryCredentialID,
-			ProjectedFiles:       protoServiceProjectedFiles(input.Spec.ProjectedFiles),
-			PersistentDirs:       protoServicePersistentDirs(input.Spec.PersistentDirs),
-		},
-	})
-	if err != nil {
-		return cloudplaneapi.ApplyServiceResponse{}, classifyRPCError(err)
-	}
-	return applyServiceResponseFromProto(resp), nil
-}
-
-func (c *Client) DeleteService(ctx context.Context, serviceID string) error {
-	_, err := c.workloadRPC.DeleteService(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteServiceRequest{
+func (c *Client) DeleteExecutionPlan(ctx context.Context, serviceID string) error {
+	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteExecutionPlanRequest{
 		ServiceId: strings.TrimSpace(serviceID),
 	})
 	if err != nil {
@@ -184,44 +116,46 @@ func (c *Client) DeleteService(ctx context.Context, serviceID string) error {
 	return nil
 }
 
-func (c *Client) GetService(ctx context.Context, serviceID string) (cloudplaneapi.ServiceResponse, error) {
-	resp, err := c.workloadRPC.GetService(withAuth(ctx, c.bearerToken), &cloudplanev1.GetServiceRequest{
-		ServiceId: strings.TrimSpace(serviceID),
-	})
-	if err != nil {
-		return cloudplaneapi.ServiceResponse{}, classifyRPCError(err)
-	}
-	return getServiceResponseFromProto(resp), nil
-}
-
-func protoServiceProjectedFiles(items []projectedfile.Spec) []*cloudplanev1.ProjectedFileSpec {
+func protoExecutionProjectedFiles(items []cloudplaneapi.ExecutionProjectedFile) []*cloudplanev1.ExecutionProjectedFile {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]*cloudplanev1.ProjectedFileSpec, 0, len(items))
-	for _, item := range projectedfile.CloneSpecs(items) {
-		out = append(out, &cloudplanev1.ProjectedFileSpec{
-			MountPath:  item.MountPath,
-			SourceKind: string(item.SourceKind),
-			SourceId:   item.SourceID,
-			SourceKey:  item.SourceKey,
+	out := make([]*cloudplanev1.ExecutionProjectedFile, 0, len(items))
+	for _, item := range items {
+		out = append(out, &cloudplanev1.ExecutionProjectedFile{
+			MountPath: strings.TrimSpace(item.MountPath),
+			Content:   item.Content,
+			Mode:      item.Mode,
+			Sensitive: item.Sensitive,
 		})
 	}
 	return out
 }
 
-func protoServicePersistentDirs(items []persistentdir.Spec) []*cloudplanev1.PersistentDirSpec {
+func protoExecutionPersistentDirs(items []cloudplaneapi.ExecutionPersistentDir) []*cloudplanev1.ExecutionPersistentDir {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]*cloudplanev1.PersistentDirSpec, 0, len(items))
-	for _, item := range persistentdir.CloneSpecs(items) {
-		out = append(out, &cloudplanev1.PersistentDirSpec{
-			Name:      item.Name,
-			MountPath: item.MountPath,
+	out := make([]*cloudplanev1.ExecutionPersistentDir, 0, len(items))
+	for _, item := range items {
+		out = append(out, &cloudplanev1.ExecutionPersistentDir{
+			Name:       strings.TrimSpace(item.Name),
+			MountPath:  strings.TrimSpace(item.MountPath),
+			SourcePath: strings.TrimSpace(item.SourcePath),
 		})
 	}
 	return out
+}
+
+func protoExecutionImageCredential(item *cloudplaneapi.ExecutionImageCredential) *cloudplanev1.ExecutionImageCredential {
+	if item == nil {
+		return nil
+	}
+	return &cloudplanev1.ExecutionImageCredential{
+		Server:   strings.TrimSpace(item.Server),
+		Username: strings.TrimSpace(item.Username),
+		Password: item.Password,
+	}
 }
 
 func resolveTarget(grpcEndpoint string) (string, credentials.TransportCredentials, error) {
@@ -368,141 +302,46 @@ func snapshotFromProto(item *cloudplanev1.PlaneSnapshot) cloudplaneapi.SnapshotR
 			out.RuntimeConfig.Summary = item.GetRuntimeConfig().GetSummary().AsMap()
 		}
 	}
+	out.Executions = executionSnapshotsFromProto(item.GetExecutions())
 	return out
 }
 
-func applyResourcesResponseFromProto(item *cloudplanev1.ApplyResourcesResponse) cloudplaneapi.ApplyResourcesResponse {
-	if item == nil {
-		return cloudplaneapi.ApplyResourcesResponse{}
+func executionSnapshotsFromProto(items []*cloudplanev1.PlaneExecutionSnapshot) []cloudplaneapi.ExecutionSnapshot {
+	if len(items) == 0 {
+		return nil
 	}
-	return cloudplaneapi.ApplyResourcesResponse{
+	out := make([]cloudplaneapi.ExecutionSnapshot, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		view := cloudplaneapi.ExecutionSnapshot{
+			PlanID:             item.GetPlanId(),
+			ServiceID:          item.GetServiceId(),
+			ServiceName:        item.GetServiceName(),
+			ServiceGeneration:  item.GetServiceGeneration(),
+			DesiredReplicas:    int(item.GetDesiredReplicas()),
+			DeployingReplicas:  int(item.GetDeployingReplicas()),
+			RunningReplicas:    int(item.GetRunningReplicas()),
+			FailedReplicas:     int(item.GetFailedReplicas()),
+			SupersededReplicas: int(item.GetSupersededReplicas()),
+			LastStatusReason:   item.GetLastStatusReason(),
+		}
+		if ts := item.GetObservedAt(); ts != nil {
+			view.ObservedAt = ts.AsTime().UTC()
+		}
+		out = append(out, view)
+	}
+	return out
+}
+
+func executionPlanResponseFromProto(item *cloudplanev1.ApplyExecutionPlanResponse) cloudplaneapi.ExecutionPlanResponse {
+	if item == nil {
+		return cloudplaneapi.ExecutionPlanResponse{}
+	}
+	return cloudplaneapi.ExecutionPlanResponse{
 		Action: item.GetAction(),
-	}
-}
-
-func applyServiceResponseFromProto(item *cloudplanev1.ApplyServiceResponse) cloudplaneapi.ApplyServiceResponse {
-	if item == nil {
-		return cloudplaneapi.ApplyServiceResponse{}
-	}
-	return cloudplaneapi.ApplyServiceResponse{
-		Action:            item.GetAction(),
-		DesiredGeneration: item.GetDesiredGeneration(),
-	}
-}
-
-func getServiceResponseFromProto(item *cloudplanev1.GetServiceResponse) cloudplaneapi.ServiceResponse {
-	if item == nil {
-		return cloudplaneapi.ServiceResponse{}
-	}
-	return cloudplaneapi.ServiceResponse{
-		Service: serviceFromProto(item.GetService()),
-		Status:  observedServiceStatusFromProto(item.GetStatus()),
-	}
-}
-
-func serviceFromProto(item *cloudplanev1.Service) cloudplaneapi.Service {
-	if item == nil {
-		return cloudplaneapi.Service{}
-	}
-	metadata := item.GetMetadata()
-	spec := item.GetSpec()
-	status := item.GetStatus()
-	return cloudplaneapi.Service{
-		Metadata: cloudplaneapi.ServiceMetadata{
-			ID:          metadata.GetId(),
-			Name:        metadata.GetName(),
-			DisplayName: metadata.GetDisplayName(),
-		},
-		Spec: cloudplaneapi.ServiceSpec{
-			Region:               spec.GetRegion(),
-			Replicas:             int(spec.GetReplicas()),
-			InstanceClass:        spec.GetInstanceClass(),
-			Exposure:             spec.GetExposure(),
-			Image:                spec.GetImage(),
-			Command:              append([]string(nil), spec.GetCommand()...),
-			Args:                 append([]string(nil), spec.GetArgs()...),
-			DefaultPort:          int(spec.GetDefaultPort()),
-			ReadinessPath:        spec.GetReadinessPath(),
-			Env:                  copyStringMap(spec.GetEnv()),
-			ConfigSetID:          spec.GetConfigSetId(),
-			SecretSetID:          spec.GetSecretSetId(),
-			RegistryCredentialID: spec.GetRegistryCredentialId(),
-			ProjectedFiles:       projectedFilesFromAcceptedProto(spec.GetProjectedFiles()),
-			PersistentDirs:       persistentDirsFromAcceptedProto(spec.GetPersistentDirs()),
-		},
-		Status: cloudplaneapi.ServiceStatus{
-			Phase:               status.GetPhase(),
-			CurrentRevisionID:   status.GetCurrentRevisionId(),
-			CandidateRevisionID: status.GetCandidateRevisionId(),
-			RolloutPhase:        status.GetRolloutPhase(),
-			RolloutMessage:      status.GetRolloutMessage(),
-		},
-	}
-}
-
-func projectedFilesFromAcceptedProto(items []*cloudplanev1.ProjectedFileSpec) []projectedfile.Spec {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]projectedfile.Spec, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, projectedfile.Spec{
-			MountPath:  item.GetMountPath(),
-			SourceKind: (item.GetSourceKind()),
-			SourceID:   item.GetSourceId(),
-			SourceKey:  item.GetSourceKey(),
-		})
-	}
-	return projectedfile.CloneSpecs(out)
-}
-
-func persistentDirsFromAcceptedProto(items []*cloudplanev1.PersistentDirSpec) []persistentdir.Spec {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]persistentdir.Spec, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, persistentdir.Spec{
-			Name:      item.GetName(),
-			MountPath: item.GetMountPath(),
-		})
-	}
-	return persistentdir.CloneSpecs(out)
-}
-
-func observedServiceStatusFromProto(item *cloudplanev1.ObservedServiceStatus) cloudplaneapi.ObservedServiceStatus {
-	if item == nil {
-		return cloudplaneapi.ObservedServiceStatus{}
-	}
-	rollout := cloudplaneapi.ObservedRolloutStatus{}
-	if item.GetRollout() != nil {
-		rollout = cloudplaneapi.ObservedRolloutStatus{
-			Phase:                      item.GetRollout().GetPhase(),
-			Message:                    item.GetRollout().GetMessage(),
-			StableRevisionID:           item.GetRollout().GetStableRevisionId(),
-			CandidateRevisionID:        item.GetRollout().GetCandidateRevisionId(),
-			StableDesiredReplicas:      int(item.GetRollout().GetStableDesiredReplicas()),
-			StableReadyReplicas:        int(item.GetRollout().GetStableReadyReplicas()),
-			StableAvailableReplicas:    int(item.GetRollout().GetStableAvailableReplicas()),
-			CandidateDesiredReplicas:   int(item.GetRollout().GetCandidateDesiredReplicas()),
-			CandidateReadyReplicas:     int(item.GetRollout().GetCandidateReadyReplicas()),
-			CandidateAvailableReplicas: int(item.GetRollout().GetCandidateAvailableReplicas()),
-		}
-		if ts := item.GetRollout().GetObservedAt(); ts != nil {
-			rollout.ObservedAt = ts.AsTime().UTC()
-		}
-	}
-	return cloudplaneapi.ObservedServiceStatus{
-		CurrentRevisionID: item.GetCurrentRevisionId(),
-		Healthy:           item.GetHealthy(),
-		Message:           item.GetMessage(),
-		Rollout:           rollout,
+		PlanID: item.GetPlanId(),
 	}
 }
 

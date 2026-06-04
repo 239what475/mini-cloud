@@ -7,8 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"mini-cloud/internal/common/persistentdir"
-	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
@@ -24,8 +22,7 @@ import (
 
 type stubControlPlaneSouthbound struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
-	cloudplanev1.UnimplementedControlPlaneResourceServiceServer
-	cloudplanev1.UnimplementedControlPlaneWorkloadServiceServer
+	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
 
 	t                 *testing.T
 	wantAuthorization string
@@ -68,44 +65,44 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 			Fingerprint: "runtime-fp-a",
 			Summary:     summary,
 		},
+		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
+			{
+				PlanId:            "svc-1-g12",
+				ServiceId:         "svc-1",
+				ServiceName:       "svc-demo",
+				ServiceGeneration: 12,
+				DesiredReplicas:   2,
+				RunningReplicas:   2,
+			},
+		},
 	}, nil
 }
 
-func (s *stubControlPlaneSouthbound) ApplyResources(ctx context.Context, req *cloudplanev1.ApplyResourcesRequest) (*cloudplanev1.ApplyResourcesResponse, error) {
+func (s *stubControlPlaneSouthbound) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
 	s.assertAuthorization(ctx)
-	if len(req.GetConfigSets()) != 1 || req.GetConfigSets()[0].GetId() != "cfg-1" {
-		s.t.Fatalf("unexpected config sets: %+v", req.GetConfigSets())
+	if req.GetServiceId() != "svc-1" {
+		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
 	}
-	if len(req.GetSecretSets()) != 1 || req.GetSecretSets()[0].GetValues()["token"] != "secret" {
-		s.t.Fatalf("unexpected secret sets: %+v", req.GetSecretSets())
+	if req.GetServiceName() != "svc-demo" {
+		s.t.Fatalf("unexpected service name: %q", req.GetServiceName())
 	}
-	return &cloudplanev1.ApplyResourcesResponse{
+	if req.GetPlanId() != "svc-1-g12" {
+		s.t.Fatalf("unexpected plan id: %q", req.GetPlanId())
+	}
+	return &cloudplanev1.ApplyExecutionPlanResponse{
 		Action: "updated",
+		PlanId: req.GetPlanId(),
 	}, nil
 }
 
-func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+func (s *stubControlPlaneSouthbound) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
 	s.assertAuthorization(ctx)
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
 	}
-	if req.GetName() != "svc-demo" {
-		s.t.Fatalf("unexpected service name: %q", req.GetName())
-	}
-	return &cloudplanev1.ApplyServiceResponse{
-		Action:            "updated",
-		DesiredGeneration: 12,
-	}, nil
-}
-
-func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
-	s.assertAuthorization(ctx)
-	if req.GetServiceId() != "svc-1" {
-		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
-	}
-	return &cloudplanev1.DeleteServiceResponse{
-		Deleted:   true,
+	return &cloudplanev1.DeleteExecutionPlanResponse{
 		ServiceId: req.GetServiceId(),
+		Deleted:   true,
 	}, nil
 }
 
@@ -136,8 +133,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		wantAuthorization: "Bearer test-token",
 	}
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, stub)
-	cloudplanev1.RegisterControlPlaneResourceServiceServer(grpcServer, stub)
-	cloudplanev1.RegisterControlPlaneWorkloadServiceServer(grpcServer, stub)
+	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, stub)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	defer server.Close()
@@ -163,43 +159,36 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if snapshot.RuntimeConfig.Fingerprint != "runtime-fp-a" {
 		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.RuntimeConfig)
 	}
-
-	resourceResp, err := client.ApplyResources(context.Background(), cloudplaneapi.ResourceBundle{
-		ConfigSets: []cloudplaneapi.ConfigSet{{ID: "cfg-1", Name: "cfg", Values: map[string]string{"app": "demo"}}},
-		SecretSets: []cloudplaneapi.SecretSet{{ID: "sec-1", Name: "sec", Values: map[string]string{"token": "secret"}}},
-	})
-	if err != nil {
-		t.Fatalf("ApplyResources returned error: %v", err)
-	}
-	if resourceResp.Action != cloudplaneapi.ApplyActionUpdated {
-		t.Fatalf("unexpected apply resources response: %+v", resourceResp)
+	if len(snapshot.Executions) != 1 || snapshot.Executions[0].PlanID != "svc-1-g12" || snapshot.Executions[0].RunningReplicas != 2 {
+		t.Fatalf("unexpected execution snapshots: %+v", snapshot.Executions)
 	}
 
-	applyResp, err := client.ApplyService(context.Background(), "svc-1", "svc-demo", cloudplaneapi.ApplyServiceRequest{
-		DisplayName: "Demo Service",
-		Spec: cloudplaneapi.ServiceSpec{
-			Region:        "cn-beijing",
-			Replicas:      1,
-			InstanceClass: "u1",
-			Image:         "nginx:latest",
-			DefaultPort:   8080,
-			ProjectedFiles: []projectedfile.Spec{
-				{MountPath: "/etc/app/config.yaml", SourceKind: projectedfile.SourceKindConfigSet, SourceID: "cfg-1", SourceKey: "config.yaml"},
-			},
-			PersistentDirs: []persistentdir.Spec{
-				{Name: "data", MountPath: "/var/lib/app"},
-			},
+	applyResp, err := client.ApplyExecutionPlan(context.Background(), cloudplaneapi.ExecutionPlanRequest{
+		PlanID:            "svc-1-g12",
+		ServiceID:         "svc-1",
+		ServiceName:       "svc-demo",
+		ServiceGeneration: 12,
+		Image:             "nginx:latest",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		Replicas:          1,
+		InstanceClass:     "small",
+		ProjectedFiles: []cloudplaneapi.ExecutionProjectedFile{
+			{MountPath: "/etc/app/config.yaml", Content: "app: demo", Mode: 0444},
+		},
+		PersistentDirs: []cloudplaneapi.ExecutionPersistentDir{
+			{Name: "data", MountPath: "/var/lib/app", SourcePath: "/var/lib/mini-cloud/persistent-dirs/svc-1/data"},
 		},
 	})
 	if err != nil {
-		t.Fatalf("ApplyService returned error: %v", err)
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
-	if applyResp.Action != cloudplaneapi.ApplyActionUpdated || applyResp.DesiredGeneration != 12 {
-		t.Fatalf("unexpected service response: %+v", applyResp)
+	if applyResp.Action != cloudplaneapi.ApplyActionUpdated || applyResp.PlanID != "svc-1-g12" {
+		t.Fatalf("unexpected execution plan response: %+v", applyResp)
 	}
 
-	if err := client.DeleteService(context.Background(), "svc-1"); err != nil {
-		t.Fatalf("DeleteService returned error: %v", err)
+	if err := client.DeleteExecutionPlan(context.Background(), "svc-1"); err != nil {
+		t.Fatalf("DeleteExecutionPlan returned error: %v", err)
 	}
 }
 

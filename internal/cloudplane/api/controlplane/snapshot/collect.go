@@ -52,6 +52,12 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 		return cloudplaneapi.SnapshotResponse{}, fmt.Errorf("load nodes: %w", err)
 	}
 
+	executions, err := s.store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		logger.Error("load execution snapshots failed", "error", err)
+		return cloudplaneapi.SnapshotResponse{}, fmt.Errorf("load execution snapshots: %w", err)
+	}
+
 	runtimeSummary := cloudplaneconfig.BuildSummary(s.config, checkedAt)
 	runtimeSummaryMap, err := cloudplaneconfig.SummaryMap(runtimeSummary)
 	if err != nil {
@@ -105,6 +111,7 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 			Fingerprint: runtimeSummary.Fingerprint,
 			Summary:     runtimeSummaryMap,
 		},
+		Executions: executions,
 	}, nil
 }
 

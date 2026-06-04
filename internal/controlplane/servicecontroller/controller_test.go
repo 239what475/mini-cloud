@@ -6,13 +6,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 	"testing"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
-	planeclient "mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/planeselector"
 	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
@@ -144,51 +141,22 @@ func (f *fakePlanner) PreviewSelection(_ context.Context, input planeselector.Se
 
 type fakeDeploy struct {
 	applyInputs []deploy.ApplyServiceInput
-	remoteByKey map[string]cloudplaneapi.ServiceResponse
 	deleteCalls int
 }
 
 func newFakeDeploy() *fakeDeploy {
-	return &fakeDeploy{remoteByKey: make(map[string]cloudplaneapi.ServiceResponse)}
+	return &fakeDeploy{}
 }
 
 func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
 	f.applyInputs = append(f.applyInputs, input)
-	response := planeServiceResponse(input.Metadata.Name, cloudplaneapi.ObservedRolloutStatus{Phase: controlservice.RolloutPhaseIdle, StableRevisionID: "rev-1", StableDesiredReplicas: input.Spec.Replicas, StableReadyReplicas: input.Spec.Replicas, StableAvailableReplicas: input.Spec.Replicas})
-	f.remoteByKey[planeServiceKey(planeID, input.Metadata.ID)] = response
-	return deploy.ApplyResult{PlaneID: planeID, Action: deploy.ApplyActionUpdated, DesiredGeneration: int64(len(f.applyInputs))}, nil
+	return deploy.ApplyResult{PlaneID: planeID, Action: deploy.ApplyActionUpdated, PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
 }
 
-func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, serviceID string) error {
+func (f *fakeDeploy) DeleteService(_ context.Context, _ string, _ string) error {
 	f.deleteCalls++
-	delete(f.remoteByKey, planeServiceKey(planeID, serviceID))
 	return nil
 }
-
-func (f *fakeDeploy) GetService(_ context.Context, planeID string, serviceID string) (cloudplaneapi.ServiceResponse, error) {
-	item, ok := f.remoteByKey[planeServiceKey(planeID, serviceID)]
-	if !ok {
-		return cloudplaneapi.ServiceResponse{}, planeclient.ErrNotFound
-	}
-	return item, nil
-}
-
-func planeServiceResponse(serviceID string, rollout cloudplaneapi.ObservedRolloutStatus) cloudplaneapi.ServiceResponse {
-	currentRevisionID := rollout.StableRevisionID
-	if strings.TrimSpace(currentRevisionID) == "" {
-		currentRevisionID = rollout.CandidateRevisionID
-	}
-	return cloudplaneapi.ServiceResponse{
-		Service: cloudplaneapi.Service{
-			Metadata: cloudplaneapi.ServiceMetadata{ID: serviceID, Name: serviceID, DisplayName: serviceID},
-			Spec:     cloudplaneapi.ServiceSpec{Region: "cn-beijing", Replicas: 1, InstanceClass: controlservice.InstanceClassSmall, Exposure: "public", Image: "nginx:1.27-alpine", DefaultPort: 80, ReadinessPath: "/"},
-			Status:   cloudplaneapi.ServiceStatus{Phase: "running", CurrentRevisionID: currentRevisionID},
-		},
-		Status: cloudplaneapi.ObservedServiceStatus{Healthy: true, Message: "ready", CurrentRevisionID: currentRevisionID, Rollout: rollout},
-	}
-}
-
-func planeServiceKey(planeID string, serviceID string) string { return planeID + "/" + serviceID }
 
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) plane.Detail {
 	t.Helper()
