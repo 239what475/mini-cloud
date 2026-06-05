@@ -10,9 +10,9 @@ type CreateRequest struct {
 	Name string
 	// ClientToken 是本次创建请求的云厂商幂等 token。
 	ClientToken string
-	// CPUMilli 是单副本需要的 CPU 资源，单位为 millicore。
+	// CPUMilli 是单个 run 需要的 CPU 资源，单位为 millicore。
 	CPUMilli int
-	// MemoryMi 是单副本需要的内存资源，单位为 MiB。
+	// MemoryMi 是单个 run 需要的内存资源，单位为 MiB。
 	MemoryMi int
 }
 
@@ -40,7 +40,7 @@ type Node struct {
 	InstanceName string `json:"instanceName"`
 	// InstanceType 是云厂商实例规格。
 	InstanceType string `json:"instanceType"`
-	// Tags 是云实例上的原始标签；当前仅用于 ownership 诊断和校验，不承载 service/deployment 归属。
+	// Tags 是云实例上的原始标签；当前仅用于 ownership 诊断和校验，不承载 service/run 归属。
 	Tags map[string]string `json:"tags"`
 }
 

@@ -37,7 +37,7 @@ const runtimeNodeSelectColumns = `
 // CreateRuntimeNodeIntent 创建尚未绑定云实例 ID 的 runtime node 意图记录。
 // 参数说明：ctx 控制数据库请求生命周期；input 是扩容意图信息。
 func (s *Store) CreateRuntimeNodeIntent(ctx context.Context, input runtimepool.CreateIntentInput) (runtimepool.Record, error) {
-	// intent 只记录即将创建的通用容量节点，不绑定任何 service/deployment。
+	// intent 只记录即将创建的通用容量节点，不绑定任何 service/run。
 	if err := input.Validate(); err != nil {
 		return runtimepool.Record{}, err
 	}
@@ -190,7 +190,7 @@ func (s *Store) BindRuntimeNodeProvisioned(ctx context.Context, runtimeNodeID st
 		return runtimepool.Record{}, fmt.Errorf("bind runtime node provisioned instance: %w", err)
 	}
 
-	// bind 成功后记录 bootstrap 开始时间；runtime node 是通用容量，不按 service/deployment 计数。
+	// bind 成功后记录 bootstrap 开始时间；runtime node 是通用容量，不按 service/run 计数。
 	if err := recordRuntimeNodeBootstrapStartTx(ctx, tx, item.Provider, item.InstanceID, observedAt.UTC()); err != nil {
 		return runtimepool.Record{}, err
 	}

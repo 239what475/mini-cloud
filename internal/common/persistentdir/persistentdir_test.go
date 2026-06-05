@@ -31,7 +31,7 @@ func TestValidateSpecsRejectsDuplicateName(t *testing.T) {
 	}
 }
 
-func TestValidateSpecsRejectsReplicaRootMount(t *testing.T) {
+func TestValidateSpecsRejectsRootMount(t *testing.T) {
 	t.Parallel()
 
 	err := ValidateSpecs([]Spec{

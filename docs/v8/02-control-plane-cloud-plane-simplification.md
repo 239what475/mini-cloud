@@ -4,9 +4,9 @@
 
 目标不是取消多 cloud-plane。目标是保留“一个 control-plane 管多个云平台 plane”的产品模型，同时避免 control-plane 和 cloud-plane 各自维护一套 service lifecycle 状态机。
 
-## 当前判断
+## 迁移前判断
 
-当前实现已经超过简单 CaaS 平台需要的复杂度。
+迁移前实现已经超过简单 CaaS 平台需要的复杂度。
 
 核心问题是：
 
@@ -56,11 +56,10 @@ cloud-plane 不是无状态代理。它应该保存 plane-local runtime state。
 
 control-plane 是全局事实来源，负责：
 
-- project
 - config set / secret set / registry credential
 - service spec
-- revision
-- deployment
+- service generation
+- service run
 - placement
 - global service status
 - plane selection
@@ -116,7 +115,7 @@ rollback 暂不作为核心能力。
 
 原因是 rollback 不是简单地把 image 改回旧版本。它需要定义：
 
-- 回滚到哪个 revision
+- 回滚到哪个历史 spec / generation
 - config / secret / registry credential 是否仍然有效
 - 当前 candidate 部署到一半时如何处理
 - 多 plane 部分成功时 service 状态如何表达
@@ -125,12 +124,12 @@ rollback 暂不作为核心能力。
 v8 采用更简单的模型：
 
 ```text
-每次更新 service spec 都生成新的 revision / deployment
+每次更新 service spec 都推进 service generation 并创建新的 run
 失败后显示 failed
 用户要恢复旧版本，就重新 apply 旧 spec
 ```
 
-后续如果需要“从旧 revision 创建新变更”的体验，可以在 Web 或 CLI 做辅助操作，但底层仍然是一次普通 apply，不引入特殊 rollback 状态机。
+后续如果需要“从旧 spec 创建新变更”的体验，可以在 Web 或 CLI 做辅助操作，但底层仍然是一次普通 apply，不引入特殊 rollback 状态机。
 
 ### 不把全量 resources 整包同步到 cloud-plane
 
@@ -153,7 +152,7 @@ cloud-plane / node-agent 只接收本次 execution 需要的材料
 
 ```text
 1. 用户创建或更新 service
-2. control-plane 写入 service / revision / deployment
+2. control-plane 写入 service generation / run
 3. control-plane 选择目标 cloud-plane
 4. control-plane 创建属于该 plane 的 execution intents
 5. cloud-plane 拉取或接收属于自己的 execution intents
@@ -161,13 +160,13 @@ cloud-plane / node-agent 只接收本次 execution 需要的材料
 7. node-agent 执行容器并上报结果
 8. cloud-plane 记录 plane-local execution fact
 9. cloud-plane 把 execution result 同步回 control-plane
-10. control-plane 汇总 deployment / service status
+10. control-plane 汇总 run / service status
 ```
 
 重点是：
 
 ```text
-service / revision / deployment truth 在 control-plane
+service generation / run truth 在 control-plane
 node / execution runtime fact 在 cloud-plane
 container runtime fact 在 node-agent
 ```
@@ -285,7 +284,7 @@ v8 的重构必须按一条完整业务链路纵切。每次修改都要覆盖�
 
 ```text
 Web/API create service
--> control-plane 创建 service / revision / deployment / execution
+-> control-plane 创建 service generation / run / execution plan
 -> cloud-plane 拉取 execution
 -> node-agent 执行
 -> execution result 回 control-plane
@@ -298,7 +297,7 @@ Web/API create service
 
 ```text
 更新 image/spec
--> control-plane 创建新 revision / deployment
+-> control-plane 推进 generation 并创建新 run
 -> cloud-plane 执行新 execution
 -> control-plane 聚合新状态
 ```
@@ -321,11 +320,11 @@ delete 必须先做成明确的端到端链路，避免遗留容器和 control-p
 ```text
 cloud-plane 检测 node heartbeat 过期
 -> 上报 control-plane
--> control-plane 标记 affected executions / deployments
+-> control-plane 标记 affected executions / runs
 -> Web 展示 degraded / failed
 ```
 
-node health 是 plane-local 事实，但 service/deployment 状态仍由 control-plane 聚合。
+node health 是 plane-local 事实，但 service/run 状态仍由 control-plane 聚合。
 
 ### Slice 5：移除 replica 模型
 
@@ -362,7 +361,7 @@ mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service
 ### 阶段 3：control-plane status 改为 execution 聚合
 
 - service status 不再依赖 cloud-plane `GetService`。
-- deployment ready / running / failed 来自 plane execution reports。
+- service run ready / running / failed 来自 plane execution reports。
 - Web 只读 control-plane 聚合状态。
 
 ### 阶段 4：切掉 cloud-plane service lifecycle
@@ -380,11 +379,12 @@ mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service
 
 精简完成后，应满足：
 
-- control-plane 是 service / revision / deployment 的唯一事实来源。
+- control-plane 是 service generation / run 的唯一事实来源。
 - cloud-plane 不再有 service desired reconciler。
 - cloud-plane 不再有 rollback API。
 - cloud-plane 不再保存完整 resources。
 - node-agent API 仍保持 unary pull/report 模型。
 - Web 可以只读 control-plane 得到完整 service 状态。
 - 多 cloud-plane 调度仍可工作。
+- service spec、execution plan、cloud-plane 和 node-agent API 不暴露 replicas。
 - 阿里云和腾讯云 plane 的差异限制在 provider driver、runtime node inventory 和 plane-local execution dispatch。

@@ -450,10 +450,10 @@ func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string
 
 	if len(issues) == 0 {
 		return plane.StatusReady, fmt.Sprintf(
-			"sync healthy: %d nodes, %d services, %d deployments",
+			"sync healthy: %d nodes, %d services, %d execution plans",
 			snapshot.Overview.NodesTotal,
 			snapshot.Overview.ServicesTotal,
-			snapshot.Overview.DeploymentsTotal,
+			snapshot.Overview.ExecutionPlansTotal,
 		), alertsFiring
 	}
 
@@ -468,7 +468,7 @@ func buildCapacitySnapshot(snapshot planeSnapshot) plane.RecordCapacitySnapshotI
 		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
 		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
 		ServicesTotal:     snapshot.Overview.ServicesTotal,
-		RunsTotal:         snapshot.Overview.DeploymentsTotal,
+		RunsTotal:         snapshot.Overview.ExecutionPlansTotal,
 		CapturedAt:        snapshot.Health.CheckedAt,
 		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
 		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,

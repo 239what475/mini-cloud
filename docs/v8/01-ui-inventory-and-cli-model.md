@@ -30,14 +30,12 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 | 能力 | HTTP API | 当前展示 |
 | --- | --- | --- |
 | 健康检查 | `GET /api/healthz` | 服务状态、时间、数据库状态字段 |
-| 平台概览 | `GET /api/v1/platform/overview` | service / node / deployment 计数 |
+| 平台概览 | `GET /api/v1/platform/overview` | service / node 计数 |
 | config set 列表 | `GET /api/v1/config-sets` | 名称、ID、key 数量 |
 | secret set 列表 | `GET /api/v1/secret-sets` | 名称、ID、key 数量 |
 | registry credential 列表 | `GET /api/v1/registry-credentials` | 名称、server、username、密码是否配置 |
-| 服务列表 | `GET /api/v1/services` | 服务 spec、状态、当前 revision、rollout |
-| 服务详情 | `GET /api/v1/services/{serviceID}` | 当前 revision、rollout、phase、health、image、runtime inputs |
-| revision 列表 | `GET /api/v1/services/{serviceID}/revisions` | revision number、label、image、port、创建时间 |
-| deployment 列表 | `GET /api/v1/services/{serviceID}/deployments` | revision、状态、副本数、创建时间 |
+| 服务列表 | `GET /api/v1/services` | 服务 spec、状态、当前 run |
+| 服务详情 | `GET /api/v1/services/{serviceID}` | phase、health、image、runtime inputs、placement、run |
 
 ### 写操作
 
@@ -172,8 +170,6 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 ### 服务级
 
 - `service`
-- `revision`
-- `deployment`
 
 ### 控制面运维级
 
@@ -286,28 +282,6 @@ spec:
   secretSetID: ""
   registryCredentialID: ""
 ```
-
-### Revision
-
-```bash
-minicloud revision list --service demo-web
-minicloud revision get --service demo-web <revision>
-```
-
-映射：
-
-- `GET /api/v1/services/{serviceID}/revisions`
-
-### Deployment
-
-```bash
-minicloud deployment list --service demo-web
-minicloud deployment get --service demo-web <deployment>
-```
-
-映射：
-
-- `GET /api/v1/services/{serviceID}/deployments`
 
 ### Logs
 

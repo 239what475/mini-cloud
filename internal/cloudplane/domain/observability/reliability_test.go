@@ -12,15 +12,15 @@ func TestBuildReliabilitySnapshot(t *testing.T) {
 	// 输入同时触发 rollout SLO、runtime node SLO 和多个 alert。
 	snapshot := BuildReliabilitySnapshot(now, ReliabilityInputs{
 		Overview: Overview{
-			DeploymentsFailed: 1,
+			ExecutionPlansFailed: 1,
 		},
-		TerminalDeploymentsLast24h:   10,
-		SuccessfulDeploymentsLast24h: 8,
-		RuntimeNodesTotal:            4,
-		RuntimeNodesReady:            3,
-		RuntimeNodesOffline:          1,
-		DeploymentStuck: DeploymentStuckSignal{
-			ThresholdSeconds: DeploymentStuckThresholdSeconds,
+		TerminalExecutionPlansLast24h:   10,
+		SuccessfulExecutionPlansLast24h: 8,
+		RuntimeNodesTotal:               4,
+		RuntimeNodesReady:               3,
+		RuntimeNodesOffline:             1,
+		ExecutionPlanStuck: ExecutionPlanStuckSignal{
+			ThresholdSeconds: ExecutionPlanStuckThresholdSeconds,
 			Total:            1,
 			Deploying:        1,
 			OldestAgeSeconds: 900,
@@ -39,7 +39,7 @@ func TestBuildReliabilitySnapshot(t *testing.T) {
 		t.Fatalf("expected 2 slos, got %d", len(snapshot.SLOs))
 	}
 	if snapshot.SLOs[0].Status != "breached" {
-		t.Fatalf("revision rollout slo status = %s, want breached", snapshot.SLOs[0].Status)
+		t.Fatalf("execution plan slo status = %s, want breached", snapshot.SLOs[0].Status)
 	}
 	if snapshot.SLOs[1].Status != "breached" {
 		t.Fatalf("runtime node slo status = %s, want breached", snapshot.SLOs[1].Status)

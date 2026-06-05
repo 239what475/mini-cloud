@@ -135,7 +135,7 @@ type ReconcileImpact struct {
 	ServiceID string `json:"serviceID"`
 	// ServiceName 表示 service 名称。
 	ServiceName string `json:"serviceName"`
-	// Reason 说明该 stale node 导致 deployment 受影响的原因。
+	// Reason 说明该 stale node 导致 execution plan 受影响的原因。
 	Reason string `json:"reason"`
 }
 

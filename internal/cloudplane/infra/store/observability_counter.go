@@ -97,11 +97,11 @@ func recordRuntimeNodeBootstrapReadyTx(ctx context.Context, tx *sql.Tx, provider
 	return true, nil
 }
 
-// GetDeploymentRolloutCounterSignal 读取 deployment rollout 计数器信号。
+// GetExecutionPlanRolloutCounterSignal 读取 execution plan 终态计数器信号。
 // 参数说明：ctx 控制数据库请求生命周期。
-func (s *Store) GetDeploymentRolloutCounterSignal(ctx context.Context) (observability.DeploymentRolloutCounterSignal, error) {
-	// v8 不再维护 cloud-plane deployment rollout 表；这里按 execution plan 的当前终态即时聚合。
-	var out observability.DeploymentRolloutCounterSignal
+func (s *Store) GetExecutionPlanRolloutCounterSignal(ctx context.Context) (observability.ExecutionPlanRolloutCounterSignal, error) {
+	// v8 不再维护 cloud-plane rollout 表；这里按 execution plan 的当前终态即时聚合。
+	var out observability.ExecutionPlanRolloutCounterSignal
 	if err := s.db.QueryRowContext(ctx, `
 		WITH plan_counts AS (
 			SELECT
@@ -126,7 +126,7 @@ func (s *Store) GetDeploymentRolloutCounterSignal(ctx context.Context) (observab
 		&out.Success,
 		&out.Failed,
 	); err != nil {
-		return observability.DeploymentRolloutCounterSignal{}, fmt.Errorf("query execution rollout counters: %w", err)
+		return observability.ExecutionPlanRolloutCounterSignal{}, fmt.Errorf("query execution rollout counters: %w", err)
 	}
 	return out, nil
 }

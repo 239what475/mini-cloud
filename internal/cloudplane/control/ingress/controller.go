@@ -34,7 +34,7 @@ type routeSink interface {
 type Controller struct {
 	// logger 记录 ingress 路由构建和应用过程。
 	logger *slog.Logger
-	// store 提供 service、deployment、execution 和 node 查询能力。
+	// store 提供 service execution 和 node 查询能力。
 	store storeReader
 	// cfg 是已校验的 cloud-plane 配置。
 	cfg cloudplaneconfig.Config

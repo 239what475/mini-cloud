@@ -29,13 +29,13 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			Region:     "cn-beijing",
 		},
 		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:       1,
-			ServicesTotal:    2,
-			DeploymentsTotal: 3,
-			NodesReady:       1,
-			NodesNotReady:    0,
-			NodesOffline:     0,
-			NodesDraining:    0,
+			NodesTotal:          1,
+			ServicesTotal:       2,
+			ExecutionPlansTotal: 3,
+			NodesReady:          1,
+			NodesNotReady:       0,
+			NodesOffline:        0,
+			NodesDraining:       0,
 		},
 	})
 	if readyStatus != plane.StatusReady {
@@ -58,10 +58,10 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			Service: "degraded",
 		},
 		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:       2,
-			NodesReady:       1,
-			NodesNotReady:    1,
-			DeploymentsTotal: 1,
+			NodesTotal:          2,
+			NodesReady:          1,
+			NodesNotReady:       1,
+			ExecutionPlansTotal: 1,
 		},
 		Reliability: cloudplaneapi.ReliabilitySummary{
 			AlertsFiring: 1,
@@ -85,10 +85,10 @@ func TestBuildCapacitySnapshotUsesRuntimeNodeCapacityCounts(t *testing.T) {
 			CheckedAt: capturedAt,
 		},
 		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:       3,
-			NodesReady:       2,
-			ServicesTotal:    1,
-			DeploymentsTotal: 2,
+			NodesTotal:          3,
+			NodesReady:          2,
+			ServicesTotal:       1,
+			ExecutionPlansTotal: 2,
 		},
 		Capacity: cloudplaneapi.CapacitySummary{
 			RuntimeNodesTotal:   2,
@@ -515,10 +515,10 @@ func TestSyncRegisteredPlanesKeepsPlaneOutcomesIndependent(t *testing.T) {
 						CheckedAt: checkedAt,
 					},
 					Overview: cloudplaneapi.OverviewSummary{
-						NodesTotal:       1,
-						NodesReady:       1,
-						ServicesTotal:    2,
-						DeploymentsTotal: 3,
+						NodesTotal:          1,
+						NodesReady:          1,
+						ServicesTotal:       2,
+						ExecutionPlansTotal: 3,
 					},
 					Capacity: cloudplaneapi.CapacitySummary{
 						RuntimeNodesTotal:   1,

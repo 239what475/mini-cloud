@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	// DeploymentStuckThresholdSeconds 是判定 deployment 长时间卡在非终态的默认阈值。
-	DeploymentStuckThresholdSeconds = int64((10 * time.Minute) / time.Second)
+	// ExecutionPlanStuckThresholdSeconds 是判定 execution plan 长时间卡在非终态的默认阈值。
+	ExecutionPlanStuckThresholdSeconds = int64((10 * time.Minute) / time.Second)
 	// RuntimeNodeRegistrationTimeoutSeconds 是判定 runtime node bootstrap 超时的默认阈值。
 	RuntimeNodeRegistrationTimeoutSeconds = int64((10 * time.Minute) / time.Second)
 )
@@ -41,46 +41,46 @@ type Overview struct {
 	// NodesOffline 是心跳超时或被判定离线的 node 数量。
 	NodesOffline int `json:"nodesOffline"`
 
-	// DeploymentsTotal 是当前 deployment 总数。
-	DeploymentsTotal int `json:"deploymentsTotal"`
-	// DeploymentsPending 是等待进入调度流程的 deployment 数量。
-	DeploymentsPending int `json:"deploymentsPending"`
-	// DeploymentsScheduling 是正在选择运行节点的 deployment 数量。
-	DeploymentsScheduling int `json:"deploymentsScheduling"`
-	// DeploymentsAssigned 是已经分配节点但执行尚未开始或尚未完成的 deployment 数量。
-	DeploymentsAssigned int `json:"deploymentsAssigned"`
-	// DeploymentsDeploying 是 node-agent 正在部署的 deployment 数量。
-	DeploymentsDeploying int `json:"deploymentsDeploying"`
-	// DeploymentsRunning 是已成功进入 running 的 deployment 数量。
-	DeploymentsRunning int `json:"deploymentsRunning"`
-	// DeploymentsFailed 是终态为 failed 的 deployment 数量。
-	DeploymentsFailed int `json:"deploymentsFailed"`
+	// ExecutionPlansTotal 是当前 execution plan 总数。
+	ExecutionPlansTotal int `json:"executionPlansTotal"`
+	// ExecutionPlansPending 是等待进入调度流程的 execution plan 数量。
+	ExecutionPlansPending int `json:"executionPlansPending"`
+	// ExecutionPlansScheduling 是正在选择运行节点的 execution plan 数量。
+	ExecutionPlansScheduling int `json:"executionPlansScheduling"`
+	// ExecutionPlansAssigned 是已经分配节点但执行尚未开始或尚未完成的 execution plan 数量。
+	ExecutionPlansAssigned int `json:"executionPlansAssigned"`
+	// ExecutionPlansDeploying 是 node-agent 正在执行的 execution plan 数量。
+	ExecutionPlansDeploying int `json:"executionPlansDeploying"`
+	// ExecutionPlansRunning 是已成功进入 running 的 execution plan 数量。
+	ExecutionPlansRunning int `json:"executionPlansRunning"`
+	// ExecutionPlansFailed 是终态为 failed 的 execution plan 数量。
+	ExecutionPlansFailed int `json:"executionPlansFailed"`
 
-	// ExecutionsTotal 是当前 deployment execution 总数。
+	// ExecutionsTotal 是当前 execution intent 总数。
 	ExecutionsTotal int `json:"executionsTotal"`
-	// ExecutionsDeploying 是仍在执行中的 deployment execution 数量。
+	// ExecutionsDeploying 是仍在执行中的 execution intent 数量。
 	ExecutionsDeploying int `json:"executionsDeploying"`
-	// ExecutionsRunning 是已成功运行的 deployment execution 数量。
+	// ExecutionsRunning 是已成功运行的 execution intent 数量。
 	ExecutionsRunning int `json:"executionsRunning"`
-	// ExecutionsFailed 是执行失败的 deployment execution 数量。
+	// ExecutionsFailed 是执行失败的 execution intent 数量。
 	ExecutionsFailed int `json:"executionsFailed"`
 }
 
-// DeploymentStuckSignal 汇总超过阈值仍未进入终态的 deployment。
-type DeploymentStuckSignal struct {
+// ExecutionPlanStuckSignal 汇总超过阈值仍未进入终态的 execution plan。
+type ExecutionPlanStuckSignal struct {
 	// ThresholdSeconds 是本次统计使用的卡住判定阈值秒数。
 	ThresholdSeconds int64 `json:"thresholdSeconds"`
 	// Total 是该信号覆盖的对象总数。
 	Total int `json:"total"`
-	// Pending 是卡在 pending 状态的 deployment 数量。
+	// Pending 是卡在 pending 状态的 execution plan 数量。
 	Pending int `json:"pending"`
-	// Scheduling 是卡在 scheduling 状态的 deployment 数量。
+	// Scheduling 是卡在 scheduling 状态的 execution plan 数量。
 	Scheduling int `json:"scheduling"`
-	// Assigned 是卡在 assigned 状态的 deployment 数量。
+	// Assigned 是卡在 assigned 状态的 execution plan 数量。
 	Assigned int `json:"assigned"`
-	// Deploying 是卡在 deploying 状态的 deployment 数量。
+	// Deploying 是卡在 deploying 状态的 execution plan 数量。
 	Deploying int `json:"deploying"`
-	// OldestAgeSeconds 是最早一条非终态 deployment 已持续的秒数；Total>0 时可用于描述卡住对象的最长持续时间。
+	// OldestAgeSeconds 是最早一条非终态 execution plan 已持续的秒数；Total>0 时可用于描述卡住对象的最长持续时间。
 	OldestAgeSeconds int64 `json:"oldestAgeSeconds"`
 }
 
@@ -100,13 +100,13 @@ type RuntimeNodeRegistrationSignal struct {
 	OldestProvisioningAgeSeconds int64 `json:"oldestProvisioningAgeSeconds"`
 }
 
-// DeploymentRolloutCounterSignal 汇总 deployment 首次终态结果。
-type DeploymentRolloutCounterSignal struct {
-	// Total 是已记录首次终态结果的 deployment 总数。
+// ExecutionPlanRolloutCounterSignal 汇总 execution plan 首次终态结果。
+type ExecutionPlanRolloutCounterSignal struct {
+	// Total 是已记录首次终态结果的 execution plan 总数。
 	Total int64 `json:"total"`
-	// Success 是首次终态为 running 的 deployment 数量。
+	// Success 是首次终态为 running 的 execution plan 数量。
 	Success int64 `json:"success"`
-	// Failed 是首次终态为 failed 的 deployment 数量。
+	// Failed 是首次终态为 failed 的 execution plan 数量。
 	Failed int64 `json:"failed"`
 }
 
@@ -122,10 +122,10 @@ type RuntimeNodeBootstrapCounterSignal struct {
 type ReliabilityInputs struct {
 	// Overview 是平台资源数量和状态概览。
 	Overview Overview
-	// TerminalDeploymentsLast24h 是创建于最近 24 小时且当前状态为 running/failed 的 deployment 数量。
-	TerminalDeploymentsLast24h int
-	// SuccessfulDeploymentsLast24h 是创建于最近 24 小时且当前状态为 running 的 deployment 数量。
-	SuccessfulDeploymentsLast24h int
+	// TerminalExecutionPlansLast24h 是创建于最近 24 小时且当前状态为 running/failed 的 execution plan 数量。
+	TerminalExecutionPlansLast24h int
+	// SuccessfulExecutionPlansLast24h 是创建于最近 24 小时且当前状态为 running 的 execution plan 数量。
+	SuccessfulExecutionPlansLast24h int
 	// RuntimeNodesTotal 是当前 runtime node 总数。
 	RuntimeNodesTotal int
 	// RuntimeNodesReady 是当前 ready 的 runtime node 数量。
@@ -136,12 +136,12 @@ type ReliabilityInputs struct {
 	RuntimeNodesNotReady int
 	// RuntimeNodesDraining 是当前正在排空的 runtime node 数量。
 	RuntimeNodesDraining int
-	// DeploymentStuck 是 deployment 卡住状态聚合。
-	DeploymentStuck DeploymentStuckSignal
+	// ExecutionPlanStuck 是 execution plan 卡住状态聚合。
+	ExecutionPlanStuck ExecutionPlanStuckSignal
 	// RuntimeNodeRegistration 是 runtime node 注册和 bootstrap 状态聚合。
 	RuntimeNodeRegistration RuntimeNodeRegistrationSignal
-	// DeploymentRolloutCounters 是 deployment rollout 结果累计计数器。
-	DeploymentRolloutCounters DeploymentRolloutCounterSignal
+	// ExecutionPlanRolloutCounters 是 execution plan 结果累计计数器。
+	ExecutionPlanRolloutCounters ExecutionPlanRolloutCounterSignal
 	// RuntimeNodeBootstrapCounts 是 runtime node bootstrap 累计计数器。
 	RuntimeNodeBootstrapCounts RuntimeNodeBootstrapCounterSignal
 }
@@ -243,13 +243,13 @@ type DailyCheck struct {
 func BuildReliabilitySnapshot(now time.Time, input ReliabilityInputs) ReliabilitySnapshot {
 	// 先计算平台当前内置的 SLO 状态。
 	slos := []SLOStatus{
-		buildRevisionSLO(input),
+		buildExecutionPlanSLO(input),
 		buildRuntimeNodeReadinessSLO(input),
 	}
 	// 再计算内置告警状态；告警只依赖 input 中的聚合计数和信号。
 	alerts := []AlertStatus{
-		buildRevisionFailureAlert(input),
-		buildDeploymentStuckAlert(input),
+		buildExecutionPlanFailureAlert(input),
+		buildExecutionPlanStuckAlert(input),
 		buildOfflineRuntimeNodeAlert(input),
 		buildRuntimeNodeBootstrapStuckAlert(input),
 	}
@@ -276,22 +276,22 @@ func BuildReliabilitySnapshot(now time.Time, input ReliabilityInputs) Reliabilit
 	}
 }
 
-// buildRevisionSLO 计算创建于最近 24 小时的 deployment 当前成功率 SLO。
+// buildExecutionPlanSLO 计算创建于最近 24 小时的 execution plan 当前成功率 SLO。
 // 参数说明：input 是 store 聚合出的可靠性计算输入。
-func buildRevisionSLO(input ReliabilityInputs) SLOStatus {
-	// revision rollout SLO 复用通用比例 SLO 构造器。
+func buildExecutionPlanSLO(input ReliabilityInputs) SLOStatus {
+	// execution plan 成功率 SLO 复用通用比例 SLO 构造器。
 	return buildRatioSLO(
 		// id 作为机器可读稳定标识，供 UI 或文档引用。
-		"revision-rollout-success-24h",
+		"execution-plan-success-24h",
 		"发布成功率",
 		"24h",
 		// objective 和 metric 是给使用者看的目标说明和统计口径说明。
-		"创建于最近 24 小时的 deployment 当前 running 比例不低于 95%",
-		"deployments created in the last 24h whose current status is running / running or failed",
+		"创建于最近 24 小时的 execution plan 当前 running 比例不低于 95%",
+		"execution plans created in the last 24h whose current status is running / running or failed",
 		0.95,
 		// good/total 来自 store 预聚合结果；没有样本时由 buildRatioSLO 处理为 no_data。
-		input.SuccessfulDeploymentsLast24h,
-		input.TerminalDeploymentsLast24h,
+		input.SuccessfulExecutionPlansLast24h,
+		input.TerminalExecutionPlansLast24h,
 	)
 }
 
@@ -360,28 +360,28 @@ func buildRatioSLO(id string, name string, window string, objective string, metr
 	}
 }
 
-// buildRevisionFailureAlert 根据当前 failed deployment 数量生成发布失败告警。
+// buildExecutionPlanFailureAlert 根据当前 failed execution plan 数量生成发布失败告警。
 // 参数说明：input 是 store 聚合出的可靠性计算输入。
-func buildRevisionFailureAlert(input ReliabilityInputs) AlertStatus {
-	// 当前失败 deployment 数量来自 overview 聚合。
-	failed := input.Overview.DeploymentsFailed
-	// 默认告警为 ok；存在任意 failed deployment 时触发 warning。
+func buildExecutionPlanFailureAlert(input ReliabilityInputs) AlertStatus {
+	// 当前失败 execution plan 数量来自 overview 聚合。
+	failed := input.Overview.ExecutionPlansFailed
+	// 默认告警为 ok；存在任意 failed execution plan 时触发 warning。
 	state := "ok"
-	summary := "当前没有失败 deployment"
+	summary := "当前没有失败 execution plan"
 	if failed > 0 {
 		state = "firing"
-		summary = "存在失败 deployment，需要检查最近 service 更新、重试或发布控制动作"
+		summary = "存在失败 execution plan，需要检查最近 service 更新、重试或发布控制动作"
 	}
 	// Threshold=0 表示只要 observed 大于 0 即触发。
 	return AlertStatus{
-		ID:        "deployment-failures-active",
+		ID:        "execution-plan-failures-active",
 		Name:      "发布失败告警",
 		Severity:  "warning",
 		State:     state,
 		Summary:   summary,
 		Observed:  float64(failed),
 		Threshold: 0,
-		RunbookID: "deployment-failed",
+		RunbookID: "execution-plan-failed",
 	}
 }
 
@@ -409,33 +409,33 @@ func buildOfflineRuntimeNodeAlert(input ReliabilityInputs) AlertStatus {
 	}
 }
 
-// buildDeploymentStuckAlert 根据卡住 deployment 聚合生成发布卡住告警。
+// buildExecutionPlanStuckAlert 根据卡住 execution plan 聚合生成发布卡住告警。
 // 参数说明：input 是 store 聚合出的可靠性计算输入。
-func buildDeploymentStuckAlert(input ReliabilityInputs) AlertStatus {
-	// 默认没有超过阈值仍卡在非终态的 deployment。
+func buildExecutionPlanStuckAlert(input ReliabilityInputs) AlertStatus {
+	// 默认没有超过阈值仍卡在非终态的 execution plan。
 	state := "ok"
-	summary := "当前没有长时间卡住的 deployment。"
-	// Total>0 表示至少一个 deployment 超过卡住阈值。
-	if input.DeploymentStuck.Total > 0 {
+	summary := "当前没有长时间卡住的 execution plan。"
+	// Total>0 表示至少一个 execution plan 超过卡住阈值。
+	if input.ExecutionPlanStuck.Total > 0 {
 		state = "firing"
 		// 告警摘要携带卡住数量、阈值和最老持续时间，方便直接定位严重度。
 		summary = fmt.Sprintf(
-			"存在 %d 个 deployment 超过 %d 秒仍停留在非终态，最老一条已持续 %d 秒。",
-			input.DeploymentStuck.Total,
-			input.DeploymentStuck.ThresholdSeconds,
-			input.DeploymentStuck.OldestAgeSeconds,
+			"存在 %d 个 execution plan 超过 %d 秒仍停留在非终态，最老一条已持续 %d 秒。",
+			input.ExecutionPlanStuck.Total,
+			input.ExecutionPlanStuck.ThresholdSeconds,
+			input.ExecutionPlanStuck.OldestAgeSeconds,
 		)
 	}
-	// Observed 保存当前卡住 deployment 数量。
+	// Observed 保存当前卡住 execution plan 数量。
 	return AlertStatus{
-		ID:        "deployment-rollout-stuck",
+		ID:        "execution-plan-stuck",
 		Name:      "发布长时间卡住告警",
 		Severity:  "critical",
 		State:     state,
 		Summary:   summary,
-		Observed:  float64(input.DeploymentStuck.Total),
+		Observed:  float64(input.ExecutionPlanStuck.Total),
 		Threshold: 0,
-		RunbookID: "deployment-stuck",
+		RunbookID: "execution-plan-stuck",
 	}
 }
 
@@ -474,45 +474,45 @@ func defaultRunbooks() []Runbook {
 	// runbook 是静态知识库，不依赖当前输入；告警通过 RunbookID/AppliesTo 关联。
 	return []Runbook{
 		{
-			// deployment-failed 处理已经进入 failed 终态的发布。
-			ID:        "deployment-failed",
+			// execution-plan-failed 处理已经进入 failed 终态的发布。
+			ID:        "execution-plan-failed",
 			Title:     "发布失败排查",
-			Summary:   "当 deployment 进入 failed，优先确认是调度失败、镜像拉取失败，还是新 revision 健康检查没通过。",
-			AppliesTo: []string{"deployment-failures-active"},
+			Summary:   "当 execution plan 进入 failed，优先确认是调度失败、镜像拉取失败，还是本次 service spec 健康检查没通过。",
+			AppliesTo: []string{"execution-plan-failures-active"},
 			Checks: []string{
-				"通过 control-plane 查看 deployment 列表，确认失败 deployment 的 service、revision 和状态原因。",
+				"通过 control-plane 查看 service run，确认失败 execution plan 的 service、generation 和状态原因。",
 				"通过 control-plane 查看项目操作记录，确认是不是刚发生了 service update、retry 或发布控制动作。",
-				"如果 service 已有旧稳定版本，确认当前 safe deployment 是否仍保持旧流量。",
+				"如果 service 已有旧稳定版本，确认当前 running run 是否仍保持旧流量。",
 			},
 			Actions: []string{
 				"通过 control-plane 对失败 service 执行主动探测，确认当前 backend 是否仍可访问。",
 				"如果只是瞬时问题，可通过 control-plane 触发 retry。",
-				"如果新 revision 本身有问题，修正 service spec 后重新发布；已有旧稳定版本时 cloud-plane 会继续保留旧流量。",
+				"如果本次 service spec 本身有问题，修正后重新发布；已有旧稳定版本时 cloud-plane 会继续保留旧流量。",
 			},
 			Verification: []string{
-				"确认 deployment 不再处于 failed。",
-				"确认 service.status.currentRevision.id 和当前路由已经恢复到预期状态。",
+				"确认 execution plan 不再处于 failed。",
+				"确认 service 当前 run 和当前路由已经恢复到预期状态。",
 			},
 		},
 		{
-			// deployment-stuck 处理长时间停留在 pending/scheduling/assigned/deploying 的发布。
-			ID:        "deployment-stuck",
+			// execution-plan-stuck 处理长时间停留在 pending/scheduling/assigned/deploying 的发布。
+			ID:        "execution-plan-stuck",
 			Title:     "发布长时间卡住排查",
-			Summary:   "当 deployment 长时间停留在 pending、scheduling、assigned 或 deploying，先判断是调度卡住，还是后续执行没有完成。",
-			AppliesTo: []string{"deployment-rollout-stuck"},
+			Summary:   "当 execution plan 长时间停留在 pending 或 deploying，先判断是调度卡住，还是后续执行没有完成。",
+			AppliesTo: []string{"execution-plan-stuck"},
 			Checks: []string{
-				"通过 control-plane 查看 deployment，确认卡住 deployment 当前停在哪个状态，以及最后更新时间。",
+				"通过 control-plane 查看 service run，确认卡住 execution plan 当前停在哪个状态，以及最后更新时间。",
 				"通过 control-plane 查看 placement，确认是不是没有合适节点，还是已经分配到节点但执行没有推进。",
 				"如果已经分配到节点，继续查看对应 execution、node 和日志，确认是 agent 没拉起还是健康检查没完成。",
 			},
 			Actions: []string{
 				"如果是节点容量或状态问题，先处理 runtime node 可用性或重新调度。",
 				"如果是某次部署过程卡死，可按 service 维度执行 retry，或通过 control-plane 停止当前候选发布。",
-				"如果是镜像或配置错误导致，先修正 revision 对应的规格再重新发布。",
+				"如果是镜像或配置错误导致，先修正 service spec 再重新发布。",
 			},
 			Verification: []string{
-				"确认 deployment 不再长期停留在非终态。",
-				"确认对应 service 的当前 revision 已进入 running 或明确 failed。",
+				"确认 execution plan 不再长期停留在非终态。",
+				"确认对应 service 的当前 run 已进入 running 或明确 failed。",
 			},
 		},
 		{
@@ -544,7 +544,7 @@ func defaultRunbooks() []Runbook {
 			AppliesTo: []string{"runtime-node-bootstrap-stuck"},
 			Checks: []string{
 				"通过 control-plane 查看 runtime node，确认哪些节点仍停留在 provisioning，以及 provisionedAt 时间。",
-				"对照对应 deployment 和实例信息，确认云侧实例是否真的已经创建成功。",
+				"对照对应 runtime node 和云实例信息，确认云侧实例是否真的已经创建成功。",
 				"检查该实例上的 agent 进程、bootstrap 日志，以及它到 cloud-plane 的注册、心跳和 ready 链路。",
 			},
 			Actions: []string{
@@ -554,7 +554,7 @@ func defaultRunbooks() []Runbook {
 			},
 			Verification: []string{
 				"确认 runtime node 从 provisioning 进入 ready，且已关联 nodeID。",
-				"确认对应 deployment 可以继续推进到 running。",
+				"确认对应 execution plan 可以继续推进到 running。",
 			},
 		},
 	}
@@ -623,12 +623,12 @@ func buildDeliveryDailyCheck(slo SLOStatus) DailyCheck {
 			Summary: "最近发布成功率没有触发异常。",
 		}
 	}
-	// SLO breached 时，提示检查失败 deployment。
+	// SLO breached 时，提示检查失败 execution plan。
 	return DailyCheck{
 		ID:        "delivery-slo",
 		Title:     "检查最近发布成功率是否健康",
 		Status:    "action_required",
-		Summary:   "最近 24 小时发布成功率低于目标，需要检查失败 deployment。",
-		RunbookID: "deployment-failed",
+		Summary:   "最近 24 小时发布成功率低于目标，需要检查失败 execution plan。",
+		RunbookID: "execution-plan-failed",
 	}
 }

@@ -22,7 +22,7 @@ var errDatabaseUnavailable = errors.New("database unavailable")
 func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, error) {
 	// 阶段一：用独立短 timeout 探测数据库，避免 snapshot 请求被数据库健康检查长期阻塞。
 	// 阶段二：读取本地 overview、reliability、node 清单和配置摘要，形成统一 contract 快照。
-	// 阶段三：只返回聚合视图，不返回 project/service/deployment 明细，避免 southbound 同步接口承担查询 API 职责。
+	// 阶段三：只返回聚合视图，不返回 project/service/run 明细，避免 southbound 同步接口承担查询 API 职责。
 	logger := logctx.Logger(ctx, s.logger)
 	checkedAt := time.Now().UTC()
 	health := cloudplaneapi.HealthSummary{CheckedAt: checkedAt, Service: "ok", Database: "ok"}
@@ -81,25 +81,25 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 		},
 		Health: health,
 		Overview: cloudplaneapi.OverviewSummary{
-			ServicesTotal:         overview.ServicesTotal,
-			ServicesIdle:          overview.ServicesIdle,
-			ServicesDeploying:     overview.ServicesDeploying,
-			ServicesRunning:       overview.ServicesRunning,
-			ServicesDegraded:      overview.ServicesDegraded,
-			ServicesFailed:        overview.ServicesFailed,
-			NodesTotal:            overview.NodesTotal,
-			NodesRegistering:      overview.NodesRegistering,
-			NodesReady:            overview.NodesReady,
-			NodesNotReady:         overview.NodesNotReady,
-			NodesDraining:         overview.NodesDraining,
-			NodesOffline:          overview.NodesOffline,
-			DeploymentsTotal:      overview.DeploymentsTotal,
-			DeploymentsPending:    overview.DeploymentsPending,
-			DeploymentsScheduling: overview.DeploymentsScheduling,
-			DeploymentsAssigned:   overview.DeploymentsAssigned,
-			DeploymentsDeploying:  overview.DeploymentsDeploying,
-			DeploymentsRunning:    overview.DeploymentsRunning,
-			DeploymentsFailed:     overview.DeploymentsFailed,
+			ServicesTotal:            overview.ServicesTotal,
+			ServicesIdle:             overview.ServicesIdle,
+			ServicesDeploying:        overview.ServicesDeploying,
+			ServicesRunning:          overview.ServicesRunning,
+			ServicesDegraded:         overview.ServicesDegraded,
+			ServicesFailed:           overview.ServicesFailed,
+			NodesTotal:               overview.NodesTotal,
+			NodesRegistering:         overview.NodesRegistering,
+			NodesReady:               overview.NodesReady,
+			NodesNotReady:            overview.NodesNotReady,
+			NodesDraining:            overview.NodesDraining,
+			NodesOffline:             overview.NodesOffline,
+			ExecutionPlansTotal:      overview.ExecutionPlansTotal,
+			ExecutionPlansPending:    overview.ExecutionPlansPending,
+			ExecutionPlansScheduling: overview.ExecutionPlansScheduling,
+			ExecutionPlansAssigned:   overview.ExecutionPlansAssigned,
+			ExecutionPlansDeploying:  overview.ExecutionPlansDeploying,
+			ExecutionPlansRunning:    overview.ExecutionPlansRunning,
+			ExecutionPlansFailed:     overview.ExecutionPlansFailed,
 		},
 		Capacity: summarizeCapacity(nodes),
 		Reliability: cloudplaneapi.ReliabilitySummary{

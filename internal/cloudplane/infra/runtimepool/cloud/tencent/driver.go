@@ -169,12 +169,12 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 		return runtimepool.CreateResult{}, fmt.Errorf("runtime node memoryMi must be greater than 0")
 	}
 
-	// 查询实例规格容量，确保所选 instance type 至少能容纳单副本请求。
+	// 查询实例规格容量，确保所选 instance type 至少能容纳单个 run 请求。
 	capacity, err := p.lookupInstanceTypeCapacity()
 	if err != nil {
 		return runtimepool.CreateResult{}, err
 	}
-	// 单台 runtime node 当前按单副本容量需求创建；规格不足时提前失败。
+	// 单台 runtime node 当前按单个 run 容量需求创建；规格不足时提前失败。
 	if request.CPUMilli > capacity.cpuMilli || request.MemoryMi > capacity.memoryMi {
 		return runtimepool.CreateResult{}, fmt.Errorf(
 			"runtime profile instance type %s only has %dm cpu / %dMi memory, which cannot satisfy request %dm / %dMi",

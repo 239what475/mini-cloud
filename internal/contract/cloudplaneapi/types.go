@@ -48,13 +48,13 @@ type OverviewSummary struct {
 	NodesDraining    int `json:"nodesDraining"`
 	NodesOffline     int `json:"nodesOffline"`
 
-	DeploymentsTotal      int `json:"deploymentsTotal"`
-	DeploymentsPending    int `json:"deploymentsPending"`
-	DeploymentsScheduling int `json:"deploymentsScheduling"`
-	DeploymentsAssigned   int `json:"deploymentsAssigned"`
-	DeploymentsDeploying  int `json:"deploymentsDeploying"`
-	DeploymentsRunning    int `json:"deploymentsRunning"`
-	DeploymentsFailed     int `json:"deploymentsFailed"`
+	ExecutionPlansTotal      int `json:"executionPlansTotal"`
+	ExecutionPlansPending    int `json:"executionPlansPending"`
+	ExecutionPlansScheduling int `json:"executionPlansScheduling"`
+	ExecutionPlansAssigned   int `json:"executionPlansAssigned"`
+	ExecutionPlansDeploying  int `json:"executionPlansDeploying"`
+	ExecutionPlansRunning    int `json:"executionPlansRunning"`
+	ExecutionPlansFailed     int `json:"executionPlansFailed"`
 }
 
 type CapacitySummary struct {

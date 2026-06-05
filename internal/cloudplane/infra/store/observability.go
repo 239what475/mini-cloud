@@ -80,7 +80,7 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		return observability.Overview{}, fmt.Errorf("count nodes overview: %w", err)
 	}
 
-	// deployment 兼容字段按 execution plan 聚合，不再读取旧 deployments 表。
+	// execution plan 概览按当前 execution_intents 聚合，不再读取旧 lifecycle 表。
 	if err := s.db.QueryRowContext(ctx, `
 		WITH plan_counts AS (
 			SELECT
@@ -103,15 +103,15 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 			COUNT(*) FILTER (WHERE failed_count > 0)
 		FROM plan_counts
 	`).Scan(
-		&out.DeploymentsTotal,
-		&out.DeploymentsPending,
-		&out.DeploymentsScheduling,
-		&out.DeploymentsAssigned,
-		&out.DeploymentsDeploying,
-		&out.DeploymentsRunning,
-		&out.DeploymentsFailed,
+		&out.ExecutionPlansTotal,
+		&out.ExecutionPlansPending,
+		&out.ExecutionPlansScheduling,
+		&out.ExecutionPlansAssigned,
+		&out.ExecutionPlansDeploying,
+		&out.ExecutionPlansRunning,
+		&out.ExecutionPlansFailed,
 	); err != nil {
-		return observability.Overview{}, fmt.Errorf("count deployments overview: %w", err)
+		return observability.Overview{}, fmt.Errorf("count execution plans overview: %w", err)
 	}
 
 	// 统计 execution intent 总数及主要状态数量；pending 也属于尚未完成的 deploying 口径。
@@ -135,16 +135,16 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 	return out, nil
 }
 
-// GetDeploymentStuckSignal 统计超过阈值仍处于未完成状态的 execution plan。
+// GetExecutionPlanStuckSignal 统计超过阈值仍处于未完成状态的 execution plan。
 // 参数说明：ctx 控制数据库请求生命周期；threshold 表示卡住判定阈值。
-func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Duration) (observability.DeploymentStuckSignal, error) {
+func (s *Store) GetExecutionPlanStuckSignal(ctx context.Context, threshold time.Duration) (observability.ExecutionPlanStuckSignal, error) {
 	// 未传入阈值时使用领域层默认阈值。
 	if threshold <= 0 {
-		threshold = time.Duration(observability.DeploymentStuckThresholdSeconds) * time.Second
+		threshold = time.Duration(observability.ExecutionPlanStuckThresholdSeconds) * time.Second
 	}
 
 	// 输出中保留阈值秒数，方便告警和页面说明口径。
-	out := observability.DeploymentStuckSignal{
+	out := observability.ExecutionPlanStuckSignal{
 		ThresholdSeconds: int64(threshold / time.Second),
 	}
 	// 分状态统计超时 execution plan，并计算最老未完成 plan 的年龄。
@@ -183,7 +183,7 @@ func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Dur
 		&out.Deploying,
 		&out.OldestAgeSeconds,
 	); err != nil {
-		return observability.DeploymentStuckSignal{}, fmt.Errorf("count stuck deployments: %w", err)
+		return observability.ExecutionPlanStuckSignal{}, fmt.Errorf("count stuck execution plans: %w", err)
 	}
 	// total 是各非终态超时状态计数之和。
 	out.Total = out.Pending + out.Scheduling + out.Assigned + out.Deploying
@@ -231,7 +231,7 @@ func (s *Store) GetRuntimeNodeRegistrationSignal(ctx context.Context, threshold 
 // GetPlatformReliabilityInputs 组装计算平台可靠性快照所需的输入信号。
 // 参数说明：ctx 控制数据库请求生命周期。
 func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability.ReliabilityInputs, error) {
-	// 复杂流程说明：可靠性输入需要提取卡住的 deployment 和 runtime node 状态。
+	// 复杂流程说明：可靠性输入需要提取卡住的 execution plan 和 runtime node 状态。
 	// 这里只组装信号，具体健康判断交给 observability 领域层。
 	overview, err := s.GetPlatformOverview(ctx)
 	if err != nil {
@@ -287,14 +287,14 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 			)
 		FROM plan_counts
 	`).Scan(
-		&input.TerminalDeploymentsLast24h,
-		&input.SuccessfulDeploymentsLast24h,
+		&input.TerminalExecutionPlansLast24h,
+		&input.SuccessfulExecutionPlansLast24h,
 	); err != nil {
-		return observability.ReliabilityInputs{}, fmt.Errorf("count deployment slo window: %w", err)
+		return observability.ReliabilityInputs{}, fmt.Errorf("count execution plan slo window: %w", err)
 	}
 
-	// 复用卡住 deployment 信号。
-	input.DeploymentStuck, err = s.GetDeploymentStuckSignal(ctx, time.Duration(observability.DeploymentStuckThresholdSeconds)*time.Second)
+	// 复用卡住 execution plan 信号。
+	input.ExecutionPlanStuck, err = s.GetExecutionPlanStuckSignal(ctx, time.Duration(observability.ExecutionPlanStuckThresholdSeconds)*time.Second)
 	if err != nil {
 		return observability.ReliabilityInputs{}, err
 	}
@@ -306,7 +306,7 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 	}
 
 	// 读取 rollout 结果累计计数器。
-	input.DeploymentRolloutCounters, err = s.GetDeploymentRolloutCounterSignal(ctx)
+	input.ExecutionPlanRolloutCounters, err = s.GetExecutionPlanRolloutCounterSignal(ctx)
 	if err != nil {
 		return observability.ReliabilityInputs{}, err
 	}
