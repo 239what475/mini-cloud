@@ -57,7 +57,10 @@ type serviceStore interface {
 	RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error)
 	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
 	RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error)
+	GetService(context.Context, string) (controlservice.Service, error)
 	GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error)
+	UpdateServiceRun(context.Context, string, int64, controlservice.UpdateRunInput) (controlservice.ServiceRun, error)
+	SupersedeServiceRunsBeforeGeneration(context.Context, string, int64, string) error
 	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
 }
 
@@ -273,7 +276,30 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 		if placement.PlaneID != planeID {
 			continue
 		}
-		status := serviceStatusFromExecutionSnapshot(item)
+		serviceItem, err := s.store.GetService(ctx, item.ServiceID)
+		if err != nil {
+			if errors.Is(err, store.ErrServiceNotFound) {
+				continue
+			}
+			return err
+		}
+		if item.ServiceGeneration != serviceItem.Metadata.Generation {
+			continue
+		}
+		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
+		_, runErr := s.store.UpdateServiceRun(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateRunInput{
+			Status:     status.Run.Phase,
+			Message:    status.Run.Message,
+			ObservedAt: status.Run.LastObservedAt,
+		})
+		if runErr != nil && !errors.Is(runErr, store.ErrServiceRunNotFound) {
+			return runErr
+		}
+		if status.Run.Phase == controlservice.RunPhaseRunning {
+			if err := s.store.SupersedeServiceRunsBeforeGeneration(ctx, item.ServiceID, item.ServiceGeneration, "superseded by a newer running service run"); err != nil {
+				return err
+			}
+		}
 		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateStatusInput{
 			ObservedGeneration: status.ObservedGeneration,
 			Phase:              status.Phase,
@@ -281,7 +307,7 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 			Message:            status.Message,
 			Conditions:         status.Conditions,
 			LastReconciledAt:   status.LastReconciledAt,
-			Rollout:            &status.Rollout,
+			Run:                &status.Run,
 		}); err != nil {
 			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 				continue
@@ -294,10 +320,10 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 
 type executionDerivedStatus struct {
 	controlservice.Status
-	Rollout controlservice.RolloutStatus
+	Run controlservice.RunStatus
 }
 
-func serviceStatusFromExecutionSnapshot(item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
+func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
 	now := item.ObservedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -307,19 +333,32 @@ func serviceStatusFromExecutionSnapshot(item cloudplaneapi.ExecutionSnapshot) ex
 	healthy := false
 	readyCondition := controlservice.ConditionFalse
 	readyReason := controlservice.ReasonPlaneServiceNotHealthy
-	rolloutPhase := controlservice.RolloutPhaseProgressing
+	runPhase := controlservice.RunPhaseDispatching
 
 	switch {
 	case item.FailedReplicas > 0:
 		phase = controlservice.PhaseDegraded
-		rolloutPhase = controlservice.RolloutPhaseFailed
+		runPhase = controlservice.RunPhaseFailed
 	case item.DesiredReplicas > 0 && item.RunningReplicas >= item.DesiredReplicas:
 		phase = controlservice.PhaseReady
 		healthy = true
 		readyCondition = controlservice.ConditionTrue
 		readyReason = controlservice.ReasonPlaneServiceReady
-		rolloutPhase = controlservice.RolloutPhaseIdle
+		runPhase = controlservice.RunPhaseRunning
 	}
+	runStatus := controlservice.CloneRunStatus(serviceItem.Status.Run)
+	runStatus.LatestRunID = item.PlanID
+	if runPhase == controlservice.RunPhaseRunning {
+		runStatus.CurrentRunID = item.PlanID
+	}
+	runStatus.Phase = runPhase
+	runStatus.Message = message
+	runStatus.DesiredReplicas = item.DesiredReplicas
+	runStatus.DeployingReplicas = item.DeployingReplicas
+	runStatus.RunningReplicas = item.RunningReplicas
+	runStatus.FailedReplicas = item.FailedReplicas
+	runStatus.SupersededReplicas = item.SupersededReplicas
+	runStatus.LastObservedAt = &now
 
 	return executionDerivedStatus{
 		Status: controlservice.Status{
@@ -334,15 +373,7 @@ func serviceStatusFromExecutionSnapshot(item cloudplaneapi.ExecutionSnapshot) ex
 			},
 			LastReconciledAt: &now,
 		},
-		Rollout: controlservice.RolloutStatus{
-			Phase:                      rolloutPhase,
-			Message:                    message,
-			CandidateRevisionID:        item.PlanID,
-			CandidateDesiredReplicas:   item.DesiredReplicas,
-			CandidateReadyReplicas:     item.RunningReplicas,
-			CandidateAvailableReplicas: item.RunningReplicas,
-			LastObservedAt:             &now,
-		},
+		Run: runStatus,
 	}
 }
 
@@ -419,7 +450,7 @@ func buildCapacitySnapshot(snapshot planeSnapshot) plane.RecordCapacitySnapshotI
 		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
 		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
 		ServicesTotal:     snapshot.Overview.ServicesTotal,
-		DeploymentsTotal:  snapshot.Overview.DeploymentsTotal,
+		RunsTotal:         snapshot.Overview.DeploymentsTotal,
 		CapturedAt:        snapshot.Health.CheckedAt,
 		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
 		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,

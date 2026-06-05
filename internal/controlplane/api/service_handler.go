@@ -16,34 +16,24 @@ import (
 	"mini-cloud/internal/controlplane/store"
 )
 
-type serviceCurrentRevision struct {
-	ID    string `json:"id"`
-	Label string `json:"label"`
-}
-
-type serviceRevisionPolicy struct {
-	Strategy string `json:"strategy"`
-}
-
 type serviceSpec struct {
-	Provider             string                `json:"provider"`
-	Region               string                `json:"region"`
-	PinnedPlaneID        string                `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                   `json:"replicas"`
-	InstanceClass        string                `json:"instanceClass"`
-	RevisionPolicy       serviceRevisionPolicy `json:"revisionPolicy"`
-	Exposure             string                `json:"exposure"`
-	Image                string                `json:"image"`
-	Command              []string              `json:"command,omitempty"`
-	Args                 []string              `json:"args,omitempty"`
-	DefaultPort          int                   `json:"defaultPort"`
-	ReadinessPath        string                `json:"readinessPath"`
-	Env                  map[string]string     `json:"env,omitempty"`
-	ConfigSetID          string                `json:"configSetID,omitempty"`
-	SecretSetID          string                `json:"secretSetID,omitempty"`
-	RegistryCredentialID string                `json:"registryCredentialID,omitempty"`
-	ProjectedFiles       []projectedfile.Spec  `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec  `json:"persistentDirs,omitempty"`
+	Provider             string               `json:"provider"`
+	Region               string               `json:"region"`
+	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
+	Replicas             int                  `json:"replicas"`
+	InstanceClass        string               `json:"instanceClass"`
+	Exposure             string               `json:"exposure"`
+	Image                string               `json:"image"`
+	Command              []string             `json:"command,omitempty"`
+	Args                 []string             `json:"args,omitempty"`
+	DefaultPort          int                  `json:"defaultPort"`
+	ReadinessPath        string               `json:"readinessPath"`
+	Env                  map[string]string    `json:"env,omitempty"`
+	ConfigSetID          string               `json:"configSetID,omitempty"`
+	SecretSetID          string               `json:"secretSetID,omitempty"`
+	RegistryCredentialID string               `json:"registryCredentialID,omitempty"`
+	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
+	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 }
 
 type serviceCondition struct {
@@ -55,33 +45,29 @@ type serviceCondition struct {
 	LastTransitionAt   string `json:"lastTransitionAt"`
 }
 
-type serviceRolloutStatus struct {
-	Phase                      string                  `json:"phase"`
-	Message                    string                  `json:"message,omitempty"`
-	StableRevisionID           string                  `json:"stableRevisionID,omitempty"`
-	CandidateRevisionID        string                  `json:"candidateRevisionID,omitempty"`
-	StableDesiredReplicas      int                     `json:"stableDesiredReplicas"`
-	StableReadyReplicas        int                     `json:"stableReadyReplicas"`
-	StableAvailableReplicas    int                     `json:"stableAvailableReplicas"`
-	CandidateDesiredReplicas   int                     `json:"candidateDesiredReplicas"`
-	CandidateReadyReplicas     int                     `json:"candidateReadyReplicas"`
-	CandidateAvailableReplicas int                     `json:"candidateAvailableReplicas"`
-	LastObservedAt             string                  `json:"lastObservedAt,omitempty"`
-	StableRevision             *serviceCurrentRevision `json:"stableRevision,omitempty"`
-	CandidateRevision          *serviceCurrentRevision `json:"candidateRevision,omitempty"`
+type serviceRunStatus struct {
+	CurrentRunID       string `json:"currentRunID,omitempty"`
+	LatestRunID        string `json:"latestRunID,omitempty"`
+	Phase              string `json:"phase"`
+	Message            string `json:"message,omitempty"`
+	DesiredReplicas    int    `json:"desiredReplicas"`
+	DeployingReplicas  int    `json:"deployingReplicas"`
+	RunningReplicas    int    `json:"runningReplicas"`
+	FailedReplicas     int    `json:"failedReplicas"`
+	SupersededReplicas int    `json:"supersededReplicas"`
+	LastObservedAt     string `json:"lastObservedAt,omitempty"`
 }
 
 type serviceStatus struct {
-	ObservedGeneration int64                   `json:"observedGeneration"`
-	DesiredState       string                  `json:"desiredState"`
-	Phase              string                  `json:"phase"`
-	Healthy            bool                    `json:"healthy"`
-	Message            string                  `json:"message,omitempty"`
-	Conditions         []serviceCondition      `json:"conditions,omitempty"`
-	LastReconciledAt   *time.Time              `json:"lastReconciledAt,omitempty"`
-	CurrentRevision    *serviceCurrentRevision `json:"currentRevision,omitempty"`
-	Rollout            serviceRolloutStatus    `json:"rollout"`
-	Placement          *servicePlacement       `json:"placement,omitempty"`
+	ObservedGeneration int64              `json:"observedGeneration"`
+	DesiredState       string             `json:"desiredState"`
+	Phase              string             `json:"phase"`
+	Healthy            bool               `json:"healthy"`
+	Message            string             `json:"message,omitempty"`
+	Conditions         []serviceCondition `json:"conditions,omitempty"`
+	LastReconciledAt   *time.Time         `json:"lastReconciledAt,omitempty"`
+	Run                serviceRunStatus   `json:"run"`
+	Placement          *servicePlacement  `json:"placement,omitempty"`
 }
 
 type servicePlacement struct {
@@ -109,24 +95,23 @@ type serviceEnvelope struct {
 }
 
 type serviceSpecInput struct {
-	Provider             string                `json:"provider"`
-	Region               string                `json:"region"`
-	PinnedPlaneID        string                `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                   `json:"replicas"`
-	InstanceClass        string                `json:"instanceClass"`
-	RevisionPolicy       serviceRevisionPolicy `json:"revisionPolicy"`
-	Exposure             string                `json:"exposure"`
-	Image                string                `json:"image"`
-	Command              []string              `json:"command"`
-	Args                 []string              `json:"args"`
-	DefaultPort          int                   `json:"defaultPort"`
-	ReadinessPath        string                `json:"readinessPath"`
-	Env                  map[string]string     `json:"env"`
-	ConfigSetID          string                `json:"configSetID"`
-	SecretSetID          string                `json:"secretSetID"`
-	RegistryCredentialID string                `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec  `json:"projectedFiles"`
-	PersistentDirs       []persistentdir.Spec  `json:"persistentDirs"`
+	Provider             string               `json:"provider"`
+	Region               string               `json:"region"`
+	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
+	Replicas             int                  `json:"replicas"`
+	InstanceClass        string               `json:"instanceClass"`
+	Exposure             string               `json:"exposure"`
+	Image                string               `json:"image"`
+	Command              []string             `json:"command"`
+	Args                 []string             `json:"args"`
+	DefaultPort          int                  `json:"defaultPort"`
+	ReadinessPath        string               `json:"readinessPath"`
+	Env                  map[string]string    `json:"env"`
+	ConfigSetID          string               `json:"configSetID"`
+	SecretSetID          string               `json:"secretSetID"`
+	RegistryCredentialID string               `json:"registryCredentialID"`
+	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles"`
+	PersistentDirs       []persistentdir.Spec `json:"persistentDirs"`
 }
 
 type serviceCreateRequest struct {
@@ -332,14 +317,11 @@ func buildServiceResource(view servicecontroller.View) serviceResource {
 			Generation:  view.Service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
-			Provider:      view.Service.Spec.Provider,
-			Region:        view.Service.Spec.Region,
-			PinnedPlaneID: view.Service.Spec.PinnedPlaneID,
-			Replicas:      view.Service.Spec.Replicas,
-			InstanceClass: view.Service.Spec.InstanceClass,
-			RevisionPolicy: serviceRevisionPolicy{
-				Strategy: string(view.Service.Spec.RevisionPolicy.Strategy),
-			},
+			Provider:             view.Service.Spec.Provider,
+			Region:               view.Service.Spec.Region,
+			PinnedPlaneID:        view.Service.Spec.PinnedPlaneID,
+			Replicas:             view.Service.Spec.Replicas,
+			InstanceClass:        view.Service.Spec.InstanceClass,
 			Exposure:             view.Service.Spec.Exposure,
 			Image:                view.Service.Spec.Image,
 			Command:              append([]string(nil), view.Service.Spec.Command...),
@@ -367,14 +349,7 @@ func buildServiceStatus(view servicecontroller.View) serviceStatus {
 		Message:            serviceItem.Status.Observed.Message,
 		Conditions:         buildServiceConditions(serviceItem.Status.Observed.Conditions),
 		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
-		Rollout:            buildServiceRollout(serviceItem.Status.Rollout),
-	}
-	currentRevisionID := strings.TrimSpace(serviceItem.Status.Rollout.StableRevisionID)
-	if currentRevisionID != "" {
-		status.CurrentRevision = &serviceCurrentRevision{
-			ID:    currentRevisionID,
-			Label: currentRevisionID,
-		}
+		Run:                buildServiceRun(serviceItem.Status.Run),
 	}
 	if view.Placement != nil {
 		status.Placement = &servicePlacement{
@@ -387,33 +362,20 @@ func buildServiceStatus(view servicecontroller.View) serviceStatus {
 	return status
 }
 
-func buildServiceRollout(input controlservice.RolloutStatus) serviceRolloutStatus {
-	out := serviceRolloutStatus{
-		Phase:                      input.Phase,
-		Message:                    input.Message,
-		StableRevisionID:           input.StableRevisionID,
-		CandidateRevisionID:        input.CandidateRevisionID,
-		StableDesiredReplicas:      input.StableDesiredReplicas,
-		StableReadyReplicas:        input.StableReadyReplicas,
-		StableAvailableReplicas:    input.StableAvailableReplicas,
-		CandidateDesiredReplicas:   input.CandidateDesiredReplicas,
-		CandidateReadyReplicas:     input.CandidateReadyReplicas,
-		CandidateAvailableReplicas: input.CandidateAvailableReplicas,
+func buildServiceRun(input controlservice.RunStatus) serviceRunStatus {
+	out := serviceRunStatus{
+		CurrentRunID:       input.CurrentRunID,
+		LatestRunID:        input.LatestRunID,
+		Phase:              input.Phase,
+		Message:            input.Message,
+		DesiredReplicas:    input.DesiredReplicas,
+		DeployingReplicas:  input.DeployingReplicas,
+		RunningReplicas:    input.RunningReplicas,
+		FailedReplicas:     input.FailedReplicas,
+		SupersededReplicas: input.SupersededReplicas,
 	}
 	if input.LastObservedAt != nil {
 		out.LastObservedAt = input.LastObservedAt.UTC().Format(time.RFC3339)
-	}
-	if strings.TrimSpace(input.StableRevisionID) != "" {
-		out.StableRevision = &serviceCurrentRevision{
-			ID:    input.StableRevisionID,
-			Label: input.StableRevisionID,
-		}
-	}
-	if strings.TrimSpace(input.CandidateRevisionID) != "" {
-		out.CandidateRevision = &serviceCurrentRevision{
-			ID:    input.CandidateRevisionID,
-			Label: input.CandidateRevisionID,
-		}
 	}
 	return out
 }
@@ -475,9 +437,6 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
 			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
 			PersistentDirs:       persistentdir.CloneSpecs(spec.PersistentDirs),
-			RevisionPolicy: controlservice.RevisionPolicy{
-				Strategy: strings.TrimSpace(spec.RevisionPolicy.Strategy),
-			},
 		},
 	}, nil
 }
@@ -507,9 +466,6 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
 			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
 			PersistentDirs:       persistentdir.CloneSpecs(spec.PersistentDirs),
-			RevisionPolicy: controlservice.RevisionPolicy{
-				Strategy: strings.TrimSpace(spec.RevisionPolicy.Strategy),
-			},
 		},
 	}, nil
 }
@@ -531,7 +487,7 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
 		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
 		errors.Is(err, controlservice.ErrPersistentDirsReplicaLimit) ||
-		errors.Is(err, controlservice.ErrPersistentDirsRolloutUnsupported) ||
+		errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) ||
 		errors.Is(err, controlservice.ErrPersistentDirsPlacementChangeUnsupported) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||

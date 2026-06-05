@@ -1,10 +1,4 @@
 -- +goose Up
-ALTER TABLE fleet_service_cells
-    ADD COLUMN IF NOT EXISTS spec_revision_policy_json JSONB NOT NULL DEFAULT '{}'::jsonb;
-
-ALTER TABLE fleet_service_cells
-    ADD COLUMN IF NOT EXISTS status_rollout_json JSONB NOT NULL DEFAULT '{}'::jsonb;
-
 ALTER TABLE fleet_service_cell_assignments
     ADD COLUMN IF NOT EXISTS replica_index INTEGER NOT NULL DEFAULT 0;
 
@@ -30,9 +24,3 @@ ALTER TABLE fleet_service_cell_assignments
 
 ALTER TABLE fleet_service_cell_assignments
     DROP COLUMN IF EXISTS replica_index;
-
-ALTER TABLE fleet_service_cells
-    DROP COLUMN IF EXISTS status_rollout_json;
-
-ALTER TABLE fleet_service_cells
-    DROP COLUMN IF EXISTS spec_revision_policy_json;

@@ -20,8 +20,6 @@ const serviceCellSelectColumns = `
 	spec_pinned_plane_id,
 	spec_replicas,
 	spec_instance_class,
-	spec_revision_policy_json,
-	status_rollout_json,
 	status_desired_state,
 	status_observed_generation,
 	status_phase,
@@ -93,14 +91,6 @@ func (s *Store) updateServiceCellStatus(ctx context.Context, serviceID string, c
 	if err != nil {
 		return controlservice.Cell{}, fmt.Errorf("marshal service cell status conditions: %w", err)
 	}
-	rollout := current.Rollout
-	if input.Rollout != nil {
-		rollout = *input.Rollout
-	}
-	rolloutJSON, err := marshalJSON(rollout, controlservice.RolloutStatus{})
-	if err != nil {
-		return controlservice.Cell{}, fmt.Errorf("marshal service cell rollout status: %w", err)
-	}
 
 	query := `
 		UPDATE fleet_service_cells AS c
@@ -111,7 +101,6 @@ func (s *Store) updateServiceCellStatus(ctx context.Context, serviceID string, c
 			status_message = $6,
 			status_conditions_json = $7,
 			status_last_reconciled_at = $8,
-			status_rollout_json = $9,
 			updated_at = now()
 		WHERE c.service_id = $1
 			AND c.cell_key = $2
@@ -125,7 +114,6 @@ func (s *Store) updateServiceCellStatus(ctx context.Context, serviceID string, c
 		input.Message,
 		statusConditionsJSON,
 		input.LastReconciledAt,
-		rolloutJSON,
 	}
 	if expectedGeneration != nil {
 		query += `
@@ -133,7 +121,7 @@ func (s *Store) updateServiceCellStatus(ctx context.Context, serviceID string, c
 				SELECT 1
 				FROM fleet_services s
 				WHERE s.id = c.service_id
-					AND s.generation = $10
+					AND s.generation = $9
 			)
 		`
 		args = append(args, *expectedGeneration)
@@ -190,8 +178,6 @@ func (s *Store) DeleteServiceCellForGeneration(ctx context.Context, serviceID st
 func scanServiceCell(scanner interface{ Scan(dest ...any) error }) (controlservice.Cell, error) {
 	var item controlservice.Cell
 	var pinnedPlaneID sql.NullString
-	var revisionPolicyJSON []byte
-	var rolloutJSON []byte
 	var conditionsJSON []byte
 	var lastReconciledAt sql.NullTime
 	if err := scanner.Scan(
@@ -203,8 +189,6 @@ func scanServiceCell(scanner interface{ Scan(dest ...any) error }) (controlservi
 		&pinnedPlaneID,
 		&item.Replicas,
 		&item.InstanceClass,
-		&revisionPolicyJSON,
-		&rolloutJSON,
 		&item.DesiredState,
 		&item.Status.ObservedGeneration,
 		&item.Status.Phase,
@@ -220,14 +204,6 @@ func scanServiceCell(scanner interface{ Scan(dest ...any) error }) (controlservi
 	if pinnedPlaneID.Valid {
 		item.PinnedPlaneID = pinnedPlaneID.String
 	}
-	if err := unmarshalJSON(revisionPolicyJSON, &item.RevisionPolicy, controlservice.RevisionPolicy{}); err != nil {
-		return controlservice.Cell{}, fmt.Errorf("decode service cell revision policy: %w", err)
-	}
-	item.RevisionPolicy = item.RevisionPolicy.Normalized()
-	if err := unmarshalJSON(rolloutJSON, &item.Rollout, controlservice.RolloutStatus{}); err != nil {
-		return controlservice.Cell{}, fmt.Errorf("decode service cell rollout status: %w", err)
-	}
-	item.Rollout.Phase = controlservice.NormalizeRolloutPhase(item.Rollout.Phase)
 	if err := unmarshalJSON(conditionsJSON, &item.Status.Conditions, []controlservice.Condition{}); err != nil {
 		return controlservice.Cell{}, fmt.Errorf("decode service cell status conditions: %w", err)
 	}

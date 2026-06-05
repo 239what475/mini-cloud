@@ -334,9 +334,9 @@ func (h controlHandler) updatePlaneOperation(w http.ResponseWriter, r *http.Requ
 		TargetID:   planeID,
 		TargetName: planeDetail.Name,
 		Details: map[string]any{
-			"state":                   updated.State,
-			"reason":                  updated.Reason,
-			"acceptingNewDeployments": updated.AcceptingNewDeployments(),
+			"state":            updated.State,
+			"reason":           updated.Reason,
+			"acceptingNewRuns": updated.AcceptingNewRuns(),
 		},
 	})
 
@@ -382,7 +382,7 @@ func (h controlHandler) recordPlaneCapacitySnapshot(w http.ResponseWriter, r *ht
 			"nodesTotal":        created.NodesTotal,
 			"nodesReady":        created.NodesReady,
 			"servicesTotal":     created.ServicesTotal,
-			"deploymentsTotal":  created.DeploymentsTotal,
+			"runsTotal":         created.RunsTotal,
 			"cpuMilliCapacity":  created.CPUMilliCapacity,
 			"cpuMilliAllocated": created.CPUMilliAllocated,
 			"memoryMiCapacity":  created.MemoryMiCapacity,
@@ -617,7 +617,7 @@ func isPlaneInputError(err error) bool {
 		errors.Is(err, plane.ErrInvalidNodesReady) ||
 		errors.Is(err, plane.ErrInvalidNodesReadyExceedsTotal) ||
 		errors.Is(err, plane.ErrInvalidServicesTotal) ||
-		errors.Is(err, plane.ErrInvalidDeploymentsTotal) ||
+		errors.Is(err, plane.ErrInvalidRunsTotal) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliCapacity) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliAllocated) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliAllocation) ||

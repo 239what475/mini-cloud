@@ -99,6 +99,7 @@ func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.Exe
 		ReadinessPath:     strings.TrimSpace(input.ReadinessPath),
 		Replicas:          int32(input.Replicas),
 		InstanceClass:     strings.TrimSpace(input.InstanceClass),
+		Exposure:          strings.TrimSpace(input.Exposure),
 	})
 	if err != nil {
 		return cloudplaneapi.ExecutionPlanResponse{}, classifyRPCError(err)

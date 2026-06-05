@@ -34,7 +34,7 @@ var (
 	ErrInvalidNodesReady             = errors.New("nodesReady must be greater than or equal to 0")
 	ErrInvalidNodesReadyExceedsTotal = errors.New("nodesReady must be less than or equal to nodesTotal")
 	ErrInvalidServicesTotal          = errors.New("servicesTotal must be greater than or equal to 0")
-	ErrInvalidDeploymentsTotal       = errors.New("deploymentsTotal must be greater than or equal to 0")
+	ErrInvalidRunsTotal              = errors.New("runsTotal must be greater than or equal to 0")
 	ErrInvalidCPUMilliCapacity       = errors.New("cpuMilliCapacity must be greater than or equal to 0")
 	ErrInvalidCPUMilliAllocated      = errors.New("cpuMilliAllocated must be greater than or equal to 0")
 	ErrInvalidCPUMilliAllocation     = errors.New("cpuMilliAllocated must be less than or equal to cpuMilliCapacity")
@@ -86,7 +86,7 @@ type CapacitySnapshot struct {
 	NodesTotal        int       `json:"nodesTotal"`
 	NodesReady        int       `json:"nodesReady"`
 	ServicesTotal     int       `json:"servicesTotal"`
-	DeploymentsTotal  int       `json:"deploymentsTotal"`
+	RunsTotal         int       `json:"runsTotal"`
 	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
 	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
 	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
@@ -175,7 +175,7 @@ type RecordCapacitySnapshotInput struct {
 	NodesTotal        int       `json:"nodesTotal"`
 	NodesReady        int       `json:"nodesReady"`
 	ServicesTotal     int       `json:"servicesTotal"`
-	DeploymentsTotal  int       `json:"deploymentsTotal"`
+	RunsTotal         int       `json:"runsTotal"`
 	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
 	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
 	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
@@ -264,8 +264,8 @@ func (in RecordCapacitySnapshotInput) Validate() error {
 		return ErrInvalidNodesReadyExceedsTotal
 	case in.ServicesTotal < 0:
 		return ErrInvalidServicesTotal
-	case in.DeploymentsTotal < 0:
-		return ErrInvalidDeploymentsTotal
+	case in.RunsTotal < 0:
+		return ErrInvalidRunsTotal
 	case in.CPUMilliCapacity < 0:
 		return ErrInvalidCPUMilliCapacity
 	case in.CPUMilliAllocated < 0:
@@ -322,7 +322,7 @@ func IsOperationState(state string) bool {
 	}
 }
 
-func OperationStateAcceptingNewDeployments(state string) bool {
+func OperationStateAcceptingNewRuns(state string) bool {
 	return state == OperationStateActive
 }
 
@@ -333,8 +333,8 @@ func (o Operation) ResolvedState() string {
 	return OperationStateActive
 }
 
-func (o Operation) AcceptingNewDeployments() bool {
-	return OperationStateAcceptingNewDeployments(o.ResolvedState())
+func (o Operation) AcceptingNewRuns() bool {
+	return OperationStateAcceptingNewRuns(o.ResolvedState())
 }
 
 func normalizeGRPCEndpoint(raw string) (string, error) {

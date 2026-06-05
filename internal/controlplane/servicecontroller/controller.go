@@ -31,7 +31,7 @@ type planeSelector interface {
 	PreviewSelection(context.Context, planeselector.SelectionInput) (planeselector.SelectionResult, error)
 }
 
-type deploymentManager interface {
+type executionPlanManager interface {
 	ApplyService(context.Context, string, deploy.ApplyServiceInput) (deploy.ApplyResult, error)
 	DeleteService(context.Context, string, string) error
 }
@@ -41,6 +41,8 @@ type serviceStore interface {
 	ListServices(context.Context) ([]controlservice.Service, error)
 	GetService(context.Context, string) (controlservice.Service, error)
 	UpdateService(context.Context, string, controlservice.UpdateInput) (controlservice.Service, error)
+	CreateServiceRun(context.Context, controlservice.CreateRunInput) (controlservice.ServiceRun, error)
+	UpdateServiceRun(context.Context, string, int64, controlservice.UpdateRunInput) (controlservice.ServiceRun, error)
 	MarkServiceDeletionRequested(context.Context, string) (controlservice.Service, error)
 	UpdateServiceStatus(context.Context, string, controlservice.UpdateStatusInput) (controlservice.Service, error)
 	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
@@ -58,13 +60,13 @@ type Controller struct {
 	logger   *slog.Logger
 	store    serviceStore
 	selector planeSelector
-	deploy   deploymentManager
+	deploy   executionPlanManager
 	interval time.Duration
 	timeout  time.Duration
 	trigger  chan struct{}
 }
 
-func New(logger *slog.Logger, stores serviceStore, planner planeSelector, deploySvc deploymentManager) *Controller {
+func New(logger *slog.Logger, stores serviceStore, planner planeSelector, deploySvc executionPlanManager) *Controller {
 	if logger == nil {
 		logger = slog.Default()
 	}

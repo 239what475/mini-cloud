@@ -7,14 +7,10 @@ SET spec_persistent_dirs_locked = TRUE
 WHERE s.spec_persistent_dirs_locked = FALSE
     AND jsonb_typeof(s.spec_persistent_dirs_json) = 'array'
     AND jsonb_array_length(s.spec_persistent_dirs_json) > 0
-    AND (
-        EXISTS (
-            SELECT 1
-            FROM fleet_service_placements AS p
-            WHERE p.service_id = s.id
-        )
-        OR COALESCE(s.status_rollout_json->>'stableRevisionID', '') <> ''
-        OR COALESCE(s.status_rollout_json->>'candidateRevisionID', '') <> ''
+    AND EXISTS (
+        SELECT 1
+        FROM fleet_service_placements AS p
+        WHERE p.service_id = s.id
     );
 
 -- +goose Down

@@ -176,7 +176,7 @@ func TestPreviewSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.
 	if result.FilteredCounts.Operation != 1 {
 		t.Fatalf("operation filtered count = %d, want 1", result.FilteredCounts.Operation)
 	}
-	if result.FailureReason != "no ready planes are currently accepting new deployments" {
+	if result.FailureReason != "no ready planes are currently accepting new runs" {
 		t.Fatalf("failure reason = %q", result.FailureReason)
 	}
 	if len(result.Candidates) != 1 || result.Candidates[0].OperationState != "maintenance" {
@@ -291,7 +291,7 @@ func createReadyPlane(t *testing.T, stores interface {
 		NodesTotal:        1,
 		NodesReady:        1,
 		ServicesTotal:     0,
-		DeploymentsTotal:  0,
+		RunsTotal:         0,
 		CPUMilliCapacity:  cpuCapacity,
 		CPUMilliAllocated: cpuAllocated,
 		MemoryMiCapacity:  memoryCapacity,

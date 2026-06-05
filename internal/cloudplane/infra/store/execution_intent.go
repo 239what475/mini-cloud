@@ -6,9 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"mini-cloud/internal/cloudplane/domain/execution"
+	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
 	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
@@ -77,6 +79,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				plan_id,
 				service_id,
 				service_name,
+				service_exposure,
 				service_generation,
 				replica_index,
 				image,
@@ -95,10 +98,11 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
 			ON CONFLICT (plan_id, replica_index) DO UPDATE
 			SET
 				service_name = EXCLUDED.service_name,
+				service_exposure = EXCLUDED.service_exposure,
 				service_generation = EXCLUDED.service_generation,
 				image = EXCLUDED.image,
 				command_json = EXCLUDED.command_json,
@@ -119,6 +123,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 			input.PlanID,
 			input.ServiceID,
 			input.ServiceName,
+			normalizeExecutionExposure(input.Exposure),
 			input.ServiceGeneration,
 			replicaIndex,
 			input.Image,
@@ -176,6 +181,55 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, serviceID st
 		return false, err
 	}
 	return rows > 0, nil
+}
+
+func (s *Store) ListIngressRouteSources(ctx context.Context) ([]domainingress.RouteSource, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		WITH latest_plan AS (
+			SELECT DISTINCT ON (service_id)
+				service_id,
+				service_name,
+				service_exposure,
+				plan_id
+			FROM execution_intents
+			WHERE status <> $2
+			ORDER BY service_id, service_generation DESC, updated_at DESC, plan_id DESC
+		)
+		SELECT
+			p.service_name,
+			e.node_id,
+			COALESCE(e.host_port, 0),
+			(e.id IS NOT NULL) AS has_backend
+		FROM latest_plan p
+		LEFT JOIN execution_intents e
+			ON e.plan_id = p.plan_id
+		   AND e.status = $1
+		   AND e.node_id IS NOT NULL
+		   AND e.host_port > 0
+		WHERE p.service_exposure = 'public'
+		ORDER BY p.service_name ASC, p.plan_id ASC, e.replica_index ASC, e.id ASC
+	`, execution.StatusRunning, execution.StatusSuperseded)
+	if err != nil {
+		return nil, fmt.Errorf("query ingress route sources: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]domainingress.RouteSource, 0)
+	for rows.Next() {
+		var item domainingress.RouteSource
+		var nodeID sql.NullString
+		if err := rows.Scan(&item.ServiceName, &nodeID, &item.HostPort, &item.HasBackend); err != nil {
+			return nil, fmt.Errorf("scan ingress route source: %w", err)
+		}
+		if nodeID.Valid {
+			item.NodeID = nodeID.String
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate ingress route sources: %w", err)
+	}
+	return items, nil
 }
 
 func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.ExecutionSnapshot, error) {
@@ -576,6 +630,15 @@ func intentResourceRequest(class string) (int, int, error) {
 		return 1500, 1536, nil
 	default:
 		return 0, 0, fmt.Errorf("instanceClass must be one of small, medium, large")
+	}
+}
+
+func normalizeExecutionExposure(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "private":
+		return "private"
+	default:
+		return "public"
 	}
 }
 

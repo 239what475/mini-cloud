@@ -21,13 +21,6 @@ type PlatformOverview = {
   nodesNotReady: number;
   nodesDraining: number;
   nodesOffline: number;
-  deploymentsTotal: number;
-  deploymentsPending: number;
-  deploymentsScheduling: number;
-  deploymentsAssigned: number;
-  deploymentsDeploying: number;
-  deploymentsRunning: number;
-  deploymentsFailed: number;
 };
 
 type ServiceSpec = {
@@ -46,63 +39,40 @@ type ServiceSpec = {
   registryCredentialID?: string;
 };
 
-type RevisionSummary = {
-  id: string;
-  label: string;
-};
-
-type RolloutStatus = {
+type ServiceRunStatus = {
+  currentRunID?: string;
+  latestRunID?: string;
   phase: string;
   message: string;
-  candidateRevision?: RevisionSummary;
+  desiredReplicas: number;
+  deployingReplicas: number;
+  runningReplicas: number;
+  failedReplicas: number;
+  supersededReplicas: number;
+  lastObservedAt?: string;
 };
 
 type ServiceStatus = {
+  observedGeneration: number;
+  desiredState: string;
   phase: string;
   healthy: boolean;
   message: string;
-  currentRevision?: RevisionSummary;
-  rollout: RolloutStatus;
+  run: ServiceRunStatus;
 };
 
-type ServiceResource = {
+type ServiceMetadata = {
   id: string;
   name: string;
   displayName: string;
+  generation: number;
+};
+
+type ServiceResource = {
+  metadata: ServiceMetadata;
   spec: ServiceSpec;
   status: ServiceStatus;
-  createdAt: string;
-  updatedAt: string;
 };
-
-type RevisionResource = {
-  id: string;
-  serviceID: string;
-  number: number;
-  label: string;
-  image: string;
-  command: string[];
-  args: string[];
-  env: Record<string, string>;
-  registryCredentialID: string;
-  port: number;
-  readinessPath: string;
-  createdAt: string;
-};
-
-type DeploymentResource = {
-  id: string;
-  serviceID: string;
-  revisionID: string;
-  desiredReplicas: number;
-  readyReplicas: number;
-  availableReplicas: number;
-  status: string;
-  statusReason: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
 
 type ServiceListItem = {
   service: ServiceResource;
@@ -120,18 +90,7 @@ type ServiceMutationResponse = {
   service: ServiceResource;
 };
 
-type ServiceUpdateResponse = {
-  service: ServiceResource;
-  rolloutTriggered: boolean;
-};
-
-type RevisionListResponse = {
-  items: RevisionResource[];
-};
-
-type DeploymentListResponse = {
-  items: DeploymentResource[];
-};
+type ServiceUpdateResponse = ServiceMutationResponse;
 
 type ConfigSetResource = {
   id: string;
@@ -308,7 +267,7 @@ function defaultEditServiceForm(): ServiceEditFormState {
 
 function editFormFromService(service: ServiceResource): ServiceEditFormState {
   return {
-    displayName: service.displayName,
+    displayName: service.metadata.displayName,
     region: service.spec.region,
     replicas: String(service.spec.replicas),
     instanceClass: service.spec.instanceClass,
@@ -484,38 +443,18 @@ function App() {
   const registryCredentialsQuery = useQuery({
     queryKey: ["registry-credentials"],
     queryFn: () =>
-      fetchJSON<RegistryCredentialListResponse>(
-        "/api/v1/registry-credentials",
-      ),
+      fetchJSON<RegistryCredentialListResponse>("/api/v1/registry-credentials"),
   });
 
   const serviceItems = servicesQuery.data?.items ?? [];
   const effectiveServiceID =
-    selectedServiceID || serviceItems[0]?.service.id || "";
+    selectedServiceID || serviceItems[0]?.service.metadata.id || "";
 
   const serviceDetailQuery = useQuery({
     queryKey: ["service", effectiveServiceID],
     queryFn: () =>
       fetchJSON<ServiceDetailResponse>(
         `/api/v1/services/${effectiveServiceID}`,
-      ),
-    enabled: effectiveServiceID !== "",
-  });
-
-  const revisionsQuery = useQuery({
-    queryKey: ["revisions", effectiveServiceID],
-    queryFn: () =>
-      fetchJSON<RevisionListResponse>(
-        `/api/v1/services/${effectiveServiceID}/revisions`,
-      ),
-    enabled: effectiveServiceID !== "",
-  });
-
-  const deploymentsQuery = useQuery({
-    queryKey: ["deployments", effectiveServiceID],
-    queryFn: () =>
-      fetchJSON<DeploymentListResponse>(
-        `/api/v1/services/${effectiveServiceID}/deployments`,
       ),
     enabled: effectiveServiceID !== "",
   });
@@ -530,11 +469,15 @@ function App() {
       return;
     }
     if (selectedServiceID === "") {
-      setSelectedServiceID(serviceItems[0].service.id);
+      setSelectedServiceID(serviceItems[0].service.metadata.id);
       return;
     }
-    if (!serviceItems.some((item) => item.service.id === selectedServiceID)) {
-      setSelectedServiceID(serviceItems[0].service.id);
+    if (
+      !serviceItems.some(
+        (item) => item.service.metadata.id === selectedServiceID,
+      )
+    ) {
+      setSelectedServiceID(serviceItems[0].service.metadata.id);
     }
   }, [serviceItems, selectedServiceID]);
 
@@ -542,12 +485,13 @@ function App() {
     if (!currentService) {
       return;
     }
-    const serviceChanged = currentService.id !== editFormSourceServiceID;
+    const serviceChanged =
+      currentService.metadata.id !== editFormSourceServiceID;
     if (!serviceChanged && isEditFormDirty) {
       return;
     }
     setEditForm(editFormFromService(currentService));
-    setEditFormSourceServiceID(currentService.id);
+    setEditFormSourceServiceID(currentService.metadata.id);
     setIsEditFormDirty(false);
   }, [currentService, editFormSourceServiceID, isEditFormDirty]);
 
@@ -560,14 +504,6 @@ function App() {
       queryClient.invalidateQueries({ queryKey: ["registry-credentials"] }),
       serviceID
         ? queryClient.invalidateQueries({ queryKey: ["service", serviceID] })
-        : Promise.resolve(),
-      serviceID
-        ? queryClient.invalidateQueries({ queryKey: ["revisions", serviceID] })
-        : Promise.resolve(),
-      serviceID
-        ? queryClient.invalidateQueries({
-            queryKey: ["deployments", serviceID],
-          })
         : Promise.resolve(),
     ]);
   };
@@ -604,18 +540,15 @@ function App() {
 
   const createRegistryCredential = useMutation({
     mutationFn: (form: RegistryCredentialFormState) =>
-      fetchJSON<RegistryCredentialResource>(
-        "/api/v1/registry-credentials",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: form.name.trim(),
-            server: form.server.trim(),
-            username: form.username.trim(),
-            password: form.password,
-          }),
-        },
-      ),
+      fetchJSON<RegistryCredentialResource>("/api/v1/registry-credentials", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          server: form.server.trim(),
+          username: form.username.trim(),
+          password: form.password,
+        }),
+      }),
     onSuccess: async () => {
       setRegistryCredentialForm(defaultRegistryCredentialForm());
       await invalidateResourceArea();
@@ -630,8 +563,8 @@ function App() {
       }),
     onSuccess: async (response) => {
       setServiceForm(defaultCreateServiceForm());
-      setSelectedServiceID(response.service.id);
-      await invalidateResourceArea(response.service.id);
+      setSelectedServiceID(response.service.metadata.id);
+      await invalidateResourceArea(response.service.metadata.id);
     },
   });
 
@@ -642,33 +575,21 @@ function App() {
         body: JSON.stringify(toUpdateServicePayload(input.form)),
       }),
     onSuccess: async (response) => {
-      queryClient.setQueryData<ServiceDetailResponse>(["service", response.service.id], {
-        service: response.service,
-      });
-      setEditForm(editFormFromService(response.service));
-      setEditFormSourceServiceID(response.service.id);
-      setIsEditFormDirty(false);
-      await invalidateResourceArea(response.service.id);
-    },
-  });
-
-  const retryService = useMutation({
-    mutationFn: (serviceID: string) =>
-      fetchJSON<ServiceMutationResponse>(
-        `/api/v1/services/${serviceID}/actions/retry`,
+      queryClient.setQueryData<ServiceDetailResponse>(
+        ["service", response.service.metadata.id],
         {
-          method: "POST",
+          service: response.service,
         },
-      ),
-    onSuccess: async (response) => {
-      await invalidateResourceArea(response.service.id);
+      );
+      setEditForm(editFormFromService(response.service));
+      setEditFormSourceServiceID(response.service.metadata.id);
+      setIsEditFormDirty(false);
+      await invalidateResourceArea(response.service.metadata.id);
     },
   });
 
   const selectedServiceDetail = serviceDetailQuery.data ?? null;
   const selectedStatus = selectedServiceDetail?.service.status ?? null;
-  const revisions = revisionsQuery.data?.items ?? [];
-  const deployments = deploymentsQuery.data?.items ?? [];
 
   const updateEditFormField = <K extends keyof ServiceEditFormState>(
     field: K,
@@ -696,9 +617,10 @@ function App() {
       <main className="content">
         <section className="hero">
           <p className="eyebrow">control-plane</p>
-          <h1>service / resource / revision / deployment</h1>
+          <h1>service / resource / run / execution</h1>
           <p>
-            control-plane 对外保留全局资源、服务、修订和部署视图；cloud-plane 只作为内部 gRPC 执行面。
+            control-plane 对外保留全局资源、服务和运行实例视图；cloud-plane
+            只作为内部 gRPC 执行面。
           </p>
         </section>
 
@@ -737,11 +659,11 @@ function App() {
               </p>
             </div>
             <div className="status-card">
-              <span className="status-card__label">Deployments</span>
-              <strong>{overviewQuery.data?.deploymentsTotal ?? "-"}</strong>
+              <span className="status-card__label">Progressing</span>
+              <strong>{overviewQuery.data?.servicesDeploying ?? "-"}</strong>
               <p>
-                running {overviewQuery.data?.deploymentsRunning ?? "-"} / failed{" "}
-                {overviewQuery.data?.deploymentsFailed ?? "-"}
+                degraded {overviewQuery.data?.servicesDegraded ?? "-"} / failed{" "}
+                {overviewQuery.data?.servicesFailed ?? "-"}
               </p>
             </div>
           </div>
@@ -762,239 +684,227 @@ function App() {
             </div>
           </div>
 
-              <div className="app-grid" style={{ marginBottom: 24 }}>
-                <article className="app-card">
-                  <div className="app-card__header">
-                    <div>
-                      <strong>Config Sets</strong>
-                      <p>全局非敏感运行配置</p>
-                    </div>
-                  </div>
-                  <form
-                    className="project-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      createConfigSet.mutate(configSetForm);
-                    }}
-                  >
-                    <label>
-                      <span>名称</span>
-                      <input
-                        value={configSetForm.name}
-                        onChange={(event) =>
-                          setConfigSetForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        placeholder="web-config"
-                      />
-                    </label>
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      <span>键值</span>
-                      <textarea
-                        rows={5}
-                        value={configSetForm.valuesText}
-                        onChange={(event) =>
-                          setConfigSetForm((current) => ({
-                            ...current,
-                            valuesText: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <button type="submit" disabled={createConfigSet.isPending}>
-                      {createConfigSet.isPending
-                        ? "创建中..."
-                        : "创建 config set"}
-                    </button>
-                  </form>
-                  <div className="history-list">
-                    {(configSetsQuery.data?.items ?? []).map((item) => (
-                      <div key={item.id} className="history-row">
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>{item.id}</p>
-                        </div>
-                        <div>
-                          <p>{Object.keys(item.values).length} keys</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {createConfigSet.error instanceof Error ? (
-                    <p className="error-text">
-                      {createConfigSet.error.message}
-                    </p>
-                  ) : null}
-                </article>
-
-                <article className="app-card">
-                  <div className="app-card__header">
-                    <div>
-                      <strong>Secret Sets</strong>
-                      <p>全局敏感运行配置</p>
-                    </div>
-                  </div>
-                  <form
-                    className="project-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      createSecretSet.mutate(secretSetForm);
-                    }}
-                  >
-                    <label>
-                      <span>名称</span>
-                      <input
-                        value={secretSetForm.name}
-                        onChange={(event) =>
-                          setSecretSetForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        placeholder="web-secrets"
-                      />
-                    </label>
-                    <label style={{ gridColumn: "1 / -1" }}>
-                      <span>键值</span>
-                      <textarea
-                        rows={5}
-                        value={secretSetForm.valuesText}
-                        onChange={(event) =>
-                          setSecretSetForm((current) => ({
-                            ...current,
-                            valuesText: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <button type="submit" disabled={createSecretSet.isPending}>
-                      {createSecretSet.isPending
-                        ? "创建中..."
-                        : "创建 secret set"}
-                    </button>
-                  </form>
-                  <div className="history-list">
-                    {(secretSetsQuery.data?.items ?? []).map((item) => (
-                      <div key={item.id} className="history-row">
-                        <div>
-                          <strong>{item.name}</strong>
-                          <p>{item.id}</p>
-                        </div>
-                        <div>
-                          <p>{item.keys.length} keys</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {createSecretSet.error instanceof Error ? (
-                    <p className="error-text">
-                      {createSecretSet.error.message}
-                    </p>
-                  ) : null}
-                </article>
-
-                <article className="app-card">
-                  <div className="app-card__header">
-                    <div>
-                      <strong>Registry Credentials</strong>
-                      <p>私有镜像仓库访问凭据</p>
-                    </div>
-                  </div>
-                  <form
-                    className="project-form"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      createRegistryCredential.mutate(registryCredentialForm);
-                    }}
-                  >
-                    <label>
-                      <span>名称</span>
-                      <input
-                        value={registryCredentialForm.name}
-                        onChange={(event) =>
-                          setRegistryCredentialForm((current) => ({
-                            ...current,
-                            name: event.target.value,
-                          }))
-                        }
-                        placeholder="acr-main"
-                      />
-                    </label>
-                    <label>
-                      <span>Registry</span>
-                      <input
-                        value={registryCredentialForm.server}
-                        onChange={(event) =>
-                          setRegistryCredentialForm((current) => ({
-                            ...current,
-                            server: event.target.value,
-                          }))
-                        }
-                        placeholder="registry.example.com"
-                      />
-                    </label>
-                    <label>
-                      <span>用户名</span>
-                      <input
-                        value={registryCredentialForm.username}
-                        onChange={(event) =>
-                          setRegistryCredentialForm((current) => ({
-                            ...current,
-                            username: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <label>
-                      <span>密码</span>
-                      <input
-                        type="password"
-                        value={registryCredentialForm.password}
-                        onChange={(event) =>
-                          setRegistryCredentialForm((current) => ({
-                            ...current,
-                            password: event.target.value,
-                          }))
-                        }
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={createRegistryCredential.isPending}
-                    >
-                      {createRegistryCredential.isPending
-                        ? "创建中..."
-                        : "创建 registry credential"}
-                    </button>
-                  </form>
-                  <div className="history-list">
-                    {(registryCredentialsQuery.data?.items ?? []).map(
-                      (item) => (
-                        <div key={item.id} className="history-row">
-                          <div>
-                            <strong>{item.name}</strong>
-                            <p>
-                              {item.server} · {item.username}
-                            </p>
-                          </div>
-                          <div>
-                            <p>
-                              {item.passwordConfigured ? "password set" : "-"}
-                            </p>
-                          </div>
-                        </div>
-                      ),
-                    )}
-                  </div>
-                  {createRegistryCredential.error instanceof Error ? (
-                    <p className="error-text">
-                      {createRegistryCredential.error.message}
-                    </p>
-                  ) : null}
-                </article>
+          <div className="app-grid" style={{ marginBottom: 24 }}>
+            <article className="app-card">
+              <div className="app-card__header">
+                <div>
+                  <strong>Config Sets</strong>
+                  <p>全局非敏感运行配置</p>
+                </div>
               </div>
+              <form
+                className="project-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createConfigSet.mutate(configSetForm);
+                }}
+              >
+                <label>
+                  <span>名称</span>
+                  <input
+                    value={configSetForm.name}
+                    onChange={(event) =>
+                      setConfigSetForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="web-config"
+                  />
+                </label>
+                <label style={{ gridColumn: "1 / -1" }}>
+                  <span>键值</span>
+                  <textarea
+                    rows={5}
+                    value={configSetForm.valuesText}
+                    onChange={(event) =>
+                      setConfigSetForm((current) => ({
+                        ...current,
+                        valuesText: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <button type="submit" disabled={createConfigSet.isPending}>
+                  {createConfigSet.isPending ? "创建中..." : "创建 config set"}
+                </button>
+              </form>
+              <div className="history-list">
+                {(configSetsQuery.data?.items ?? []).map((item) => (
+                  <div key={item.id} className="history-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{item.id}</p>
+                    </div>
+                    <div>
+                      <p>{Object.keys(item.values).length} keys</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {createConfigSet.error instanceof Error ? (
+                <p className="error-text">{createConfigSet.error.message}</p>
+              ) : null}
+            </article>
+
+            <article className="app-card">
+              <div className="app-card__header">
+                <div>
+                  <strong>Secret Sets</strong>
+                  <p>全局敏感运行配置</p>
+                </div>
+              </div>
+              <form
+                className="project-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createSecretSet.mutate(secretSetForm);
+                }}
+              >
+                <label>
+                  <span>名称</span>
+                  <input
+                    value={secretSetForm.name}
+                    onChange={(event) =>
+                      setSecretSetForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="web-secrets"
+                  />
+                </label>
+                <label style={{ gridColumn: "1 / -1" }}>
+                  <span>键值</span>
+                  <textarea
+                    rows={5}
+                    value={secretSetForm.valuesText}
+                    onChange={(event) =>
+                      setSecretSetForm((current) => ({
+                        ...current,
+                        valuesText: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <button type="submit" disabled={createSecretSet.isPending}>
+                  {createSecretSet.isPending ? "创建中..." : "创建 secret set"}
+                </button>
+              </form>
+              <div className="history-list">
+                {(secretSetsQuery.data?.items ?? []).map((item) => (
+                  <div key={item.id} className="history-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>{item.id}</p>
+                    </div>
+                    <div>
+                      <p>{item.keys.length} keys</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {createSecretSet.error instanceof Error ? (
+                <p className="error-text">{createSecretSet.error.message}</p>
+              ) : null}
+            </article>
+
+            <article className="app-card">
+              <div className="app-card__header">
+                <div>
+                  <strong>Registry Credentials</strong>
+                  <p>私有镜像仓库访问凭据</p>
+                </div>
+              </div>
+              <form
+                className="project-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  createRegistryCredential.mutate(registryCredentialForm);
+                }}
+              >
+                <label>
+                  <span>名称</span>
+                  <input
+                    value={registryCredentialForm.name}
+                    onChange={(event) =>
+                      setRegistryCredentialForm((current) => ({
+                        ...current,
+                        name: event.target.value,
+                      }))
+                    }
+                    placeholder="acr-main"
+                  />
+                </label>
+                <label>
+                  <span>Registry</span>
+                  <input
+                    value={registryCredentialForm.server}
+                    onChange={(event) =>
+                      setRegistryCredentialForm((current) => ({
+                        ...current,
+                        server: event.target.value,
+                      }))
+                    }
+                    placeholder="registry.example.com"
+                  />
+                </label>
+                <label>
+                  <span>用户名</span>
+                  <input
+                    value={registryCredentialForm.username}
+                    onChange={(event) =>
+                      setRegistryCredentialForm((current) => ({
+                        ...current,
+                        username: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label>
+                  <span>密码</span>
+                  <input
+                    type="password"
+                    value={registryCredentialForm.password}
+                    onChange={(event) =>
+                      setRegistryCredentialForm((current) => ({
+                        ...current,
+                        password: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={createRegistryCredential.isPending}
+                >
+                  {createRegistryCredential.isPending
+                    ? "创建中..."
+                    : "创建 registry credential"}
+                </button>
+              </form>
+              <div className="history-list">
+                {(registryCredentialsQuery.data?.items ?? []).map((item) => (
+                  <div key={item.id} className="history-row">
+                    <div>
+                      <strong>{item.name}</strong>
+                      <p>
+                        {item.server} · {item.username}
+                      </p>
+                    </div>
+                    <div>
+                      <p>{item.passwordConfigured ? "password set" : "-"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {createRegistryCredential.error instanceof Error ? (
+                <p className="error-text">
+                  {createRegistryCredential.error.message}
+                </p>
+              ) : null}
+            </article>
+          </div>
         </section>
 
         <section id="services" className="panel" style={{ marginTop: 24 }}>
@@ -1005,279 +915,275 @@ function App() {
             </div>
           </div>
 
-              <form
-                className="project-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  createService.mutate(serviceForm);
-                }}
+          <form
+            className="project-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              createService.mutate(serviceForm);
+            }}
+          >
+            <label>
+              <span>服务名</span>
+              <input
+                value={serviceForm.name}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
+                }
+                placeholder="demo-web"
+              />
+            </label>
+            <label>
+              <span>显示名</span>
+              <input
+                value={serviceForm.displayName}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    displayName: event.target.value,
+                  }))
+                }
+                placeholder="Demo Web"
+              />
+            </label>
+            <label>
+              <span>地域</span>
+              <input
+                value={serviceForm.region}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    region: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>规格档位</span>
+              <select
+                value={serviceForm.instanceClass}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    instanceClass: event.target.value,
+                  }))
+                }
               >
-                <label>
-                  <span>服务名</span>
-                  <input
-                    value={serviceForm.name}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="demo-web"
-                  />
-                </label>
-                <label>
-                  <span>显示名</span>
-                  <input
-                    value={serviceForm.displayName}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        displayName: event.target.value,
-                      }))
-                    }
-                    placeholder="Demo Web"
-                  />
-                </label>
-                <label>
-                  <span>地域</span>
-                  <input
-                    value={serviceForm.region}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        region: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>规格档位</span>
-                  <select
-                    value={serviceForm.instanceClass}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        instanceClass: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="small">small</option>
-                    <option value="medium">medium</option>
-                    <option value="large">large</option>
-                  </select>
-                </label>
-                <label>
-                  <span>暴露方式</span>
-                  <select
-                    value={serviceForm.exposure}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        exposure: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="public">public</option>
-                    <option value="private">private</option>
-                  </select>
-                </label>
-                <label>
-                  <span>副本数</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={serviceForm.replicas}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        replicas: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>镜像</span>
-                  <input
-                    value={serviceForm.image}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        image: event.target.value,
-                      }))
-                    }
-                    placeholder="nginx:1.27-alpine"
-                  />
-                </label>
-                <label>
-                  <span>Config Set</span>
-                  <select
-                    value={serviceForm.configSetID}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        configSetID: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(configSetsQuery.data?.items ?? []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Secret Set</span>
-                  <select
-                    value={serviceForm.secretSetID}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        secretSetID: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(secretSetsQuery.data?.items ?? []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Registry Credential</span>
-                  <select
-                    value={serviceForm.registryCredentialID}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        registryCredentialID: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(registryCredentialsQuery.data?.items ?? []).map(
-                      (item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <label>
-                  <span>容器端口</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    step={1}
-                    value={serviceForm.defaultPort}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        defaultPort: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>健康检查路径</span>
-                  <input
-                    value={serviceForm.readinessPath}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        readinessPath: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label style={{ gridColumn: "1 / -1" }}>
-                  <span>Inline Env</span>
-                  <textarea
-                    rows={5}
-                    value={serviceForm.envText}
-                    onChange={(event) =>
-                      setServiceForm((current) => ({
-                        ...current,
-                        envText: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <button type="submit" disabled={createService.isPending}>
-                  {createService.isPending ? "创建中..." : "创建服务"}
-                </button>
-              </form>
-
-              {createService.error instanceof Error ? (
-                <p className="error-text">{createService.error.message}</p>
-              ) : null}
-
-              <div className="app-grid">
-                {serviceItems.map((item) => (
-                  <article key={item.service.id} className="app-card">
-                    <div className="app-card__header">
-                      <div>
-                        <strong>{item.service.displayName}</strong>
-                        <p>
-                          {item.service.name} · {item.service.status.phase} ·{" "}
-                          {item.service.status.healthy
-                            ? "healthy"
-                            : "not healthy"}
-                        </p>
-                      </div>
-                      <button
-                        className="inline-button"
-                        type="button"
-                        onClick={() => setSelectedServiceID(item.service.id)}
-                      >
-                        {item.service.id === effectiveServiceID
-                          ? "当前服务"
-                          : "查看"}
-                      </button>
-                    </div>
-                    <div className="app-card__section">
-                      <p className="app-card__section-title">spec</p>
-                      <p>
-                        {item.service.spec.region} ·{" "}
-                        {item.service.spec.instanceClass} · replicas{" "}
-                        {item.service.spec.replicas} ·{" "}
-                        {item.service.spec.exposure}
-                      </p>
-                      <p>{item.service.spec.image}</p>
-                      <p>
-                        config {item.service.spec.configSetID || "-"} · secret{" "}
-                        {item.service.spec.secretSetID || "-"}
-                      </p>
-                      <p>
-                        registry {item.service.spec.registryCredentialID || "-"}
-                      </p>
-                    </div>
-                    <div className="app-card__section">
-                      <p className="app-card__section-title">status</p>
-                      <p>{item.service.status.message}</p>
-                      <p>
-                        current revision{" "}
-                        {item.service.status.currentRevision?.label ?? "-"}
-                      </p>
-                      <p>
-                        rollout {item.service.status.rollout.phase} · candidate{" "}
-                        {item.service.status.rollout.candidateRevision?.label ??
-                          "-"}
-                      </p>
-                    </div>
-                  </article>
+                <option value="small">small</option>
+                <option value="medium">medium</option>
+                <option value="large">large</option>
+              </select>
+            </label>
+            <label>
+              <span>暴露方式</span>
+              <select
+                value={serviceForm.exposure}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    exposure: event.target.value,
+                  }))
+                }
+              >
+                <option value="public">public</option>
+                <option value="private">private</option>
+              </select>
+            </label>
+            <label>
+              <span>副本数</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={serviceForm.replicas}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    replicas: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>镜像</span>
+              <input
+                value={serviceForm.image}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    image: event.target.value,
+                  }))
+                }
+                placeholder="nginx:1.27-alpine"
+              />
+            </label>
+            <label>
+              <span>Config Set</span>
+              <select
+                value={serviceForm.configSetID}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    configSetID: event.target.value,
+                  }))
+                }
+              >
+                <option value="">不使用</option>
+                {(configSetsQuery.data?.items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
                 ))}
-              </div>
+              </select>
+            </label>
+            <label>
+              <span>Secret Set</span>
+              <select
+                value={serviceForm.secretSetID}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    secretSetID: event.target.value,
+                  }))
+                }
+              >
+                <option value="">不使用</option>
+                {(secretSetsQuery.data?.items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Registry Credential</span>
+              <select
+                value={serviceForm.registryCredentialID}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    registryCredentialID: event.target.value,
+                  }))
+                }
+              >
+                <option value="">不使用</option>
+                {(registryCredentialsQuery.data?.items ?? []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>容器端口</span>
+              <input
+                type="number"
+                min={1}
+                max={65535}
+                step={1}
+                value={serviceForm.defaultPort}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    defaultPort: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>健康检查路径</span>
+              <input
+                value={serviceForm.readinessPath}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    readinessPath: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label style={{ gridColumn: "1 / -1" }}>
+              <span>Inline Env</span>
+              <textarea
+                rows={5}
+                value={serviceForm.envText}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    envText: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <button type="submit" disabled={createService.isPending}>
+              {createService.isPending ? "创建中..." : "创建服务"}
+            </button>
+          </form>
 
-              {servicesQuery.error instanceof Error ? (
-                <p className="error-text">{servicesQuery.error.message}</p>
-              ) : null}
+          {createService.error instanceof Error ? (
+            <p className="error-text">{createService.error.message}</p>
+          ) : null}
+
+          <div className="app-grid">
+            {serviceItems.map((item) => (
+              <article key={item.service.metadata.id} className="app-card">
+                <div className="app-card__header">
+                  <div>
+                    <strong>{item.service.metadata.displayName}</strong>
+                    <p>
+                      {item.service.metadata.name} · {item.service.status.phase}{" "}
+                      ·{" "}
+                      {item.service.status.healthy ? "healthy" : "not healthy"}
+                    </p>
+                  </div>
+                  <button
+                    className="inline-button"
+                    type="button"
+                    onClick={() =>
+                      setSelectedServiceID(item.service.metadata.id)
+                    }
+                  >
+                    {item.service.metadata.id === effectiveServiceID
+                      ? "当前服务"
+                      : "查看"}
+                  </button>
+                </div>
+                <div className="app-card__section">
+                  <p className="app-card__section-title">spec</p>
+                  <p>
+                    {item.service.spec.region} ·{" "}
+                    {item.service.spec.instanceClass} · replicas{" "}
+                    {item.service.spec.replicas} · {item.service.spec.exposure}
+                  </p>
+                  <p>{item.service.spec.image}</p>
+                  <p>
+                    config {item.service.spec.configSetID || "-"} · secret{" "}
+                    {item.service.spec.secretSetID || "-"}
+                  </p>
+                  <p>
+                    registry {item.service.spec.registryCredentialID || "-"}
+                  </p>
+                </div>
+                <div className="app-card__section">
+                  <p className="app-card__section-title">status</p>
+                  <p>{item.service.status.message}</p>
+                  <p>
+                    current run {item.service.status.run.currentRunID ?? "-"}
+                  </p>
+                  <p>
+                    latest run {item.service.status.run.latestRunID ?? "-"} ·{" "}
+                    {item.service.status.run.phase}
+                  </p>
+                </div>
+              </article>
+            ))}
+          </div>
+
+          {servicesQuery.error instanceof Error ? (
+            <p className="error-text">{servicesQuery.error.message}</p>
+          ) : null}
         </section>
 
         <section id="detail" className="panel" style={{ marginTop: 24 }}>
@@ -1286,7 +1192,7 @@ function App() {
               <p className="eyebrow">detail</p>
               <h2>
                 {selectedServiceDetail
-                  ? `${selectedServiceDetail.service.displayName} 的 revision / deployment`
+                  ? `${selectedServiceDetail.service.metadata.displayName} 的 run / execution`
                   : "选择一个服务查看详情"}
               </h2>
             </div>
@@ -1296,24 +1202,26 @@ function App() {
             <>
               <div className="status-grid">
                 <div className="status-card">
-                  <span className="status-card__label">Current revision</span>
-                  <strong>
-                    {selectedStatus?.currentRevision?.label ?? "-"}
-                  </strong>
+                  <span className="status-card__label">Current run</span>
+                  <strong>{selectedStatus?.run.currentRunID ?? "-"}</strong>
                 </div>
                 <div className="status-card">
-                  <span className="status-card__label">Rollout</span>
-                  <strong>{selectedStatus?.rollout.phase ?? "-"}</strong>
-                  <p>
-                    candidate{" "}
-                    {selectedStatus?.rollout.candidateRevision?.label ?? "-"}
-                  </p>
-                  <p>{selectedStatus?.rollout.message ?? "-"}</p>
+                  <span className="status-card__label">Latest run</span>
+                  <strong>{selectedStatus?.run.latestRunID ?? "-"}</strong>
+                  <p>{selectedStatus?.run.phase ?? "-"}</p>
+                  <p>{selectedStatus?.run.message ?? "-"}</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Phase</span>
                   <strong>{selectedStatus?.phase ?? "-"}</strong>
                   <p>{selectedStatus?.message ?? "-"}</p>
+                </div>
+                <div className="status-card">
+                  <span className="status-card__label">Generation</span>
+                  <strong>
+                    {selectedServiceDetail.service.metadata.generation}
+                  </strong>
+                  <p>observed {selectedStatus?.observedGeneration ?? 0}</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Health</span>
@@ -1354,7 +1262,7 @@ function App() {
                 onSubmit={(event) => {
                   event.preventDefault();
                   updateService.mutate({
-                    serviceID: selectedServiceDetail.service.id,
+                    serviceID: selectedServiceDetail.service.metadata.id,
                     form: editForm,
                   });
                 }}
@@ -1513,30 +1421,8 @@ function App() {
                 </button>
               </form>
 
-              <div className="button-row">
-                <button
-                  className="inline-button"
-                  type="button"
-                  disabled={
-                    retryService.isPending ||
-                    (selectedStatus?.phase !== "failed" &&
-                      selectedStatus?.rollout.phase !== "failed")
-                  }
-                  onClick={() =>
-                    retryService.mutate(selectedServiceDetail.service.id)
-                  }
-                >
-                  {retryService.isPending
-                    ? "重试中..."
-                    : "重试当前失败 revision"}
-                </button>
-              </div>
-
               {updateService.error instanceof Error ? (
                 <p className="error-text">{updateService.error.message}</p>
-              ) : null}
-              {retryService.error instanceof Error ? (
-                <p className="error-text">{retryService.error.message}</p>
               ) : null}
               {configSetsQuery.error instanceof Error ? (
                 <p className="error-text">{configSetsQuery.error.message}</p>
@@ -1551,68 +1437,55 @@ function App() {
               ) : null}
 
               <div className="app-card__section">
-                <p className="app-card__section-title">revisions</p>
+                <p className="app-card__section-title">run</p>
                 <div className="history-list">
-                  {revisions.map((revision) => (
-                    <div key={revision.id} className="history-row">
-                      <div>
-                        <strong>
-                          {revision.label} · {revision.image}
-                        </strong>
-                        <p>
-                          revision #{revision.number} · port {revision.port} ·{" "}
-                          {formatTime(revision.createdAt)}
-                        </p>
-                      </div>
-                      {selectedStatus?.currentRevision?.id === revision.id ? (
-                        <span className="status-chip status-chip--ready">
-                          当前 revision
-                        </span>
-                      ) : null}
+                  <div className="history-row">
+                    <div>
+                      <strong>{selectedStatus?.run.phase ?? "-"}</strong>
+                      <p>{selectedStatus?.run.message ?? "-"}</p>
+                      <p>
+                        desired {selectedStatus?.run.desiredReplicas ?? 0} ·
+                        deploying {selectedStatus?.run.deployingReplicas ?? 0} ·
+                        running {selectedStatus?.run.runningReplicas ?? 0} ·
+                        failed {selectedStatus?.run.failedReplicas ?? 0}
+                      </p>
                     </div>
-                  ))}
+                    <span>
+                      {selectedStatus?.run.lastObservedAt
+                        ? formatTime(selectedStatus.run.lastObservedAt)
+                        : "-"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               <div className="app-card__section">
-                <p className="app-card__section-title">deployments</p>
+                <p className="app-card__section-title">run summary</p>
                 <div className="history-list">
-                  {deployments.map((deployment) => (
-                    <div key={deployment.id} className="history-row">
-                      <div>
-                        <strong>
-                          {deployment.status} · revision {deployment.revisionID}
-                        </strong>
-                        <p>{deployment.statusReason || "-"}</p>
-                        <p>
-                          desired {deployment.desiredReplicas} · ready{" "}
-                          {deployment.readyReplicas} · available{" "}
-                          {deployment.availableReplicas}
-                        </p>
-                      </div>
-                      <span>{formatTime(deployment.createdAt)}</span>
+                  <div className="history-row">
+                    <div>
+                      <strong>{selectedStatus?.run.latestRunID ?? "-"}</strong>
+                      <p>
+                        superseded {selectedStatus?.run.supersededReplicas ?? 0}{" "}
+                        · current {selectedStatus?.run.currentRunID ?? "-"}
+                      </p>
                     </div>
-                  ))}
+                    <span>{selectedStatus?.desiredState ?? "-"}</span>
+                  </div>
                 </div>
               </div>
             </>
           ) : (
             <div className="callout">
               <p>
-                从项目列表里选一个 service，这里会展示当前 revision、deployment
-                和操作按钮。
+                从项目列表里选一个 service，这里会展示当前 run、execution
+                聚合和操作按钮。
               </p>
             </div>
           )}
 
           {serviceDetailQuery.error instanceof Error ? (
             <p className="error-text">{serviceDetailQuery.error.message}</p>
-          ) : null}
-          {revisionsQuery.error instanceof Error ? (
-            <p className="error-text">{revisionsQuery.error.message}</p>
-          ) : null}
-          {deploymentsQuery.error instanceof Error ? (
-            <p className="error-text">{deploymentsQuery.error.message}</p>
           ) : null}
         </section>
       </main>

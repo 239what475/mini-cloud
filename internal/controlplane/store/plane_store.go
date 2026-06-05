@@ -386,7 +386,7 @@ func (s *Store) RecordPlaneCapacitySnapshot(ctx context.Context, planeID string,
 			memory_mi_capacity,
 			memory_mi_allocated,
 			captured_at
-	`, id, planeID, input.NodesTotal, input.NodesReady, input.ServicesTotal, input.DeploymentsTotal, input.CPUMilliCapacity, input.CPUMilliAllocated, input.MemoryMiCapacity, input.MemoryMiAllocated, capturedAt)
+	`, id, planeID, input.NodesTotal, input.NodesReady, input.ServicesTotal, input.RunsTotal, input.CPUMilliCapacity, input.CPUMilliAllocated, input.MemoryMiCapacity, input.MemoryMiAllocated, capturedAt)
 
 	item, err := scanPlaneCapacitySnapshot(row)
 	if err != nil {
@@ -835,7 +835,7 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (plane.Detail
 			NodesTotal:        int(snapshotNodesTotal.Int64),
 			NodesReady:        int(snapshotNodesReady.Int64),
 			ServicesTotal:     int(snapshotServicesTotal.Int64),
-			DeploymentsTotal:  int(snapshotDeploymentsTotal.Int64),
+			RunsTotal:         int(snapshotDeploymentsTotal.Int64),
 			CPUMilliCapacity:  int(snapshotCPUMilliCapacity.Int64),
 			CPUMilliAllocated: int(snapshotCPUMilliAllocated.Int64),
 			MemoryMiCapacity:  int(snapshotMemoryMiCapacity.Int64),
@@ -936,7 +936,7 @@ func scanPlaneCapacitySnapshot(scanner interface{ Scan(dest ...any) error }) (pl
 		&item.NodesTotal,
 		&item.NodesReady,
 		&item.ServicesTotal,
-		&item.DeploymentsTotal,
+		&item.RunsTotal,
 		&item.CPUMilliCapacity,
 		&item.CPUMilliAllocated,
 		&item.MemoryMiCapacity,

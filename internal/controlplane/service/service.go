@@ -56,10 +56,9 @@ var (
 	ErrRegionRequired                           = errors.New("region is required")
 	ErrInvalidReplicas                          = errors.New("replicas must be greater than 0")
 	ErrInvalidInstanceClass                     = errors.New("instanceClass must be one of small, medium, large")
-	ErrInvalidRevisionStrategy                  = errors.New("revisionPolicy.strategy must be candidate")
 	ErrPersistentDirsReplicaLimit               = errors.New("persistentDirs currently require replicas to be exactly 1")
-	ErrPersistentDirsRolloutUnsupported         = errors.New("services with persistentDirs do not support revision-changing updates once a revision exists")
-	ErrPersistentDirsPlacementChangeUnsupported = errors.New("services with persistentDirs do not support placement-changing updates once a revision exists")
+	ErrPersistentDirsRunUpdateUnsupported       = errors.New("services with persistentDirs do not support run-changing updates once locked")
+	ErrPersistentDirsPlacementChangeUnsupported = errors.New("services with persistentDirs do not support placement-changing updates once a run exists")
 	serviceNamePattern                          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
@@ -67,16 +66,6 @@ const (
 	ConditionPlacementReady = "PlacementReady"
 	ConditionApplied        = "Applied"
 	ConditionReady          = "Ready"
-)
-
-const (
-	RevisionStrategyCandidate = "candidate"
-)
-
-const (
-	RolloutPhaseIdle        = "idle"
-	RolloutPhaseProgressing = "progressing"
-	RolloutPhaseFailed      = "failed"
 )
 
 const (
@@ -128,13 +117,26 @@ type Spec struct {
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
 	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 	PersistentDirsLocked bool                 `json:"-"`
-	RevisionPolicy       RevisionPolicy       `json:"revisionPolicy"`
 }
 
 type ServiceStatus struct {
-	DesiredState string        `json:"desiredState"`
-	Observed     Status        `json:"observed"`
-	Rollout      RolloutStatus `json:"rollout"`
+	DesiredState string    `json:"desiredState"`
+	Observed     Status    `json:"observed"`
+	Run          RunStatus `json:"run"`
+}
+
+type ServiceRun struct {
+	ID              string     `json:"id"`
+	ServiceID       string     `json:"serviceID"`
+	Generation      int64      `json:"generation"`
+	PlanID          string     `json:"planID"`
+	Spec            Spec       `json:"spec"`
+	DesiredReplicas int        `json:"desiredReplicas"`
+	Status          string     `json:"status"`
+	Message         string     `json:"message,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	ObservedAt      *time.Time `json:"observedAt,omitempty"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
 type ServicePlacement struct {
@@ -148,20 +150,18 @@ type ServicePlacement struct {
 }
 
 type Cell struct {
-	ServiceID      string         `json:"serviceID"`
-	Key            string         `json:"key"`
-	Role           string         `json:"role"`
-	Provider       string         `json:"provider"`
-	Region         string         `json:"region"`
-	PinnedPlaneID  string         `json:"pinnedPlaneID,omitempty"`
-	Replicas       int            `json:"replicas"`
-	InstanceClass  string         `json:"instanceClass"`
-	RevisionPolicy RevisionPolicy `json:"revisionPolicy"`
-	Rollout        RolloutStatus  `json:"rollout"`
-	DesiredState   string         `json:"desiredState"`
-	Status         Status         `json:"status"`
-	CreatedAt      time.Time      `json:"createdAt"`
-	UpdatedAt      time.Time      `json:"updatedAt"`
+	ServiceID     string    `json:"serviceID"`
+	Key           string    `json:"key"`
+	Role          string    `json:"role"`
+	Provider      string    `json:"provider"`
+	Region        string    `json:"region"`
+	PinnedPlaneID string    `json:"pinnedPlaneID,omitempty"`
+	Replicas      int       `json:"replicas"`
+	InstanceClass string    `json:"instanceClass"`
+	DesiredState  string    `json:"desiredState"`
+	Status        Status    `json:"status"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type CellPlacement struct {
@@ -224,36 +224,65 @@ type UpdateStatusInput struct {
 	Message            string
 	Conditions         []Condition
 	LastReconciledAt   *time.Time
-	Rollout            *RolloutStatus
+	Run                *RunStatus
+}
+
+type CreateRunInput struct {
+	ID              string
+	ServiceID       string
+	Generation      int64
+	PlanID          string
+	Spec            Spec
+	DesiredReplicas int
+	Status          string
+	Message         string
+	ObservedAt      *time.Time
+}
+
+type UpdateRunInput struct {
+	Status     string
+	Message    string
+	ObservedAt *time.Time
 }
 
 type CellInput struct {
-	Key            string         `json:"key"`
-	Role           string         `json:"role"`
-	Provider       string         `json:"provider"`
-	Region         string         `json:"region"`
-	PinnedPlaneID  string         `json:"pinnedPlaneID,omitempty"`
-	Replicas       int            `json:"replicas"`
-	InstanceClass  string         `json:"instanceClass"`
-	RevisionPolicy RevisionPolicy `json:"revisionPolicy"`
+	Key           string `json:"key"`
+	Role          string `json:"role"`
+	Provider      string `json:"provider"`
+	Region        string `json:"region"`
+	PinnedPlaneID string `json:"pinnedPlaneID,omitempty"`
+	Replicas      int    `json:"replicas"`
+	InstanceClass string `json:"instanceClass"`
 }
 
-type RevisionPolicy struct {
-	Strategy string `json:"strategy"`
+const (
+	RunPhasePending     = "pending"
+	RunPhaseDispatching = "dispatching"
+	RunPhaseRunning     = "running"
+	RunPhaseFailed      = "failed"
+	RunPhaseSuperseded  = "superseded"
+)
+
+type RunStatus struct {
+	CurrentRunID       string     `json:"currentRunID,omitempty"`
+	LatestRunID        string     `json:"latestRunID,omitempty"`
+	Phase              string     `json:"phase"`
+	Message            string     `json:"message,omitempty"`
+	DesiredReplicas    int        `json:"desiredReplicas"`
+	DeployingReplicas  int        `json:"deployingReplicas"`
+	RunningReplicas    int        `json:"runningReplicas"`
+	FailedReplicas     int        `json:"failedReplicas"`
+	SupersededReplicas int        `json:"supersededReplicas"`
+	LastObservedAt     *time.Time `json:"lastObservedAt,omitempty"`
 }
 
-type RolloutStatus struct {
-	Phase                      string     `json:"phase"`
-	Message                    string     `json:"message,omitempty"`
-	StableRevisionID           string     `json:"stableRevisionID,omitempty"`
-	CandidateRevisionID        string     `json:"candidateRevisionID,omitempty"`
-	StableDesiredReplicas      int        `json:"stableDesiredReplicas"`
-	StableReadyReplicas        int        `json:"stableReadyReplicas"`
-	StableAvailableReplicas    int        `json:"stableAvailableReplicas"`
-	CandidateDesiredReplicas   int        `json:"candidateDesiredReplicas"`
-	CandidateReadyReplicas     int        `json:"candidateReadyReplicas"`
-	CandidateAvailableReplicas int        `json:"candidateAvailableReplicas"`
-	LastObservedAt             *time.Time `json:"lastObservedAt,omitempty"`
+func CloneRunStatus(input RunStatus) RunStatus {
+	out := input
+	if input.LastObservedAt != nil {
+		value := input.LastObservedAt.UTC()
+		out.LastObservedAt = &value
+	}
+	return out
 }
 
 type CreateInput struct {
@@ -304,8 +333,8 @@ func ValidatePersistentDirUpdate(current Service, input UpdateInput) error {
 	if persistentDirPlacementChangeBlocked(current, input) {
 		return ErrPersistentDirsPlacementChangeUnsupported
 	}
-	if persistentDirRevisionChangeBlocked(current, input) {
-		return ErrPersistentDirsRolloutUnsupported
+	if persistentDirRunChangeBlocked(current, input) {
+		return ErrPersistentDirsRunUpdateUnsupported
 	}
 	return nil
 }
@@ -364,9 +393,6 @@ func CloneCellInputs(input []CellInput) []CellInput {
 	}
 	out := make([]CellInput, len(input))
 	copy(out, input)
-	for i := range out {
-		out[i].RevisionPolicy = out[i].RevisionPolicy.Normalized()
-	}
 	sort.Slice(out, func(i, j int) bool {
 		left := cellSortRank(out[i].Role)
 		right := cellSortRank(out[j].Role)
@@ -435,12 +461,11 @@ func CloneSpec(input Spec) Spec {
 		ProjectedFiles:       projectedfile.CloneSpecs(input.ProjectedFiles),
 		PersistentDirs:       persistentdir.CloneSpecs(input.PersistentDirs),
 		PersistentDirsLocked: input.PersistentDirsLocked,
-		RevisionPolicy:       input.RevisionPolicy.Normalized(),
 	}
 }
 
 func (spec Spec) Validate() error {
-	provider, region, pinnedPlaneID, replicas, instanceClass, revisionPolicy, err := ResolveServicePlacementFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.Replicas, spec.InstanceClass, spec.RevisionPolicy)
+	provider, region, pinnedPlaneID, replicas, instanceClass, err := ResolveServicePlacementFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.Replicas, spec.InstanceClass)
 	if err != nil {
 		return err
 	}
@@ -479,54 +504,43 @@ func (spec Spec) Validate() error {
 	_ = pinnedPlaneID
 	_ = replicas
 	_ = instanceClass
-	return revisionPolicy.Validate()
+	return nil
 }
 
-func persistentDirRevisionChangeBlocked(current Service, input UpdateInput) bool {
+func persistentDirRunChangeBlocked(current Service, input UpdateInput) bool {
 	if len(current.Spec.PersistentDirs) == 0 && len(input.Spec.PersistentDirs) == 0 {
 		return false
 	}
-	if !current.Spec.PersistentDirsLocked &&
-		current.Status.Rollout.StableRevisionID == "" &&
-		current.Status.Rollout.CandidateRevisionID == "" {
+	if !current.Spec.PersistentDirsLocked && current.Status.Run.CurrentRunID == "" && current.Status.Run.LatestRunID == "" {
 		return false
 	}
-
-	proposed := current
-	proposed.Metadata.DisplayName = input.DisplayName
-	proposed.Spec = CloneSpec(input.Spec)
-
-	return serviceNeedsNewRevision(current, proposed)
+	return serviceNeedsNewRun(current.Spec, input.Spec)
 }
 
 func persistentDirPlacementChangeBlocked(current Service, input UpdateInput) bool {
 	if len(current.Spec.PersistentDirs) == 0 && len(input.Spec.PersistentDirs) == 0 {
 		return false
 	}
-	if !current.Spec.PersistentDirsLocked &&
-		current.Status.Rollout.StableRevisionID == "" &&
-		current.Status.Rollout.CandidateRevisionID == "" {
+	if !current.Spec.PersistentDirsLocked && current.Status.Run.CurrentRunID == "" && current.Status.Run.LatestRunID == "" {
 		return false
 	}
 
-	currentProvider, currentRegion, currentPinnedPlaneID, _, _, _, err := ResolveServicePlacementFields(
+	currentProvider, currentRegion, currentPinnedPlaneID, _, _, err := ResolveServicePlacementFields(
 		current.Spec.Provider,
 		current.Spec.Region,
 		current.Spec.PinnedPlaneID,
 		current.Spec.Replicas,
 		current.Spec.InstanceClass,
-		current.Spec.RevisionPolicy,
 	)
 	if err != nil {
 		return false
 	}
-	nextProvider, nextRegion, nextPinnedPlaneID, _, _, _, err := ResolveServicePlacementFields(
+	nextProvider, nextRegion, nextPinnedPlaneID, _, _, err := ResolveServicePlacementFields(
 		input.Spec.Provider,
 		input.Spec.Region,
 		input.Spec.PinnedPlaneID,
 		input.Spec.Replicas,
 		input.Spec.InstanceClass,
-		input.Spec.RevisionPolicy,
 	)
 	if err != nil {
 		return false
@@ -536,71 +550,52 @@ func persistentDirPlacementChangeBlocked(current Service, input UpdateInput) boo
 		currentPinnedPlaneID != nextPinnedPlaneID
 }
 
-func serviceNeedsNewRevision(before Service, after Service) bool {
-	return before.Spec.Region != after.Spec.Region ||
-		before.Spec.InstanceClass != after.Spec.InstanceClass ||
-		before.Spec.Image != after.Spec.Image ||
-		!reflect.DeepEqual(before.Spec.Command, after.Spec.Command) ||
-		!reflect.DeepEqual(before.Spec.Args, after.Spec.Args) ||
-		!reflect.DeepEqual(before.Spec.Env, after.Spec.Env) ||
-		before.Spec.DefaultPort != after.Spec.DefaultPort ||
-		before.Spec.ReadinessPath != after.Spec.ReadinessPath ||
-		before.Spec.ConfigSetID != after.Spec.ConfigSetID ||
-		before.Spec.SecretSetID != after.Spec.SecretSetID ||
-		before.Spec.RegistryCredentialID != after.Spec.RegistryCredentialID ||
-		!reflect.DeepEqual(projectedfile.CloneSpecs(before.Spec.ProjectedFiles), projectedfile.CloneSpecs(after.Spec.ProjectedFiles)) ||
-		!reflect.DeepEqual(persistentdir.CloneSpecs(before.Spec.PersistentDirs), persistentdir.CloneSpecs(after.Spec.PersistentDirs))
+func serviceNeedsNewRun(before Spec, after Spec) bool {
+	return !SpecRuntimeEqual(before, after)
 }
 
-func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, replicas int, instanceClass string, revisionPolicy RevisionPolicy) (string, string, string, int, string, RevisionPolicy, error) {
+func SpecRuntimeEqual(before Spec, after Spec) bool {
+	return before.Region == after.Region &&
+		before.InstanceClass == after.InstanceClass &&
+		before.Image == after.Image &&
+		reflect.DeepEqual(before.Command, after.Command) &&
+		reflect.DeepEqual(before.Args, after.Args) &&
+		reflect.DeepEqual(before.Env, after.Env) &&
+		before.DefaultPort == after.DefaultPort &&
+		before.ReadinessPath == after.ReadinessPath &&
+		before.ConfigSetID == after.ConfigSetID &&
+		before.SecretSetID == after.SecretSetID &&
+		before.RegistryCredentialID == after.RegistryCredentialID &&
+		reflect.DeepEqual(projectedfile.CloneSpecs(before.ProjectedFiles), projectedfile.CloneSpecs(after.ProjectedFiles)) &&
+		reflect.DeepEqual(persistentdir.CloneSpecs(before.PersistentDirs), persistentdir.CloneSpecs(after.PersistentDirs))
+}
+
+func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, replicas int, instanceClass string) (string, string, string, int, string, error) {
 	if strings.TrimSpace(provider) == "" {
-		return "", "", "", 0, "", RevisionPolicy{}, ErrProviderRequired
+		return "", "", "", 0, "", ErrProviderRequired
 	}
 	if strings.TrimSpace(region) == "" {
-		return "", "", "", 0, "", RevisionPolicy{}, ErrRegionRequired
+		return "", "", "", 0, "", ErrRegionRequired
 	}
 	if strings.TrimSpace(pinnedPlaneID) == "" {
 		pinnedPlaneID = ""
 	}
 	if pinnedPlaneID != "" && strings.TrimSpace(pinnedPlaneID) == "" {
-		return "", "", "", 0, "", RevisionPolicy{}, ErrPinnedPlaneIDInvalid
+		return "", "", "", 0, "", ErrPinnedPlaneIDInvalid
 	}
 	if replicas <= 0 {
-		return "", "", "", 0, "", RevisionPolicy{}, ErrInvalidReplicas
+		return "", "", "", 0, "", ErrInvalidReplicas
 	}
 	if !IsInstanceClass(instanceClass) {
-		return "", "", "", 0, "", RevisionPolicy{}, ErrInvalidInstanceClass
+		return "", "", "", 0, "", ErrInvalidInstanceClass
 	}
-	normalizedPolicy := revisionPolicy.Normalized()
-	if err := normalizedPolicy.Validate(); err != nil {
-		return "", "", "", 0, "", RevisionPolicy{}, err
-	}
-	return strings.TrimSpace(provider), strings.TrimSpace(region), strings.TrimSpace(pinnedPlaneID), replicas, instanceClass, normalizedPolicy, nil
+	return strings.TrimSpace(provider), strings.TrimSpace(region), strings.TrimSpace(pinnedPlaneID), replicas, instanceClass, nil
 }
 
-func (p RevisionPolicy) Normalized() RevisionPolicy {
-	out := p
-	switch string(strings.ToLower(strings.TrimSpace(string(out.Strategy)))) {
-	case "":
-		out.Strategy = RevisionStrategyCandidate
-	default:
-		out.Strategy = string(strings.ToLower(strings.TrimSpace(string(out.Strategy))))
-	}
-	return out
-}
-
-func (p RevisionPolicy) Validate() error {
-	normalized := p.Normalized()
-	if normalized.Strategy != RevisionStrategyCandidate {
-		return ErrInvalidRevisionStrategy
-	}
-	return nil
-}
-
-func NormalizeRolloutPhase(phase string) string {
+func NormalizeRunPhase(phase string) string {
 	switch strings.ToLower(strings.TrimSpace(phase)) {
 	case "":
-		return RolloutPhaseIdle
+		return RunPhasePending
 	default:
 		return strings.ToLower(strings.TrimSpace(phase))
 	}

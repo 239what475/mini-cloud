@@ -115,7 +115,7 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, deploy.ErrPlaneNotRegistered),
-			errors.Is(err, deploy.ErrPlaneNotAcceptingNewDeployments):
+			errors.Is(err, deploy.ErrPlaneNotAcceptingNewRuns):
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -139,13 +139,13 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 		TargetID:   input.Metadata.ID,
 		TargetName: input.Metadata.Name,
 		Details: map[string]any{
-			"provider":          result.Selection.Decision.Provider,
-			"region":            result.Selection.Decision.Region,
-			"pinnedPlaneID":     input.PinnedPlaneID,
-			"selectedPlaneID":   result.Selection.Decision.PlaneID,
-			"action":            result.Accepted.Action,
-			"serviceID":         input.Metadata.ID,
-			"planID":            result.Accepted.PlanID,
+			"provider":        result.Selection.Decision.Provider,
+			"region":          result.Selection.Decision.Region,
+			"pinnedPlaneID":   input.PinnedPlaneID,
+			"selectedPlaneID": result.Selection.Decision.PlaneID,
+			"action":          result.Accepted.Action,
+			"serviceID":       input.Metadata.ID,
+			"planID":          result.Accepted.PlanID,
 		},
 	})
 

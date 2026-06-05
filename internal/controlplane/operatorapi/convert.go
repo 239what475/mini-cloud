@@ -6,7 +6,6 @@ import (
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/servicecontroller"
 	controlplanev1 "mini-cloud/internal/gen/proto/minicloud/controlplane/v1"
-	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/structpb"
@@ -77,7 +76,7 @@ func protoPlane(item plane.Detail) *controlplanev1.Plane {
 			NodesTotal:        int32(item.LatestCapacityRecord.NodesTotal),
 			NodesReady:        int32(item.LatestCapacityRecord.NodesReady),
 			ServicesTotal:     int32(item.LatestCapacityRecord.ServicesTotal),
-			DeploymentsTotal:  int32(item.LatestCapacityRecord.DeploymentsTotal),
+			RunsTotal:         int32(item.LatestCapacityRecord.RunsTotal),
 			CpuMilliCapacity:  int32(item.LatestCapacityRecord.CPUMilliCapacity),
 			CpuMilliAllocated: int32(item.LatestCapacityRecord.CPUMilliAllocated),
 			MemoryMiCapacity:  int32(item.LatestCapacityRecord.MemoryMiCapacity),
@@ -138,11 +137,8 @@ func protoService(view servicecontroller.View) *controlplanev1.Service {
 			ConfigSetId:          view.Service.Spec.ConfigSetID,
 			SecretSetId:          view.Service.Spec.SecretSetID,
 			RegistryCredentialId: view.Service.Spec.RegistryCredentialID,
-			RevisionPolicy: &controlplanev1.ServiceRevisionPolicy{
-				Strategy: string(view.Service.Spec.RevisionPolicy.Strategy),
-			},
-			ProjectedFiles: projectedFilesToProto(view.Service.Spec.ProjectedFiles),
-			PersistentDirs: persistentDirsToProto(view.Service.Spec.PersistentDirs),
+			ProjectedFiles:       projectedFilesToProto(view.Service.Spec.ProjectedFiles),
+			PersistentDirs:       persistentDirsToProto(view.Service.Spec.PersistentDirs),
 		},
 		Status: &controlplanev1.ServiceStatus{
 			DesiredState:       string(view.Service.Status.DesiredState),
@@ -151,27 +147,21 @@ func protoService(view servicecontroller.View) *controlplanev1.Service {
 			Healthy:            view.Service.Status.Observed.Healthy,
 			Message:            view.Service.Status.Observed.Message,
 			LastReconciledAt:   optionalTimestamp(view.Service.Status.Observed.LastReconciledAt),
-			Rollout: &controlplanev1.ServiceRollout{
-				Phase:                      view.Service.Status.Rollout.Phase,
-				Message:                    view.Service.Status.Rollout.Message,
-				StableRevisionId:           view.Service.Status.Rollout.StableRevisionID,
-				CandidateRevisionId:        view.Service.Status.Rollout.CandidateRevisionID,
-				StableDesiredReplicas:      int32(view.Service.Status.Rollout.StableDesiredReplicas),
-				StableReadyReplicas:        int32(view.Service.Status.Rollout.StableReadyReplicas),
-				StableAvailableReplicas:    int32(view.Service.Status.Rollout.StableAvailableReplicas),
-				CandidateDesiredReplicas:   int32(view.Service.Status.Rollout.CandidateDesiredReplicas),
-				CandidateReadyReplicas:     int32(view.Service.Status.Rollout.CandidateReadyReplicas),
-				CandidateAvailableReplicas: int32(view.Service.Status.Rollout.CandidateAvailableReplicas),
-				LastObservedAt:             optionalTimestamp(view.Service.Status.Rollout.LastObservedAt),
-				StableRevision:             revisionSummary(view.Service.Status.Rollout.StableRevisionID),
-				CandidateRevision:          revisionSummary(view.Service.Status.Rollout.CandidateRevisionID),
+			Run: &controlplanev1.ServiceRunStatus{
+				CurrentRunId:       view.Service.Status.Run.CurrentRunID,
+				LatestRunId:        view.Service.Status.Run.LatestRunID,
+				Phase:              view.Service.Status.Run.Phase,
+				Message:            view.Service.Status.Run.Message,
+				DesiredReplicas:    int32(view.Service.Status.Run.DesiredReplicas),
+				DeployingReplicas:  int32(view.Service.Status.Run.DeployingReplicas),
+				RunningReplicas:    int32(view.Service.Status.Run.RunningReplicas),
+				FailedReplicas:     int32(view.Service.Status.Run.FailedReplicas),
+				SupersededReplicas: int32(view.Service.Status.Run.SupersededReplicas),
+				LastObservedAt:     optionalTimestamp(view.Service.Status.Run.LastObservedAt),
 			},
 		},
 		CreatedAt: requiredTimestamp(view.Service.CreatedAt),
 		UpdatedAt: requiredTimestamp(view.Service.UpdatedAt),
-	}
-	if currentRevision := revisionSummary(view.Service.Status.Rollout.StableRevisionID); currentRevision != nil {
-		out.Status.CurrentRevision = currentRevision
 	}
 	if view.Placement != nil {
 		out.Status.Placement = &controlplanev1.ServicePlacement{
@@ -212,15 +202,4 @@ func persistentDirsToProto(items []persistentdir.Spec) []*controlplanev1.Persist
 		})
 	}
 	return out
-}
-
-func revisionSummary(id string) *controlplanev1.ServiceCurrentRevision {
-	revisionID := strings.TrimSpace(id)
-	if revisionID == "" {
-		return nil
-	}
-	return &controlplanev1.ServiceCurrentRevision{
-		Id:    revisionID,
-		Label: revisionID,
-	}
 }

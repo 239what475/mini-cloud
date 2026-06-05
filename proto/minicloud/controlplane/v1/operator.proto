@@ -50,7 +50,7 @@ message PlaneCapacitySnapshot {
   int32 nodes_total = 2 [json_name = "nodesTotal"];
   int32 nodes_ready = 3 [json_name = "nodesReady"];
   int32 services_total = 4 [json_name = "servicesTotal"];
-  int32 deployments_total = 5 [json_name = "deploymentsTotal"];
+  int32 runs_total = 5 [json_name = "runsTotal"];
   int32 cpu_milli_capacity = 6 [json_name = "cpuMilliCapacity"];
   int32 cpu_milli_allocated = 7 [json_name = "cpuMilliAllocated"];
   int32 memory_mi_capacity = 8 [json_name = "memoryMiCapacity"];
@@ -114,25 +114,17 @@ message SyncPlaneResponse {
   int32 alerts_firing = 6 [json_name = "alertsFiring"];
 }
 
-message ServiceCurrentRevision {
-  string id = 1;
-  string label = 2;
-}
-
-message ServiceRollout {
-  string phase = 1;
-  string message = 2;
-  string stable_revision_id = 3 [json_name = "stableRevisionID"];
-  string candidate_revision_id = 4 [json_name = "candidateRevisionID"];
-  int32 stable_desired_replicas = 5 [json_name = "stableDesiredReplicas"];
-  int32 stable_ready_replicas = 6 [json_name = "stableReadyReplicas"];
-  int32 stable_available_replicas = 7 [json_name = "stableAvailableReplicas"];
-  int32 candidate_desired_replicas = 8 [json_name = "candidateDesiredReplicas"];
-  int32 candidate_ready_replicas = 9 [json_name = "candidateReadyReplicas"];
-  int32 candidate_available_replicas = 10 [json_name = "candidateAvailableReplicas"];
-  google.protobuf.Timestamp last_observed_at = 11 [json_name = "lastObservedAt"];
-  ServiceCurrentRevision stable_revision = 12 [json_name = "stableRevision"];
-  ServiceCurrentRevision candidate_revision = 13 [json_name = "candidateRevision"];
+message ServiceRunStatus {
+  string current_run_id = 1 [json_name = "currentRunID"];
+  string latest_run_id = 2 [json_name = "latestRunID"];
+  string phase = 3;
+  string message = 4;
+  int32 desired_replicas = 5 [json_name = "desiredReplicas"];
+  int32 deploying_replicas = 6 [json_name = "deployingReplicas"];
+  int32 running_replicas = 7 [json_name = "runningReplicas"];
+  int32 failed_replicas = 8 [json_name = "failedReplicas"];
+  int32 superseded_replicas = 9 [json_name = "supersededReplicas"];
+  google.protobuf.Timestamp last_observed_at = 10 [json_name = "lastObservedAt"];
 }
 
 message ServiceStatus {
@@ -142,9 +134,8 @@ message ServiceStatus {
   bool healthy = 4;
   string message = 5;
   google.protobuf.Timestamp last_reconciled_at = 6 [json_name = "lastReconciledAt"];
-  ServiceCurrentRevision current_revision = 7 [json_name = "currentRevision"];
-  ServiceRollout rollout = 8;
-  ServicePlacement placement = 9;
+  ServiceRunStatus run = 7;
+  ServicePlacement placement = 8;
 }
 
 message ServicePlacement {
@@ -152,10 +143,6 @@ message ServicePlacement {
   string remote_status = 5 [json_name = "remoteStatus"];
   bool remote_healthy = 6 [json_name = "remoteHealthy"];
   string remote_message = 7 [json_name = "remoteMessage"];
-}
-
-message ServiceRevisionPolicy {
-  string strategy = 1;
 }
 
 message ProjectedFileSpec {
@@ -193,9 +180,8 @@ message ServiceSpec {
   string config_set_id = 13 [json_name = "configSetID"];
   string secret_set_id = 14 [json_name = "secretSetID"];
   string registry_credential_id = 15 [json_name = "registryCredentialID"];
-  ServiceRevisionPolicy revision_policy = 16 [json_name = "revisionPolicy"];
-  repeated ProjectedFileSpec projected_files = 17 [json_name = "projectedFiles"];
-  repeated PersistentDirSpec persistent_dirs = 18 [json_name = "persistentDirs"];
+  repeated ProjectedFileSpec projected_files = 16 [json_name = "projectedFiles"];
+  repeated PersistentDirSpec persistent_dirs = 17 [json_name = "persistentDirs"];
 }
 
 message CreateServiceRequest {

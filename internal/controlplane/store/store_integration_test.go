@@ -91,7 +91,7 @@ func TestIntegrationPlaneStatusCapacityAndIncidentLifecycle(t *testing.T) {
 		NodesTotal:        4,
 		NodesReady:        3,
 		ServicesTotal:     7,
-		DeploymentsTotal:  8,
+		RunsTotal:         8,
 		CPUMilliCapacity:  16000,
 		CPUMilliAllocated: 7000,
 		MemoryMiCapacity:  32768,
@@ -108,7 +108,7 @@ func TestIntegrationPlaneStatusCapacityAndIncidentLifecycle(t *testing.T) {
 	if gotPlane.Status.Status != plane.StatusReady {
 		t.Fatalf("GetPlane status = %v, want ready", gotPlane.Status.Status)
 	}
-	if gotPlane.Operation.State != plane.OperationStateActive || !gotPlane.Operation.AcceptingNewDeployments() {
+	if gotPlane.Operation.State != plane.OperationStateActive || !gotPlane.Operation.AcceptingNewRuns() {
 		t.Fatalf("expected plane operation to be active, got %+v", gotPlane.Operation)
 	}
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
@@ -413,7 +413,7 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	}
 }
 
-func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeAfterRevision(t *testing.T) {
+func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeAfterRun(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
@@ -443,9 +443,12 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeAfterRevision
 		Phase:              controlservice.PhaseReady,
 		Healthy:            true,
 		Message:            "remote service is ready",
-		Rollout: &controlservice.RolloutStatus{
-			Phase:            controlservice.RolloutPhaseIdle,
-			StableRevisionID: "rel-1",
+		Run: &controlservice.RunStatus{
+			CurrentRunID:    "run-1",
+			LatestRunID:     "run-1",
+			Phase:           controlservice.RunPhaseRunning,
+			DesiredReplicas: 1,
+			RunningReplicas: 1,
 		},
 	})
 	if err != nil {
@@ -468,8 +471,8 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeAfterRevision
 			},
 		},
 	})
-	if !errors.Is(err, controlservice.ErrPersistentDirsRolloutUnsupported) {
-		t.Fatalf("UpdateService error = %v, want %v", err, controlservice.ErrPersistentDirsRolloutUnsupported)
+	if !errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) {
+		t.Fatalf("UpdateService error = %v, want %v", err, controlservice.ErrPersistentDirsRunUpdateUnsupported)
 	}
 
 	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
@@ -484,7 +487,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeAfterRevision
 	}
 }
 
-func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeWhenLockedWithoutRollout(t *testing.T) {
+func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeWhenLockedWithoutRun(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
@@ -511,8 +514,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeWhenLockedWit
 
 	if _, err := db.DB.ExecContext(ctx, `
 		UPDATE fleet_services
-		SET spec_persistent_dirs_locked = TRUE,
-		    status_rollout_json = '{"phase":"idle","message":"","stableRevisionID":"","candidateRevisionID":"","stableDesiredReplicas":0,"stableReadyReplicas":0,"stableAvailableReplicas":0,"candidateDesiredReplicas":0,"candidateReadyReplicas":0,"candidateAvailableReplicas":0}'::jsonb
+		SET spec_persistent_dirs_locked = TRUE
 		WHERE id = $1
 	`, serviceItem.Metadata.ID); err != nil {
 		t.Fatalf("force upgrade-like locked state returned error: %v", err)
@@ -534,8 +536,8 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeWhenLockedWit
 			},
 		},
 	})
-	if !errors.Is(err, controlservice.ErrPersistentDirsRolloutUnsupported) {
-		t.Fatalf("UpdateService error = %v, want %v", err, controlservice.ErrPersistentDirsRolloutUnsupported)
+	if !errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) {
+		t.Fatalf("UpdateService error = %v, want %v", err, controlservice.ErrPersistentDirsRunUpdateUnsupported)
 	}
 
 	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
@@ -547,7 +549,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRevisionChangeWhenLockedWit
 	}
 }
 
-func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWithoutRollout(t *testing.T) {
+func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWithoutRun(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
@@ -575,8 +577,7 @@ func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWi
 
 	if _, err := db.DB.ExecContext(ctx, `
 		UPDATE fleet_services
-		SET spec_persistent_dirs_locked = TRUE,
-		    status_rollout_json = '{"phase":"idle","message":"","stableRevisionID":"","candidateRevisionID":"","stableDesiredReplicas":0,"stableReadyReplicas":0,"stableAvailableReplicas":0,"candidateDesiredReplicas":0,"candidateReadyReplicas":0,"candidateAvailableReplicas":0}'::jsonb
+		SET spec_persistent_dirs_locked = TRUE
 		WHERE id = $1
 	`, serviceItem.Metadata.ID); err != nil {
 		t.Fatalf("force upgrade-like locked state returned error: %v", err)

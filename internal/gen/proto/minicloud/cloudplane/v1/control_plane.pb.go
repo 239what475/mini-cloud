@@ -1317,6 +1317,7 @@ type ApplyExecutionPlanRequest struct {
 	ReadinessPath     string                    `protobuf:"bytes,13,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
 	Replicas          int32                     `protobuf:"varint,14,opt,name=replicas,proto3" json:"replicas,omitempty"`
 	InstanceClass     string                    `protobuf:"bytes,15,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
+	Exposure          string                    `protobuf:"bytes,16,opt,name=exposure,proto3" json:"exposure,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1452,6 +1453,13 @@ func (x *ApplyExecutionPlanRequest) GetReplicas() int32 {
 func (x *ApplyExecutionPlanRequest) GetInstanceClass() string {
 	if x != nil {
 		return x.InstanceClass
+	}
+	return ""
+}
+
+func (x *ApplyExecutionPlanRequest) GetExposure() string {
+	if x != nil {
+		return x.Exposure
 	}
 	return ""
 }
@@ -1738,7 +1746,7 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x18ExecutionImageCredential\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"\x93\x06\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\"\xaf\x06\n" +
 	"\x19ApplyExecutionPlanRequest\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12\x1d\n" +
 	"\n" +
@@ -1756,7 +1764,8 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x0econtainer_port\x18\f \x01(\x05R\rcontainerPort\x12%\n" +
 	"\x0ereadiness_path\x18\r \x01(\tR\rreadinessPath\x12\x1a\n" +
 	"\breplicas\x18\x0e \x01(\x05R\breplicas\x12%\n" +
-	"\x0einstance_class\x18\x0f \x01(\tR\rinstanceClass\x1a6\n" +
+	"\x0einstance_class\x18\x0f \x01(\tR\rinstanceClass\x12\x1a\n" +
+	"\bexposure\x18\x10 \x01(\tR\bexposure\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +

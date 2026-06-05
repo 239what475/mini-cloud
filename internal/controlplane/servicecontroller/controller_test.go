@@ -103,15 +103,14 @@ func updateInput(displayName string, image string) controlservice.UpdateInput {
 
 func serviceSpec(image string) controlservice.Spec {
 	return controlservice.Spec{
-		Provider:       "aliyun",
-		Region:         "cn-beijing",
-		Replicas:       1,
-		InstanceClass:  controlservice.InstanceClassSmall,
-		Exposure:       "public",
-		Image:          image,
-		DefaultPort:    80,
-		ReadinessPath:  "/",
-		RevisionPolicy: controlservice.RevisionPolicy{}.Normalized(),
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		Replicas:      1,
+		InstanceClass: controlservice.InstanceClassSmall,
+		Exposure:      "public",
+		Image:         image,
+		DefaultPort:   80,
+		ReadinessPath: "/",
 	}
 }
 

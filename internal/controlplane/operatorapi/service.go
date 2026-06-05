@@ -247,7 +247,7 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
 		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
 		errors.Is(err, controlservice.ErrPersistentDirsReplicaLimit) ||
-		errors.Is(err, controlservice.ErrPersistentDirsRolloutUnsupported) ||
+		errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) ||
 		errors.Is(err, controlservice.ErrPersistentDirsPlacementChangeUnsupported) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||

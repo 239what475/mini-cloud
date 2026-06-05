@@ -14,12 +14,6 @@ ALTER TABLE fleet_services
 ALTER TABLE fleet_services
     ADD COLUMN IF NOT EXISTS spec_instance_class TEXT NOT NULL DEFAULT 'small';
 
-ALTER TABLE fleet_services
-    ADD COLUMN IF NOT EXISTS spec_revision_policy_json JSONB NOT NULL DEFAULT '{"strategy":"candidate"}'::jsonb;
-
-ALTER TABLE fleet_services
-    ADD COLUMN IF NOT EXISTS status_rollout_json JSONB NOT NULL DEFAULT '{"phase":"idle","message":"","stableRevisionID":"","candidateRevisionID":"","stableDesiredReplicas":0,"stableReadyReplicas":0,"stableAvailableReplicas":0,"candidateDesiredReplicas":0,"candidateReadyReplicas":0,"candidateAvailableReplicas":0}'::jsonb;
-
 -- +goose StatementBegin
 DO $$
 BEGIN
@@ -54,8 +48,6 @@ SET
     spec_pinned_plane_id = rc.spec_pinned_plane_id,
     spec_replicas = rc.spec_replicas,
     spec_instance_class = rc.spec_instance_class,
-    spec_revision_policy_json = COALESCE(rc.spec_revision_policy_json, s.spec_revision_policy_json),
-    status_rollout_json = COALESCE(rc.status_rollout_json, s.status_rollout_json),
     updated_at = now()
 FROM ranked_cells rc
 WHERE s.id = rc.service_id
@@ -115,8 +107,6 @@ ON CONFLICT (service_id) DO NOTHING;
 DROP INDEX IF EXISTS idx_fleet_service_placements_plane;
 DROP TABLE IF EXISTS fleet_service_placements;
 ALTER TABLE fleet_services DROP CONSTRAINT IF EXISTS fleet_services_pinned_plane_fk;
-ALTER TABLE fleet_services DROP COLUMN IF EXISTS status_rollout_json;
-ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_revision_policy_json;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_instance_class;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_replicas;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_pinned_plane_id;

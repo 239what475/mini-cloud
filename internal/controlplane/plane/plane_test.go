@@ -56,7 +56,7 @@ func TestOperationResolvedStateDefaultsToActive(t *testing.T) {
 	if op.ResolvedState() != OperationStateActive {
 		t.Fatalf("ResolvedState = %v, want %v", op.ResolvedState(), OperationStateActive)
 	}
-	if !op.AcceptingNewDeployments() {
-		t.Fatalf("AcceptingNewDeployments = false, want true")
+	if !op.AcceptingNewRuns() {
+		t.Fatalf("AcceptingNewRuns = false, want true")
 	}
 }

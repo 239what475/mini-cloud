@@ -32,6 +32,7 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
 		Replicas:          int(req.GetReplicas()),
 		InstanceClass:     strings.TrimSpace(req.GetInstanceClass()),
+		Exposure:          strings.TrimSpace(req.GetExposure()),
 	}
 	if cred := req.GetImageCredential(); cred != nil {
 		input.ImageCredential = &cloudexecution.ImageCredential{

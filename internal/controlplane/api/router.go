@@ -121,8 +121,8 @@ func renderControlMetrics(controlPlanes []plane.Detail, now time.Time) string {
 	out.WriteString("# TYPE minicloud_plane_status gauge\n")
 	out.WriteString("# HELP minicloud_plane_operation_state Current plane operation mode, emitted as one-hot samples per plane and state.\n")
 	out.WriteString("# TYPE minicloud_plane_operation_state gauge\n")
-	out.WriteString("# HELP minicloud_plane_accepting_new_deployments Whether the plane is currently accepting new deployments.\n")
-	out.WriteString("# TYPE minicloud_plane_accepting_new_deployments gauge\n")
+	out.WriteString("# HELP minicloud_plane_accepting_new_runs Whether the plane is currently accepting new runs.\n")
+	out.WriteString("# TYPE minicloud_plane_accepting_new_runs gauge\n")
 	for _, item := range controlPlanes {
 		for _, status := range []string{"registering", "ready", "degraded", "offline"} {
 			value := 0
@@ -140,10 +140,10 @@ func renderControlMetrics(controlPlanes []plane.Detail, now time.Time) string {
 			util.Fprintf(&out, "minicloud_plane_operation_state{name=%q,plane_id=%q,state=%q} %d\n", item.Name, item.ID, state, value)
 		}
 		acceptingValue := 0
-		if item.Operation.AcceptingNewDeployments() {
+		if item.Operation.AcceptingNewRuns() {
 			acceptingValue = 1
 		}
-		util.Fprintf(&out, "minicloud_plane_accepting_new_deployments{plane_id=%q} %d\n", item.ID, acceptingValue)
+		util.Fprintf(&out, "minicloud_plane_accepting_new_runs{plane_id=%q} %d\n", item.ID, acceptingValue)
 		if item.Status.LastSyncAt != nil {
 			util.Fprintf(&out, "minicloud_plane_last_sync_age_seconds{plane_id=%q} %.0f\n", item.ID, now.Sub(item.Status.LastSyncAt.UTC()).Seconds())
 		}

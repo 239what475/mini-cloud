@@ -163,6 +163,7 @@ message ApplyExecutionPlanRequest {
   string readiness_path = 13 [json_name = "readinessPath"];
   int32 replicas = 14;
   string instance_class = 15 [json_name = "instanceClass"];
+  string exposure = 16;
 }
 
 message ApplyExecutionPlanResponse {

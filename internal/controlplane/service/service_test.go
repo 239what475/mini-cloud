@@ -36,23 +36,23 @@ func TestCreateInputValidateRejectsProjectedFileOverlapWithPersistentDir(t *test
 	}
 }
 
-func TestValidatePersistentDirUpdateRejectsRevisionChangingUpdateAfterRevision(t *testing.T) {
+func TestValidatePersistentDirUpdateRejectsRunChangingUpdateAfterRun(t *testing.T) {
 	t.Parallel()
 
 	current := serviceWithPersistentDir("ghcr.io/example/app:v1", false)
-	current.Status.Rollout.StableRevisionID = "rel-1"
+	current.Status.Run.CurrentRunID = "run-1"
 
 	err := ValidatePersistentDirUpdate(current, updateWithPersistentDir("Demo", "aliyun", "cn-beijing", "", "ghcr.io/example/app:v2"))
-	if !errors.Is(err, ErrPersistentDirsRolloutUnsupported) {
-		t.Fatalf("ValidatePersistentDirUpdate() error = %v, want %v", err, ErrPersistentDirsRolloutUnsupported)
+	if !errors.Is(err, ErrPersistentDirsRunUpdateUnsupported) {
+		t.Fatalf("ValidatePersistentDirUpdate() error = %v, want %v", err, ErrPersistentDirsRunUpdateUnsupported)
 	}
 }
 
-func TestValidatePersistentDirUpdateAllowsNonRevisionChangeAfterRevision(t *testing.T) {
+func TestValidatePersistentDirUpdateAllowsNonRunChangeAfterRun(t *testing.T) {
 	t.Parallel()
 
 	current := serviceWithPersistentDir("ghcr.io/example/app:v1", false)
-	current.Status.Rollout.StableRevisionID = "rel-1"
+	current.Status.Run.CurrentRunID = "run-1"
 
 	err := ValidatePersistentDirUpdate(current, updateWithPersistentDir("Demo v2", "aliyun", "cn-beijing", "", "ghcr.io/example/app:v1"))
 	if err != nil {
@@ -60,18 +60,18 @@ func TestValidatePersistentDirUpdateAllowsNonRevisionChangeAfterRevision(t *test
 	}
 }
 
-func TestValidatePersistentDirUpdateRejectsRevisionChangingUpdateWhenLockedWithoutRollout(t *testing.T) {
+func TestValidatePersistentDirUpdateRejectsRunChangingUpdateWhenLockedWithoutRun(t *testing.T) {
 	t.Parallel()
 
 	current := serviceWithPersistentDir("ghcr.io/example/app:v1", true)
 
 	err := ValidatePersistentDirUpdate(current, updateWithPersistentDir("Demo", "aliyun", "cn-beijing", "", "ghcr.io/example/app:v2"))
-	if !errors.Is(err, ErrPersistentDirsRolloutUnsupported) {
-		t.Fatalf("ValidatePersistentDirUpdate() error = %v, want %v", err, ErrPersistentDirsRolloutUnsupported)
+	if !errors.Is(err, ErrPersistentDirsRunUpdateUnsupported) {
+		t.Fatalf("ValidatePersistentDirUpdate() error = %v, want %v", err, ErrPersistentDirsRunUpdateUnsupported)
 	}
 }
 
-func TestValidatePersistentDirUpdateRejectsPlacementChangeWhenLockedWithoutRollout(t *testing.T) {
+func TestValidatePersistentDirUpdateRejectsPlacementChangeWhenLockedWithoutRun(t *testing.T) {
 	t.Parallel()
 
 	current := serviceWithPersistentDir("ghcr.io/example/app:v1", true)
@@ -97,7 +97,6 @@ func serviceWithPersistentDir(image string, locked bool) Service {
 			ReadinessPath:        "/healthz",
 			PersistentDirsLocked: locked,
 			PersistentDirs:       []persistentdir.Spec{{Name: "data", MountPath: "/var/lib/app"}},
-			RevisionPolicy:       RevisionPolicy{}.Normalized(),
 		},
 	}
 }
@@ -118,7 +117,6 @@ func updateWithPersistentDir(displayName string, provider string, region string,
 			PersistentDirs: []persistentdir.Spec{
 				{Name: "data", MountPath: "/var/lib/app"},
 			},
-			RevisionPolicy: RevisionPolicy{}.Normalized(),
 		},
 	}
 }

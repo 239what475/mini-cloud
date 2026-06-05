@@ -198,16 +198,6 @@ control-plane 负责汇总全局 front door / CDN 需要的 service-level view�
 
 ### Cloud Plane
 
-优先废弃：
-
-- `internal/cloudplane/domain/desired`
-- `internal/cloudplane/domain/workload`
-- `internal/cloudplane/domain/revision`
-- `internal/cloudplane/domain/deployment`
-- `internal/cloudplane/control/lifecycle`
-- cloud-plane service desired reconcile loop
-- cloud-plane service rollback API
-
 需要保留并收缩：
 
 - `internal/cloudplane/api/nodeagent`

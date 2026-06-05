@@ -22,7 +22,7 @@ type Summary struct {
 	NodesReady            int     `json:"nodesReady"`
 	NodesUnavailable      int     `json:"nodesUnavailable"`
 	ServicesTotal         int     `json:"servicesTotal"`
-	DeploymentsTotal      int     `json:"deploymentsTotal"`
+	RunsTotal             int     `json:"runsTotal"`
 	CPUMilliCapacity      int     `json:"cpuMilliCapacity"`
 	CPUMilliAllocated     int     `json:"cpuMilliAllocated"`
 	CPUMilliFree          int     `json:"cpuMilliFree"`
@@ -42,40 +42,40 @@ type Group struct {
 }
 
 type Plane struct {
-	ID                      string     `json:"id"`
-	Name                    string     `json:"name"`
-	DisplayName             string     `json:"displayName"`
-	Provider                string     `json:"provider"`
-	Region                  string     `json:"region"`
-	GRPCEndpoint            string     `json:"grpcEndpoint"`
-	Registered              bool       `json:"registered"`
-	Status                  string     `json:"status"`
-	StatusMessage           string     `json:"statusMessage"`
-	OperationState          string     `json:"operationState"`
-	OperationReason         string     `json:"operationReason"`
-	OperationUpdatedAt      *time.Time `json:"operationUpdatedAt,omitempty"`
-	AcceptingNewDeployments bool       `json:"acceptingNewDeployments"`
-	LastHeartbeatAt         *time.Time `json:"lastHeartbeatAt,omitempty"`
-	LastSyncAt              *time.Time `json:"lastSyncAt,omitempty"`
-	CapacityCapturedAt      *time.Time `json:"capacityCapturedAt,omitempty"`
-	NodesTotal              int        `json:"nodesTotal"`
-	NodesReady              int        `json:"nodesReady"`
-	NodesUnavailable        int        `json:"nodesUnavailable"`
-	ServicesTotal           int        `json:"servicesTotal"`
-	DeploymentsTotal        int        `json:"deploymentsTotal"`
-	CPUMilliCapacity        int        `json:"cpuMilliCapacity"`
-	CPUMilliAllocated       int        `json:"cpuMilliAllocated"`
-	CPUMilliFree            int        `json:"cpuMilliFree"`
-	MemoryMiCapacity        int        `json:"memoryMiCapacity"`
-	MemoryMiAllocated       int        `json:"memoryMiAllocated"`
-	MemoryMiFree            int        `json:"memoryMiFree"`
-	RuntimePoolConfigured   bool       `json:"runtimePoolConfigured"`
-	RuntimePoolPhase        string     `json:"runtimePoolPhase,omitempty"`
-	RuntimePoolReason       string     `json:"runtimePoolReason,omitempty"`
-	RuntimePoolMinReady     int        `json:"runtimePoolMinReady,omitempty"`
-	RuntimePoolMaxReady     int        `json:"runtimePoolMaxReady,omitempty"`
-	RuntimePoolHeadroomCPU  int        `json:"runtimePoolHeadroomCPUMilli,omitempty"`
-	RuntimePoolHeadroomMem  int        `json:"runtimePoolHeadroomMemoryMi,omitempty"`
+	ID                     string     `json:"id"`
+	Name                   string     `json:"name"`
+	DisplayName            string     `json:"displayName"`
+	Provider               string     `json:"provider"`
+	Region                 string     `json:"region"`
+	GRPCEndpoint           string     `json:"grpcEndpoint"`
+	Registered             bool       `json:"registered"`
+	Status                 string     `json:"status"`
+	StatusMessage          string     `json:"statusMessage"`
+	OperationState         string     `json:"operationState"`
+	OperationReason        string     `json:"operationReason"`
+	OperationUpdatedAt     *time.Time `json:"operationUpdatedAt,omitempty"`
+	AcceptingNewRuns       bool       `json:"acceptingNewRuns"`
+	LastHeartbeatAt        *time.Time `json:"lastHeartbeatAt,omitempty"`
+	LastSyncAt             *time.Time `json:"lastSyncAt,omitempty"`
+	CapacityCapturedAt     *time.Time `json:"capacityCapturedAt,omitempty"`
+	NodesTotal             int        `json:"nodesTotal"`
+	NodesReady             int        `json:"nodesReady"`
+	NodesUnavailable       int        `json:"nodesUnavailable"`
+	ServicesTotal          int        `json:"servicesTotal"`
+	RunsTotal              int        `json:"runsTotal"`
+	CPUMilliCapacity       int        `json:"cpuMilliCapacity"`
+	CPUMilliAllocated      int        `json:"cpuMilliAllocated"`
+	CPUMilliFree           int        `json:"cpuMilliFree"`
+	MemoryMiCapacity       int        `json:"memoryMiCapacity"`
+	MemoryMiAllocated      int        `json:"memoryMiAllocated"`
+	MemoryMiFree           int        `json:"memoryMiFree"`
+	RuntimePoolConfigured  bool       `json:"runtimePoolConfigured"`
+	RuntimePoolPhase       string     `json:"runtimePoolPhase,omitempty"`
+	RuntimePoolReason      string     `json:"runtimePoolReason,omitempty"`
+	RuntimePoolMinReady    int        `json:"runtimePoolMinReady,omitempty"`
+	RuntimePoolMaxReady    int        `json:"runtimePoolMaxReady,omitempty"`
+	RuntimePoolHeadroomCPU int        `json:"runtimePoolHeadroomCPUMilli,omitempty"`
+	RuntimePoolHeadroomMem int        `json:"runtimePoolHeadroomMemoryMi,omitempty"`
 }
 
 type View struct {
@@ -153,20 +153,20 @@ func Build(items []plane.Detail, pools []runtimepool.Pool) View {
 
 func buildPlane(item plane.Detail, pool runtimepool.Pool) Plane {
 	plane := Plane{
-		ID:                      item.ID,
-		Name:                    item.Name,
-		DisplayName:             item.DisplayName,
-		Provider:                item.Provider,
-		Region:                  item.Region,
-		GRPCEndpoint:            item.GRPCEndpoint,
-		Registered:              item.Registration.Registered,
-		Status:                  string(item.Status.Status),
-		StatusMessage:           item.Status.Message,
-		OperationState:          string(item.Operation.ResolvedState()),
-		OperationReason:         item.Operation.Reason,
-		AcceptingNewDeployments: item.Operation.AcceptingNewDeployments(),
-		LastHeartbeatAt:         item.Status.LastHeartbeatAt,
-		LastSyncAt:              item.Status.LastSyncAt,
+		ID:               item.ID,
+		Name:             item.Name,
+		DisplayName:      item.DisplayName,
+		Provider:         item.Provider,
+		Region:           item.Region,
+		GRPCEndpoint:     item.GRPCEndpoint,
+		Registered:       item.Registration.Registered,
+		Status:           string(item.Status.Status),
+		StatusMessage:    item.Status.Message,
+		OperationState:   string(item.Operation.ResolvedState()),
+		OperationReason:  item.Operation.Reason,
+		AcceptingNewRuns: item.Operation.AcceptingNewRuns(),
+		LastHeartbeatAt:  item.Status.LastHeartbeatAt,
+		LastSyncAt:       item.Status.LastSyncAt,
 	}
 	if !item.Operation.UpdatedAt.IsZero() {
 		updatedAt := item.Operation.UpdatedAt
@@ -179,7 +179,7 @@ func buildPlane(item plane.Detail, pool runtimepool.Pool) Plane {
 		plane.NodesReady = record.NodesReady
 		plane.NodesUnavailable = unavailableNodes(record.NodesTotal, record.NodesReady)
 		plane.ServicesTotal = record.ServicesTotal
-		plane.DeploymentsTotal = record.DeploymentsTotal
+		plane.RunsTotal = record.RunsTotal
 		plane.CPUMilliCapacity = record.CPUMilliCapacity
 		plane.CPUMilliAllocated = record.CPUMilliAllocated
 		plane.CPUMilliFree = freeCapacity(record.CPUMilliCapacity, record.CPUMilliAllocated)
@@ -232,7 +232,7 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	summary.NodesReady += planeView.NodesReady
 	summary.NodesUnavailable += planeView.NodesUnavailable
 	summary.ServicesTotal += planeView.ServicesTotal
-	summary.DeploymentsTotal += planeView.DeploymentsTotal
+	summary.RunsTotal += planeView.RunsTotal
 	summary.CPUMilliCapacity += planeView.CPUMilliCapacity
 	summary.CPUMilliAllocated += planeView.CPUMilliAllocated
 	summary.MemoryMiCapacity += planeView.MemoryMiCapacity

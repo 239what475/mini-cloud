@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     plan_id TEXT NOT NULL,
     service_id TEXT NOT NULL,
     service_name TEXT NOT NULL,
+    service_exposure TEXT NOT NULL DEFAULT 'public',
     service_generation BIGINT NOT NULL CHECK (service_generation > 0),
     replica_index INTEGER NOT NULL CHECK (replica_index >= 0),
     node_id TEXT NULL REFERENCES nodes(id) ON DELETE SET NULL,

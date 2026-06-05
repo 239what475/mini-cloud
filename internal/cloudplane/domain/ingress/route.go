@@ -8,3 +8,11 @@ type Route struct {
 	// Backends 是该 host 当前可用的私网 backend 列表，格式为 host:port。
 	Backends []string
 }
+
+// RouteSource 是 cloud-plane 本地 execution fact 汇总出的路由输入。
+type RouteSource struct {
+	ServiceName string
+	NodeID      string
+	HostPort    int
+	HasBackend  bool
+}

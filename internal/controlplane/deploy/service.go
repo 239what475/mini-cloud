@@ -15,7 +15,7 @@ import (
 )
 
 var ErrPlaneNotRegistered = fmt.Errorf("plane southbound registration must complete before service apply actions can run")
-var ErrPlaneNotAcceptingNewDeployments = fmt.Errorf("plane is not accepting new deployments")
+var ErrPlaneNotAcceptingNewRuns = fmt.Errorf("plane is not accepting new runs")
 
 type clientFactory func(grpcEndpoint string, bearerToken string) (*planeclient.Client, error)
 
@@ -59,8 +59,8 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	if !plane.Registration.Registered {
 		return ApplyResult{}, ErrPlaneNotRegistered
 	}
-	if !plane.Operation.AcceptingNewDeployments() {
-		return ApplyResult{}, fmt.Errorf("%w: plane operation state is %s", ErrPlaneNotAcceptingNewDeployments, plane.Operation.ResolvedState())
+	if !plane.Operation.AcceptingNewRuns() {
+		return ApplyResult{}, fmt.Errorf("%w: plane operation state is %s", ErrPlaneNotAcceptingNewRuns, plane.Operation.ResolvedState())
 	}
 	spec, err := input.ResolvedSpec(plane.Region)
 	if err != nil {
@@ -215,6 +215,7 @@ func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInpu
 		ReadinessPath:     spec.ReadinessPath,
 		Replicas:          spec.Replicas,
 		InstanceClass:     spec.InstanceClass,
+		Exposure:          spec.Exposure,
 	}, nil
 }
 

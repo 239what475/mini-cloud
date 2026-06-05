@@ -75,7 +75,7 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, deploy.ErrPlaneNotRegistered),
-			errors.Is(err, deploy.ErrPlaneNotAcceptingNewDeployments):
+			errors.Is(err, deploy.ErrPlaneNotAcceptingNewRuns):
 			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:

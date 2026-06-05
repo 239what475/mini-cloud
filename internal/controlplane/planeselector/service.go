@@ -70,15 +70,15 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 
 	for _, planeDetail := range planes {
 		candidate := Candidate{
-			PlaneID:                 planeDetail.ID,
-			PlaneName:               planeDetail.Name,
-			PlaneDisplayName:        planeDetail.DisplayName,
-			Provider:                planeDetail.Provider,
-			Region:                  planeDetail.Region,
-			Registered:              planeDetail.Registration.Registered,
-			Status:                  string(planeDetail.Status.Status),
-			OperationState:          string(planeDetail.Operation.ResolvedState()),
-			AcceptingNewDeployments: planeDetail.Operation.AcceptingNewDeployments(),
+			PlaneID:          planeDetail.ID,
+			PlaneName:        planeDetail.Name,
+			PlaneDisplayName: planeDetail.DisplayName,
+			Provider:         planeDetail.Provider,
+			Region:           planeDetail.Region,
+			Registered:       planeDetail.Registration.Registered,
+			Status:           string(planeDetail.Status.Status),
+			OperationState:   string(planeDetail.Operation.ResolvedState()),
+			AcceptingNewRuns: planeDetail.Operation.AcceptingNewRuns(),
 		}
 
 		if !planeDetail.Registration.Registered {
@@ -97,9 +97,9 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 		}
 		readyMatched++
 
-		if !planeDetail.Operation.AcceptingNewDeployments() {
+		if !planeDetail.Operation.AcceptingNewRuns() {
 			result.FilteredCounts.Operation++
-			candidate.Reason = fmt.Sprintf("plane operation state is %s, so it is not accepting new deployments", planeDetail.Operation.ResolvedState())
+			candidate.Reason = fmt.Sprintf("plane operation state is %s, so it is not accepting new runs", planeDetail.Operation.ResolvedState())
 			result.Candidates = append(result.Candidates, candidate)
 			continue
 		}

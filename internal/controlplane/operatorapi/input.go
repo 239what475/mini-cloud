@@ -17,13 +17,6 @@ func createInputFromProto(req *controlplanev1.CreateServiceRequest) (controlserv
 	}
 	spec := req.GetSpec()
 
-	revisionPolicy := controlservice.RevisionPolicy{}
-	if spec.GetRevisionPolicy() != nil {
-		revisionPolicy = controlservice.RevisionPolicy{
-			Strategy: strings.TrimSpace(spec.GetRevisionPolicy().GetStrategy()),
-		}
-	}
-
 	return controlservice.CreateInput{
 		Name:        strings.TrimSpace(req.GetName()),
 		DisplayName: strings.TrimSpace(req.GetDisplayName()),
@@ -45,7 +38,6 @@ func createInputFromProto(req *controlplanev1.CreateServiceRequest) (controlserv
 			RegistryCredentialID: strings.TrimSpace(spec.GetRegistryCredentialId()),
 			ProjectedFiles:       projectedFilesFromProto(spec.GetProjectedFiles()),
 			PersistentDirs:       persistentDirsFromProto(spec.GetPersistentDirs()),
-			RevisionPolicy:       revisionPolicy,
 		},
 	}, nil
 }

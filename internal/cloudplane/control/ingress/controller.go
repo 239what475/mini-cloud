@@ -11,22 +11,15 @@ import (
 	"strings"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	"mini-cloud/internal/cloudplane/domain/deployment"
-	"mini-cloud/internal/cloudplane/domain/execution"
 	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/cloudplane/infra/store"
 )
 
 // storeReader 定义 ingress controller 构造 route snapshot 需要的本地状态读取能力。
 type storeReader interface {
-	// ListServices 列出当前 plane 内全部 service。
-	ListServices(context.Context) ([]workload.Service, error)
-	// GetPromotedDeploymentByService 读取 service 当前发布中的 deployment。
-	GetPromotedDeploymentByService(context.Context, string) (*deployment.Deployment, error)
-	// ListRunningExecutionsByDeployment 列出 deployment 下 running 且已分配 hostPort 的 execution。
-	ListRunningExecutionsByDeployment(context.Context, string) ([]execution.Record, error)
+	// ListIngressRouteSources 汇总当前 public service 的 running execution 后端。
+	ListIngressRouteSources(context.Context) ([]domainingress.RouteSource, error)
 	// GetNode 按节点 ID 读取节点。
 	GetNode(context.Context, string) (node.Node, error)
 }
@@ -84,52 +77,47 @@ func (c *Controller) ReconcileOnce(ctx context.Context) error {
 // buildRoutes 根据 public service 当前 running execution 构造 ingress 路由。
 // 参数说明：ctx 控制本地 store 查询生命周期。
 func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, error) {
-	services, err := c.store.ListServices(ctx)
+	sources, err := c.store.ListIngressRouteSources(ctx)
 	if err != nil {
 		return nil, err
 	}
-	routes := make([]domainingress.Route, 0, len(services))
-	for _, serviceItem := range services {
-		// ingress 只发布 public service；private service 即使有 running execution 也不会写入路由快照。
-		if workload.NormalizeExposure(serviceItem.Spec.Exposure) != workload.ExposurePublic {
+	serviceNames := make([]string, 0)
+	backendsByService := make(map[string][]string)
+	for _, source := range sources {
+		serviceName := strings.TrimSpace(source.ServiceName)
+		if serviceName == "" {
 			continue
 		}
-		deploymentItem, err := c.store.GetPromotedDeploymentByService(ctx, serviceItem.Metadata.ID)
-		if err != nil {
-			return nil, err
+		if _, ok := backendsByService[serviceName]; !ok {
+			serviceNames = append(serviceNames, serviceName)
+			backendsByService[serviceName] = nil
 		}
-		if deploymentItem == nil {
-			routes = append(routes, domainingress.Route{Host: c.managedHost(serviceItem.Metadata.Name)})
+		if !source.HasBackend || source.HostPort <= 0 {
 			continue
 		}
-		executions, err := c.store.ListRunningExecutionsByDeployment(ctx, deploymentItem.ID)
+		nodeItem, err := c.store.GetNode(ctx, source.NodeID)
 		if err != nil {
+			if errors.Is(err, store.ErrNodeNotFound) {
+				continue
+			}
 			return nil, err
 		}
-		backends := make([]string, 0, len(executions))
-		for _, executionItem := range executions {
-			if executionItem.Status != execution.StatusRunning || executionItem.HostPort <= 0 {
-				continue
-			}
-			nodeItem, err := c.store.GetNode(ctx, executionItem.NodeID)
-			if err != nil {
-				if errors.Is(err, store.ErrNodeNotFound) {
-					continue
-				}
-				return nil, err
-			}
-			// 离线、draining 或 not_ready 节点上的历史 running execution 不应继续进入入口配置。
-			// schedulable 只控制是否接收新调度，不代表已有 backend 不可服务，因此这里不按它过滤。
-			if nodeItem.Status != node.StatusReady {
-				continue
-			}
-			privateIP := strings.TrimSpace(nodeItem.PrivateIP)
-			if privateIP == "" {
-				continue
-			}
-			backends = append(backends, net.JoinHostPort(privateIP, fmt.Sprintf("%d", executionItem.HostPort)))
+		// 离线、draining 或 not_ready 节点上的历史 running execution 不应继续进入入口配置。
+		// schedulable 只控制是否接收新调度，不代表已有 backend 不可服务，因此这里不按它过滤。
+		if nodeItem.Status != node.StatusReady {
+			continue
 		}
-		routes = append(routes, domainingress.Route{Host: c.managedHost(serviceItem.Metadata.Name), Backends: backends})
+		privateIP := strings.TrimSpace(nodeItem.PrivateIP)
+		if privateIP == "" {
+			continue
+		}
+		backendsByService[serviceName] = append(backendsByService[serviceName], net.JoinHostPort(privateIP, fmt.Sprintf("%d", source.HostPort)))
+	}
+
+	routes := make([]domainingress.Route, 0, len(serviceNames))
+	for _, serviceName := range serviceNames {
+		backends := backendsByService[serviceName]
+		routes = append(routes, domainingress.Route{Host: c.managedHost(serviceName), Backends: backends})
 	}
 	return routes, nil
 }

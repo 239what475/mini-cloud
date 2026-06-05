@@ -38,7 +38,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				NodesTotal:        2,
 				NodesReady:        2,
 				ServicesTotal:     3,
-				DeploymentsTotal:  4,
+				RunsTotal:         4,
 				CPUMilliCapacity:  4000,
 				CPUMilliAllocated: 1500,
 				MemoryMiCapacity:  8192,
@@ -73,7 +73,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				NodesTotal:        1,
 				NodesReady:        0,
 				ServicesTotal:     1,
-				DeploymentsTotal:  2,
+				RunsTotal:         2,
 				CPUMilliCapacity:  2000,
 				CPUMilliAllocated: 500,
 				MemoryMiCapacity:  4096,
@@ -139,8 +139,8 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Summary.NodesTotal != 3 || view.Summary.NodesReady != 2 || view.Summary.NodesUnavailable != 1 {
 		t.Fatalf("unexpected node summary: %+v", view.Summary)
 	}
-	if view.Summary.ServicesTotal != 4 || view.Summary.DeploymentsTotal != 6 {
-		t.Fatalf("unexpected service/deployment summary: %+v", view.Summary)
+	if view.Summary.ServicesTotal != 4 || view.Summary.RunsTotal != 6 {
+		t.Fatalf("unexpected service/run summary: %+v", view.Summary)
 	}
 	if view.Summary.CPUMilliCapacity != 6000 || view.Summary.CPUMilliAllocated != 2000 || view.Summary.CPUMilliFree != 4000 {
 		t.Fatalf("unexpected cpu summary: %+v", view.Summary)
@@ -178,8 +178,8 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Planes[0].CPUMilliFree != 2500 || view.Planes[2].NodesUnavailable != 1 {
 		t.Fatalf("unexpected plane rows: %+v", view.Planes)
 	}
-	if !view.Planes[0].AcceptingNewDeployments || view.Planes[1].AcceptingNewDeployments || view.Planes[2].AcceptingNewDeployments {
-		t.Fatalf("unexpected acceptingNewDeployments flags: %+v", view.Planes)
+	if !view.Planes[0].AcceptingNewRuns || view.Planes[1].AcceptingNewRuns || view.Planes[2].AcceptingNewRuns {
+		t.Fatalf("unexpected acceptingNewRuns flags: %+v", view.Planes)
 	}
 	if !view.Planes[0].RuntimePoolConfigured || view.Planes[0].RuntimePoolPhase != "below_headroom" {
 		t.Fatalf("unexpected plane runtime pool view: %+v", view.Planes[0])

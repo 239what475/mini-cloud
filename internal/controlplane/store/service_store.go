@@ -43,8 +43,7 @@ const serviceSelectColumns = `
 	spec_projected_files_json,
 	spec_persistent_dirs_json,
 	spec_persistent_dirs_locked,
-	spec_revision_policy_json,
-	status_rollout_json,
+	status_run_json,
 	generation,
 	status_desired_state,
 	status_observed_generation,
@@ -64,7 +63,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, replicas, instanceClass, revisionPolicy, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass, input.Spec.RevisionPolicy)
+	provider, region, pinnedPlaneID, replicas, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
@@ -94,21 +93,16 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service persistent dirs: %w", err)
 	}
-	revisionPolicyJSON, err := marshalJSON(revisionPolicy, controlservice.RevisionPolicy{}.Normalized())
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service revision policy: %w", err)
-	}
-
 	now := time.Now().UTC()
 	initialStatus := controlservice.PendingStatus(0, now, controlservice.ReasonPendingCreate, "waiting for service reconcile")
 	statusConditionsJSON, err := marshalJSON(initialStatus.Conditions, []controlservice.Condition{})
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service initial conditions: %w", err)
 	}
-	initialRollout := controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle}
-	rolloutJSON, err := marshalJSON(initialRollout, controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle})
+	initialRun := controlservice.RunStatus{Phase: controlservice.RunPhasePending}
+	runJSON, err := marshalJSON(initialRun, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service initial rollout: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
 
 	item, err := scanService(s.db.QueryRowContext(ctx, `
@@ -134,8 +128,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			spec_projected_files_json,
 			spec_persistent_dirs_json,
 			spec_persistent_dirs_locked,
-			spec_revision_policy_json,
-			status_rollout_json,
+			status_run_json,
 			generation,
 			status_desired_state,
 			status_observed_generation,
@@ -145,7 +138,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_conditions_json,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, false, $21, $22, 1, $23, $24, $25, $26, $27, $28, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, false, $21, 1, $22, $23, $24, $25, $26, $27, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -168,8 +161,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		input.Spec.RegistryCredentialID,
 		projectedFilesJSON,
 		persistentDirsJSON,
-		revisionPolicyJSON,
-		rolloutJSON,
+		runJSON,
 		controlservice.DesiredStateActive,
 		initialStatus.ObservedGeneration,
 		initialStatus.Phase,
@@ -289,17 +281,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, replicas, instanceClass, revisionPolicy, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass, input.Spec.RevisionPolicy)
+	provider, region, pinnedPlaneID, replicas, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
-	revisionPolicyJSON, err := marshalJSON(revisionPolicy, controlservice.RevisionPolicy{}.Normalized())
+	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service revision policy for update: %w", err)
-	}
-	currentRolloutJSON, err := marshalJSON(current.Status.Rollout, controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service rollout for update: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
@@ -331,19 +319,18 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			spec_registry_credential_id = $17,
 			spec_projected_files_json = $18,
 			spec_persistent_dirs_json = $19,
-			spec_revision_policy_json = $20,
-			status_rollout_json = $21,
-			generation = $22,
-			status_desired_state = $23,
-			status_observed_generation = $24,
-			status_phase = $25,
-			status_healthy = $26,
-			status_message = $27,
-			status_conditions_json = $28,
+			status_run_json = $20,
+			generation = $21,
+			status_desired_state = $22,
+			status_observed_generation = $23,
+			status_phase = $24,
+			status_healthy = $25,
+			status_message = $26,
+			status_conditions_json = $27,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $29
+			AND generation = $28
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -365,8 +352,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		input.Spec.RegistryCredentialID,
 		projectedFilesJSON,
 		persistentDirsJSON,
-		revisionPolicyJSON,
-		currentRolloutJSON,
+		currentRunJSON,
 		nextGeneration,
 		controlservice.DesiredStateActive,
 		pendingStatus.ObservedGeneration,
@@ -413,9 +399,9 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service delete conditions: %w", err)
 	}
-	currentRolloutJSON, err := marshalJSON(current.Status.Rollout, controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle})
+	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service rollout for delete: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
 	}
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
@@ -428,7 +414,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 			status_healthy = $6,
 			status_message = $7,
 			status_conditions_json = $8,
-			status_rollout_json = $9,
+			status_run_json = $9,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
@@ -443,7 +429,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 		deletingStatus.Healthy,
 		deletingStatus.Message,
 		statusConditionsJSON,
-		currentRolloutJSON,
+		currentRunJSON,
 		current.Metadata.Generation,
 	))
 	if err != nil {
@@ -497,13 +483,13 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service status conditions: %w", err)
 	}
-	nextRollout := current.Status.Rollout
-	if input.Rollout != nil {
-		nextRollout = *input.Rollout
+	nextRun := current.Status.Run
+	if input.Run != nil {
+		nextRun = controlservice.CloneRunStatus(*input.Run)
 	}
-	rolloutJSON, err := marshalJSON(nextRollout, controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle})
+	runJSON, err := marshalJSON(nextRun, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service rollout status: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service run status: %w", err)
 	}
 
 	query := `
@@ -515,7 +501,7 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 			status_message = $5,
 			status_conditions_json = $6,
 			status_last_reconciled_at = $7,
-			status_rollout_json = $8,
+			status_run_json = $8,
 			updated_at = now()
 		WHERE id = $1
 	`
@@ -527,7 +513,7 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 		input.Message,
 		statusConditionsJSON,
 		input.LastReconciledAt,
-		rolloutJSON,
+		runJSON,
 	}
 	if expectedGeneration != nil {
 		query += ` AND generation = $9`
@@ -618,8 +604,7 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var projectedFilesJSON []byte
 	var persistentDirsJSON []byte
 	var persistentDirsLocked bool
-	var revisionPolicyJSON []byte
-	var rolloutJSON []byte
+	var runJSON []byte
 	var conditionsJSON []byte
 	var pinnedPlaneID sql.NullString
 	var lastReconciledAt sql.NullTime
@@ -645,8 +630,7 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&projectedFilesJSON,
 		&persistentDirsJSON,
 		&persistentDirsLocked,
-		&revisionPolicyJSON,
-		&rolloutJSON,
+		&runJSON,
 		&item.Metadata.Generation,
 		&item.Status.DesiredState,
 		&item.Status.Observed.ObservedGeneration,
@@ -678,14 +662,10 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	}
 	item.Spec.PersistentDirs = persistentdir.CloneSpecs(item.Spec.PersistentDirs)
 	item.Spec.PersistentDirsLocked = persistentDirsLocked
-	if err := unmarshalJSON(revisionPolicyJSON, &item.Spec.RevisionPolicy, controlservice.RevisionPolicy{}.Normalized()); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service revision policy: %w", err)
+	if err := unmarshalJSON(runJSON, &item.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending}); err != nil {
+		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
-	item.Spec.RevisionPolicy = item.Spec.RevisionPolicy.Normalized()
-	if err := unmarshalJSON(rolloutJSON, &item.Status.Rollout, controlservice.RolloutStatus{Phase: controlservice.RolloutPhaseIdle}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service rollout status: %w", err)
-	}
-	item.Status.Rollout.Phase = controlservice.NormalizeRolloutPhase(item.Status.Rollout.Phase)
+	item.Status.Run.Phase = controlservice.NormalizeRunPhase(item.Status.Run.Phase)
 	if err := unmarshalJSON(conditionsJSON, &item.Status.Observed.Conditions, []controlservice.Condition{}); err != nil {
 		return controlservice.Service{}, fmt.Errorf("decode service status conditions: %w", err)
 	}

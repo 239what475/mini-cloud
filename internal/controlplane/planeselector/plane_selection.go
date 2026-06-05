@@ -51,7 +51,7 @@ type Candidate struct {
 	Registered                  bool   `json:"registered"`
 	Status                      string `json:"status"`
 	OperationState              string `json:"operationState"`
-	AcceptingNewDeployments     bool   `json:"acceptingNewDeployments"`
+	AcceptingNewRuns            bool   `json:"acceptingNewRuns"`
 	CPUMilliFree                int    `json:"cpuMilliFree"`
 	MemoryMiFree                int    `json:"memoryMiFree"`
 	CPUMilliFreeAfter           int    `json:"cpuMilliFreeAfter"`
@@ -150,7 +150,7 @@ func buildFailureReason(registeredMatched int, readyMatched int, operationMatche
 	case readyMatched == 0:
 		return "no registered planes are currently ready"
 	case operationMatched == 0:
-		return "no ready planes are currently accepting new deployments"
+		return "no ready planes are currently accepting new runs"
 	case strings.TrimSpace(input.PinnedPlaneID) != "" && providerMatched == 0:
 		return "the pinned plane is not ready"
 	case strings.TrimSpace(input.PinnedPlaneID) != "" && regionMatched == 0:

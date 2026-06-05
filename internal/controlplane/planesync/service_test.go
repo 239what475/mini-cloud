@@ -239,8 +239,155 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 	if reloaded.Status.Observed.Phase != controlservice.PhaseReady || !reloaded.Status.Observed.Healthy {
 		t.Fatalf("service status = %+v, want ready healthy", reloaded.Status.Observed)
 	}
-	if reloaded.Status.Rollout.CandidateDesiredReplicas != 2 || reloaded.Status.Rollout.CandidateReadyReplicas != 2 {
-		t.Fatalf("service rollout = %+v, want 2/2 candidate replicas", reloaded.Status.Rollout)
+	if reloaded.Status.Run.DesiredReplicas != 2 || reloaded.Status.Run.RunningReplicas != 2 {
+		t.Fatalf("service run = %+v, want 2/2 running replicas", reloaded.Status.Run)
+	}
+}
+
+func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.T) {
+	observedAt := time.Now().UTC()
+	serviceItem := controlservice.Service{
+		Status: controlservice.ServiceStatus{
+			Run: controlservice.RunStatus{
+				CurrentRunID: "svc-api-g1",
+				LatestRunID:  "svc-api-g2",
+				Phase:        controlservice.RunPhaseDispatching,
+			},
+		},
+	}
+
+	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
+		PlanID:            "svc-api-g2",
+		ServiceID:         "svc-api",
+		ServiceGeneration: 2,
+		DesiredReplicas:   2,
+		RunningReplicas:   2,
+		ObservedAt:        observedAt,
+	})
+
+	if status.Phase != controlservice.PhaseReady || !status.Healthy {
+		t.Fatalf("status = %+v, want ready healthy", status.Status)
+	}
+	if status.Run.CurrentRunID != "svc-api-g2" || status.Run.LatestRunID != "svc-api-g2" {
+		t.Fatalf("run ids = %+v, want current/latest g2", status.Run)
+	}
+	if status.Run.Phase != controlservice.RunPhaseRunning || status.Run.RunningReplicas != 2 {
+		t.Fatalf("run = %+v, want running 2 replicas", status.Run)
+	}
+}
+
+func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *testing.T) {
+	observedAt := time.Now().UTC()
+	serviceItem := controlservice.Service{
+		Status: controlservice.ServiceStatus{
+			Run: controlservice.RunStatus{
+				CurrentRunID: "svc-api-g1",
+				LatestRunID:  "svc-api-g2",
+				Phase:        controlservice.RunPhaseDispatching,
+			},
+		},
+	}
+
+	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
+		PlanID:            "svc-api-g2",
+		ServiceID:         "svc-api",
+		ServiceGeneration: 2,
+		DesiredReplicas:   2,
+		FailedReplicas:    1,
+		ObservedAt:        observedAt,
+	})
+
+	if status.Phase != controlservice.PhaseDegraded || status.Healthy {
+		t.Fatalf("status = %+v, want degraded unhealthy", status.Status)
+	}
+	if status.Run.CurrentRunID != "svc-api-g1" {
+		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
+	}
+	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != controlservice.RunPhaseFailed {
+		t.Fatalf("run = %+v, want latest failed g2", status.Run)
+	}
+}
+
+func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing.T) {
+	observedAt := time.Now().UTC()
+	serviceItem := controlservice.Service{
+		Status: controlservice.ServiceStatus{
+			Run: controlservice.RunStatus{
+				CurrentRunID: "svc-api-g1",
+				LatestRunID:  "svc-api-g2",
+				Phase:        controlservice.RunPhaseDispatching,
+			},
+		},
+	}
+
+	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
+		PlanID:             "svc-api-g2",
+		ServiceID:          "svc-api",
+		ServiceGeneration:  2,
+		DesiredReplicas:    2,
+		DeployingReplicas:  1,
+		RunningReplicas:    1,
+		SupersededReplicas: 1,
+		ObservedAt:         observedAt,
+	})
+
+	if status.Phase != controlservice.PhaseProgressing || status.Healthy {
+		t.Fatalf("status = %+v, want progressing unhealthy", status.Status)
+	}
+	if status.Run.CurrentRunID != "svc-api-g1" {
+		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
+	}
+	if status.Run.LatestRunID != "svc-api-g2" || status.Run.SupersededReplicas != 1 {
+		t.Fatalf("run = %+v, want latest g2 with superseded replica count", status.Run)
+	}
+}
+
+func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T) {
+	observedAt := time.Now().UTC()
+	store := &fakeExecutionSnapshotStore{
+		planeID: "plane-a",
+		service: controlservice.Service{
+			Metadata: controlservice.Metadata{
+				ID:         "svc-api",
+				Generation: 2,
+			},
+			Status: controlservice.ServiceStatus{
+				Run: controlservice.RunStatus{
+					CurrentRunID: "svc-api-g1",
+					LatestRunID:  "svc-api-g2",
+					Phase:        controlservice.RunPhaseDispatching,
+				},
+			},
+		},
+		runs: map[int64]controlservice.ServiceRun{
+			1: {ID: "svc-api-g1", ServiceID: "svc-api", Generation: 1, Status: controlservice.RunPhaseRunning},
+			2: {ID: "svc-api-g2", ServiceID: "svc-api", Generation: 2, Status: controlservice.RunPhaseDispatching},
+		},
+	}
+	service := &Service{store: store}
+
+	err := service.applyExecutionSnapshots(context.Background(), "plane-a", []cloudplaneapi.ExecutionSnapshot{
+		{
+			PlanID:            "svc-api-g2",
+			ServiceID:         "svc-api",
+			ServiceGeneration: 2,
+			DesiredReplicas:   2,
+			RunningReplicas:   2,
+			ObservedAt:        observedAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+	}
+
+	if store.service.Status.Run.CurrentRunID != "svc-api-g2" {
+		t.Fatalf("current run = %q, want new run", store.service.Status.Run.CurrentRunID)
+	}
+	if store.runs[2].Status != controlservice.RunPhaseRunning {
+		t.Fatalf("new run status = %s, want running", store.runs[2].Status)
+	}
+	if store.runs[1].Status != controlservice.RunPhaseSuperseded {
+		t.Fatalf("old run status = %s, want superseded", store.runs[1].Status)
 	}
 }
 
@@ -426,4 +573,92 @@ func (f fakePlaneSnapshotFetcher) Fetch(_ context.Context, grpcEndpoint string, 
 		}
 	}
 	return response.snapshot, response.err
+}
+
+type fakeExecutionSnapshotStore struct {
+	planeID string
+	service controlservice.Service
+	runs    map[int64]controlservice.ServiceRun
+}
+
+func (f *fakeExecutionSnapshotStore) GetPlane(context.Context, string) (plane.Detail, error) {
+	return plane.Detail{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) SetPlaneSouthboundToken(context.Context, string, string) (plane.Registration, error) {
+	return plane.Registration{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) MarkPlaneSouthboundTokenVerified(context.Context, string, time.Time) (plane.Registration, error) {
+	return plane.Registration{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) GetPlaneSouthboundToken(context.Context, string) (string, error) {
+	return "", nil
+}
+
+func (f *fakeExecutionSnapshotStore) ListRegisteredPlaneIDs(context.Context) ([]string, error) {
+	return nil, nil
+}
+
+func (f *fakeExecutionSnapshotStore) UpdatePlaneStatus(context.Context, string, plane.UpdateStatusInput) (plane.PlaneStatus, error) {
+	return plane.PlaneStatus{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error) {
+	return plane.CapacitySnapshot{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error) {
+	return plane.RuntimeInventorySnapshot{}, nil, nil
+}
+
+func (f *fakeExecutionSnapshotStore) RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error) {
+	return plane.RuntimeConfigSnapshot{}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) GetService(context.Context, string) (controlservice.Service, error) {
+	return f.service, nil
+}
+
+func (f *fakeExecutionSnapshotStore) GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error) {
+	return controlservice.ServicePlacement{ServiceID: f.service.Metadata.ID, PlaneID: f.planeID}, nil
+}
+
+func (f *fakeExecutionSnapshotStore) UpdateServiceRun(_ context.Context, _ string, generation int64, input controlservice.UpdateRunInput) (controlservice.ServiceRun, error) {
+	run := f.runs[generation]
+	run.Status = controlservice.NormalizeRunPhase(input.Status)
+	run.Message = input.Message
+	run.ObservedAt = input.ObservedAt
+	f.runs[generation] = run
+	return run, nil
+}
+
+func (f *fakeExecutionSnapshotStore) SupersedeServiceRunsBeforeGeneration(_ context.Context, _ string, generation int64, message string) error {
+	for key, run := range f.runs {
+		if key < generation {
+			run.Status = controlservice.RunPhaseSuperseded
+			run.Message = message
+			f.runs[key] = run
+		}
+	}
+	return nil
+}
+
+func (f *fakeExecutionSnapshotStore) UpdateServiceStatusForGeneration(_ context.Context, _ string, expectedGeneration int64, input controlservice.UpdateStatusInput) (controlservice.Service, error) {
+	if f.service.Metadata.Generation != expectedGeneration {
+		return f.service, nil
+	}
+	f.service.Status.Observed = controlservice.Status{
+		ObservedGeneration: input.ObservedGeneration,
+		Phase:              input.Phase,
+		Healthy:            input.Healthy,
+		Message:            input.Message,
+		Conditions:         controlservice.CloneConditions(input.Conditions),
+		LastReconciledAt:   input.LastReconciledAt,
+	}
+	if input.Run != nil {
+		f.service.Status.Run = controlservice.CloneRunStatus(*input.Run)
+	}
+	return f.service, nil
 }

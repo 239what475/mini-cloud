@@ -322,6 +322,7 @@ type ExecutionPlanRequest struct {
 	ReadinessPath     string                    `json:"readinessPath"`
 	Replicas          int                       `json:"replicas"`
 	InstanceClass     string                    `json:"instanceClass"`
+	Exposure          string                    `json:"exposure"`
 }
 
 type ExecutionPlanResponse struct {

@@ -5,11 +5,8 @@ import (
 	"testing"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	"mini-cloud/internal/cloudplane/domain/deployment"
-	"mini-cloud/internal/cloudplane/domain/execution"
 	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/cloudplane/domain/workload"
 )
 
 // TestBuildRoutesPublishesOnlyPublicReadyBackends 验证 ingress 只发布 public service 且只包含 ready node backend。
@@ -17,19 +14,9 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
-		services: []workload.Service{
-			{Metadata: workload.Metadata{ID: "svc-public", Name: "api"}, Spec: workload.Spec{Exposure: workload.ExposurePublic}},
-			{Metadata: workload.Metadata{ID: "svc-private", Name: "worker"}, Spec: workload.Spec{Exposure: workload.ExposurePrivate}},
-		},
-		deployments: map[string]*deployment.Deployment{
-			"svc-public":  {ID: "dep-public", ServiceID: "svc-public"},
-			"svc-private": {ID: "dep-private", ServiceID: "svc-private"},
-		},
-		executions: map[string][]execution.Record{
-			"dep-public": {
-				{ID: "exec-ready", DeploymentID: "dep-public", NodeID: "node-ready", HostPort: 30080, Status: execution.StatusRunning},
-				{ID: "exec-offline", DeploymentID: "dep-public", NodeID: "node-offline", HostPort: 30081, Status: execution.StatusRunning},
-			},
+		sources: []domainingress.RouteSource{
+			{ServiceName: "api", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
+			{ServiceName: "api", NodeID: "node-offline", HostPort: 30081, HasBackend: true},
 		},
 		nodes: map[string]node.Node{
 			"node-ready":   {ID: "node-ready", PrivateIP: "10.0.1.20", Status: node.StatusReady},
@@ -53,6 +40,33 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	}
 }
 
+// TestBuildRoutesKeepsPublicRouteWithoutReadyBackends 验证 public service 暂无可用 backend 时仍发布 503 route。
+func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{
+		sources: []domainingress.RouteSource{
+			{ServiceName: "api"},
+		},
+		nodes: map[string]node.Node{},
+	}
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil)
+
+	routes, err := controller.buildRoutes(context.Background())
+	if err != nil {
+		t.Fatalf("buildRoutes returned error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("routes len = %d, want 1: %+v", len(routes), routes)
+	}
+	if routes[0].Host != "api.apps.example.test" {
+		t.Fatalf("route host = %q", routes[0].Host)
+	}
+	if len(routes[0].Backends) != 0 {
+		t.Fatalf("route backends = %+v, want empty", routes[0].Backends)
+	}
+}
+
 // TestReconcileOnceDisabledDoesNotCallSink 验证 ingress 关闭时不构造或应用路由。
 func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 	t.Parallel()
@@ -69,25 +83,13 @@ func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 
 // fakeStore 是 ingress controller 单测使用的只读状态集合。
 type fakeStore struct {
-	services    []workload.Service
-	deployments map[string]*deployment.Deployment
-	executions  map[string][]execution.Record
-	nodes       map[string]node.Node
+	sources []domainingress.RouteSource
+	nodes   map[string]node.Node
 }
 
-// ListServices 返回预设 service 列表。
-func (f *fakeStore) ListServices(context.Context) ([]workload.Service, error) {
-	return f.services, nil
-}
-
-// GetPromotedDeploymentByService 返回预设 deployment。
-func (f *fakeStore) GetPromotedDeploymentByService(_ context.Context, serviceID string) (*deployment.Deployment, error) {
-	return f.deployments[serviceID], nil
-}
-
-// ListRunningExecutionsByDeployment 返回预设 execution 列表。
-func (f *fakeStore) ListRunningExecutionsByDeployment(_ context.Context, deploymentID string) ([]execution.Record, error) {
-	return f.executions[deploymentID], nil
+// ListIngressRouteSources 返回预设 ingress route source 列表。
+func (f *fakeStore) ListIngressRouteSources(context.Context) ([]domainingress.RouteSource, error) {
+	return f.sources, nil
 }
 
 // GetNode 返回预设 node。

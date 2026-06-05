@@ -16,7 +16,7 @@ import (
 	"mini-cloud/internal/controlplane/store"
 )
 
-var ErrPersistentDirsAutoMoveBlocked = errors.New("services with persistentDirs cannot be automatically moved to a different plane after a revision has been created")
+var ErrPersistentDirsAutoMoveBlocked = errors.New("services with persistentDirs cannot be automatically moved to a different plane after a run has been created")
 
 func (c *Controller) reconcileService(ctx context.Context, item controlservice.Service) error {
 	currentPlacement, hasPlacement, err := c.getPlacement(ctx, item.Metadata.ID)
@@ -29,7 +29,7 @@ func (c *Controller) reconcileService(ctx context.Context, item controlservice.S
 		return c.reconcileServiceDeletion(ctx, item, hasPlacement, currentPlacement)
 	case !hasPlacement:
 		return c.reconcileServiceWithoutPlacement(ctx, item)
-	case item.Metadata.Generation > item.Status.Observed.ObservedGeneration || shouldRetryDesiredSpec(item):
+	case item.Metadata.Generation > item.Status.Observed.ObservedGeneration || shouldReapplyDesiredSpec(item):
 		return c.reconcileServiceDesiredSpec(ctx, item, currentPlacement)
 	default:
 		return nil
@@ -116,7 +116,12 @@ func (c *Controller) applyServiceToCurrentPlacement(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result))
+	runStatus, err := c.createDispatchedRun(ctx, serviceItem, result)
+	if err != nil {
+		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
+		return nil, errors.Join(err, statusErr)
+	}
+	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result), &runStatus)
 	return &updatedPlacement, statusErr
 }
 
@@ -150,8 +155,46 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
 		return nil, errors.Join(err, statusErr)
 	}
-	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result))
+	runStatus, err := c.createDispatchedRun(ctx, serviceItem, result)
+	if err != nil {
+		if previous == nil || shouldMovePlacement(*previous, nextPlacement) {
+			_ = c.deploy.DeleteService(ctx, nextPlacement.PlaneID, serviceItem.Metadata.ID)
+		}
+		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, err))
+		return nil, errors.Join(err, statusErr)
+	}
+	statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, executionPlanDispatchedStatus(serviceItem.Metadata.Generation, updatedPlacement, result), &runStatus)
 	return &updatedPlacement, statusErr
+}
+
+func (c *Controller) createDispatchedRun(ctx context.Context, serviceItem controlservice.Service, result deploy.ApplyResult) (controlservice.RunStatus, error) {
+	runID := strings.TrimSpace(result.PlanID)
+	if runID == "" {
+		runID = fmt.Sprintf("%s-g%d", serviceItem.Metadata.ID, serviceItem.Metadata.Generation)
+	}
+	message := fmt.Sprintf("execution plan %s dispatched; waiting for node-agent execution result", runID)
+	if _, err := c.store.CreateServiceRun(ctx, controlservice.CreateRunInput{
+		ID:              runID,
+		ServiceID:       serviceItem.Metadata.ID,
+		Generation:      serviceItem.Metadata.Generation,
+		PlanID:          runID,
+		Spec:            controlservice.CloneSpec(serviceItem.Spec),
+		DesiredReplicas: serviceItem.Spec.Replicas,
+		Status:          controlservice.RunPhaseDispatching,
+		Message:         message,
+	}); err != nil {
+		return controlservice.RunStatus{}, err
+	}
+	runStatus := controlservice.CloneRunStatus(serviceItem.Status.Run)
+	runStatus.LatestRunID = runID
+	runStatus.Phase = controlservice.RunPhaseDispatching
+	runStatus.Message = message
+	runStatus.DesiredReplicas = serviceItem.Spec.Replicas
+	runStatus.DeployingReplicas = serviceItem.Spec.Replicas
+	runStatus.RunningReplicas = 0
+	runStatus.FailedReplicas = 0
+	runStatus.SupersededReplicas = 0
+	return runStatus, nil
 }
 
 func (c *Controller) selectPlane(ctx context.Context, serviceItem controlservice.Service) (*planeselector.Decision, error) {
@@ -182,7 +225,7 @@ func (c *Controller) canReusePlacement(ctx context.Context, serviceItem controls
 	if plane.Provider != serviceItem.Spec.Provider || plane.Region != serviceItem.Spec.Region {
 		return false
 	}
-	if !plane.Registration.Registered || !plane.Operation.AcceptingNewDeployments() {
+	if !plane.Registration.Registered || !plane.Operation.AcceptingNewRuns() {
 		return false
 	}
 	return true
@@ -261,10 +304,10 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 	}
 }
 
-func (c *Controller) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration int64, status controlservice.Status, rollout ...*controlservice.RolloutStatus) error {
-	var nextRollout *controlservice.RolloutStatus
-	if len(rollout) > 0 {
-		nextRollout = rollout[0]
+func (c *Controller) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration int64, status controlservice.Status, run ...*controlservice.RunStatus) error {
+	var nextRun *controlservice.RunStatus
+	if len(run) > 0 {
+		nextRun = run[0]
 	}
 	_, err := c.store.UpdateServiceStatusForGeneration(ctx, serviceID, expectedGeneration, controlservice.UpdateStatusInput{
 		ObservedGeneration: status.ObservedGeneration,
@@ -273,7 +316,7 @@ func (c *Controller) updateServiceStatus(ctx context.Context, serviceID string, 
 		Message:            status.Message,
 		Conditions:         controlservice.CloneConditions(status.Conditions),
 		LastReconciledAt:   status.LastReconciledAt,
-		Rollout:            nextRollout,
+		Run:                nextRun,
 	})
 	if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 		return nil
@@ -391,7 +434,7 @@ func isRemoteProgressing(status string) bool {
 	}
 }
 
-func shouldRetryDesiredSpec(item controlservice.Service) bool {
+func shouldReapplyDesiredSpec(item controlservice.Service) bool {
 	if item.Status.DesiredState != controlservice.DesiredStateActive {
 		return false
 	}
