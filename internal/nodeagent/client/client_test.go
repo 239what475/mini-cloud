@@ -104,16 +104,14 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 		pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 			return &nodeagentv1.PollWorkResponse{
 				Item: &nodeagentv1.WorkItem{
-					ExecutionId:   "exec_demo",
-					DeploymentId:  "dep_demo",
-					NodeId:        "node_demo",
-					ServiceId:     "svc_demo",
-					ServiceName:   "hello",
-					RevisionId:    "rev_demo",
-					RevisionLabel: "r1",
-					Image:         "nginx:1.27-alpine",
-					Command:       []string{"nginx"},
-					Args:          []string{"-g", "daemon off;"},
+					ExecutionId: "exec_demo",
+					PlanId:      "plan_demo",
+					NodeId:      "node_demo",
+					ServiceId:   "svc_demo",
+					ServiceName: "hello",
+					Image:       "nginx:1.27-alpine",
+					Command:     []string{"nginx"},
+					Args:        []string{"-g", "daemon off;"},
 					Env: map[string]string{
 						"APP_ENV": "test",
 					},
@@ -138,6 +136,9 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	}
 	if item.ServiceName != "hello" {
 		t.Fatalf("ServiceName = %q, want hello", item.ServiceName)
+	}
+	if item.PlanID != "plan_demo" {
+		t.Fatalf("PlanID = %q, want plan_demo", item.PlanID)
 	}
 }
 

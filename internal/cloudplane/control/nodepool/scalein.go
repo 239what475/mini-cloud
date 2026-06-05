@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/deployment"
+	"mini-cloud/internal/cloudplane/domain/execution"
 	infraruntimepool "mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/cloudplane/infra/store"
 )
@@ -36,14 +36,12 @@ func NewScaleInService(logger *slog.Logger, stores *store.Store, driver infrarun
 // ReconcileOnce 执行一轮 runtime node 自动缩容。
 // 参数说明：ctx 控制本轮数据库访问、状态更新和 provider 删除调用。
 func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
-	// 如果仍有 deployment 处在调度或启动过程中，说明系统容量正在被消费或即将被消费；
+	// 如果仍有 execution intent 处在调度或启动过程中，说明系统容量正在被消费或即将被消费；
 	// 本轮不缩容，避免删除刚为调度缺口创建、但还没来得及产生 execution 的 runtime node。
-	unsettled, err := s.store.HasDeploymentsWithStatuses(
+	unsettled, err := s.store.HasExecutionIntentsWithStatuses(
 		ctx,
-		deployment.StatusPending,
-		deployment.StatusScheduling,
-		deployment.StatusAssigned,
-		deployment.StatusDeploying,
+		execution.StatusPending,
+		execution.StatusDeploying,
 	)
 	if err != nil {
 		return err

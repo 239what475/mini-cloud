@@ -123,14 +123,14 @@ type HeartbeatSummary struct {
 	Status string `json:"status"`
 }
 
-// ReconcileImpact 描述 stale heartbeat 对 deployment 和 service 的影响。
+// ReconcileImpact 描述 stale heartbeat 对 execution plan 和 service 的影响。
 type ReconcileImpact struct {
 	// NodeID 是触发本次影响的 stale 或 offline node 标识。
 	NodeID string `json:"nodeID"`
 	// NodeName 表示 node 名称。
 	NodeName string `json:"nodeName"`
-	// DeploymentID 表示所属 deployment 的唯一标识。
-	DeploymentID string `json:"deploymentID"`
+	// PlanID 表示受影响的 execution plan 唯一标识。
+	PlanID string `json:"planID"`
 	// ServiceID 表示所属 service 的唯一标识。
 	ServiceID string `json:"serviceID"`
 	// ServiceName 表示 service 名称。
@@ -147,8 +147,8 @@ type HeartbeatReconcileResult struct {
 	CutoffTime time.Time `json:"cutoffTime"`
 	// NodesMarkedOffline 表示本次心跳巡检中被标记为 offline 的 node 列表。
 	NodesMarkedOffline []Node `json:"nodesMarkedOffline"`
-	// ImpactedDeployments 是因 stale node 被标记失败的 deployment 列表。
-	ImpactedDeployments []ReconcileImpact `json:"impactedDeployments"`
+	// ImpactedPlans 是因 stale node 被标记失败的 execution plan 列表。
+	ImpactedPlans []ReconcileImpact `json:"impactedPlans"`
 }
 
 // RegisterInput 是 node-agent 首次注册节点时提供的身份和容量信息。

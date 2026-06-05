@@ -314,9 +314,8 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) 
 		ContainerName:   item.ContainerName,
 		NodeID:          e.opts.NodeID,
 		ExecutionID:     item.ExecutionID,
-		DeploymentID:    item.DeploymentID,
+		PlanID:          item.PlanID,
 		ServiceID:       item.ServiceID,
-		RevisionID:      item.RevisionID,
 		ProjectionRef:   item.ExecutionID,
 		Image:           item.Image,
 		Command:         item.Command,
@@ -463,11 +462,11 @@ func (e Executor) report(ctx context.Context, item *nodeagentapi.WorkItem, req n
 	reportCtx, cancel := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.ReportTimeout))
 	defer cancel()
 	reportCtx = logctx.WithFields(reportCtx, logctx.Fields{
-		RequestID:    logctx.EnsureRequestID(""),
-		NodeID:       e.opts.NodeID,
-		ServiceID:    item.ServiceID,
-		DeploymentID: item.DeploymentID,
-		ExecutionID:  item.ExecutionID,
+		RequestID:   logctx.EnsureRequestID(""),
+		NodeID:      e.opts.NodeID,
+		ServiceID:   item.ServiceID,
+		PlanID:      item.PlanID,
+		ExecutionID: item.ExecutionID,
 	})
 	return e.client.ReportExecution(reportCtx, e.opts.NodeID, item.ExecutionID, req)
 }
@@ -480,7 +479,7 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runRes
 	e.opts.WorkloadLogs(workloadlogs.StartRequest{
 		ServiceID:     item.ServiceID,
 		ServiceName:   item.ServiceName,
-		DeploymentID:  item.DeploymentID,
+		PlanID:        item.PlanID,
 		ExecutionID:   item.ExecutionID,
 		NodeID:        e.opts.NodeID,
 		ContainerID:   runResult.ContainerID,
@@ -491,30 +490,30 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runRes
 // workLogger 返回带节点和执行上下文字段的 logger。
 func (e Executor) workLogger(item *nodeagentapi.WorkItem) *slog.Logger {
 	return logctx.WithLoggerFields(e.logger, logctx.Fields{
-		NodeID:       e.opts.NodeID,
-		ServiceID:    item.ServiceID,
-		DeploymentID: item.DeploymentID,
-		ExecutionID:  item.ExecutionID,
+		NodeID:      e.opts.NodeID,
+		ServiceID:   item.ServiceID,
+		PlanID:      item.PlanID,
+		ExecutionID: item.ExecutionID,
 	})
 }
 
 // workContext 在调用方上下文中追加节点和执行字段。
 func (e Executor) workContext(ctx context.Context, item *nodeagentapi.WorkItem) context.Context {
 	return logctx.WithFields(ctx, logctx.Fields{
-		NodeID:       e.opts.NodeID,
-		ServiceID:    item.ServiceID,
-		DeploymentID: item.DeploymentID,
-		ExecutionID:  item.ExecutionID,
+		NodeID:      e.opts.NodeID,
+		ServiceID:   item.ServiceID,
+		PlanID:      item.PlanID,
+		ExecutionID: item.ExecutionID,
 	})
 }
 
 // detachedWorkContext 创建不继承调用方取消、deadline 和 value，只重新注入节点和执行字段的后台上下文。
 func (e Executor) detachedWorkContext(item *nodeagentapi.WorkItem) context.Context {
 	return logctx.WithFields(context.Background(), logctx.Fields{
-		NodeID:       e.opts.NodeID,
-		ServiceID:    item.ServiceID,
-		DeploymentID: item.DeploymentID,
-		ExecutionID:  item.ExecutionID,
+		NodeID:      e.opts.NodeID,
+		ServiceID:   item.ServiceID,
+		PlanID:      item.PlanID,
+		ExecutionID: item.ExecutionID,
 	})
 }
 

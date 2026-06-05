@@ -80,10 +80,10 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 func protoExecutionRecord(item execution.Record) *nodeagentv1.ExecutionRecord {
 	// 时间字段统一转成 protobuf Timestamp；FinishedAt 允许为空。
 	return &nodeagentv1.ExecutionRecord{
-		// 身份字段用于 node-agent 关联本次 ack 对应的 execution/deployment/node。
-		Id:           item.ID,
-		DeploymentId: item.DeploymentID,
-		NodeId:       item.NodeID,
+		// 身份字段用于 node-agent 关联本次 ack 对应的 execution plan/node。
+		Id:     item.ID,
+		PlanId: item.PlanID,
+		NodeId: item.NodeID,
 		// 运行字段回显容器镜像、容器身份和端口信息，均来自持久化后的 execution 记录。
 		Image:         item.Image,
 		ContainerName: item.ContainerName,

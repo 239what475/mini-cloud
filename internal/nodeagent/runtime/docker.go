@@ -59,12 +59,10 @@ const (
 	dockerLabelNodeID = "mini-cloud.node-id"
 	// dockerLabelExecutionID 保存容器所属执行 ID。
 	dockerLabelExecutionID = "mini-cloud.execution-id"
-	// dockerLabelDeploymentID 保存容器所属部署 ID。
-	dockerLabelDeploymentID = "mini-cloud.deployment-id"
+	// dockerLabelPlanID 保存容器所属 execution plan ID。
+	dockerLabelPlanID = "mini-cloud.plan-id"
 	// dockerLabelServiceID 保存容器所属服务 ID。
 	dockerLabelServiceID = "mini-cloud.service-id"
-	// dockerLabelRevisionID 保存容器所属修订 ID。
-	dockerLabelRevisionID = "mini-cloud.revision-id"
 	// dockerLabelProjectionRef 保存容器投影文件引用。
 	dockerLabelProjectionRef = "mini-cloud.projection-ref"
 )
@@ -729,9 +727,8 @@ func buildMiniCloudLabels(input RunInput) map[string]string {
 	}
 	addLabel(labels, dockerLabelNodeID, input.NodeID)
 	addLabel(labels, dockerLabelExecutionID, input.ExecutionID)
-	addLabel(labels, dockerLabelDeploymentID, input.DeploymentID)
+	addLabel(labels, dockerLabelPlanID, input.PlanID)
 	addLabel(labels, dockerLabelServiceID, input.ServiceID)
-	addLabel(labels, dockerLabelRevisionID, input.RevisionID)
 	projectionRef := strings.TrimSpace(input.ProjectionRef)
 	if projectionRef == "" {
 		projectionRef = strings.TrimSpace(input.ExecutionID)

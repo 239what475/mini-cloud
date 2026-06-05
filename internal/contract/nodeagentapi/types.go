@@ -53,7 +53,7 @@ var (
 	ErrAcceptedAtRequired         = errors.New("acceptedAt is required")
 	ErrReceivedAtRequired         = errors.New("receivedAt is required")
 	ErrWorkExecutionIDRequired    = errors.New("executionID is required")
-	ErrDeploymentIDRequired       = errors.New("deploymentID is required")
+	ErrPlanIDRequired             = errors.New("planID is required")
 	ErrServiceIDRequired          = errors.New("serviceID is required")
 	ErrImageRequired              = errors.New("image is required")
 	ErrContainerPortInvalid       = errors.New("containerPort must be greater than 0")
@@ -102,12 +102,10 @@ type HeartbeatResponse struct {
 type WorkItem struct {
 	Action              string                `json:"action"`
 	ExecutionID         string                `json:"executionID"`
-	DeploymentID        string                `json:"deploymentID"`
+	PlanID              string                `json:"planID"`
 	NodeID              string                `json:"nodeID"`
 	ServiceID           string                `json:"serviceID"`
 	ServiceName         string                `json:"serviceName"`
-	RevisionID          string                `json:"revisionID"`
-	RevisionLabel       string                `json:"revisionLabel"`
 	Image               string                `json:"image"`
 	Command             []string              `json:"command"`
 	Args                []string              `json:"args"`
@@ -130,7 +128,7 @@ type ImageCredential struct {
 }
 
 type SupersededExecution struct {
-	DeploymentID  string `json:"deploymentID"`
+	PlanID        string `json:"planID"`
 	ExecutionID   string `json:"executionID"`
 	ContainerID   string `json:"containerID"`
 	ContainerName string `json:"containerName"`
@@ -151,7 +149,7 @@ type ReportExecutionRequest struct {
 
 type ExecutionRecord struct {
 	ID            string     `json:"id"`
-	DeploymentID  string     `json:"deploymentID"`
+	PlanID        string     `json:"planID"`
 	NodeID        string     `json:"nodeID"`
 	Image         string     `json:"image"`
 	ContainerName string     `json:"containerName"`
@@ -285,8 +283,8 @@ func (in WorkItem) Validate() error {
 	if strings.TrimSpace(in.ExecutionID) == "" {
 		return ErrWorkExecutionIDRequired
 	}
-	if strings.TrimSpace(in.DeploymentID) == "" {
-		return ErrDeploymentIDRequired
+	if strings.TrimSpace(in.PlanID) == "" {
+		return ErrPlanIDRequired
 	}
 	if strings.TrimSpace(in.NodeID) == "" {
 		return ErrNodeIDRequired

@@ -22,7 +22,7 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 	config, hostConfig, portSpec, err := buildContainerCreateConfig(RunInput{
 		NodeID:        "node-a",
 		ExecutionID:   "exec-a",
-		DeploymentID:  "deploy-a",
+		PlanID:        "plan-a",
 		ProjectionRef: "proj-a",
 		Image:         "nginx:1.27-alpine",
 		ContainerPort: 80,
@@ -46,7 +46,7 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 	if config.Labels[dockerLabelManagedBy] != "node-agent" ||
 		config.Labels[dockerLabelNodeID] != "node-a" ||
 		config.Labels[dockerLabelExecutionID] != "exec-a" ||
-		config.Labels[dockerLabelDeploymentID] != "deploy-a" ||
+		config.Labels[dockerLabelPlanID] != "plan-a" ||
 		config.Labels[dockerLabelProjectionRef] != "proj-a" {
 		t.Fatalf("unexpected mini-cloud labels: %+v", config.Labels)
 	}

@@ -8,7 +8,6 @@ import (
 
 	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/testutil"
 )
 
@@ -193,7 +192,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 		Image:             "nginx:1.27-alpine",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
-		InstanceClass:     workload.InstanceClassSmall,
+		InstanceClass:     "small",
 		Exposure:          "public",
 	}); err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
@@ -208,7 +207,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	}
 	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, execution.ReportInput{
 		Status:        execution.StatusRunning,
-		Reason:        "replica is healthy",
+		Reason:        "execution is healthy",
 		ContainerID:   "ctr-stale-0",
 		ContainerName: work.ContainerName,
 		HostPort:      18081,
@@ -239,11 +238,11 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if len(result.NodesMarkedOffline) != 1 || result.NodesMarkedOffline[0].ID != registered.ID {
 		t.Fatalf("NodesMarkedOffline = %+v, want node %s", result.NodesMarkedOffline, registered.ID)
 	}
-	if len(result.ImpactedDeployments) != 1 || result.ImpactedDeployments[0].DeploymentID != "svc-stale-g1" || result.ImpactedDeployments[0].ServiceID != "svc-stale" {
-		t.Fatalf("ImpactedDeployments = %+v, want svc-stale-g1 impact", result.ImpactedDeployments)
+	if len(result.ImpactedPlans) != 1 || result.ImpactedPlans[0].PlanID != "svc-stale-g1" || result.ImpactedPlans[0].ServiceID != "svc-stale" {
+		t.Fatalf("ImpactedPlans = %+v, want svc-stale-g1 impact", result.ImpactedPlans)
 	}
-	if !strings.Contains(result.ImpactedDeployments[0].Reason, "marked offline") {
-		t.Fatalf("impact reason = %q, want marked offline", result.ImpactedDeployments[0].Reason)
+	if !strings.Contains(result.ImpactedPlans[0].Reason, "marked offline") {
+		t.Fatalf("impact reason = %q, want marked offline", result.ImpactedPlans[0].Reason)
 	}
 
 	offlineNode, err := db.Store.GetNode(ctx, registered.ID)
@@ -261,7 +260,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UpdateStaleNodeHeartbeatState(second) returned error: %v", err)
 	}
-	if len(again.NodesMarkedOffline) != 0 || len(again.ImpactedDeployments) != 0 {
+	if len(again.NodesMarkedOffline) != 0 || len(again.ImpactedPlans) != 0 {
 		t.Fatalf("second reconcile result = %+v, want no-op", again)
 	}
 

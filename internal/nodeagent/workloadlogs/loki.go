@@ -35,8 +35,8 @@ type StartRequest struct {
 	ServiceID string
 	// ServiceName 是执行所属服务名称。
 	ServiceName string
-	// DeploymentID 是执行所属部署 ID。
-	DeploymentID string
+	// PlanID 是执行所属 execution plan ID。
+	PlanID string
 	// ExecutionID 是执行 ID，也是去重和关闭日志采集的 key。
 	ExecutionID string
 	// NodeID 是承载该执行的节点 ID。
@@ -260,7 +260,7 @@ func formatLogfmtLine(platformName string, req StartRequest, stream string, time
 	writeLogfmtKV(&builder, "platform_name", platformName)
 	writeLogfmtKV(&builder, "service_id", req.ServiceID)
 	writeLogfmtKV(&builder, "service_name", req.ServiceName)
-	writeLogfmtKV(&builder, "deployment_id", req.DeploymentID)
+	writeLogfmtKV(&builder, "plan_id", req.PlanID)
 	writeLogfmtKV(&builder, "execution_id", req.ExecutionID)
 	writeLogfmtKV(&builder, "node_id", req.NodeID)
 	writeLogfmtKV(&builder, "container_name", req.ContainerName)

@@ -420,7 +420,7 @@ func (x *ImageCredential) GetPassword() string {
 
 type SupersededExecution struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	DeploymentId  string                 `protobuf:"bytes,1,opt,name=deployment_id,json=deploymentID,proto3" json:"deployment_id,omitempty"`
+	PlanId        string                 `protobuf:"bytes,1,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
 	ExecutionId   string                 `protobuf:"bytes,2,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
 	ContainerId   string                 `protobuf:"bytes,3,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
 	ContainerName string                 `protobuf:"bytes,4,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
@@ -458,9 +458,9 @@ func (*SupersededExecution) Descriptor() ([]byte, []int) {
 	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{5}
 }
 
-func (x *SupersededExecution) GetDeploymentId() string {
+func (x *SupersededExecution) GetPlanId() string {
 	if x != nil {
-		return x.DeploymentId
+		return x.PlanId
 	}
 	return ""
 }
@@ -617,12 +617,10 @@ func (x *PersistentDirMount) GetSourcePath() string {
 type WorkItem struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ExecutionId         string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
-	DeploymentId        string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentID,proto3" json:"deployment_id,omitempty"`
+	PlanId              string                 `protobuf:"bytes,2,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
 	NodeId              string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
 	ServiceId           string                 `protobuf:"bytes,6,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
 	ServiceName         string                 `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	RevisionId          string                 `protobuf:"bytes,8,opt,name=revision_id,json=revisionID,proto3" json:"revision_id,omitempty"`
-	RevisionLabel       string                 `protobuf:"bytes,9,opt,name=revision_label,json=revisionLabel,proto3" json:"revision_label,omitempty"`
 	Image               string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"`
 	Command             []string               `protobuf:"bytes,11,rep,name=command,proto3" json:"command,omitempty"`
 	Args                []string               `protobuf:"bytes,12,rep,name=args,proto3" json:"args,omitempty"`
@@ -678,9 +676,9 @@ func (x *WorkItem) GetExecutionId() string {
 	return ""
 }
 
-func (x *WorkItem) GetDeploymentId() string {
+func (x *WorkItem) GetPlanId() string {
 	if x != nil {
-		return x.DeploymentId
+		return x.PlanId
 	}
 	return ""
 }
@@ -702,20 +700,6 @@ func (x *WorkItem) GetServiceId() string {
 func (x *WorkItem) GetServiceName() string {
 	if x != nil {
 		return x.ServiceName
-	}
-	return ""
-}
-
-func (x *WorkItem) GetRevisionId() string {
-	if x != nil {
-		return x.RevisionId
-	}
-	return ""
-}
-
-func (x *WorkItem) GetRevisionLabel() string {
-	if x != nil {
-		return x.RevisionLabel
 	}
 	return ""
 }
@@ -1009,7 +993,7 @@ func (x *ReportExecutionRequest) GetSupersededExecutionId() string {
 type ExecutionRecord struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	DeploymentId  string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentID,proto3" json:"deployment_id,omitempty"`
+	PlanId        string                 `protobuf:"bytes,2,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
 	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
 	Image         string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`
 	ContainerName string                 `protobuf:"bytes,5,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
@@ -1064,9 +1048,9 @@ func (x *ExecutionRecord) GetId() string {
 	return ""
 }
 
-func (x *ExecutionRecord) GetDeploymentId() string {
+func (x *ExecutionRecord) GetPlanId() string {
 	if x != nil {
-		return x.DeploymentId
+		return x.PlanId
 	}
 	return ""
 }
@@ -1301,9 +1285,9 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x0fImageCredential\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"\xa7\x01\n" +
-	"\x13SupersededExecution\x12#\n" +
-	"\rdeployment_id\x18\x01 \x01(\tR\fdeploymentID\x12!\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\"\x9b\x01\n" +
+	"\x13SupersededExecution\x12\x17\n" +
+	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12!\n" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionID\x12!\n" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerID\x12%\n" +
 	"\x0econtainer_name\x18\x04 \x01(\tR\rcontainerName\"z\n" +
@@ -1318,17 +1302,14 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x12\x1f\n" +
 	"\vsource_path\x18\x03 \x01(\tR\n" +
-	"sourcePath\"\xe6\a\n" +
+	"sourcePath\"\xbb\a\n" +
 	"\bWorkItem\x12!\n" +
-	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12#\n" +
-	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12\x17\n" +
+	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12\x17\n" +
+	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeID\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x06 \x01(\tR\tserviceID\x12!\n" +
-	"\fservice_name\x18\a \x01(\tR\vserviceName\x12\x1f\n" +
-	"\vrevision_id\x18\b \x01(\tR\n" +
-	"revisionID\x12%\n" +
-	"\x0erevision_label\x18\t \x01(\tR\rrevisionLabel\x12\x14\n" +
+	"\fservice_name\x18\a \x01(\tR\vserviceName\x12\x14\n" +
 	"\x05image\x18\n" +
 	" \x01(\tR\x05image\x12\x18\n" +
 	"\acommand\x18\v \x03(\tR\acommand\x12\x12\n" +
@@ -1346,8 +1327,9 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\thost_port\x18\x17 \x01(\x05R\bhostPort\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\n" +
-	"project_id\"*\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
+	"R\n" +
+	"project_idR\vrevision_idR\x0erevision_label\"*\n" +
 	"\x0fPollWorkRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"H\n" +
 	"\x10PollWorkResponse\x124\n" +
@@ -1360,10 +1342,10 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\fcontainer_id\x18\x05 \x01(\tR\vcontainerID\x12%\n" +
 	"\x0econtainer_name\x18\x06 \x01(\tR\rcontainerName\x12\x1b\n" +
 	"\thost_port\x18\a \x01(\x05R\bhostPort\x126\n" +
-	"\x17superseded_execution_id\x18\b \x01(\tR\x15supersededExecutionID\"\xd5\x04\n" +
+	"\x17superseded_execution_id\x18\b \x01(\tR\x15supersededExecutionID\"\xc9\x04\n" +
 	"\x0fExecutionRecord\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
-	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12\x17\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
+	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
 	"\anode_id\x18\x03 \x01(\tR\x06nodeID\x12\x14\n" +
 	"\x05image\x18\x04 \x01(\tR\x05image\x12%\n" +
 	"\x0econtainer_name\x18\x05 \x01(\tR\rcontainerName\x12!\n" +

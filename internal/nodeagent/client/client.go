@@ -353,12 +353,10 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 	out := &nodeagentapi.WorkItem{
 		Action:         item.GetAction(),
 		ExecutionID:    item.GetExecutionId(),
-		DeploymentID:   item.GetDeploymentId(),
+		PlanID:         item.GetPlanId(),
 		NodeID:         item.GetNodeId(),
 		ServiceID:      item.GetServiceId(),
 		ServiceName:    item.GetServiceName(),
-		RevisionID:     item.GetRevisionId(),
-		RevisionLabel:  item.GetRevisionLabel(),
 		Image:          item.GetImage(),
 		Command:        append([]string(nil), item.GetCommand()...),
 		Args:           append([]string(nil), item.GetArgs()...),
@@ -380,7 +378,7 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 	}
 	if item.GetSupersededExecution() != nil {
 		out.SupersededExecution = &nodeagentapi.SupersededExecution{
-			DeploymentID:  item.GetSupersededExecution().GetDeploymentId(),
+			PlanID:        item.GetSupersededExecution().GetPlanId(),
 			ExecutionID:   item.GetSupersededExecution().GetExecutionId(),
 			ContainerID:   item.GetSupersededExecution().GetContainerId(),
 			ContainerName: item.GetSupersededExecution().GetContainerName(),
@@ -440,7 +438,7 @@ func contractExecutionRecord(item *nodeagentv1.ExecutionRecord) nodeagentapi.Exe
 	}
 	return nodeagentapi.ExecutionRecord{
 		ID:            item.GetId(),
-		DeploymentID:  item.GetDeploymentId(),
+		PlanID:        item.GetPlanId(),
 		NodeID:        item.GetNodeId(),
 		Image:         item.GetImage(),
 		ContainerName: item.GetContainerName(),

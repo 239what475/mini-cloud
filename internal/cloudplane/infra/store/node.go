@@ -116,6 +116,53 @@ func (s *Store) RegisterNode(ctx context.Context, input node.RegisterInput) (nod
 	return registered, nil
 }
 
+// ListNodes 列出 cloud-plane 当前记录的所有 node。
+// 参数说明：ctx 控制数据库请求生命周期。
+func (s *Store) ListNodes(ctx context.Context) ([]node.Node, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			id,
+			provider,
+			region,
+			name,
+			role,
+			private_ip,
+			public_ip,
+			instance_id,
+			instance_type,
+			cpu_milli_total,
+			memory_mi_total,
+			cpu_milli_allocatable,
+			memory_mi_allocatable,
+			cpu_milli_allocated,
+			memory_mi_allocated,
+			status,
+			schedulable,
+			last_heartbeat_at,
+			created_at,
+			updated_at
+		FROM nodes
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]node.Node, 0)
+	for rows.Next() {
+		item, err := scanNode(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan node: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate nodes: %w", err)
+	}
+	return items, nil
+}
+
 // RecordNodeHeartbeat 记录 node heartbeat。
 // 参数说明：ctx 控制数据库请求生命周期；nodeID 是 node 唯一标识；input 是 node-agent 上报的心跳摘要。
 func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input node.HeartbeatInput) (node.HeartbeatSummary, time.Time, error) {
@@ -209,7 +256,7 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input no
 	// runtime node scale-in 状态优先级高于 node-agent 心跳；
 	// 否则 provider 删除前最后几次心跳可能把 draining/deleting/deleted 节点重新变成可调度。
 	if runtimeNodeStatus.Valid {
-		switch (runtimeNodeStatus.String) {
+		switch runtimeNodeStatus.String {
 		case node.StatusDraining, runtimepool.StatusDeleting:
 			nextStatus = node.StatusDraining
 			nextSchedulable = false

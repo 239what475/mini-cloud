@@ -53,7 +53,7 @@ message ImageCredential {
 }
 
 message SupersededExecution {
-  string deployment_id = 1 [json_name = "deploymentID"];
+  string plan_id = 1 [json_name = "planID"];
   string execution_id = 2 [json_name = "executionID"];
   string container_id = 3 [json_name = "containerID"];
   string container_name = 4 [json_name = "containerName"];
@@ -77,12 +77,12 @@ message WorkItem {
   reserved "project_id";
 
   string execution_id = 1 [json_name = "executionID"];
-  string deployment_id = 2 [json_name = "deploymentID"];
+  string plan_id = 2 [json_name = "planID"];
   string node_id = 4 [json_name = "nodeID"];
   string service_id = 6 [json_name = "serviceID"];
   string service_name = 7 [json_name = "serviceName"];
-  string revision_id = 8 [json_name = "revisionID"];
-  string revision_label = 9 [json_name = "revisionLabel"];
+  reserved 8, 9;
+  reserved "revision_id", "revision_label";
   string image = 10;
   repeated string command = 11;
   repeated string args = 12;
@@ -120,7 +120,7 @@ message ReportExecutionRequest {
 
 message ExecutionRecord {
   string id = 1;
-  string deployment_id = 2 [json_name = "deploymentID"];
+  string plan_id = 2 [json_name = "planID"];
   string node_id = 3 [json_name = "nodeID"];
   string image = 4;
   string container_name = 5 [json_name = "containerName"];

@@ -245,7 +245,7 @@ func (s *Store) CountActiveExecutionsByNode(ctx context.Context, nodeID string) 
 	var count int
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM deployment_executions
+		FROM execution_intents
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
 	`, nodeID, execution.StatusDeploying, execution.StatusRunning).Scan(&count); err != nil {
@@ -254,9 +254,9 @@ func (s *Store) CountActiveExecutionsByNode(ctx context.Context, nodeID string) 
 	return count, nil
 }
 
-// HasDeploymentsWithStatuses 判断当前是否存在任一指定状态的 deployment。
-// 参数说明：ctx 控制数据库请求生命周期；statuses 是要匹配的 deployment 状态。
-func (s *Store) HasDeploymentsWithStatuses(ctx context.Context, statuses ...string) (bool, error) {
+// HasExecutionIntentsWithStatuses 判断当前是否存在任一指定状态的 execution intent。
+// 参数说明：ctx 控制数据库请求生命周期；statuses 是要匹配的 execution intent 状态。
+func (s *Store) HasExecutionIntentsWithStatuses(ctx context.Context, statuses ...string) (bool, error) {
 	// 空状态集合直接返回 false，调用方不需要额外判断。
 	if len(statuses) == 0 {
 		return false, nil
@@ -265,11 +265,11 @@ func (s *Store) HasDeploymentsWithStatuses(ctx context.Context, statuses ...stri
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM deployments
+			FROM execution_intents
 			WHERE status = ANY($1::text[])
 		)
-	`, deploymentStatuses(statuses)).Scan(&exists); err != nil {
-		return false, fmt.Errorf("check deployments by statuses: %w", err)
+	`, stringSliceValue(statuses)).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check execution intents by statuses: %w", err)
 	}
 	return exists, nil
 }
@@ -472,7 +472,7 @@ func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID strin
 	var activeCount int
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM deployment_executions
+		FROM execution_intents
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
 	`, current.NodeID, execution.StatusDeploying, execution.StatusRunning).Scan(&activeCount); err != nil {
@@ -746,12 +746,11 @@ func runtimeNodeStatuses(statuses []string) []string {
 	return out
 }
 
-// deploymentStatuses 将 string 列表转换为数据库文本数组。
-// 参数说明：statuses 是调用方要匹配的 deployment 状态集合。
-func deploymentStatuses(statuses []string) []string {
-	out := make([]string, 0, len(statuses))
-	for _, status := range statuses {
-		out = append(out, string(status))
+// stringSliceValue 将 string 列表转换为数据库文本数组。
+func stringSliceValue(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, string(value))
 	}
 	return out
 }

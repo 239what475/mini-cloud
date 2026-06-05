@@ -34,9 +34,9 @@ func injectTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opt
 		env["OTEL_SERVICE_NAME"] = item.ServiceName
 	}
 	reserved := map[string]string{
-		"mini_cloud.service_id":    sanitizeOTelResourceValue(item.ServiceID),
-		"mini_cloud.deployment_id": sanitizeOTelResourceValue(item.DeploymentID),
-		"mini_cloud.execution_id":  sanitizeOTelResourceValue(item.ExecutionID),
+		"mini_cloud.service_id":   sanitizeOTelResourceValue(item.ServiceID),
+		"mini_cloud.plan_id":      sanitizeOTelResourceValue(item.PlanID),
+		"mini_cloud.execution_id": sanitizeOTelResourceValue(item.ExecutionID),
 	}
 	if strings.TrimSpace(opts.PlatformName) != "" {
 		reserved["mini_cloud.platform_name"] = sanitizeOTelResourceValue(opts.PlatformName)

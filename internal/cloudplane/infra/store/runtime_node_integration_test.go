@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/deployment"
+	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/testutil"
 )
@@ -128,21 +127,21 @@ func TestIntegrationRuntimeNodeScaleInSkipsActiveExecutions(t *testing.T) {
 	// 是否因为 active execution 跳过缩容属于 reconciler 策略，store 只暴露计数 primitive。
 }
 
-// TestIntegrationRuntimeNodeScaleInSkipsUnsettledDeployments 验证 store 提供 deployment 状态存在性供缩容策略判断。
-func TestIntegrationRuntimeNodeScaleInSkipsUnsettledDeployments(t *testing.T) {
+// TestIntegrationRuntimeNodeScaleInSkipsUnsettledExecutionIntents 验证 store 提供 execution intent 状态存在性供缩容策略判断。
+func TestIntegrationRuntimeNodeScaleInSkipsUnsettledExecutionIntents(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	// 准备 ready runtime node 和一个 pending deployment；此时没有 active execution，但系统正在产生 workload。
+	// 准备 ready runtime node 和一个 pending execution intent；此时没有 active execution，但系统正在产生 workload。
 	_, _ = seedReadyRuntimeNode(t, ctx, db.Store, "scale-in-unsettled", "i-scale-in-unsettled")
-	seedUnsettledDeployment(t, ctx, db)
+	seedPendingExecutionIntent(t, ctx, db)
 
-	hasUnsettled, err := db.Store.HasDeploymentsWithStatuses(ctx, deployment.StatusPending, deployment.StatusScheduling, deployment.StatusAssigned, deployment.StatusDeploying)
+	hasUnsettled, err := db.Store.HasExecutionIntentsWithStatuses(ctx, execution.StatusPending, execution.StatusDeploying)
 	if err != nil {
-		t.Fatalf("HasDeploymentsWithStatuses returned error: %v", err)
+		t.Fatalf("HasExecutionIntentsWithStatuses returned error: %v", err)
 	}
 	if !hasUnsettled {
-		t.Fatal("expected pending deployment to be visible through HasDeploymentsWithStatuses")
+		t.Fatal("expected pending execution intent to be visible through HasExecutionIntentsWithStatuses")
 	}
 }
 
@@ -224,62 +223,45 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, nodeID string) {
 	t.Helper()
 
-	deploymentItem := seedUnsettledDeployment(t, ctx, db)
-
-	if _, err := db.DB.ExecContext(ctx, `
-		INSERT INTO deployment_executions (
-			id,
-			deployment_id,
-			node_id,
-			image,
-			container_name,
-			container_port,
-			readiness_path,
-			status,
-			status_reason,
-			started_at
-		)
-		VALUES ($1, $2, $3, $4, $5, 8080, '/', $6, $7, $8)
-	`,
-		"exe-scale-in-active",
-		deploymentItem.ID,
-		nodeID,
-		"nginx:1.27-alpine",
-		"mini-cloud-scale-in-active",
-		deployment.StatusDeploying,
-		"test active execution",
-		time.Now().UTC(),
-	); err != nil {
-		t.Fatalf("seed active deployment execution: %v", err)
+	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+		PlanID:            "svc-scale-in-active-g1",
+		ServiceID:         "svc-scale-in-active",
+		ServiceName:       "scale-in-active",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/",
+		InstanceClass:     "small",
+		Exposure:          "public",
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan(active) returned error: %v", err)
+	}
+	work, err := db.Store.CreateExecutionClaim(ctx, nodeID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(active) returned error: %v", err)
+	}
+	if work == nil {
+		t.Fatal("CreateExecutionClaim(active) returned nil work item")
 	}
 }
 
-// seedUnsettledDeployment 创建一个 pending deployment，表示系统仍在调度或发布 workload。
-func seedUnsettledDeployment(t *testing.T, ctx context.Context, db testutil.TestDatabase) deployment.Deployment {
+// seedPendingExecutionIntent 创建一个 pending execution intent，表示系统仍在调度或发布 workload。
+func seedPendingExecutionIntent(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
 	t.Helper()
 
-	serviceItem, err := db.Store.InsertService(ctx, "svc-scale-in-service", "scale-in-service", "Scale In Service", workload.Spec{
-		Region:        "cn-beijing",
-		InstanceClass: workload.InstanceClassSmall,
-		Image:         "nginx:1.27-alpine",
-		DefaultPort:   8080,
-		ReadinessPath: "/",
-	})
-	if err != nil {
-		t.Fatalf("CreateService returned error: %v", err)
+	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+		PlanID:            "svc-scale-in-pending-g1",
+		ServiceID:         "svc-scale-in-pending",
+		ServiceName:       "scale-in-pending",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/",
+		InstanceClass:     "small",
+		Exposure:          "public",
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan(pending) returned error: %v", err)
 	}
-	revisionItem, err := db.Store.InsertRevisionFromService(ctx, serviceItem.Metadata.ID)
-	if err != nil {
-		t.Fatalf("CreateRevisionFromService returned error: %v", err)
-	}
-	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:  serviceItem.Metadata.ID,
-		RevisionID: revisionItem.ID,
-	}, "test deployment for active execution")
-	if err != nil {
-		t.Fatalf("CreateDeployment returned error: %v", err)
-	}
-	return deploymentItem
 }
 
 // containsRuntimeNode 判断列表中是否包含指定 runtime node ID。

@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	deploymentRolloutMetricCountersTable = "deployment_rollout_metric_counters"
-	runtimeNodeBootstrapCountersTable    = "runtime_node_bootstrap_metric_counters"
+	runtimeNodeBootstrapCountersTable = "runtime_node_bootstrap_metric_counters"
 )
 
 // incrementMetricCounterTx 在事务内递增指定计数器表的 result 计数。
@@ -31,41 +30,6 @@ func incrementMetricCounterTx(ctx context.Context, tx *sql.Tx, table string, res
 		return err
 	}
 	// 计数器写入成功后不返回当前值，避免调用方依赖中间统计值。
-	return nil
-}
-
-// recordDeploymentRolloutOutcomeTx 在事务内记录 deployment rollout 结果并递增计数器。
-// 参数说明：ctx 控制数据库请求生命周期；tx 表示数据库事务；deploymentID 是 deployment 唯一标识；result 是 rollout 结果。
-func recordDeploymentRolloutOutcomeTx(ctx context.Context, tx *sql.Tx, deploymentID string, result string) error {
-	// outcome mark 以 deployment_id 去重，避免同一 deployment 重复计数。
-	inserted, err := tx.ExecContext(ctx, `
-		INSERT INTO deployment_rollout_outcome_marks (
-			deployment_id,
-			result
-		)
-		VALUES ($1, $2)
-		ON CONFLICT (deployment_id) DO NOTHING
-	`, deploymentID, result)
-	if err != nil {
-		return fmt.Errorf("insert deployment rollout outcome mark: %w", err)
-	}
-
-	// RowsAffected=0 表示该 deployment 已经记录过 outcome。
-	rowsAffected, err := inserted.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("deployment rollout outcome rows affected: %w", err)
-	}
-	if rowsAffected == 0 {
-		return nil
-	}
-
-	// 首次记录 outcome 时同时递增 total 和具体 result 计数。
-	if err := incrementMetricCounterTx(ctx, tx, deploymentRolloutMetricCountersTable, "total", 1); err != nil {
-		return fmt.Errorf("increment deployment rollout total counter: %w", err)
-	}
-	if err := incrementMetricCounterTx(ctx, tx, deploymentRolloutMetricCountersTable, result, 1); err != nil {
-		return fmt.Errorf("increment deployment rollout %s counter: %w", result, err)
-	}
 	return nil
 }
 
@@ -136,24 +100,34 @@ func recordRuntimeNodeBootstrapReadyTx(ctx context.Context, tx *sql.Tx, provider
 // GetDeploymentRolloutCounterSignal 读取 deployment rollout 计数器信号。
 // 参数说明：ctx 控制数据库请求生命周期。
 func (s *Store) GetDeploymentRolloutCounterSignal(ctx context.Context) (observability.DeploymentRolloutCounterSignal, error) {
-	// 聚合 total/success/failed 三个 result；不存在的计数按 0 处理。
+	// v8 不再维护 cloud-plane deployment rollout 表；这里按 execution plan 的当前终态即时聚合。
 	var out observability.DeploymentRolloutCounterSignal
-	// MAX(value) FILTER 按 result 取当前累计值；同一 result 在表中由唯一键保证最多一行。
 	if err := s.db.QueryRowContext(ctx, `
+		WITH plan_counts AS (
+			SELECT
+				plan_id,
+				COUNT(*)::int AS intent_count,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
+			FROM execution_intents
+			GROUP BY plan_id
+		)
 		SELECT
-			COALESCE(MAX(value) FILTER (WHERE result = 'total'), 0),
-			COALESCE(MAX(value) FILTER (WHERE result = 'success'), 0),
-			COALESCE(MAX(value) FILTER (WHERE result = 'failed'), 0)
-		FROM deployment_rollout_metric_counters
+			COUNT(*) FILTER (
+				WHERE failed_count > 0 OR (intent_count > 0 AND running_count >= intent_count)
+			),
+			COUNT(*) FILTER (
+				WHERE failed_count = 0 AND intent_count > 0 AND running_count >= intent_count
+			),
+			COUNT(*) FILTER (WHERE failed_count > 0)
+		FROM plan_counts
 	`).Scan(
 		&out.Total,
 		&out.Success,
 		&out.Failed,
 	); err != nil {
-		// 包装查询错误，保留计数器类型上下文。
-		return observability.DeploymentRolloutCounterSignal{}, fmt.Errorf("query deployment rollout counters: %w", err)
+		return observability.DeploymentRolloutCounterSignal{}, fmt.Errorf("query execution rollout counters: %w", err)
 	}
-	// 返回的 signal 是当前数据库快照，不包含 Prometheus 或外部监控数据。
 	return out, nil
 }
 

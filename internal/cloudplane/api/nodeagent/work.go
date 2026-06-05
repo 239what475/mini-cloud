@@ -44,17 +44,15 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 	if item == nil {
 		return nil
 	}
-	// 基础字段描述 execution、deployment、service、revision 和目标 node。
+	// 基础字段描述 execution plan、service 和目标 node。
 	out := &nodeagentv1.WorkItem{
-		Action:        item.Action,
-		ExecutionId:   item.ExecutionID,
-		DeploymentId:  item.DeploymentID,
-		NodeId:        item.NodeID,
-		ServiceId:     item.ServiceID,
-		ServiceName:   item.ServiceName,
-		RevisionId:    item.RevisionID,
-		RevisionLabel: item.RevisionLabel,
-		Image:         item.Image,
+		Action:      item.Action,
+		ExecutionId: item.ExecutionID,
+		PlanId:      item.PlanID,
+		NodeId:      item.NodeID,
+		ServiceId:   item.ServiceID,
+		ServiceName: item.ServiceName,
+		Image:       item.Image,
 		// 可变容器复制后返回，避免 node-agent 响应共享领域对象底层数据。
 		Command: append([]string(nil), item.Command...),
 		Args:    append([]string(nil), item.Args...),
@@ -79,7 +77,7 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 	// 如果新 execution 替换旧 execution，把旧容器信息一并下发给 node-agent 清理。
 	if item.SupersededExecution != nil {
 		out.SupersededExecution = &nodeagentv1.SupersededExecution{
-			DeploymentId:  item.SupersededExecution.DeploymentID,
+			PlanId:        item.SupersededExecution.PlanID,
 			ExecutionId:   item.SupersededExecution.ExecutionID,
 			ContainerId:   item.SupersededExecution.ContainerID,
 			ContainerName: item.SupersededExecution.ContainerName,

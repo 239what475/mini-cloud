@@ -235,9 +235,9 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
 		if result.WorkItem != nil {
 			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:    result.WorkItem.ServiceID,
-				DeploymentID: result.WorkItem.DeploymentID,
-				ExecutionID:  result.WorkItem.ExecutionID,
+				ServiceID:   result.WorkItem.ServiceID,
+				PlanID:      result.WorkItem.PlanID,
+				ExecutionID: result.WorkItem.ExecutionID,
 			})
 		}
 		workLogger.Warn("node work execution failed", "error", err)
@@ -249,9 +249,9 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		reportStatus := ""
 		if result.WorkItem != nil {
 			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:    result.WorkItem.ServiceID,
-				DeploymentID: result.WorkItem.DeploymentID,
-				ExecutionID:  result.WorkItem.ExecutionID,
+				ServiceID:   result.WorkItem.ServiceID,
+				PlanID:      result.WorkItem.PlanID,
+				ExecutionID: result.WorkItem.ExecutionID,
 			})
 		}
 		if result.Report != nil {

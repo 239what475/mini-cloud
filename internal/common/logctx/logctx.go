@@ -15,6 +15,7 @@ type Fields struct {
 	RequestID     string
 	ServiceID     string
 	DeploymentID  string
+	PlanID        string
 	NodeID        string
 	RuntimeNodeID string
 	ExecutionID   string
@@ -88,6 +89,7 @@ func (f Fields) Attrs() []any {
 	appendIfNotEmpty("request_id", f.RequestID)
 	appendIfNotEmpty("service_id", f.ServiceID)
 	appendIfNotEmpty("deployment_id", f.DeploymentID)
+	appendIfNotEmpty("plan_id", f.PlanID)
 	appendIfNotEmpty("node_id", f.NodeID)
 	appendIfNotEmpty("runtime_node_id", f.RuntimeNodeID)
 	appendIfNotEmpty("execution_id", f.ExecutionID)
@@ -106,6 +108,9 @@ func (f Fields) merge(update Fields) Fields {
 	}
 	if value := strings.TrimSpace(update.DeploymentID); value != "" {
 		f.DeploymentID = value
+	}
+	if value := strings.TrimSpace(update.PlanID); value != "" {
+		f.PlanID = value
 	}
 	if value := strings.TrimSpace(update.NodeID); value != "" {
 		f.NodeID = value

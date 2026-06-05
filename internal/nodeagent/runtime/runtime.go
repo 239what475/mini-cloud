@@ -31,12 +31,10 @@ type RunInput struct {
 	NodeID string `json:"nodeID,omitempty"`
 	// ExecutionID 是拥有该容器的执行 ID，会用于运行时标签和投影文件路径。
 	ExecutionID string `json:"executionID,omitempty"`
-	// DeploymentID 是执行所属部署 ID，会写入运行时标签。
-	DeploymentID string `json:"deploymentID,omitempty"`
+	// PlanID 是执行所属 execution plan ID，会写入运行时标签。
+	PlanID string `json:"planID,omitempty"`
 	// ServiceID 是执行所属服务 ID，会写入运行时标签。
 	ServiceID string `json:"serviceID,omitempty"`
-	// RevisionID 是执行使用的服务修订 ID，会写入运行时标签。
-	RevisionID string `json:"revisionID,omitempty"`
 	// ProjectionRef 是写入运行时标签的投影文件引用；为空时标签使用 ExecutionID。
 	ProjectionRef string `json:"projectionRef,omitempty"`
 

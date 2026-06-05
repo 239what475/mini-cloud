@@ -318,7 +318,7 @@ func testOptions() Options {
 func testWorkItem() *nodeagentapi.WorkItem {
 	return &nodeagentapi.WorkItem{
 		ExecutionID:   "exec-new",
-		DeploymentID:  "deploy-a",
+		PlanID:        "plan-a",
 		NodeID:        "node-a",
 		ServiceID:     "service-a",
 		ServiceName:   "web",
@@ -395,12 +395,10 @@ func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
 	out := &nodeagentv1.WorkItem{
 		Action:         item.Action,
 		ExecutionId:    item.ExecutionID,
-		DeploymentId:   item.DeploymentID,
+		PlanId:         item.PlanID,
 		NodeId:         item.NodeID,
 		ServiceId:      item.ServiceID,
 		ServiceName:    item.ServiceName,
-		RevisionId:     item.RevisionID,
-		RevisionLabel:  item.RevisionLabel,
 		Image:          item.Image,
 		Command:        append([]string(nil), item.Command...),
 		Args:           append([]string(nil), item.Args...),
@@ -422,7 +420,7 @@ func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
 	}
 	if item.SupersededExecution != nil {
 		out.SupersededExecution = &nodeagentv1.SupersededExecution{
-			DeploymentId:  item.SupersededExecution.DeploymentID,
+			PlanId:        item.SupersededExecution.PlanID,
 			ExecutionId:   item.SupersededExecution.ExecutionID,
 			ContainerId:   item.SupersededExecution.ContainerID,
 			ContainerName: item.SupersededExecution.ContainerName,

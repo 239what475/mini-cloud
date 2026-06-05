@@ -35,7 +35,7 @@ func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 	got := formatLogfmtLine("mini-cloud-lab", StartRequest{
 		ServiceID:     "svc_demo",
 		ServiceName:   "hello",
-		DeploymentID:  "dep_demo",
+		PlanID:        "plan_demo",
 		ExecutionID:   "exec_demo",
 		NodeID:        "node_demo",
 		ContainerName: "mini-cloud-dep-demo",
@@ -44,7 +44,7 @@ func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 	for _, want := range []string{
 		`platform_name="mini-cloud-lab"`,
 		`service_id="svc_demo"`,
-		`deployment_id="dep_demo"`,
+		`plan_id="plan_demo"`,
 		`execution_id="exec_demo"`,
 		`stream="stdout"`,
 		`msg="hello world"`,
@@ -92,7 +92,7 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 	manager.pushLine(context.Background(), StartRequest{
 		ServiceID:     "svc_demo",
 		ServiceName:   "hello",
-		DeploymentID:  "dep_demo",
+		PlanID:        "plan_demo",
 		ExecutionID:   "exec_demo",
 		NodeID:        "node_demo",
 		ContainerName: "mini-cloud-dep-demo",

@@ -17,6 +17,9 @@ import (
 	"mini-cloud/internal/contract/cloudplaneapi"
 )
 
+// ErrExecutionNotFound 表示 execution intent 记录不存在。
+var ErrExecutionNotFound = errors.New("execution not found")
+
 func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInput) (execution.PlanResult, error) {
 	if err := input.Validate(); err != nil {
 		return execution.PlanResult{}, err
@@ -455,7 +458,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	`, execution.StatusPending, execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
 		&work.ExecutionID,
 		&work.Action,
-		&work.DeploymentID,
+		&work.PlanID,
 		&storedNodeID,
 		&work.ServiceID,
 		&work.ServiceName,
@@ -485,8 +488,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	}
 	work.Action = execution.NormalizeWorkAction(work.Action)
 	work.NodeID = nodeID
-	work.RevisionID = work.DeploymentID
-	work.RevisionLabel = generationLabel(serviceGeneration)
 	if storedNodeID.Valid {
 		work.NodeID = storedNodeID.String
 	}
@@ -532,12 +533,12 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			Password: credentialPassword.String,
 		}
 	}
-	superseded, err := loadRunningIntentForServiceOnNode(ctx, tx, work.ServiceID, work.DeploymentID, nodeID)
+	superseded, err := loadRunningIntentForServiceOnNode(ctx, tx, work.ServiceID, work.PlanID, nodeID)
 	if err != nil {
 		return nil, err
 	}
 	work.SupersededExecution = superseded
-	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.DeploymentID)
+	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.PlanID)
 
 	startedAt := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `
@@ -610,7 +611,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 		RETURNING id, plan_id, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at
 	`, executionID, input.ContainerName, input.ContainerID, input.HostPort, input.Status, input.Reason, finishedAt).Scan(
 		&updated.ID,
-		&updated.DeploymentID,
+		&updated.PlanID,
 		&updated.NodeID,
 		&updated.Image,
 		&updated.ContainerName,
@@ -656,7 +657,7 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 		FOR UPDATE
 	`, executionID, nodeID).Scan(
 		&current.ID,
-		&current.DeploymentID,
+		&current.PlanID,
 		&current.NodeID,
 		&current.Image,
 		&current.ContainerName,
@@ -694,7 +695,7 @@ func loadRunningIntentForServiceOnNode(ctx context.Context, tx *sql.Tx, serviceI
 		ORDER BY created_at DESC, id DESC
 		LIMIT 1
 		FOR UPDATE
-	`, serviceID, planID, nodeID, execution.StatusRunning).Scan(&item.DeploymentID, &item.ExecutionID, &item.ContainerID, &item.ContainerName)
+	`, serviceID, planID, nodeID, execution.StatusRunning).Scan(&item.PlanID, &item.ExecutionID, &item.ContainerID, &item.ContainerName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil

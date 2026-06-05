@@ -1,4 +1,4 @@
-// Package execution 定义 node-agent 执行 deployment work item 的领域模型。
+// Package execution 定义 node-agent 执行 execution work item 的领域模型。
 package execution
 
 import (
@@ -13,9 +13,9 @@ import (
 const (
 	// StatusPending 表示 execution intent 已创建但还未被 node-agent 领取。
 	StatusPending = "pending"
-	// StatusDeploying 表示 node-agent 正在创建或更新该副本容器。
+	// StatusDeploying 表示 node-agent 正在创建或更新该容器。
 	StatusDeploying = "deploying"
-	// StatusRunning 表示该副本容器已启动并通过运行时上报。
+	// StatusRunning 表示该容器已启动并通过运行时上报。
 	StatusRunning = "running"
 	// StatusSuperseded 表示该 execution 已被新 execution 替代。
 	StatusSuperseded = "superseded"
@@ -127,18 +127,14 @@ type WorkItem struct {
 	Action string `json:"action"`
 	// ExecutionID 表示 execution 的唯一标识。
 	ExecutionID string `json:"executionID"`
-	// DeploymentID 表示所属 deployment 的唯一标识。
-	DeploymentID string `json:"deploymentID"`
-	// NodeID 是该副本任务被分配到的 node 标识。
+	// PlanID 表示所属 execution plan 的唯一标识。
+	PlanID string `json:"planID"`
+	// NodeID 是该任务被分配到的 node 标识。
 	NodeID string `json:"nodeID"`
 	// ServiceID 表示所属 service 的唯一标识。
 	ServiceID string `json:"serviceID"`
 	// ServiceName 表示 service 名称。
 	ServiceName string `json:"serviceName"`
-	// RevisionID 表示所属 revision 的唯一标识。
-	RevisionID string `json:"revisionID"`
-	// RevisionLabel 是 revision 编号对应的展示标签。
-	RevisionLabel string `json:"revisionLabel"`
 	// Image 表示容器镜像。
 	Image string `json:"image"`
 	// Command 表示容器启动命令。
@@ -179,8 +175,8 @@ type ImageCredential struct {
 
 // SupersededExecution 描述被新 execution 取代并需要清理的旧执行。
 type SupersededExecution struct {
-	// DeploymentID 表示所属 deployment 的唯一标识。
-	DeploymentID string `json:"deploymentID"`
+	// PlanID 表示所属 execution plan 的唯一标识。
+	PlanID string `json:"planID"`
 	// ExecutionID 表示 execution 的唯一标识。
 	ExecutionID string `json:"executionID"`
 	// ContainerID 表示容器运行时返回的容器标识。
@@ -193,8 +189,8 @@ type SupersededExecution struct {
 type Record struct {
 	// ID 是 execution 记录的唯一标识。
 	ID string `json:"id"`
-	// DeploymentID 表示所属 deployment 的唯一标识。
-	DeploymentID string `json:"deploymentID"`
+	// PlanID 表示所属 execution plan 的唯一标识。
+	PlanID string `json:"planID"`
 	// NodeID 是该 execution 实际运行所在的 node 标识。
 	NodeID string `json:"nodeID"`
 	// Image 表示容器镜像。
