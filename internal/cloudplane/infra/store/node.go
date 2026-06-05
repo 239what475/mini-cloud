@@ -254,10 +254,10 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input no
 		nextSchedulable = true
 	}
 	// runtime node scale-in 状态优先级高于 node-agent 心跳；
-	// 否则 provider 删除前最后几次心跳可能把 draining/deleting/deleted 节点重新变成可调度。
+	// 否则 provider 删除前最后几次心跳可能把 terminating/deleted 节点重新变成可调度。
 	if runtimeNodeStatus.Valid {
 		switch runtimeNodeStatus.String {
-		case node.StatusDraining, runtimepool.StatusDeleting:
+		case runtimepool.StatusTerminating:
 			nextStatus = node.StatusDraining
 			nextSchedulable = false
 		case runtimepool.StatusDeleted:

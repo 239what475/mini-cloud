@@ -120,23 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_runtime_nodes_created_at
 CREATE INDEX IF NOT EXISTS idx_runtime_nodes_status_created_at
     ON runtime_nodes (status, created_at DESC, id DESC);
 
-CREATE TABLE IF NOT EXISTS runtime_node_bootstrap_metric_counters (
-    result TEXT PRIMARY KEY,
-    value BIGINT NOT NULL DEFAULT 0,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS runtime_node_bootstrap_marks (
-    provider TEXT NOT NULL,
-    instance_id TEXT NOT NULL,
-    started_recorded_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ready_recorded_at TIMESTAMPTZ NULL,
-    PRIMARY KEY (provider, instance_id)
-);
-
 -- +goose Down
-DROP TABLE IF EXISTS runtime_node_bootstrap_marks;
-DROP TABLE IF EXISTS runtime_node_bootstrap_metric_counters;
 DROP TABLE IF EXISTS runtime_nodes;
 DROP TABLE IF EXISTS execution_intents;
 DROP TABLE IF EXISTS node_agent_session_tokens;

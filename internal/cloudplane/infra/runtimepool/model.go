@@ -9,8 +9,7 @@ import (
 const (
 	StatusProvisioning = "provisioning"
 	StatusReady        = "ready"
-	StatusDraining     = "draining"
-	StatusDeleting     = "deleting"
+	StatusTerminating  = "terminating"
 	StatusDeleted      = "deleted"
 )
 

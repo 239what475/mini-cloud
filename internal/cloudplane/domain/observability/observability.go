@@ -100,24 +100,6 @@ type RuntimeNodeRegistrationSignal struct {
 	OldestProvisioningAgeSeconds int64 `json:"oldestProvisioningAgeSeconds"`
 }
 
-// ExecutionPlanRolloutCounterSignal 汇总 execution plan 首次终态结果。
-type ExecutionPlanRolloutCounterSignal struct {
-	// Total 是已记录首次终态结果的 execution plan 总数。
-	Total int64 `json:"total"`
-	// Success 是首次终态为 running 的 execution plan 数量。
-	Success int64 `json:"success"`
-	// Failed 是首次终态为 failed 的 execution plan 数量。
-	Failed int64 `json:"failed"`
-}
-
-// RuntimeNodeBootstrapCounterSignal 汇总 runtime node bootstrap 尝试和成功次数。
-type RuntimeNodeBootstrapCounterSignal struct {
-	// Started 是 cloud-plane 记录的 runtime node bootstrap 开始次数。
-	Started int64 `json:"started"`
-	// Ready 是 bootstrap 尝试中最终上报 ready 的累计次数。
-	Ready int64 `json:"ready"`
-}
-
 // ReliabilityInputs 是构建可靠性快照所需的原始聚合输入。
 type ReliabilityInputs struct {
 	// Overview 是平台资源数量和状态概览。
@@ -136,10 +118,6 @@ type ReliabilityInputs struct {
 	ExecutionPlanStuck ExecutionPlanStuckSignal
 	// RuntimeNodeRegistration 是 runtime node 注册和 bootstrap 状态聚合。
 	RuntimeNodeRegistration RuntimeNodeRegistrationSignal
-	// ExecutionPlanRolloutCounters 是 execution plan 结果累计计数器。
-	ExecutionPlanRolloutCounters ExecutionPlanRolloutCounterSignal
-	// RuntimeNodeBootstrapCounts 是 runtime node bootstrap 累计计数器。
-	RuntimeNodeBootstrapCounts RuntimeNodeBootstrapCounterSignal
 }
 
 // ReliabilitySnapshot 是面向内部 gRPC 同步和控制面聚合的告警视图。

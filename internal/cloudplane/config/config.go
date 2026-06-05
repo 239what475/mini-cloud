@@ -370,8 +370,6 @@ func build(path string, fileCfg cloudPlaneFileConfig) (Config, error) {
 func (c *Config) normalize() {
 	// plane identity 来自 YAML 嵌套结构，统一在这里清理，避免 build 中遗漏子字段。
 	c.Plane.Identity.Name = strings.TrimSpace(c.Plane.Identity.Name)
-	c.Plane.Identity.Environment = strings.TrimSpace(c.Plane.Identity.Environment)
-	c.Plane.Identity.Owner = strings.TrimSpace(c.Plane.Identity.Owner)
 	// provider 和位置信息会用于 driver 选择和 runtime node 创建，先去掉外围空白。
 	c.Infrastructure.Provider = strings.TrimSpace(c.Infrastructure.Provider)
 	c.Infrastructure.Location.RegionID = strings.TrimSpace(c.Infrastructure.Location.RegionID)

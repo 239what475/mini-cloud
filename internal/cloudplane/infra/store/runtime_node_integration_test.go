@@ -20,7 +20,7 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 	runtimeNode, backingNode := seedReadyRuntimeNode(t, ctx, db.Store, "scale-in-lifecycle", "i-scale-in-lifecycle")
 
 	// 按缩容会关注的状态集合读取 runtime node；是否真正删除由 control 层结合 active execution 判断。
-	candidates, err := db.Store.ListRuntimeNodesByStatuses(ctx, node.StatusReady, node.StatusDraining, runtimepool.StatusDeleting)
+	candidates, err := db.Store.ListRuntimeNodesByStatuses(ctx, runtimepool.StatusReady, runtimepool.StatusTerminating)
 	if err != nil {
 		t.Fatalf("ListRuntimeNodesByStatuses returned error: %v", err)
 	}
@@ -28,31 +28,31 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 		t.Fatalf("expected runtime node %s to be listed by status, got %+v", runtimeNode.ID, candidates)
 	}
 
-	// 进入 draining 必须同时关闭 backing node 调度入口。
-	draining, changed, err := db.Store.MarkRuntimeNodeDraining(ctx, runtimeNode.ID, "test draining", time.Now().UTC())
+	// 进入 terminating 必须同时关闭 backing node 调度入口。
+	terminating, changed, err := db.Store.MarkRuntimeNodeTerminating(ctx, runtimeNode.ID, "test terminating", time.Now().UTC())
 	if err != nil {
-		t.Fatalf("MarkRuntimeNodeDraining returned error: %v", err)
+		t.Fatalf("MarkRuntimeNodeTerminating returned error: %v", err)
 	}
 	if !changed {
-		t.Fatalf("expected MarkRuntimeNodeDraining to change ready runtime node")
+		t.Fatalf("expected MarkRuntimeNodeTerminating to change ready runtime node")
 	}
-	if draining.Status != node.StatusDraining {
-		t.Fatalf("runtime node status = %s, want %s", draining.Status, node.StatusDraining)
+	if terminating.Status != runtimepool.StatusTerminating {
+		t.Fatalf("runtime node status = %s, want %s", terminating.Status, runtimepool.StatusTerminating)
 	}
 	drainedNode, err := db.Store.GetNode(ctx, backingNode.ID)
 	if err != nil {
-		t.Fatalf("GetNode after draining returned error: %v", err)
+		t.Fatalf("GetNode after terminating returned error: %v", err)
 	}
 	if drainedNode.Status != node.StatusDraining || drainedNode.Schedulable {
-		t.Fatalf("backing node after drain = status %s schedulable %v, want draining false", drainedNode.Status, drainedNode.Schedulable)
+		t.Fatalf("backing node after terminating = status %s schedulable %v, want draining false", drainedNode.Status, drainedNode.Schedulable)
 	}
-	// 如果进程在 draining 后、deleting 前重启，draining 记录必须还能被后续轮次重新扫描并推进。
-	drainingCandidates, err := db.Store.ListRuntimeNodesByStatuses(ctx, node.StatusReady, node.StatusDraining, runtimepool.StatusDeleting)
+	// 如果进程在 provider 删除前重启，terminating 记录必须还能被后续轮次重新扫描并推进。
+	terminatingCandidates, err := db.Store.ListRuntimeNodesByStatuses(ctx, runtimepool.StatusReady, runtimepool.StatusTerminating)
 	if err != nil {
-		t.Fatalf("ListRuntimeNodesByStatuses after draining returned error: %v", err)
+		t.Fatalf("ListRuntimeNodesByStatuses after terminating returned error: %v", err)
 	}
-	if !containsRuntimeNode(drainingCandidates, runtimeNode.ID) {
-		t.Fatalf("expected draining runtime node %s to be listed for deletion recovery, got %+v", runtimeNode.ID, drainingCandidates)
+	if !containsRuntimeNode(terminatingCandidates, runtimeNode.ID) {
+		t.Fatalf("expected terminating runtime node %s to be listed for deletion recovery, got %+v", runtimeNode.ID, terminatingCandidates)
 	}
 
 	// 删除前的二次检查应看到 active execution 为 0。
@@ -64,14 +64,6 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 		t.Fatalf("active execution count = %d, want 0", activeCount)
 	}
 
-	// provider 删除调用前先进入 deleting；provider 成功后收敛为 deleted。
-	deleting, err := db.Store.MarkRuntimeNodeDeleting(ctx, runtimeNode.ID, "test deleting", time.Now().UTC())
-	if err != nil {
-		t.Fatalf("MarkRuntimeNodeDeleting returned error: %v", err)
-	}
-	if deleting.Status != runtimepool.StatusDeleting {
-		t.Fatalf("runtime node status = %s, want %s", deleting.Status, runtimepool.StatusDeleting)
-	}
 	deleted, err := db.Store.MarkRuntimeNodeDeleted(ctx, runtimeNode.ID, "test deleted", time.Now().UTC())
 	if err != nil {
 		t.Fatalf("MarkRuntimeNodeDeleted returned error: %v", err)

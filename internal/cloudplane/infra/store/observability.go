@@ -274,18 +274,6 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		return observability.ReliabilityInputs{}, err
 	}
 
-	// 读取 rollout 结果累计计数器。
-	input.ExecutionPlanRolloutCounters, err = s.GetExecutionPlanRolloutCounterSignal(ctx)
-	if err != nil {
-		return observability.ReliabilityInputs{}, err
-	}
-
-	// 读取 runtime node bootstrap 累计计数器。
-	input.RuntimeNodeBootstrapCounts, err = s.GetRuntimeNodeBootstrapCounterSignal(ctx)
-	if err != nil {
-		return observability.ReliabilityInputs{}, err
-	}
-
 	// 返回完整可靠性输入，具体评分由领域层计算。
 	return input, nil
 }

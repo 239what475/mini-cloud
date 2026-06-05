@@ -190,12 +190,6 @@ func (s *Store) BindRuntimeNodeProvisioned(ctx context.Context, runtimeNodeID st
 		return runtimepool.Record{}, fmt.Errorf("bind runtime node provisioned instance: %w", err)
 	}
 
-	// bind 成功后记录 bootstrap 开始时间；runtime node 是通用容量，不按 service/run 计数。
-	if err := recordRuntimeNodeBootstrapStartTx(ctx, tx, item.Provider, item.InstanceID, observedAt.UTC()); err != nil {
-		return runtimepool.Record{}, err
-	}
-
-	// 提交 bind 和 bootstrap 观测记录。
 	if err := tx.Commit(); err != nil {
 		return runtimepool.Record{}, fmt.Errorf("commit runtime node bind tx: %w", err)
 	}
@@ -274,30 +268,21 @@ func (s *Store) HasExecutionIntentsWithStatuses(ctx context.Context, statuses ..
 	return exists, nil
 }
 
-// MarkRuntimeNodeProvisioningPending 将 runtime node 标记回 provisioning 等待态。
-// 参数说明：ctx 控制数据库请求生命周期；runtimeNodeID 是 runtime node 唯一标识；reason 记录状态变化原因；observedAt 是观测时间。
-func (s *Store) MarkRuntimeNodeProvisioningPending(ctx context.Context, runtimeNodeID string, reason string, observedAt time.Time) (runtimepool.Record, error) {
-	return s.updateRuntimeNodeLifecycle(ctx, runtimeNodeID, runtimepool.StatusProvisioning, reason, &observedAt)
-}
-
-// MarkRuntimeNodeDraining 将 ready runtime node 原子切换为 draining，并关闭对应 node 调度。
-// 参数说明：ctx 控制数据库请求生命周期；runtimeNodeID 是 runtime node 唯一标识；reason 记录状态变化原因；observedAt 是观测时间。
-func (s *Store) MarkRuntimeNodeDraining(ctx context.Context, runtimeNodeID string, reason string, observedAt time.Time) (runtimepool.Record, bool, error) {
+// MarkRuntimeNodeTerminating 关闭 backing node 调度并把 runtime node 标记为等待 provider 删除。
+func (s *Store) MarkRuntimeNodeTerminating(ctx context.Context, runtimeNodeID string, reason string, observedAt time.Time) (runtimepool.Record, bool, error) {
 	// 未传入观测时间时使用控制面当前时间。
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
 
-	// runtime node 状态和 nodes.schedulable 必须在同一事务里切换，避免调度看到半更新状态。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return runtimepool.Record{}, false, fmt.Errorf("begin runtime node draining tx: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("begin runtime node terminating tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
 
-	// 锁定 runtime node，确保并发 scale-in 只有一个流程能推进状态。
 	currentRow := tx.QueryRowContext(ctx, `
 		SELECT `+runtimeNodeSelectColumns+`
 		FROM runtime_nodes
@@ -309,150 +294,14 @@ func (s *Store) MarkRuntimeNodeDraining(ctx context.Context, runtimeNodeID strin
 		if errors.Is(err, sql.ErrNoRows) {
 			return runtimepool.Record{}, false, ErrRuntimeNodeNotFound
 		}
-		return runtimepool.Record{}, false, fmt.Errorf("load runtime node for draining: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("load runtime node for terminating: %w", err)
 	}
 
-	// 只有 ready 且已经绑定 node/instance 的 runtime node 能进入自动缩容。
+	if current.Status == runtimepool.StatusTerminating {
+		return current, true, nil
+	}
 	if current.Status != node.StatusReady || strings.TrimSpace(current.InstanceID) == "" || strings.TrimSpace(current.NodeID) == "" {
 		return current, false, nil
-	}
-
-	// 先关闭 node 调度入口，防止后续调度和 node-agent 领取新 work。
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE nodes
-		SET
-			status = $2,
-			schedulable = FALSE,
-			updated_at = now()
-		WHERE id = $1
-	`, current.NodeID, node.StatusDraining); err != nil {
-		return runtimepool.Record{}, false, fmt.Errorf("mark runtime node backing node draining: %w", err)
-	}
-
-	// 再写 runtime node 生命周期状态，标识该云实例已经进入回收流程。
-	row := tx.QueryRowContext(ctx, `
-		UPDATE runtime_nodes
-		SET
-			status = $2,
-			status_reason = $3,
-			last_synced_at = $4,
-			updated_at = now()
-		WHERE id = $1
-		RETURNING `+runtimeNodeSelectColumns+`
-	`, runtimeNodeID, node.StatusDraining, reason, observedAt.UTC())
-	item, err := scanRuntimeNode(row)
-	if err != nil {
-		return runtimepool.Record{}, false, fmt.Errorf("mark runtime node draining: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return runtimepool.Record{}, false, fmt.Errorf("commit runtime node draining tx: %w", err)
-	}
-	return item, true, nil
-}
-
-// MarkRuntimeNodeReady 将缩容前二次检查失败的 runtime node 恢复为 ready 并重新打开调度。
-// 参数说明：ctx 控制数据库请求生命周期；runtimeNodeID 是 runtime node 唯一标识；reason 记录状态变化原因；observedAt 是观测时间。
-func (s *Store) MarkRuntimeNodeReady(ctx context.Context, runtimeNodeID string, reason string, observedAt time.Time) (runtimepool.Record, error) {
-	// 未传入观测时间时使用控制面当前时间。
-	if observedAt.IsZero() {
-		observedAt = time.Now().UTC()
-	}
-
-	// runtime node 和 node 要一起恢复，否则可能出现 ready runtime node 背后的 node 仍不可调度。
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return runtimepool.Record{}, fmt.Errorf("begin runtime node ready tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	// 锁定 runtime node 并读取 node_id。
-	currentRow := tx.QueryRowContext(ctx, `
-		SELECT `+runtimeNodeSelectColumns+`
-		FROM runtime_nodes
-		WHERE id = $1
-		FOR UPDATE
-	`, runtimeNodeID)
-	current, err := scanRuntimeNode(currentRow)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return runtimepool.Record{}, ErrRuntimeNodeNotFound
-		}
-		return runtimepool.Record{}, fmt.Errorf("load runtime node for ready: %w", err)
-	}
-
-	// 有 backing node 时恢复调度；缺失 node_id 的异常记录只恢复 runtime node 状态。
-	if strings.TrimSpace(current.NodeID) != "" {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE nodes
-			SET
-				status = $2,
-				schedulable = TRUE,
-				updated_at = now()
-			WHERE id = $1
-		`, current.NodeID, node.StatusReady); err != nil {
-			return runtimepool.Record{}, fmt.Errorf("mark runtime node backing node ready: %w", err)
-		}
-	}
-
-	row := tx.QueryRowContext(ctx, `
-		UPDATE runtime_nodes
-		SET
-			status = $2,
-			status_reason = $3,
-			last_synced_at = $4,
-			updated_at = now()
-		WHERE id = $1
-		RETURNING `+runtimeNodeSelectColumns+`
-	`, runtimeNodeID, node.StatusReady, reason, observedAt.UTC())
-	item, err := scanRuntimeNode(row)
-	if err != nil {
-		return runtimepool.Record{}, fmt.Errorf("mark runtime node ready: %w", err)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return runtimepool.Record{}, fmt.Errorf("commit runtime node ready tx: %w", err)
-	}
-	return item, nil
-}
-
-// MarkRuntimeNodeDeleting 将 runtime node 标记为正在调用 provider 删除。
-// 参数说明：ctx 控制数据库请求生命周期；runtimeNodeID 是 runtime node 唯一标识；reason 记录状态变化原因；observedAt 是观测时间。
-func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID string, reason string, observedAt time.Time) (runtimepool.Record, error) {
-	// 未传入观测时间时使用控制面当前时间。
-	if observedAt.IsZero() {
-		observedAt = time.Now().UTC()
-	}
-
-	// deleting 前必须重新锁定 runtime node，并在同一事务内确认 backing node 已不可调度且没有 active execution。
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return runtimepool.Record{}, fmt.Errorf("begin runtime node deleting tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	currentRow := tx.QueryRowContext(ctx, `
-		SELECT `+runtimeNodeSelectColumns+`
-		FROM runtime_nodes
-		WHERE id = $1
-		FOR UPDATE
-	`, runtimeNodeID)
-	current, err := scanRuntimeNode(currentRow)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return runtimepool.Record{}, ErrRuntimeNodeNotFound
-		}
-		return runtimepool.Record{}, fmt.Errorf("load runtime node for deleting: %w", err)
-	}
-	if current.Status != node.StatusDraining && current.Status != runtimepool.StatusDeleting {
-		return runtimepool.Record{}, fmt.Errorf("runtime node %s is in status %s and cannot be marked deleting", runtimeNodeID, current.Status)
-	}
-	if strings.TrimSpace(current.InstanceID) == "" || strings.TrimSpace(current.NodeID) == "" {
-		return runtimepool.Record{}, fmt.Errorf("runtime node %s cannot be marked deleting without instanceID and nodeID", runtimeNodeID)
 	}
 
 	// 锁住 backing node，确保 node-agent claim work 与 scale-in 对同一 node 的判断串行化。
@@ -464,9 +313,9 @@ func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID strin
 		FOR UPDATE
 	`, current.NodeID).Scan(&lockedNodeID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return runtimepool.Record{}, ErrNodeNotFound
+			return runtimepool.Record{}, false, ErrNodeNotFound
 		}
-		return runtimepool.Record{}, fmt.Errorf("lock backing node for runtime node deleting: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("lock backing node for runtime node terminating: %w", err)
 	}
 
 	var activeCount int
@@ -476,13 +325,12 @@ func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID strin
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
 	`, current.NodeID, execution.StatusDeploying, execution.StatusRunning).Scan(&activeCount); err != nil {
-		return runtimepool.Record{}, fmt.Errorf("count active executions before runtime node deleting: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("count active executions before runtime node terminating: %w", err)
 	}
 	if activeCount > 0 {
-		return runtimepool.Record{}, fmt.Errorf("runtime node %s cannot be marked deleting because %d active execution(s) exist on node %s", runtimeNodeID, activeCount, current.NodeID)
+		return current, false, nil
 	}
 
-	// 确保 backing node 仍保持 draining 且不可调度；重复写入用于恢复中断后的半状态。
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE nodes
 		SET
@@ -491,7 +339,7 @@ func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID strin
 			updated_at = now()
 		WHERE id = $1
 	`, current.NodeID, node.StatusDraining); err != nil {
-		return runtimepool.Record{}, fmt.Errorf("keep backing node draining for runtime node deleting: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("mark backing node draining for runtime node terminating: %w", err)
 	}
 
 	row := tx.QueryRowContext(ctx, `
@@ -503,16 +351,16 @@ func (s *Store) MarkRuntimeNodeDeleting(ctx context.Context, runtimeNodeID strin
 			updated_at = now()
 		WHERE id = $1
 		RETURNING `+runtimeNodeSelectColumns+`
-	`, runtimeNodeID, runtimepool.StatusDeleting, reason, observedAt.UTC())
+	`, runtimeNodeID, runtimepool.StatusTerminating, reason, observedAt.UTC())
 	item, err := scanRuntimeNode(row)
 	if err != nil {
-		return runtimepool.Record{}, fmt.Errorf("mark runtime node deleting: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("mark runtime node terminating: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return runtimepool.Record{}, fmt.Errorf("commit runtime node deleting tx: %w", err)
+		return runtimepool.Record{}, false, fmt.Errorf("commit runtime node terminating tx: %w", err)
 	}
-	return item, nil
+	return item, true, nil
 }
 
 // MarkRuntimeNodeDeleted 将 runtime node 标记为已删除，并保持对应 node 不可调度。
@@ -582,38 +430,7 @@ func (s *Store) MarkRuntimeNodeDeleted(ctx context.Context, runtimeNodeID string
 	return item, nil
 }
 
-// updateRuntimeNodeLifecycle 更新 runtime node 生命周期状态和相关时间戳。
-// 参数说明：ctx 控制数据库请求生命周期；runtimeNodeID 定位记录；status/reason 是目标状态；observedAt 是可选时间戳。
-func (s *Store) updateRuntimeNodeLifecycle(ctx context.Context, runtimeNodeID string, status string, reason string, observedAt *time.Time) (runtimepool.Record, error) {
-	// COALESCE 避免未传入时间戳时覆盖已有 last sync 时间。
-	row := s.db.QueryRowContext(ctx, `
-		UPDATE runtime_nodes
-		SET
-			status = $2,
-			status_reason = $3,
-			last_synced_at = COALESCE($4, last_synced_at),
-			updated_at = now()
-		WHERE id = $1
-		RETURNING `+runtimeNodeSelectColumns+`
-	`,
-		runtimeNodeID,
-		status,
-		reason,
-		nullableTime(observedAt),
-	)
-
-	item, err := scanRuntimeNode(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// 数据库无行时转换为 store 领域错误。
-			return runtimepool.Record{}, ErrRuntimeNodeNotFound
-		}
-		return runtimepool.Record{}, fmt.Errorf("update runtime node lifecycle: %w", err)
-	}
-	return item, nil
-}
-
-// syncRuntimeNodeReadyTx 在事务内把 runtime node 标记为 ready，并记录 bootstrap ready 观测。
+// syncRuntimeNodeReadyTx 在事务内把 runtime node 标记为 ready。
 // 参数说明：ctx 控制数据库请求生命周期；tx 表示数据库事务；provider/instanceID/instanceName 定位云实例；nodeID 是已注册 node；observedAt 是观测时间。
 func syncRuntimeNodeReadyTx(ctx context.Context, tx *sql.Tx, provider string, instanceID string, instanceName string, nodeID string, observedAt time.Time) (bool, error) {
 	// 未传入观测时间时使用控制面当前时间。
@@ -674,17 +491,10 @@ func syncRuntimeNodeReadyTx(ctx context.Context, tx *sql.Tx, provider string, in
 		return false, err
 	}
 
-	// 没有匹配 runtime node 时，不记录 bootstrap ready。
 	if !matchedID.Valid || matchedID.String == "" {
 		return false, nil
 	}
-
-	// 记录 runtime node bootstrap ready；返回值表示本次是否首次记录。
-	recorded, err := recordRuntimeNodeBootstrapReadyTx(ctx, tx, provider, instanceID, observedAt.UTC())
-	if err != nil {
-		return false, err
-	}
-	return recorded, nil
+	return true, nil
 }
 
 // scanRuntimeNode 从 SQL 扫描器读取一行数据并组装领域对象。

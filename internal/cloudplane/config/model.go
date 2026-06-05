@@ -56,10 +56,6 @@ type PlaneConfig struct {
 type PlaneIdentity struct {
 	// Name 是当前 plane 实例的机器可读稳定标识，用于 ownership tag、日志和 node-agent platform 标识。
 	Name string `json:"name" yaml:"name"`
-	// Environment 是当前 plane 所处环境，如 dev、staging 或 prod。
-	Environment string `json:"environment,omitempty" yaml:"environment"`
-	// Owner 是当前 plane 的负责人或归属团队。
-	Owner string `json:"owner,omitempty" yaml:"owner"`
 }
 
 // ControlPlaneConfig 对应 YAML 中的 controlPlane 配置段。

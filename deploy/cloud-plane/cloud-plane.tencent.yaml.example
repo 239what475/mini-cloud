@@ -8,8 +8,6 @@ database:
 plane:
   identity:
     name: mini-cloud-prod-tencent
-    environment: prod
-    owner: replace-with-owner
 
 controlPlane:
   auth:

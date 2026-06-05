@@ -4,7 +4,6 @@ package nodepool
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -50,8 +49,8 @@ func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
 		return nil
 	}
 
-	// 查询 ready 节点和上轮已进入 drain/delete 的节点；具体删除候选条件由本层策略判断。
-	items, err := s.store.ListRuntimeNodesByStatuses(ctx, infraruntimepool.StatusReady, infraruntimepool.StatusDraining, infraruntimepool.StatusDeleting)
+	// 查询 ready 节点和上轮已进入 terminating 的节点；具体删除候选条件由本层策略判断。
+	items, err := s.store.ListRuntimeNodesByStatuses(ctx, infraruntimepool.StatusReady, infraruntimepool.StatusTerminating)
 	if err != nil {
 		return err
 	}
@@ -70,7 +69,7 @@ func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
 		if activeCount > 0 {
 			continue
 		}
-		// 单个节点失败只记录并继续处理其它候选；失败节点会通过 deleting 状态在后续轮次重试。
+		// 单个节点失败只记录并继续处理其它候选；失败节点会通过 terminating 状态在后续轮次重试。
 		if err := s.reconcileRuntimeNodeDeletion(ctx, item); err != nil {
 			joinedErr = errors.Join(joinedErr, err)
 			s.logger.Warn("runtime node scale-in failed",
@@ -84,89 +83,38 @@ func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
 	return joinedErr
 }
 
-// reconcileRuntimeNodeDeletion 推进单个 runtime node 的 drain/delete 状态机。
+// reconcileRuntimeNodeDeletion 推进单个 runtime node 的删除流程。
 // 参数说明：ctx 控制本次操作；item 是本轮扫描得到的 runtime node 快照。
 func (s *ScaleInService) reconcileRuntimeNodeDeletion(ctx context.Context, item infraruntimepool.Record) error {
 	// 已经 deleted 的记录不会被扫描到；如果并发状态变化导致输入不再可删除，直接跳过。
-	if item.Status != infraruntimepool.StatusReady && item.Status != infraruntimepool.StatusDraining && item.Status != infraruntimepool.StatusDeleting {
+	if item.Status != infraruntimepool.StatusReady && item.Status != infraruntimepool.StatusTerminating {
 		return nil
 	}
 	if strings.TrimSpace(item.InstanceID) == "" || strings.TrimSpace(item.NodeID) == "" {
 		return nil
 	}
 
-	current := item
-	if item.Status == infraruntimepool.StatusReady {
-		// 先进入 draining 并关闭 nodes.schedulable，阻断新调度和 node-agent 新 work 领取。
-		reason := "runtime node has no active execution, so cloud-plane is draining it before provider deletion"
-		drained, changed, err := s.store.MarkRuntimeNodeDraining(ctx, item.ID, reason, time.Now().UTC())
-		if err != nil {
-			return err
-		}
-		if !changed {
-			return nil
-		}
-		current = drained
-
-		// drain 后立即二次检查 active execution，处理和 node-agent 领取 work 并发的情况。
-		activeCount, err := s.store.CountActiveExecutionsByNode(ctx, current.NodeID)
-		if err != nil {
-			return err
-		}
-		if activeCount > 0 {
-			// 如果 drain 后发现仍有 active execution，恢复 ready，让该节点继续承载现有 workload。
-			_, err := s.store.MarkRuntimeNodeReady(
-				ctx,
-				current.ID,
-				fmt.Sprintf("runtime node scale-in was aborted because %d active execution(s) exist on the node", activeCount),
-				time.Now().UTC(),
-			)
-			return err
-		}
-	}
-	if item.Status == infraruntimepool.StatusDraining {
-		// 进程可能在上一轮 drain 后、mark deleting 前重启；恢复后仍要先确认没有 active execution。
-		activeCount, err := s.store.CountActiveExecutionsByNode(ctx, current.NodeID)
-		if err != nil {
-			return err
-		}
-		if activeCount > 0 {
-			_, err := s.store.MarkRuntimeNodeReady(
-				ctx,
-				current.ID,
-				fmt.Sprintf("runtime node scale-in was recovered from draining because %d active execution(s) exist on the node", activeCount),
-				time.Now().UTC(),
-			)
-			return err
-		}
-	}
-
-	// 进入 deleting 后，即使 provider 调用失败也保持 deleting，下一轮继续重试。
-	deleting, err := s.store.MarkRuntimeNodeDeleting(
+	terminating, changed, err := s.store.MarkRuntimeNodeTerminating(
 		ctx,
-		current.ID,
+		item.ID,
 		"runtime node has no active execution and cloud-plane is deleting the provider instance",
 		time.Now().UTC(),
 	)
 	if err != nil {
 		return err
 	}
+	if !changed {
+		return nil
+	}
 
-	if err := s.driver.Delete(ctx, infraruntimepool.DeleteRequest{InstanceID: deleting.InstanceID}); err != nil {
-		// 删除失败不引入 delete_failed 状态；记录原因并依赖下一轮重试。
-		_, markErr := s.store.MarkRuntimeNodeDeleting(
-			ctx,
-			deleting.ID,
-			fmt.Sprintf("provider delete failed and will be retried: %v", err),
-			time.Now().UTC(),
-		)
-		return errors.Join(err, markErr)
+	if err := s.driver.Delete(ctx, infraruntimepool.DeleteRequest{InstanceID: terminating.InstanceID}); err != nil {
+		return err
 	}
 
 	// provider 删除请求成功返回或返回 not found 后，本地状态收敛为 deleted，backing node 保留为 offline inventory。
 	_, err = s.store.MarkRuntimeNodeDeleted(
 		ctx,
-		deleting.ID,
+		terminating.ID,
 		"provider instance was deleted or was already absent",
 		time.Now().UTC(),
 	)
