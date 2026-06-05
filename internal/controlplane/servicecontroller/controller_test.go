@@ -2,7 +2,6 @@ package servicecontroller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,7 +11,6 @@ import (
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planeselector"
 	controlservice "mini-cloud/internal/controlplane/service"
-	"mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
 )
 
@@ -71,7 +69,7 @@ func TestUpdateReusesCurrentPlacement(t *testing.T) {
 	}
 }
 
-func TestDeleteRemovesServiceAndPlacement(t *testing.T) {
+func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-delete")
@@ -88,8 +86,20 @@ func TestDeleteRemovesServiceAndPlacement(t *testing.T) {
 	if _, err := controller.Delete(ctx, serviceID); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if _, err := db.Store.GetService(ctx, serviceID); !errors.Is(err, store.ErrServiceNotFound) {
-		t.Fatalf("GetService after delete error = %v, want ErrServiceNotFound", err)
+	reloaded, err := db.Store.GetService(ctx, serviceID)
+	if err != nil {
+		t.Fatalf("GetService after delete returned error: %v", err)
+	}
+	if reloaded.Status.DesiredState != controlservice.DesiredStateDeleted || reloaded.Status.Observed.Phase != controlservice.PhaseDeleting {
+		t.Fatalf("service status after delete = %+v, want deleting", reloaded.Status)
+	}
+	if len(deployer.deleteInputs) != 1 {
+		t.Fatalf("deleteInputs len = %d, want 1", len(deployer.deleteInputs))
+	}
+	if deployer.deleteInputs[0].ServiceID != serviceID ||
+		deployer.deleteInputs[0].ServiceGeneration != reloaded.Metadata.Generation ||
+		deployer.deleteInputs[0].PlanID != serviceID+"-delete-g2" {
+		t.Fatalf("delete input = %+v, want service generation delete plan", deployer.deleteInputs[0])
 	}
 }
 
@@ -139,8 +149,9 @@ func (f *fakePlanner) PreviewSelection(_ context.Context, input planeselector.Se
 }
 
 type fakeDeploy struct {
-	applyInputs []deploy.ApplyServiceInput
-	deleteCalls int
+	applyInputs  []deploy.ApplyServiceInput
+	deleteInputs []deploy.DeleteServiceInput
+	deleteCalls  int
 }
 
 func newFakeDeploy() *fakeDeploy {
@@ -152,8 +163,9 @@ func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deplo
 	return deploy.ApplyResult{PlaneID: planeID, Action: deploy.ApplyActionUpdated, PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
 }
 
-func (f *fakeDeploy) DeleteService(_ context.Context, _ string, _ string) error {
+func (f *fakeDeploy) DeleteService(_ context.Context, _ string, input deploy.DeleteServiceInput) error {
 	f.deleteCalls++
+	f.deleteInputs = append(f.deleteInputs, input)
 	return nil
 }
 

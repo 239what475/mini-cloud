@@ -33,7 +33,7 @@ type planeSelector interface {
 
 type executionPlanManager interface {
 	ApplyService(context.Context, string, deploy.ApplyServiceInput) (deploy.ApplyResult, error)
-	DeleteService(context.Context, string, string) error
+	DeleteService(context.Context, string, deploy.DeleteServiceInput) error
 }
 
 type serviceStore interface {

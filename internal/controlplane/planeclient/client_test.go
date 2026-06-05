@@ -100,6 +100,12 @@ func (s *stubControlPlaneSouthbound) DeleteExecutionPlan(ctx context.Context, re
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
 	}
+	if req.GetServiceGeneration() != 13 {
+		s.t.Fatalf("unexpected service generation: %d", req.GetServiceGeneration())
+	}
+	if req.GetPlanId() != "svc-1-delete-g13" {
+		s.t.Fatalf("unexpected delete plan id: %q", req.GetPlanId())
+	}
 	return &cloudplanev1.DeleteExecutionPlanResponse{
 		ServiceId: req.GetServiceId(),
 		Deleted:   true,
@@ -187,7 +193,11 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected execution plan response: %+v", applyResp)
 	}
 
-	if err := client.DeleteExecutionPlan(context.Background(), "svc-1"); err != nil {
+	if err := client.DeleteExecutionPlan(context.Background(), cloudplaneapi.DeleteExecutionPlanRequest{
+		ServiceID:         "svc-1",
+		ServiceGeneration: 13,
+		PlanID:            "svc-1-delete-g13",
+	}); err != nil {
 		t.Fatalf("DeleteExecutionPlan returned error: %v", err)
 	}
 }

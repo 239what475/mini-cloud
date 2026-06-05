@@ -21,6 +21,9 @@ const (
 	ExecutionStatusRunning    = "running"
 	ExecutionStatusSuperseded = "superseded"
 	ExecutionStatusFailed     = "failed"
+
+	WorkActionRun    = "run"
+	WorkActionDelete = "delete"
 )
 
 var (
@@ -44,6 +47,7 @@ var (
 	ErrExecutionStatusInvalid     = errors.New("execution status must be one of deploying, running, superseded, failed")
 	ErrReasonRequired             = errors.New("reason is required")
 	ErrContainerNameRequired      = errors.New("containerName is required")
+	ErrContainerIDRequired        = errors.New("containerID is required")
 	ErrHostPortInvalid            = errors.New("hostPort must be greater than 0 when status is running")
 	ErrSessionTokenRequired       = errors.New("sessionToken is required")
 	ErrAcceptedAtRequired         = errors.New("acceptedAt is required")
@@ -55,6 +59,7 @@ var (
 	ErrContainerPortInvalid       = errors.New("containerPort must be greater than 0")
 	ErrReadinessPathRequired      = errors.New("readinessPath is required")
 	ErrReadinessPathInvalid       = errors.New("readinessPath must start with /")
+	ErrInvalidWorkAction          = errors.New("work action must be one of run, delete")
 	ErrExecutionIDRequired        = errors.New("executionID is required")
 	ErrObservedAtRequired         = errors.New("observedAt is required")
 )
@@ -95,6 +100,7 @@ type HeartbeatResponse struct {
 }
 
 type WorkItem struct {
+	Action              string                `json:"action"`
 	ExecutionID         string                `json:"executionID"`
 	DeploymentID        string                `json:"deploymentID"`
 	ReplicaIndex        int                   `json:"replicaIndex"`
@@ -114,6 +120,8 @@ type WorkItem struct {
 	ContainerPort       int                   `json:"containerPort"`
 	ReadinessPath       string                `json:"readinessPath"`
 	ContainerName       string                `json:"containerName"`
+	ContainerID         string                `json:"containerID"`
+	HostPort            int                   `json:"hostPort"`
 }
 
 type ImageCredential struct {
@@ -271,6 +279,10 @@ func (in HeartbeatResponse) Validate() error {
 }
 
 func (in WorkItem) Validate() error {
+	action := NormalizeWorkAction(in.Action)
+	if !IsWorkAction(action) {
+		return ErrInvalidWorkAction
+	}
 	if strings.TrimSpace(in.ExecutionID) == "" {
 		return ErrWorkExecutionIDRequired
 	}
@@ -282,6 +294,15 @@ func (in WorkItem) Validate() error {
 	}
 	if strings.TrimSpace(in.ServiceID) == "" {
 		return ErrServiceIDRequired
+	}
+	if strings.TrimSpace(in.ContainerName) == "" {
+		return ErrContainerNameRequired
+	}
+	if action == WorkActionDelete {
+		if strings.TrimSpace(in.ContainerID) == "" {
+			return ErrContainerIDRequired
+		}
+		return nil
 	}
 	if strings.TrimSpace(in.Image) == "" {
 		return ErrImageRequired
@@ -296,9 +317,6 @@ func (in WorkItem) Validate() error {
 	if !strings.HasPrefix(readinessPath, "/") {
 		return ErrReadinessPathInvalid
 	}
-	if strings.TrimSpace(in.ContainerName) == "" {
-		return ErrContainerNameRequired
-	}
 	for _, item := range in.ProjectedFiles {
 		if err := item.Validate(); err != nil {
 			return err
@@ -310,6 +328,26 @@ func (in WorkItem) Validate() error {
 		}
 	}
 	return nil
+}
+
+func NormalizeWorkAction(action string) string {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "", WorkActionRun:
+		return WorkActionRun
+	case WorkActionDelete:
+		return WorkActionDelete
+	default:
+		return strings.ToLower(strings.TrimSpace(action))
+	}
+}
+
+func IsWorkAction(action string) bool {
+	switch NormalizeWorkAction(action) {
+	case WorkActionRun, WorkActionDelete:
+		return true
+	default:
+		return false
+	}
 }
 
 func (in ReportExecutionResponse) Validate() error {

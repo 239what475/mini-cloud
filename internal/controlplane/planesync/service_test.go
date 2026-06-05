@@ -391,6 +391,47 @@ func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T)
 	}
 }
 
+func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing.T) {
+	observedAt := time.Now().UTC()
+	store := &fakeExecutionSnapshotStore{
+		planeID: "plane-a",
+		service: controlservice.Service{
+			Metadata: controlservice.Metadata{
+				ID:         "svc-api",
+				Generation: 2,
+			},
+			Status: controlservice.ServiceStatus{
+				DesiredState: controlservice.DesiredStateDeleted,
+				Run: controlservice.RunStatus{
+					LatestRunID: "svc-api-delete-g2",
+					Phase:       controlservice.RunPhaseDispatching,
+				},
+			},
+		},
+		runs: map[int64]controlservice.ServiceRun{
+			2: {Generation: 2, Status: controlservice.RunPhaseDispatching},
+		},
+	}
+	service := &Service{store: store}
+
+	err := service.applyExecutionSnapshots(context.Background(), "plane-a", []cloudplaneapi.ExecutionSnapshot{
+		{
+			PlanID:             "svc-api-delete-g2",
+			ServiceID:          "svc-api",
+			ServiceGeneration:  2,
+			DesiredReplicas:    2,
+			SupersededReplicas: 2,
+			ObservedAt:         observedAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+	}
+	if !store.deletedPlacement || !store.deletedService {
+		t.Fatalf("deletedPlacement=%v deletedService=%v, want both true", store.deletedPlacement, store.deletedService)
+	}
+}
+
 func TestSyncRegisteredPlanesKeepsPlaneOutcomesIndependent(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -576,9 +617,11 @@ func (f fakePlaneSnapshotFetcher) Fetch(_ context.Context, grpcEndpoint string, 
 }
 
 type fakeExecutionSnapshotStore struct {
-	planeID string
-	service controlservice.Service
-	runs    map[int64]controlservice.ServiceRun
+	planeID          string
+	service          controlservice.Service
+	runs             map[int64]controlservice.ServiceRun
+	deletedService   bool
+	deletedPlacement bool
 }
 
 func (f *fakeExecutionSnapshotStore) GetPlane(context.Context, string) (plane.Detail, error) {
@@ -661,4 +704,14 @@ func (f *fakeExecutionSnapshotStore) UpdateServiceStatusForGeneration(_ context.
 		f.service.Status.Run = controlservice.CloneRunStatus(*input.Run)
 	}
 	return f.service, nil
+}
+
+func (f *fakeExecutionSnapshotStore) DeleteServicePlacementForGeneration(context.Context, string, int64) error {
+	f.deletedPlacement = true
+	return nil
+}
+
+func (f *fakeExecutionSnapshotStore) DeleteServiceForGeneration(context.Context, string, int64) error {
+	f.deletedService = true
+	return nil
 }

@@ -232,6 +232,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_executions_deployment_replica
 
 CREATE TABLE IF NOT EXISTS execution_intents (
     id TEXT PRIMARY KEY,
+    work_action TEXT NOT NULL DEFAULT 'run',
     plan_id TEXT NOT NULL,
     service_id TEXT NOT NULL,
     service_name TEXT NOT NULL,

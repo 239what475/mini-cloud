@@ -678,6 +678,115 @@ func TestIntegrationCreateExecutionClaimMaterializesPersistentDirs(t *testing.T)
 	}
 }
 
+// TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot 验证 v8 delete plan 会转成原节点 delete work，并在清理上报后形成可完成删除的 snapshot。
+func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+
+	runtimeNodeNode, err := db.Store.RegisterNode(ctx, node.RegisterInput{
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		Name:          "runtime-node-delete",
+		Role:          node.RoleRuntime,
+		PrivateIP:     "10.0.0.40",
+		PublicIP:      "203.0.113.40",
+		InstanceID:    "i-runtime-node-delete",
+		InstanceType:  "ecs.u1-c1m1.large",
+		CPUMilliTotal: 2000,
+		MemoryMiTotal: 4096,
+	})
+	if err != nil {
+		t.Fatalf("RegisterNode returned error: %v", err)
+	}
+	markIntegrationNodeReady(t, ctx, db, runtimeNodeNode.ID)
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+		PlanID:            "svc-delete-g1",
+		ServiceID:         "svc-delete",
+		ServiceName:       "delete-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		Replicas:          1,
+		InstanceClass:     workload.InstanceClassSmall,
+		Exposure:          "public",
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+	}
+
+	runWork, err := db.Store.CreateExecutionClaim(ctx, runtimeNodeNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(run) returned error: %v", err)
+	}
+	if runWork == nil {
+		t.Fatal("CreateExecutionClaim(run) returned nil work item")
+	}
+	if runWork.Action != execution.WorkActionRun {
+		t.Fatalf("run action = %q, want %q", runWork.Action, execution.WorkActionRun)
+	}
+	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, runWork.ExecutionID, execution.ReportInput{
+		Status:        execution.StatusRunning,
+		Reason:        "replica is healthy",
+		ContainerID:   "ctr-delete-0",
+		ContainerName: runWork.ContainerName,
+		HostPort:      18080,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(running) returned error: %v", err)
+	}
+
+	deleted, err := db.Store.DeleteExecutionPlansForService(ctx, execution.DeletePlanInput{
+		ServiceID:         "svc-delete",
+		ServiceGeneration: 2,
+		PlanID:            "svc-delete-delete-g2",
+	})
+	if err != nil {
+		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
+	}
+	if !deleted {
+		t.Fatalf("DeleteExecutionPlansForService deleted = false, want true")
+	}
+
+	deleteWork, err := db.Store.CreateExecutionClaim(ctx, runtimeNodeNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(delete) returned error: %v", err)
+	}
+	if deleteWork == nil {
+		t.Fatal("CreateExecutionClaim(delete) returned nil work item")
+	}
+	if deleteWork.Action != execution.WorkActionDelete {
+		t.Fatalf("delete action = %q, want %q", deleteWork.Action, execution.WorkActionDelete)
+	}
+	if deleteWork.NodeID != runtimeNodeNode.ID {
+		t.Fatalf("delete nodeID = %q, want original node %q", deleteWork.NodeID, runtimeNodeNode.ID)
+	}
+	if deleteWork.ContainerID != "ctr-delete-0" || deleteWork.ContainerName != runWork.ContainerName || deleteWork.HostPort != 18080 {
+		t.Fatalf("delete work runtime fields = containerID %q containerName %q hostPort %d", deleteWork.ContainerID, deleteWork.ContainerName, deleteWork.HostPort)
+	}
+
+	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, deleteWork.ExecutionID, execution.ReportInput{
+		Status:        execution.StatusSuperseded,
+		Reason:        "service deletion stopped container",
+		ContainerID:   deleteWork.ContainerID,
+		ContainerName: deleteWork.ContainerName,
+		HostPort:      deleteWork.HostPort,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(delete superseded) returned error: %v", err)
+	}
+
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-delete-g2")
+	if deleteSnapshot == nil {
+		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
+	}
+	if deleteSnapshot.DesiredReplicas != 1 || deleteSnapshot.SupersededReplicas != 1 || deleteSnapshot.RunningReplicas != 0 || deleteSnapshot.DeployingReplicas != 0 || deleteSnapshot.FailedReplicas != 0 {
+		t.Fatalf("delete snapshot = %+v, want one superseded replica and no active replicas", *deleteSnapshot)
+	}
+}
+
 // markIntegrationNodeReady 将测试节点推进到 ready/schedulable，确保 selection 写入前的节点状态符合生产调度约束。
 func markIntegrationNodeReady(t *testing.T, ctx context.Context, db testutil.TestDatabase, nodeID string) {
 	t.Helper()
@@ -692,6 +801,15 @@ func markIntegrationNodeReady(t *testing.T, ctx context.Context, db testutil.Tes
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
+}
+
+func findExecutionSnapshot(items []cloudplaneapi.ExecutionSnapshot, planID string) *cloudplaneapi.ExecutionSnapshot {
+	for i := range items {
+		if items[i].PlanID == planID {
+			return &items[i]
+		}
+	}
+	return nil
 }
 
 // resourceBundle 把测试使用的资源组装成全局 resource apply 所需的聚合。

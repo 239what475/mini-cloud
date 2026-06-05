@@ -186,6 +186,34 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 	}
 }
 
+// TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded 验证 delete work 只停止已有容器并上报 superseded。
+func TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded(t *testing.T) {
+	t.Parallel()
+
+	item := testWorkItem()
+	item.Action = nodeagentapi.WorkActionDelete
+	item.ContainerID = "container-old"
+	item.ContainerName = "svc-web-old"
+	item.HostPort = 32080
+	recorder := &workTestRecorder{item: item}
+	client := newWorkTestClient(t, recorder)
+	containerRuntime := &fakeRuntime{}
+
+	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, testOptions())
+	if err != nil {
+		t.Fatalf("ExecuteNext returned error: %v", err)
+	}
+	if result.Phase != PhaseDeleteReported {
+		t.Fatalf("phase = %q, want %q", result.Phase, PhaseDeleteReported)
+	}
+	if len(containerRuntime.stops) != 1 || containerRuntime.stops[0] != "container-old" {
+		t.Fatalf("stopped containers = %v, want [container-old]", containerRuntime.stops)
+	}
+	if len(recorder.reports) != 1 || recorder.reports[0].Status != nodeagentapi.ExecutionStatusSuperseded {
+		t.Fatalf("reports = %+v, want superseded report", recorder.reports)
+	}
+}
+
 // TestExecuteNextReturnsReportError 验证执行结果上报失败会返回错误。
 func TestExecuteNextReturnsReportError(t *testing.T) {
 	t.Parallel()
@@ -366,6 +394,7 @@ func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
 		return nil
 	}
 	out := &nodeagentv1.WorkItem{
+		Action:         item.Action,
 		ExecutionId:    item.ExecutionID,
 		DeploymentId:   item.DeploymentID,
 		ReplicaIndex:   int32(item.ReplicaIndex),
@@ -381,6 +410,8 @@ func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
 		ContainerPort:  int32(item.ContainerPort),
 		ReadinessPath:  item.ReadinessPath,
 		ContainerName:  item.ContainerName,
+		ContainerId:    item.ContainerID,
+		HostPort:       int32(item.HostPort),
 		ProjectedFiles: protoProjectedFiles(item.ProjectedFiles),
 		PersistentDirs: protoPersistentDirs(item.PersistentDirs),
 	}

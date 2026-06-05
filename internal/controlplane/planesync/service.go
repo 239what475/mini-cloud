@@ -62,6 +62,8 @@ type serviceStore interface {
 	UpdateServiceRun(context.Context, string, int64, controlservice.UpdateRunInput) (controlservice.ServiceRun, error)
 	SupersedeServiceRunsBeforeGeneration(context.Context, string, int64, string) error
 	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
+	DeleteServicePlacementForGeneration(context.Context, string, int64) error
+	DeleteServiceForGeneration(context.Context, string, int64) error
 }
 
 type planeSnapshot struct {
@@ -295,6 +297,19 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 		if runErr != nil && !errors.Is(runErr, store.ErrServiceRunNotFound) {
 			return runErr
 		}
+		if serviceItem.Status.DesiredState == controlservice.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
+			if err := s.store.DeleteServicePlacementForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
+				!errors.Is(err, store.ErrServicePlacementNotFound) &&
+				!errors.Is(err, store.ErrServiceGenerationConflict) {
+				return err
+			}
+			if err := s.store.DeleteServiceForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
+				!errors.Is(err, store.ErrServiceNotFound) &&
+				!errors.Is(err, store.ErrServiceGenerationConflict) {
+				return err
+			}
+			continue
+		}
 		if status.Run.Phase == controlservice.RunPhaseRunning {
 			if err := s.store.SupersedeServiceRunsBeforeGeneration(ctx, item.ServiceID, item.ServiceGeneration, "superseded by a newer running service run"); err != nil {
 				return err
@@ -316,6 +331,14 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 		}
 	}
 	return nil
+}
+
+func deleteExecutionPlanComplete(item cloudplaneapi.ExecutionSnapshot) bool {
+	return item.DesiredReplicas > 0 &&
+		item.SupersededReplicas >= item.DesiredReplicas &&
+		item.DeployingReplicas == 0 &&
+		item.RunningReplicas == 0 &&
+		item.FailedReplicas == 0
 }
 
 type executionDerivedStatus struct {

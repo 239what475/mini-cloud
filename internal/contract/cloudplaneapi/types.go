@@ -329,3 +329,9 @@ type ExecutionPlanResponse struct {
 	Action string `json:"action"`
 	PlanID string `json:"planID"`
 }
+
+type DeleteExecutionPlanRequest struct {
+	ServiceID         string `json:"serviceID"`
+	ServiceGeneration int64  `json:"serviceGeneration"`
+	PlanID            string `json:"planID"`
+}

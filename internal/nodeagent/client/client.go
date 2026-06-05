@@ -351,6 +351,7 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 		return nil
 	}
 	out := &nodeagentapi.WorkItem{
+		Action:         item.GetAction(),
 		ExecutionID:    item.GetExecutionId(),
 		DeploymentID:   item.GetDeploymentId(),
 		ReplicaIndex:   int(item.GetReplicaIndex()),
@@ -368,6 +369,8 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 		ContainerPort:  int(item.GetContainerPort()),
 		ReadinessPath:  item.GetReadinessPath(),
 		ContainerName:  item.GetContainerName(),
+		ContainerID:    item.GetContainerId(),
+		HostPort:       int(item.GetHostPort()),
 	}
 	if item.GetImageCredential() != nil {
 		out.ImageCredential = &nodeagentapi.ImageCredential{

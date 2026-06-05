@@ -107,9 +107,11 @@ func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.Exe
 	return executionPlanResponseFromProto(resp), nil
 }
 
-func (c *Client) DeleteExecutionPlan(ctx context.Context, serviceID string) error {
+func (c *Client) DeleteExecutionPlan(ctx context.Context, input cloudplaneapi.DeleteExecutionPlanRequest) error {
 	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteExecutionPlanRequest{
-		ServiceId: strings.TrimSpace(serviceID),
+		ServiceId:         strings.TrimSpace(input.ServiceID),
+		ServiceGeneration: input.ServiceGeneration,
+		PlanId:            strings.TrimSpace(input.PlanID),
 	})
 	if err != nil {
 		return classifyRPCError(err)

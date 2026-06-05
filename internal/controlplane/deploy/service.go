@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"mini-cloud/internal/common/persistentdir"
@@ -95,15 +96,21 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	}, nil
 }
 
-func (s *Service) DeleteService(ctx context.Context, planeID string, serviceID string) error {
+func (s *Service) DeleteService(ctx context.Context, planeID string, input DeleteServiceInput) error {
 	if s == nil || s.store == nil {
 		return fmt.Errorf("deploy service is not configured")
 	}
 	if planeID == "" {
 		return ErrPlaneIDRequired
 	}
-	if serviceID == "" {
+	if input.ServiceID == "" {
 		return ErrServiceIDRequired
+	}
+	if input.ServiceGeneration <= 0 {
+		return fmt.Errorf("serviceGeneration must be greater than 0")
+	}
+	if strings.TrimSpace(input.PlanID) == "" {
+		return fmt.Errorf("planID is required")
 	}
 
 	plane, err := s.store.GetPlane(ctx, planeID)
@@ -127,7 +134,11 @@ func (s *Service) DeleteService(ctx context.Context, planeID string, serviceID s
 	requestCtx, cancel := context.WithTimeout(ctx, defaultDeleteServiceTimeout)
 	defer cancel()
 
-	if err := client.DeleteExecutionPlan(requestCtx, serviceID); err != nil {
+	if err := client.DeleteExecutionPlan(requestCtx, cloudplaneapi.DeleteExecutionPlanRequest{
+		ServiceID:         input.ServiceID,
+		ServiceGeneration: input.ServiceGeneration,
+		PlanID:            input.PlanID,
+	}); err != nil {
 		return fmt.Errorf("delete execution plan: %w", err)
 	}
 	return nil

@@ -173,6 +173,8 @@ message ApplyExecutionPlanResponse {
 
 message DeleteExecutionPlanRequest {
   string service_id = 1 [json_name = "serviceID"];
+  int64 service_generation = 2 [json_name = "serviceGeneration"];
+  string plan_id = 3 [json_name = "planID"];
 }
 
 message DeleteExecutionPlanResponse {

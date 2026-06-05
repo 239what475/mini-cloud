@@ -31,42 +31,65 @@ var (
 	// ErrContainerNameRequired 表示 execution 上报缺少容器名称。
 	ErrContainerNameRequired = errors.New("containerName is required")
 	// ErrHostPortInvalid 表示 running 状态缺少有效宿主机端口。
-	ErrHostPortInvalid = errors.New("hostPort must be greater than 0 when status is running")
-	ErrPlanIDRequired  = errors.New("planID is required")
-	ErrServiceIDRequired = errors.New("serviceID is required")
-	ErrServiceNameRequired = errors.New("serviceName is required")
-	ErrImageRequired = errors.New("image is required")
-	ErrInvalidContainerPort = errors.New("containerPort must be between 1 and 65535")
-	ErrInvalidReplicas = errors.New("replicas must be greater than 0")
+	ErrHostPortInvalid           = errors.New("hostPort must be greater than 0 when status is running")
+	ErrPlanIDRequired            = errors.New("planID is required")
+	ErrServiceIDRequired         = errors.New("serviceID is required")
+	ErrServiceGenerationRequired = errors.New("serviceGeneration must be greater than 0")
+	ErrServiceNameRequired       = errors.New("serviceName is required")
+	ErrImageRequired             = errors.New("image is required")
+	ErrInvalidContainerPort      = errors.New("containerPort must be between 1 and 65535")
+	ErrInvalidReplicas           = errors.New("replicas must be greater than 0")
 )
 
 const (
 	PlanActionCreated = "created"
 	PlanActionUpdated = "updated"
+
+	WorkActionRun    = "run"
+	WorkActionDelete = "delete"
 )
 
 type PlanInput struct {
-	PlanID            string                 `json:"planID"`
-	ServiceID         string                 `json:"serviceID"`
-	ServiceName       string                 `json:"serviceName"`
-	ServiceGeneration int64                  `json:"serviceGeneration"`
-	Image             string                 `json:"image"`
-	Command           []string               `json:"command"`
-	Args              []string               `json:"args"`
-	Env               map[string]string      `json:"env"`
-	ProjectedFiles    []projectedfile.File   `json:"projectedFiles,omitempty"`
-	PersistentDirs    []persistentdir.Mount  `json:"persistentDirs,omitempty"`
-	ImageCredential   *ImageCredential       `json:"imageCredential,omitempty"`
-	ContainerPort     int                    `json:"containerPort"`
-	ReadinessPath     string                 `json:"readinessPath"`
-	Replicas          int                    `json:"replicas"`
-	InstanceClass     string                 `json:"instanceClass"`
-	Exposure          string                 `json:"exposure"`
+	PlanID            string                `json:"planID"`
+	ServiceID         string                `json:"serviceID"`
+	ServiceName       string                `json:"serviceName"`
+	ServiceGeneration int64                 `json:"serviceGeneration"`
+	Image             string                `json:"image"`
+	Command           []string              `json:"command"`
+	Args              []string              `json:"args"`
+	Env               map[string]string     `json:"env"`
+	ProjectedFiles    []projectedfile.File  `json:"projectedFiles,omitempty"`
+	PersistentDirs    []persistentdir.Mount `json:"persistentDirs,omitempty"`
+	ImageCredential   *ImageCredential      `json:"imageCredential,omitempty"`
+	ContainerPort     int                   `json:"containerPort"`
+	ReadinessPath     string                `json:"readinessPath"`
+	Replicas          int                   `json:"replicas"`
+	InstanceClass     string                `json:"instanceClass"`
+	Exposure          string                `json:"exposure"`
 }
 
 type PlanResult struct {
 	Action string `json:"action"`
 	PlanID string `json:"planID"`
+}
+
+type DeletePlanInput struct {
+	ServiceID         string `json:"serviceID"`
+	ServiceGeneration int64  `json:"serviceGeneration"`
+	PlanID            string `json:"planID"`
+}
+
+func (in DeletePlanInput) Validate() error {
+	if strings.TrimSpace(in.ServiceID) == "" {
+		return ErrServiceIDRequired
+	}
+	if strings.TrimSpace(in.PlanID) == "" {
+		return ErrPlanIDRequired
+	}
+	if in.ServiceGeneration <= 0 {
+		return ErrServiceGenerationRequired
+	}
+	return nil
 }
 
 func (in PlanInput) Validate() error {
@@ -103,6 +126,8 @@ func (in PlanInput) Validate() error {
 
 // WorkItem 是 cloud-plane 下发给 node-agent 执行的单副本任务。
 type WorkItem struct {
+	// Action 表示该 work item 的处理类型。
+	Action string `json:"action"`
 	// ExecutionID 表示 execution 的唯一标识。
 	ExecutionID string `json:"executionID"`
 	// DeploymentID 表示所属 deployment 的唯一标识。
@@ -141,6 +166,10 @@ type WorkItem struct {
 	ReadinessPath string `json:"readinessPath"`
 	// ContainerName 表示容器运行时中的容器名称。
 	ContainerName string `json:"containerName"`
+	// ContainerID 表示需要清理或报告的容器运行时标识。
+	ContainerID string `json:"containerID"`
+	// HostPort 表示已有 execution 占用的宿主机端口。
+	HostPort int `json:"hostPort"`
 }
 
 // ImageCredential 是 node-agent 拉取容器镜像时使用的仓库凭据。
@@ -229,6 +258,26 @@ type ReportAck struct {
 func IsStatus(status string) bool {
 	switch status {
 	case StatusDeploying, StatusRunning, StatusSuperseded, StatusFailed:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeWorkAction(action string) string {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "", WorkActionRun:
+		return WorkActionRun
+	case WorkActionDelete:
+		return WorkActionDelete
+	default:
+		return strings.ToLower(strings.TrimSpace(action))
+	}
+}
+
+func IsWorkAction(action string) bool {
+	switch NormalizeWorkAction(action) {
+	case WorkActionRun, WorkActionDelete:
 		return true
 	default:
 		return false

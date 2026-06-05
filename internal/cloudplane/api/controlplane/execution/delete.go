@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	cloudexecution "mini-cloud/internal/cloudplane/domain/execution"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
 	"google.golang.org/grpc/codes"
@@ -18,9 +19,13 @@ func (s *Server) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.Dele
 	if serviceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
-	deleted, err := s.store.DeleteExecutionPlansForService(ctx, serviceID)
+	deleted, err := s.store.DeleteExecutionPlansForService(ctx, cloudexecution.DeletePlanInput{
+		ServiceID:         serviceID,
+		ServiceGeneration: req.GetServiceGeneration(),
+		PlanID:            strings.TrimSpace(req.GetPlanId()),
+	})
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: deleted}, nil
 }

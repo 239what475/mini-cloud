@@ -635,6 +635,9 @@ type WorkItem struct {
 	ContainerName       string                 `protobuf:"bytes,18,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
 	ProjectedFiles      []*ProjectedFile       `protobuf:"bytes,19,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
 	PersistentDirs      []*PersistentDirMount  `protobuf:"bytes,20,rep,name=persistent_dirs,json=persistentDirs,proto3" json:"persistent_dirs,omitempty"`
+	Action              string                 `protobuf:"bytes,21,opt,name=action,proto3" json:"action,omitempty"`
+	ContainerId         string                 `protobuf:"bytes,22,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
+	HostPort            int32                  `protobuf:"varint,23,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -800,6 +803,27 @@ func (x *WorkItem) GetPersistentDirs() []*PersistentDirMount {
 		return x.PersistentDirs
 	}
 	return nil
+}
+
+func (x *WorkItem) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *WorkItem) GetContainerId() string {
+	if x != nil {
+		return x.ContainerId
+	}
+	return ""
+}
+
+func (x *WorkItem) GetHostPort() int32 {
+	if x != nil {
+		return x.HostPort
+	}
+	return 0
 }
 
 type PollWorkRequest struct {
@@ -1302,7 +1326,7 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x12\x1f\n" +
 	"\vsource_path\x18\x03 \x01(\tR\n" +
-	"sourcePath\"\xb3\a\n" +
+	"sourcePath\"\x8b\b\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12#\n" +
 	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12#\n" +
@@ -1325,7 +1349,10 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x0ereadiness_path\x18\x11 \x01(\tR\rreadinessPath\x12%\n" +
 	"\x0econtainer_name\x18\x12 \x01(\tR\rcontainerName\x12N\n" +
 	"\x0fprojected_files\x18\x13 \x03(\v2%.minicloud.nodeagent.v1.ProjectedFileR\x0eprojectedFiles\x12S\n" +
-	"\x0fpersistent_dirs\x18\x14 \x03(\v2*.minicloud.nodeagent.v1.PersistentDirMountR\x0epersistentDirs\x1a6\n" +
+	"\x0fpersistent_dirs\x18\x14 \x03(\v2*.minicloud.nodeagent.v1.PersistentDirMountR\x0epersistentDirs\x12\x16\n" +
+	"\x06action\x18\x15 \x01(\tR\x06action\x12!\n" +
+	"\fcontainer_id\x18\x16 \x01(\tR\vcontainerID\x12\x1b\n" +
+	"\thost_port\x18\x17 \x01(\x05R\bhostPort\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06R\n" +

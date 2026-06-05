@@ -30,6 +30,10 @@ const (
 	PhasePolled = "polled"
 	// PhaseValidated 表示执行任务契约校验已通过。
 	PhaseValidated = "validated"
+	// PhaseDeleting 表示正在清理已存在的工作负载容器。
+	PhaseDeleting = "deleting"
+	// PhaseDeleteReported 表示删除清理结果已成功上报。
+	PhaseDeleteReported = "delete_reported"
 	// PhaseStarting 表示即将启动运行时容器。
 	PhaseStarting = "starting"
 	// PhaseStarted 表示运行时容器已启动。
@@ -180,6 +184,18 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		return result, fmt.Errorf("%s", reason)
 	}
 	result.Phase = PhaseValidated
+	if nodeagentapi.NormalizeWorkAction(item.Action) == nodeagentapi.WorkActionDelete {
+		result.Phase = PhaseDeleting
+		report, err := e.deleteWorkItem(ctx, item)
+		if err != nil {
+			result.Report = &report
+			return result, err
+		}
+		result.Report = &report
+		result.Phase = PhaseDeleteReported
+		e.logReport(workLogger, report)
+		return result, nil
+	}
 
 	result.Phase = PhaseStarting
 	runResult, err := e.runWorkItem(ctx, item)
@@ -240,6 +256,36 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	result.Phase = PhaseFailedReported
 	e.logReport(workLogger, report)
 	return result, fmt.Errorf("%s", reason)
+}
+
+// deleteWorkItem 停止已有容器并将 execution 标记为 superseded；失败时上报 failed，供控制面保留删除中状态继续重试。
+func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) (nodeagentapi.ReportExecutionResponse, error) {
+	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.RuntimeStopTimeout))
+	stopErr := e.containerRuntime.Stop(stopCtx, item.ContainerID)
+	cancelStop()
+	if stopErr != nil {
+		report, reportErr := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
+			Reason:        TruncateReason(fmt.Sprintf("delete execution failed while stopping container %s: %v", item.ContainerName, stopErr)),
+			ContainerID:   item.ContainerID,
+			ContainerName: item.ContainerName,
+			HostPort:      item.HostPort,
+		})
+		if reportErr != nil {
+			return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report failed delete execution: %w", reportErr)
+		}
+		return report, stopErr
+	}
+	report, err := e.report(ctx, item, nodeagentapi.ReportExecutionRequest{
+		Status:        nodeagentapi.ExecutionStatusSuperseded,
+		Reason:        fmt.Sprintf("service deletion stopped container %s", item.ContainerName),
+		ContainerID:   item.ContainerID,
+		ContainerName: item.ContainerName,
+		HostPort:      item.HostPort,
+	})
+	if err != nil {
+		return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report deleted execution: %w", err)
+	}
+	return report, nil
 }
 
 // pollWork 带超时和日志上下文字段拉取下一项执行任务。

@@ -76,6 +76,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 		result, err := tx.ExecContext(ctx, `
 			INSERT INTO execution_intents (
 				id,
+				work_action,
 				plan_id,
 				service_id,
 				service_name,
@@ -98,9 +99,10 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 			ON CONFLICT (plan_id, replica_index) DO UPDATE
 			SET
+				work_action = EXCLUDED.work_action,
 				service_name = EXCLUDED.service_name,
 				service_exposure = EXCLUDED.service_exposure,
 				service_generation = EXCLUDED.service_generation,
@@ -120,6 +122,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				updated_at = now()
 		`,
 			id,
+			execution.WorkActionRun,
 			input.PlanID,
 			input.ServiceID,
 			input.ServiceName,
@@ -162,8 +165,28 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 	return execution.PlanResult{Action: action, PlanID: input.PlanID}, nil
 }
 
-func (s *Store) DeleteExecutionPlansForService(ctx context.Context, serviceID string) (bool, error) {
-	result, err := s.db.ExecContext(ctx, `
+func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execution.DeletePlanInput) (bool, error) {
+	if err := input.Validate(); err != nil {
+		return false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin delete execution plan tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var existingDeleteCount int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM execution_intents
+		WHERE service_id = $1
+		  AND plan_id = $2
+		  AND work_action = $3
+	`, input.ServiceID, input.PlanID, execution.WorkActionDelete).Scan(&existingDeleteCount); err != nil {
+		return false, fmt.Errorf("count existing delete execution plan: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
 		SET
 			status = $2,
@@ -171,14 +194,114 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, serviceID st
 			finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
 			updated_at = now()
 		WHERE service_id = $1
-		  AND status IN ($4, $5, $6)
-	`, serviceID, execution.StatusSuperseded, "service deletion requested by control-plane", "pending", execution.StatusDeploying, execution.StatusRunning)
+		  AND work_action = $6
+		  AND status = $4
+	`, input.ServiceID, execution.StatusSuperseded, "service deletion requested before execution started", "pending", execution.StatusDeploying, execution.WorkActionRun); err != nil {
+		return false, fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, `
+		WITH existing AS (
+			SELECT COUNT(*)::int AS count
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND plan_id = $3
+			  AND work_action = $2
+		),
+		locked AS (
+			SELECT id, updated_at
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND work_action = $8
+			  AND status = $7
+			  AND node_id IS NOT NULL
+			  AND container_id <> ''
+			FOR UPDATE
+		),
+		candidates AS (
+			SELECT
+				id,
+				(SELECT count FROM existing) + row_number() OVER (ORDER BY updated_at ASC, id ASC)::int - 1 AS next_replica_index
+			FROM locked
+		)
+		UPDATE execution_intents
+		SET
+			work_action = $2,
+			plan_id = $3,
+			service_generation = $4,
+			replica_index = candidates.next_replica_index,
+			status = $5,
+			status_reason = $6,
+			started_at = NULL,
+			finished_at = NULL,
+			updated_at = now()
+		FROM candidates
+		WHERE execution_intents.id = candidates.id
+	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, "pending", "service deletion requested by control-plane", execution.StatusRunning, execution.WorkActionRun)
 	if err != nil {
-		return false, fmt.Errorf("delete execution plans for service: %w", err)
+		return false, fmt.Errorf("mark running execution intents for delete: %w", err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return false, err
+	}
+	if rows == 0 {
+		var activeRunCount int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*)
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND work_action = $2
+			  AND status IN ($3, $4)
+		`, input.ServiceID, execution.WorkActionRun, execution.StatusDeploying, execution.StatusRunning).Scan(&activeRunCount); err != nil {
+			return false, fmt.Errorf("count active run execution intents for delete: %w", err)
+		}
+		if activeRunCount > 0 || existingDeleteCount > 0 {
+			if err := tx.Commit(); err != nil {
+				return false, fmt.Errorf("commit pending delete execution plan tx: %w", err)
+			}
+			return true, nil
+		}
+		id, err := newID("exe")
+		if err != nil {
+			return false, err
+		}
+		result, err = tx.ExecContext(ctx, `
+			INSERT INTO execution_intents (
+				id,
+				work_action,
+				plan_id,
+				service_id,
+				service_name,
+				service_generation,
+				replica_index,
+				image,
+				command_json,
+				args_json,
+				env_json,
+				projected_files_json,
+				persistent_dirs_json,
+				container_port,
+				readiness_path,
+				cpu_milli_request,
+				memory_mi_request,
+				status,
+				status_reason,
+				finished_at
+			)
+			VALUES ($1, $2, $3, $4, $5, $6, 0, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
+			ON CONFLICT (plan_id, replica_index) DO NOTHING
+		`, id, execution.WorkActionDelete, input.PlanID, input.ServiceID, input.ServiceID, input.ServiceGeneration, execution.StatusSuperseded, "service deletion had no running execution intents")
+		if err != nil {
+			return false, fmt.Errorf("record empty delete execution plan: %w", err)
+		}
+		rows, err = result.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit delete execution plan tx: %w", err)
 	}
 	return rows > 0, nil
 }
@@ -310,7 +433,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		}
 		return nil, fmt.Errorf("load node for execution claim: %w", err)
 	}
-	if nodeStatus != node.StatusReady || !schedulable {
+	if nodeStatus != node.StatusReady {
 		return nil, nil
 	}
 
@@ -326,11 +449,14 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	var cpuMilliRequest int
 	var memoryMiRequest int
 	var serviceGeneration int64
+	var storedNodeID sql.NullString
 	err = tx.QueryRowContext(ctx, `
 		SELECT
 			id,
+			work_action,
 			plan_id,
 			replica_index,
+			node_id,
 			service_id,
 			service_name,
 			service_generation,
@@ -345,17 +471,26 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			image_credential_password,
 			container_port,
 			readiness_path,
+			container_name,
+			container_id,
+			host_port,
 			cpu_milli_request,
 			memory_mi_request
 		FROM execution_intents
 		WHERE status = $1
-		ORDER BY created_at ASC, plan_id ASC, replica_index ASC
+		  AND (
+			(work_action = $2 AND node_id = $3)
+			OR (work_action = $4 AND $5)
+		  )
+		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC, replica_index ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
-	`, "pending").Scan(
+	`, "pending", execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
 		&work.ExecutionID,
+		&work.Action,
 		&work.DeploymentID,
 		&work.ReplicaIndex,
+		&storedNodeID,
 		&work.ServiceID,
 		&work.ServiceName,
 		&serviceGeneration,
@@ -370,6 +505,9 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		&credentialPassword,
 		&work.ContainerPort,
 		&work.ReadinessPath,
+		&work.ContainerName,
+		&work.ContainerID,
+		&work.HostPort,
 		&cpuMilliRequest,
 		&memoryMiRequest,
 	)
@@ -379,9 +517,31 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		}
 		return nil, fmt.Errorf("load claimable execution intent: %w", err)
 	}
+	work.Action = execution.NormalizeWorkAction(work.Action)
 	work.NodeID = nodeID
 	work.RevisionID = work.DeploymentID
 	work.RevisionLabel = generationLabel(serviceGeneration)
+	if storedNodeID.Valid {
+		work.NodeID = storedNodeID.String
+	}
+	if work.Action == execution.WorkActionDelete {
+		startedAt := time.Now().UTC()
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE execution_intents
+			SET
+				status = $2,
+				status_reason = $3,
+				started_at = $4,
+				updated_at = now()
+			WHERE id = $1
+		`, work.ExecutionID, execution.StatusDeploying, fmt.Sprintf("agent on node %s claimed delete execution intent", nodeID), startedAt); err != nil {
+			return nil, fmt.Errorf("mark delete execution intent deploying: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, fmt.Errorf("commit delete execution claim tx: %w", err)
+		}
+		return &work, nil
+	}
 	if err := unmarshalJSON(commandJSON, &work.Command, []string{}); err != nil {
 		return nil, fmt.Errorf("decode execution command: %w", err)
 	}
@@ -466,7 +626,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 
 	observedAt := time.Now().UTC()
 	var finishedAt sql.NullTime
-	if input.Status == execution.StatusFailed {
+	if input.Status == execution.StatusFailed || input.Status == execution.StatusSuperseded {
 		finishedAt = sql.NullTime{Time: observedAt, Valid: true}
 	}
 	var updated execution.Record
@@ -503,7 +663,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	if err != nil {
 		return execution.ReportAck{}, nil, nil, fmt.Errorf("update execution intent report: %w", err)
 	}
-	if input.Status == execution.StatusFailed {
+	if input.Status == execution.StatusFailed || input.Status == execution.StatusSuperseded {
 		if err := freeNodeAllocation(ctx, tx, nodeID, cpuMilliRequest, memoryMiRequest); err != nil {
 			return execution.ReportAck{}, nil, nil, err
 		}

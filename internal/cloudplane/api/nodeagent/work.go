@@ -46,6 +46,7 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 	}
 	// 基础字段描述 execution、deployment、service、revision 和目标 node。
 	out := &nodeagentv1.WorkItem{
+		Action:        item.Action,
 		ExecutionId:   item.ExecutionID,
 		DeploymentId:  item.DeploymentID,
 		ReplicaIndex:  int32(item.ReplicaIndex),
@@ -65,6 +66,8 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 		ContainerPort:  int32(item.ContainerPort),
 		ReadinessPath:  item.ReadinessPath,
 		ContainerName:  item.ContainerName,
+		ContainerId:    item.ContainerID,
+		HostPort:       int32(item.HostPort),
 	}
 	// 当 work item 携带镜像凭据时下发给执行节点；这里会包含密码明文，不做字段级加密或脱敏。
 	if item.ImageCredential != nil {

@@ -1517,10 +1517,12 @@ func (x *ApplyExecutionPlanResponse) GetPlanId() string {
 }
 
 type DeleteExecutionPlanRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	ServiceId         string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceGeneration int64                  `protobuf:"varint,2,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
+	PlanId            string                 `protobuf:"bytes,3,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *DeleteExecutionPlanRequest) Reset() {
@@ -1556,6 +1558,20 @@ func (*DeleteExecutionPlanRequest) Descriptor() ([]byte, []int) {
 func (x *DeleteExecutionPlanRequest) GetServiceId() string {
 	if x != nil {
 		return x.ServiceId
+	}
+	return ""
+}
+
+func (x *DeleteExecutionPlanRequest) GetServiceGeneration() int64 {
+	if x != nil {
+		return x.ServiceGeneration
+	}
+	return 0
+}
+
+func (x *DeleteExecutionPlanRequest) GetPlanId() string {
+	if x != nil {
+		return x.PlanId
 	}
 	return ""
 }
@@ -1771,10 +1787,12 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +
 	"\x1aApplyExecutionPlanResponse\x12\x16\n" +
 	"\x06action\x18\x01 \x01(\tR\x06action\x12\x17\n" +
-	"\aplan_id\x18\x02 \x01(\tR\x06planID\";\n" +
+	"\aplan_id\x18\x02 \x01(\tR\x06planID\"\x83\x01\n" +
 	"\x1aDeleteExecutionPlanRequest\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x01 \x01(\tR\tserviceID\"V\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceID\x12-\n" +
+	"\x12service_generation\x18\x02 \x01(\x03R\x11serviceGeneration\x12\x17\n" +
+	"\aplan_id\x18\x03 \x01(\tR\x06planID\"V\n" +
 	"\x1bDeleteExecutionPlanResponse\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12\x18\n" +

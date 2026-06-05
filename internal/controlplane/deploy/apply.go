@@ -73,6 +73,12 @@ type ApplyResult struct {
 	PlanID  string `json:"planID"`
 }
 
+type DeleteServiceInput struct {
+	ServiceID         string `json:"serviceID"`
+	ServiceGeneration int64  `json:"serviceGeneration"`
+	PlanID            string `json:"planID"`
+}
+
 func (in ApplyServiceInput) Validate() error {
 	_, err := in.ResolvedSpec("")
 	return err

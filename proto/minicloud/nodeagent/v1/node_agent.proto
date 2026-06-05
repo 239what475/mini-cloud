@@ -95,6 +95,9 @@ message WorkItem {
   string container_name = 18 [json_name = "containerName"];
   repeated ProjectedFile projected_files = 19 [json_name = "projectedFiles"];
   repeated PersistentDirMount persistent_dirs = 20 [json_name = "persistentDirs"];
+  string action = 21;
+  string container_id = 22 [json_name = "containerID"];
+  int32 host_port = 23 [json_name = "hostPort"];
 }
 
 message PollWorkRequest {

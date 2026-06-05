@@ -181,6 +181,6 @@ func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deplo
 	}, nil
 }
 
-func (f *fakeDeploy) DeleteService(context.Context, string, string) error {
+func (f *fakeDeploy) DeleteService(context.Context, string, deploy.DeleteServiceInput) error {
 	return nil
 }
