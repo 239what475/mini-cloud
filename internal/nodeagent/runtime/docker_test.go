@@ -11,7 +11,6 @@ import (
 
 	"github.com/docker/docker/api/types/registry"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -298,35 +297,5 @@ func TestDockerEngineCloseCleansTrackedProjectionDirs(t *testing.T) {
 	}
 	if len(engine.projectionDirs) != 0 {
 		t.Fatalf("tracked projection dirs len = %d, want 0", len(engine.projectionDirs))
-	}
-}
-
-// TestPreparePersistentDirMountsCreatesWritableHostDirs 验证持久化目录会在宿主机创建并转换为可写 bind mount。
-func TestPreparePersistentDirMountsCreatesWritableHostDirs(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	mounts, err := preparePersistentDirMounts([]persistentdir.Mount{
-		{
-			Name:       "auth-dir",
-			MountPath:  "/var/lib/cliproxy/auth",
-			SourcePath: filepath.Join(root, "svc-123", "auth-dir"),
-		},
-	})
-	if err != nil {
-		t.Fatalf("preparePersistentDirMounts returned error: %v", err)
-	}
-	if len(mounts) != 1 {
-		t.Fatalf("mounts len = %d, want 1", len(mounts))
-	}
-	if mounts[0].Target != "/var/lib/cliproxy/auth" || mounts[0].Source != filepath.Join(root, "svc-123", "auth-dir") || mounts[0].ReadOnly {
-		t.Fatalf("unexpected mount: %+v", mounts[0])
-	}
-	info, err := os.Stat(filepath.Join(root, "svc-123", "auth-dir"))
-	if err != nil {
-		t.Fatalf("Stat(persistent dir) returned error: %v", err)
-	}
-	if !info.IsDir() {
-		t.Fatalf("persistent dir path is not a directory")
 	}
 }

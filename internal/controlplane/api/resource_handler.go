@@ -85,9 +85,6 @@ func (h resourceHandler) createConfigSet(w http.ResponseWriter, r *http.Request)
 		TargetType: "config_set",
 		TargetID:   created.ID,
 		TargetName: created.Name,
-		Details: map[string]any{
-			"keyCount": len(created.Values),
-		},
 	})
 	writeJSON(w, http.StatusCreated, toConfigSetResource(created))
 }
@@ -131,9 +128,6 @@ func (h resourceHandler) createSecretSet(w http.ResponseWriter, r *http.Request)
 		TargetType: "secret_set",
 		TargetID:   created.ID,
 		TargetName: created.Name,
-		Details: map[string]any{
-			"keyCount": len(created.Keys),
-		},
 	})
 	writeJSON(w, http.StatusCreated, toSecretSetResource(created))
 }
@@ -177,10 +171,6 @@ func (h resourceHandler) createRegistryCredential(w http.ResponseWriter, r *http
 		TargetType: "registry_credential",
 		TargetID:   created.ID,
 		TargetName: created.Name,
-		Details: map[string]any{
-			"server":   created.Server,
-			"username": created.Username,
-		},
 	})
 	writeJSON(w, http.StatusCreated, toRegistryCredentialResource(created))
 }

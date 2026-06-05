@@ -66,12 +66,6 @@ message ProjectedFile {
   bool sensitive = 4;
 }
 
-message PersistentDirMount {
-  string name = 1;
-  string mount_path = 2 [json_name = "mountPath"];
-  string source_path = 3 [json_name = "sourcePath"];
-}
-
 message WorkItem {
   reserved 5;
   reserved "project_id";
@@ -93,7 +87,6 @@ message WorkItem {
   string readiness_path = 17 [json_name = "readinessPath"];
   string container_name = 18 [json_name = "containerName"];
   repeated ProjectedFile projected_files = 19 [json_name = "projectedFiles"];
-  repeated PersistentDirMount persistent_dirs = 20 [json_name = "persistentDirs"];
   string action = 21;
   string container_id = 22 [json_name = "containerID"];
   int32 host_port = 23 [json_name = "hostPort"];

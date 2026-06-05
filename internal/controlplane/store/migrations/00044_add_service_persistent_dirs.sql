@@ -1,7 +1,6 @@
 -- +goose Up
-ALTER TABLE fleet_services
-    ADD COLUMN IF NOT EXISTS spec_persistent_dirs_json JSONB NOT NULL DEFAULT '[]'::jsonb;
+-- persistentDirs was removed from the CaaS demo service model.
+SELECT 1;
 
 -- +goose Down
-ALTER TABLE fleet_services
-    DROP COLUMN IF EXISTS spec_persistent_dirs_json;
+SELECT 1;

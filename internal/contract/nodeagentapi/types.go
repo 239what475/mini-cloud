@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -100,25 +99,24 @@ type HeartbeatResponse struct {
 }
 
 type WorkItem struct {
-	Action              string                `json:"action"`
-	ExecutionID         string                `json:"executionID"`
-	PlanID              string                `json:"planID"`
-	NodeID              string                `json:"nodeID"`
-	ServiceID           string                `json:"serviceID"`
-	ServiceName         string                `json:"serviceName"`
-	Image               string                `json:"image"`
-	Command             []string              `json:"command"`
-	Args                []string              `json:"args"`
-	Env                 map[string]string     `json:"env"`
-	ProjectedFiles      []projectedfile.File  `json:"projectedFiles,omitempty"`
-	PersistentDirs      []persistentdir.Mount `json:"persistentDirs,omitempty"`
-	ImageCredential     *ImageCredential      `json:"imageCredential,omitempty"`
-	SupersededExecution *SupersededExecution  `json:"supersededExecution,omitempty"`
-	ContainerPort       int                   `json:"containerPort"`
-	ReadinessPath       string                `json:"readinessPath"`
-	ContainerName       string                `json:"containerName"`
-	ContainerID         string                `json:"containerID"`
-	HostPort            int                   `json:"hostPort"`
+	Action              string               `json:"action"`
+	ExecutionID         string               `json:"executionID"`
+	PlanID              string               `json:"planID"`
+	NodeID              string               `json:"nodeID"`
+	ServiceID           string               `json:"serviceID"`
+	ServiceName         string               `json:"serviceName"`
+	Image               string               `json:"image"`
+	Command             []string             `json:"command"`
+	Args                []string             `json:"args"`
+	Env                 map[string]string    `json:"env"`
+	ProjectedFiles      []projectedfile.File `json:"projectedFiles,omitempty"`
+	ImageCredential     *ImageCredential     `json:"imageCredential,omitempty"`
+	SupersededExecution *SupersededExecution `json:"supersededExecution,omitempty"`
+	ContainerPort       int                  `json:"containerPort"`
+	ReadinessPath       string               `json:"readinessPath"`
+	ContainerName       string               `json:"containerName"`
+	ContainerID         string               `json:"containerID"`
+	HostPort            int                  `json:"hostPort"`
 }
 
 type ImageCredential struct {
@@ -315,11 +313,6 @@ func (in WorkItem) Validate() error {
 		return ErrReadinessPathInvalid
 	}
 	for _, item := range in.ProjectedFiles {
-		if err := item.Validate(); err != nil {
-			return err
-		}
-	}
-	for _, item := range in.PersistentDirs {
 		if err := item.Validate(); err != nil {
 			return err
 		}

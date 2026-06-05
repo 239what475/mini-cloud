@@ -5,7 +5,6 @@ import (
 	"regexp"
 	"strings"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 )
@@ -61,7 +60,6 @@ type ServiceSpec struct {
 	SecretSetID          string               `json:"secretSetID"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 }
 
 type ApplyResult struct {
@@ -129,9 +127,6 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 	if err := projectedfile.ValidateSpecs(in.Spec.ProjectedFiles); err != nil {
 		return cloudplaneapi.ServiceSpec{}, err
 	}
-	if err := persistentdir.ValidateContainerInputs(in.Spec.PersistentDirs, in.Spec.ProjectedFiles); err != nil {
-		return cloudplaneapi.ServiceSpec{}, err
-	}
 	return cloudplaneapi.ServiceSpec{
 		Region:               resolvedRegion,
 		InstanceClass:        in.Spec.InstanceClass,
@@ -146,7 +141,6 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 		SecretSetID:          in.Spec.SecretSetID,
 		RegistryCredentialID: in.Spec.RegistryCredentialID,
 		ProjectedFiles:       projectedfile.CloneSpecs(in.Spec.ProjectedFiles),
-		PersistentDirs:       persistentdir.CloneSpecs(in.Spec.PersistentDirs),
 	}, nil
 }
 

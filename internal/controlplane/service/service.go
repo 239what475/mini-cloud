@@ -4,11 +4,9 @@ import (
 	"errors"
 	"reflect"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -19,9 +17,6 @@ const (
 )
 
 const (
-	CellRolePrimary = "primary"
-	CellRoleStandby = "standby"
-
 	DesiredStateActive  = "active"
 	DesiredStateDeleted = "deleted"
 
@@ -36,28 +31,19 @@ const (
 )
 
 var (
-	ErrServiceNameRequired                      = errors.New("name is required")
-	ErrInvalidServiceName                       = errors.New("name must use lowercase letters, digits, and hyphens")
-	ErrDisplayNameRequired                      = errors.New("displayName is required")
-	ErrInvalidExposure                          = errors.New("exposure must be one of public, private")
-	ErrImageRequired                            = errors.New("image is required")
-	ErrInvalidDefaultPort                       = errors.New("defaultPort must be between 1 and 65535")
-	ErrInvalidReadinessPath                     = errors.New("readinessPath must start with /")
-	ErrInvalidEnvironmentKey                    = errors.New("env keys must not be empty")
-	ErrPinnedPlaneIDInvalid                     = errors.New("pinnedPlaneID must not be blank when provided")
-	ErrCellsRequired                            = errors.New("cells must contain at least one item")
-	ErrCellKeyRequired                          = errors.New("cell key is required")
-	ErrInvalidCellKey                           = errors.New("cell key must use lowercase letters, digits, and hyphens")
-	ErrDuplicateCellKey                         = errors.New("cell keys must be unique within a service")
-	ErrInvalidCellRole                          = errors.New("cell role must be one of primary, standby")
-	ErrPrimaryCellRequired                      = errors.New("cells must contain exactly one primary cell")
-	ErrMultiplePrimaryCells                     = errors.New("cells must contain exactly one primary cell")
-	ErrProviderRequired                         = errors.New("provider is required")
-	ErrRegionRequired                           = errors.New("region is required")
-	ErrInvalidInstanceClass                     = errors.New("instanceClass must be one of small, medium, large")
-	ErrPersistentDirsRunUpdateUnsupported       = errors.New("services with persistentDirs do not support run-changing updates once locked")
-	ErrPersistentDirsPlacementChangeUnsupported = errors.New("services with persistentDirs do not support placement-changing updates once a run exists")
-	serviceNamePattern                          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	ErrServiceNameRequired   = errors.New("name is required")
+	ErrInvalidServiceName    = errors.New("name must use lowercase letters, digits, and hyphens")
+	ErrDisplayNameRequired   = errors.New("displayName is required")
+	ErrInvalidExposure       = errors.New("exposure must be one of public, private")
+	ErrImageRequired         = errors.New("image is required")
+	ErrInvalidDefaultPort    = errors.New("defaultPort must be between 1 and 65535")
+	ErrInvalidReadinessPath  = errors.New("readinessPath must start with /")
+	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
+	ErrPinnedPlaneIDInvalid  = errors.New("pinnedPlaneID must not be blank when provided")
+	ErrProviderRequired      = errors.New("provider is required")
+	ErrRegionRequired        = errors.New("region is required")
+	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
+	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 const (
@@ -112,8 +98,6 @@ type Spec struct {
 	SecretSetID          string               `json:"secretSetID"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
-	PersistentDirsLocked bool                 `json:"-"`
 }
 
 type ServiceStatus struct {
@@ -143,54 +127,6 @@ type ServicePlacement struct {
 	RemoteMessage string    `json:"remoteMessage"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-type Cell struct {
-	ServiceID     string    `json:"serviceID"`
-	Key           string    `json:"key"`
-	Role          string    `json:"role"`
-	Provider      string    `json:"provider"`
-	Region        string    `json:"region"`
-	PinnedPlaneID string    `json:"pinnedPlaneID,omitempty"`
-	InstanceClass string    `json:"instanceClass"`
-	DesiredState  string    `json:"desiredState"`
-	Status        Status    `json:"status"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-type CellPlacement struct {
-	ServiceID     string    `json:"serviceID"`
-	CellKey       string    `json:"cellKey"`
-	PlaneID       string    `json:"planeID"`
-	RemoteStatus  string    `json:"remoteStatus"`
-	RemoteHealthy bool      `json:"remoteHealthy"`
-	RemoteMessage string    `json:"remoteMessage"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-const (
-	CellAssignmentStatePlanned     = "planned"
-	CellAssignmentStateDispatching = "dispatching"
-	CellAssignmentStateApplied     = "applied"
-	CellAssignmentStateReleasing   = "releasing"
-	CellAssignmentStateFailed      = "failed"
-)
-
-type CellAssignment struct {
-	ServiceID        string    `json:"serviceID"`
-	CellKey          string    `json:"cellKey"`
-	PlaneID          string    `json:"planeID"`
-	TargetNodeID     string    `json:"targetNodeID"`
-	TargetNodeEpoch  int64     `json:"targetNodeEpoch"`
-	InventoryVersion int64     `json:"inventoryVersion"`
-	CPUMilliReserved int       `json:"cpuMilliReserved"`
-	MemoryMiReserved int       `json:"memoryMiReserved"`
-	State            string    `json:"state"`
-	LastError        string    `json:"lastError,omitempty"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type Status struct {
@@ -236,15 +172,6 @@ type UpdateRunInput struct {
 	Status     string
 	Message    string
 	ObservedAt *time.Time
-}
-
-type CellInput struct {
-	Key           string `json:"key"`
-	Role          string `json:"role"`
-	Provider      string `json:"provider"`
-	Region        string `json:"region"`
-	PinnedPlaneID string `json:"pinnedPlaneID,omitempty"`
-	InstanceClass string `json:"instanceClass"`
 }
 
 const (
@@ -316,16 +243,6 @@ func (s Service) UpdateInput() UpdateInput {
 	}
 }
 
-func ValidatePersistentDirUpdate(current Service, input UpdateInput) error {
-	if persistentDirPlacementChangeBlocked(current, input) {
-		return ErrPersistentDirsPlacementChangeUnsupported
-	}
-	if persistentDirRunChangeBlocked(current, input) {
-		return ErrPersistentDirsRunUpdateUnsupported
-	}
-	return nil
-}
-
 func PendingStatus(observedGeneration int64, now time.Time, reason string, message string) Status {
 	return Status{
 		ObservedGeneration: observedGeneration,
@@ -374,49 +291,6 @@ func CloneConditions(input []Condition) []Condition {
 	return out
 }
 
-func CloneCellInputs(input []CellInput) []CellInput {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make([]CellInput, len(input))
-	copy(out, input)
-	sort.Slice(out, func(i, j int) bool {
-		left := cellSortRank(out[i].Role)
-		right := cellSortRank(out[j].Role)
-		if left != right {
-			return left < right
-		}
-		return out[i].Key < out[j].Key
-	})
-	return out
-}
-
-func SortCells(cells []Cell) {
-	sort.Slice(cells, func(i, j int) bool {
-		left := cellSortRank(cells[i].Role)
-		right := cellSortRank(cells[j].Role)
-		if left != right {
-			return left < right
-		}
-		return cells[i].Key < cells[j].Key
-	})
-}
-
-func PreferredCell(cells []Cell) *Cell {
-	if len(cells) == 0 {
-		return nil
-	}
-	copyCells := append([]Cell(nil), cells...)
-	SortCells(copyCells)
-	for _, cell := range copyCells {
-		if cell.DesiredState == DesiredStateActive {
-			copyCell := cell
-			return &copyCell
-		}
-	}
-	return nil
-}
-
 func copyStringMap(input map[string]string) map[string]string {
 	if len(input) == 0 {
 		return nil
@@ -445,8 +319,6 @@ func CloneSpec(input Spec) Spec {
 		SecretSetID:          input.SecretSetID,
 		RegistryCredentialID: input.RegistryCredentialID,
 		ProjectedFiles:       projectedfile.CloneSpecs(input.ProjectedFiles),
-		PersistentDirs:       persistentdir.CloneSpecs(input.PersistentDirs),
-		PersistentDirsLocked: input.PersistentDirsLocked,
 	}
 }
 
@@ -479,55 +351,11 @@ func (spec Spec) Validate() error {
 	if err := projectedfile.ValidateSpecs(spec.ProjectedFiles); err != nil {
 		return err
 	}
-	if err := persistentdir.ValidateContainerInputs(spec.PersistentDirs, spec.ProjectedFiles); err != nil {
-		return err
-	}
 	_ = provider
 	_ = region
 	_ = pinnedPlaneID
 	_ = instanceClass
 	return nil
-}
-
-func persistentDirRunChangeBlocked(current Service, input UpdateInput) bool {
-	if len(current.Spec.PersistentDirs) == 0 && len(input.Spec.PersistentDirs) == 0 {
-		return false
-	}
-	if !current.Spec.PersistentDirsLocked && current.Status.Run.CurrentRunID == "" && current.Status.Run.LatestRunID == "" {
-		return false
-	}
-	return serviceNeedsNewRun(current.Spec, input.Spec)
-}
-
-func persistentDirPlacementChangeBlocked(current Service, input UpdateInput) bool {
-	if len(current.Spec.PersistentDirs) == 0 && len(input.Spec.PersistentDirs) == 0 {
-		return false
-	}
-	if !current.Spec.PersistentDirsLocked && current.Status.Run.CurrentRunID == "" && current.Status.Run.LatestRunID == "" {
-		return false
-	}
-
-	currentProvider, currentRegion, currentPinnedPlaneID, _, err := ResolveServicePlacementFields(
-		current.Spec.Provider,
-		current.Spec.Region,
-		current.Spec.PinnedPlaneID,
-		current.Spec.InstanceClass,
-	)
-	if err != nil {
-		return false
-	}
-	nextProvider, nextRegion, nextPinnedPlaneID, _, err := ResolveServicePlacementFields(
-		input.Spec.Provider,
-		input.Spec.Region,
-		input.Spec.PinnedPlaneID,
-		input.Spec.InstanceClass,
-	)
-	if err != nil {
-		return false
-	}
-	return currentProvider != nextProvider ||
-		currentRegion != nextRegion ||
-		currentPinnedPlaneID != nextPinnedPlaneID
 }
 
 func serviceNeedsNewRun(before Spec, after Spec) bool {
@@ -546,8 +374,7 @@ func SpecRuntimeEqual(before Spec, after Spec) bool {
 		before.ConfigSetID == after.ConfigSetID &&
 		before.SecretSetID == after.SecretSetID &&
 		before.RegistryCredentialID == after.RegistryCredentialID &&
-		reflect.DeepEqual(projectedfile.CloneSpecs(before.ProjectedFiles), projectedfile.CloneSpecs(after.ProjectedFiles)) &&
-		reflect.DeepEqual(persistentdir.CloneSpecs(before.PersistentDirs), persistentdir.CloneSpecs(after.PersistentDirs))
+		reflect.DeepEqual(projectedfile.CloneSpecs(before.ProjectedFiles), projectedfile.CloneSpecs(after.ProjectedFiles))
 }
 
 func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {
@@ -575,17 +402,6 @@ func NormalizeRunPhase(phase string) string {
 		return RunPhasePending
 	default:
 		return strings.ToLower(strings.TrimSpace(phase))
-	}
-}
-
-func cellSortRank(role string) int {
-	switch role {
-	case CellRolePrimary:
-		return 0
-	case CellRoleStandby:
-		return 1
-	default:
-		return 2
 	}
 }
 

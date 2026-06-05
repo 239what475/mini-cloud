@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/operationhistory"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	controlservice "mini-cloud/internal/controlplane/service"
 	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
@@ -32,7 +31,6 @@ type serviceSpec struct {
 	SecretSetID          string               `json:"secretSetID,omitempty"`
 	RegistryCredentialID string               `json:"registryCredentialID,omitempty"`
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 }
 
 type serviceCondition struct {
@@ -104,7 +102,6 @@ type serviceSpecInput struct {
 	SecretSetID          string               `json:"secretSetID"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles"`
-	PersistentDirs       []persistentdir.Spec `json:"persistentDirs"`
 }
 
 type serviceCreateRequest struct {
@@ -188,7 +185,6 @@ func (h serviceHandler) createService(w http.ResponseWriter, r *http.Request) {
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
-		Details:    buildServiceOperationDetails(view),
 	})
 
 	writeJSON(w, http.StatusCreated, serviceEnvelope{
@@ -261,7 +257,6 @@ func (h serviceHandler) updateService(w http.ResponseWriter, r *http.Request) {
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
-		Details:    buildServiceOperationDetails(view),
 	})
 
 	writeJSON(w, http.StatusOK, serviceEnvelope{
@@ -325,7 +320,6 @@ func buildServiceResource(view servicecontroller.View) serviceResource {
 			SecretSetID:          view.Service.Spec.SecretSetID,
 			RegistryCredentialID: view.Service.Spec.RegistryCredentialID,
 			ProjectedFiles:       projectedfile.CloneSpecs(view.Service.Spec.ProjectedFiles),
-			PersistentDirs:       persistentdir.CloneSpecs(view.Service.Spec.PersistentDirs),
 		},
 		Status: status,
 	}
@@ -385,18 +379,6 @@ func buildServiceConditions(input []controlservice.Condition) []serviceCondition
 	return out
 }
 
-func buildServiceOperationDetails(view servicecontroller.View) map[string]any {
-	details := map[string]any{
-		"provider":      view.Service.Spec.Provider,
-		"region":        view.Service.Spec.Region,
-		"instanceClass": string(view.Service.Spec.InstanceClass),
-	}
-	if view.Placement != nil {
-		details["planeID"] = view.Placement.PlaneID
-	}
-	return details
-}
-
 func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error) {
 	if r.Spec == nil {
 		return controlservice.CreateInput{}, errServiceSpecRequired
@@ -421,7 +403,6 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 			SecretSetID:          strings.TrimSpace(spec.SecretSetID),
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
 			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
-			PersistentDirs:       persistentdir.CloneSpecs(spec.PersistentDirs),
 		},
 	}, nil
 }
@@ -449,7 +430,6 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 			SecretSetID:          strings.TrimSpace(spec.SecretSetID),
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
 			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
-			PersistentDirs:       persistentdir.CloneSpecs(spec.PersistentDirs),
 		},
 	}, nil
 }
@@ -468,22 +448,11 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrInvalidDefaultPort) ||
 		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
 		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
-		errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) ||
-		errors.Is(err, controlservice.ErrPersistentDirsPlacementChangeUnsupported) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||
 		errors.Is(err, projectedfile.ErrMountPathInvalid) ||
 		errors.Is(err, projectedfile.ErrSourceKindInvalid) ||
 		errors.Is(err, projectedfile.ErrSourceIDRequired) ||
 		errors.Is(err, projectedfile.ErrSourceKeyRequired) ||
-		errors.Is(err, projectedfile.ErrDuplicateMountPath) ||
-		errors.Is(err, persistentdir.ErrNameRequired) ||
-		errors.Is(err, persistentdir.ErrInvalidName) ||
-		errors.Is(err, persistentdir.ErrMountPathRequired) ||
-		errors.Is(err, persistentdir.ErrMountPathAbsolute) ||
-		errors.Is(err, persistentdir.ErrMountPathInvalid) ||
-		errors.Is(err, persistentdir.ErrDuplicateName) ||
-		errors.Is(err, persistentdir.ErrDuplicateMountPath) ||
-		errors.Is(err, persistentdir.ErrNestedMountPath) ||
-		errors.Is(err, persistentdir.ErrProjectedConflict)
+		errors.Is(err, projectedfile.ErrDuplicateMountPath)
 }

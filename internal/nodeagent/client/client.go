@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
@@ -362,7 +361,6 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 		Args:           append([]string(nil), item.GetArgs()...),
 		Env:            cloneStringMap(item.GetEnv()),
 		ProjectedFiles: contractProjectedFiles(item.GetProjectedFiles()),
-		PersistentDirs: contractPersistentDirs(item.GetPersistentDirs()),
 		ContainerPort:  int(item.GetContainerPort()),
 		ReadinessPath:  item.GetReadinessPath(),
 		ContainerName:  item.GetContainerName(),
@@ -405,25 +403,6 @@ func contractProjectedFiles(items []*nodeagentv1.ProjectedFile) []projectedfile.
 		})
 	}
 	return projectedfile.CloneFiles(out)
-}
-
-// contractPersistentDirs 将 protobuf persistent dir mount 列表转换为内部契约模型。
-func contractPersistentDirs(items []*nodeagentv1.PersistentDirMount) []persistentdir.Mount {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]persistentdir.Mount, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, persistentdir.Mount{
-			Name:       item.GetName(),
-			MountPath:  item.GetMountPath(),
-			SourcePath: item.GetSourcePath(),
-		})
-	}
-	return persistentdir.CloneMounts(out)
 }
 
 // contractExecutionRecord 将 protobuf ExecutionRecord 转换为 nodeagentapi 契约模型。

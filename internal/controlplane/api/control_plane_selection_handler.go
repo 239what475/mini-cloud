@@ -66,14 +66,6 @@ func (h controlPlaneSelectionHandler) previewSelection(w http.ResponseWriter, r 
 		TargetType: "plane_selection",
 		TargetID:   input.Provider + ":" + input.Region,
 		TargetName: input.Provider + "/" + input.Region,
-		Details: map[string]any{
-			"provider":      input.Provider,
-			"region":        input.Region,
-			"pinnedPlaneID": input.PinnedPlaneID,
-			"instanceClass": input.InstanceClass,
-			"selectedPlane": selectedPlaneID(result.Decision),
-			"failureReason": result.FailureReason,
-		},
 	})
 
 	writeJSON(w, http.StatusOK, result)
@@ -135,15 +127,6 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 		TargetType: "service_apply",
 		TargetID:   input.Metadata.ID,
 		TargetName: input.Metadata.Name,
-		Details: map[string]any{
-			"provider":        result.Selection.Decision.Provider,
-			"region":          result.Selection.Decision.Region,
-			"pinnedPlaneID":   input.PinnedPlaneID,
-			"selectedPlaneID": result.Selection.Decision.PlaneID,
-			"action":          result.Accepted.Action,
-			"serviceID":       input.Metadata.ID,
-			"planID":          result.Accepted.PlanID,
-		},
 	})
 
 	writeJSON(w, http.StatusOK, autoServiceApplyResponse{
@@ -151,11 +134,4 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 		PlanID:    result.Accepted.PlanID,
 		Selection: result.Selection,
 	})
-}
-
-func selectedPlaneID(decision *planeselector.Decision) string {
-	if decision == nil {
-		return ""
-	}
-	return decision.PlaneID
 }

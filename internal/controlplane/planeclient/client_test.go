@@ -180,9 +180,6 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		ProjectedFiles: []cloudplaneapi.ExecutionProjectedFile{
 			{MountPath: "/etc/app/config.yaml", Content: "app: demo", Mode: 0444},
 		},
-		PersistentDirs: []cloudplaneapi.ExecutionPersistentDir{
-			{Name: "data", MountPath: "/var/lib/app", SourcePath: "/var/lib/mini-cloud/persistent-dirs/svc-1/data"},
-		},
 	})
 	if err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)

@@ -7,7 +7,6 @@ import (
 
 	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/testutil"
@@ -32,9 +31,6 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 		ProjectedFiles: []projectedfile.File{
 			{MountPath: "/etc/demo/config.yaml", Content: "mode: plan-v1\n", Mode: 0o644},
 			{MountPath: "/etc/demo/token", Content: "token-v1", Mode: 0o400, Sensitive: true},
-		},
-		PersistentDirs: []persistentdir.Mount{
-			{Name: "data", MountPath: "/var/lib/demo", SourcePath: "/var/lib/mini-cloud/svc-demo/data"},
 		},
 		ContainerPort: 8080,
 		ReadinessPath: "/healthz",
@@ -65,9 +61,6 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 	}
 	if work.ProjectedFiles[1].MountPath != "/etc/demo/token" || work.ProjectedFiles[1].Content != "token-v1" || !work.ProjectedFiles[1].Sensitive {
 		t.Fatalf("unexpected second projected file: %+v", work.ProjectedFiles[1])
-	}
-	if len(work.PersistentDirs) != 1 || work.PersistentDirs[0].SourcePath != "/var/lib/mini-cloud/svc-demo/data" {
-		t.Fatalf("work persistent dirs = %+v, want plan materialized mount", work.PersistentDirs)
 	}
 }
 

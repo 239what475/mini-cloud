@@ -5,7 +5,6 @@ import (
 	"time"
 
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/runtimepool"
 )
 
 type Summary struct {
@@ -31,9 +30,6 @@ type Summary struct {
 	MemoryMiAllocated     int     `json:"memoryMiAllocated"`
 	MemoryMiFree          int     `json:"memoryMiFree"`
 	MemoryAllocationRatio float64 `json:"memoryAllocationRatio"`
-	PlanesWithRuntimePool int     `json:"planesWithRuntimePool"`
-	PoolsBelowMinReady    int     `json:"poolsBelowMinReady"`
-	PoolsBelowHeadroom    int     `json:"poolsBelowHeadroom"`
 }
 
 type Group struct {
@@ -42,40 +38,33 @@ type Group struct {
 }
 
 type Plane struct {
-	ID                     string     `json:"id"`
-	Name                   string     `json:"name"`
-	DisplayName            string     `json:"displayName"`
-	Provider               string     `json:"provider"`
-	Region                 string     `json:"region"`
-	GRPCEndpoint           string     `json:"grpcEndpoint"`
-	Registered             bool       `json:"registered"`
-	Status                 string     `json:"status"`
-	StatusMessage          string     `json:"statusMessage"`
-	OperationState         string     `json:"operationState"`
-	OperationReason        string     `json:"operationReason"`
-	OperationUpdatedAt     *time.Time `json:"operationUpdatedAt,omitempty"`
-	AcceptingNewRuns       bool       `json:"acceptingNewRuns"`
-	LastHeartbeatAt        *time.Time `json:"lastHeartbeatAt,omitempty"`
-	LastSyncAt             *time.Time `json:"lastSyncAt,omitempty"`
-	CapacityCapturedAt     *time.Time `json:"capacityCapturedAt,omitempty"`
-	NodesTotal             int        `json:"nodesTotal"`
-	NodesReady             int        `json:"nodesReady"`
-	NodesUnavailable       int        `json:"nodesUnavailable"`
-	ServicesTotal          int        `json:"servicesTotal"`
-	RunsTotal              int        `json:"runsTotal"`
-	CPUMilliCapacity       int        `json:"cpuMilliCapacity"`
-	CPUMilliAllocated      int        `json:"cpuMilliAllocated"`
-	CPUMilliFree           int        `json:"cpuMilliFree"`
-	MemoryMiCapacity       int        `json:"memoryMiCapacity"`
-	MemoryMiAllocated      int        `json:"memoryMiAllocated"`
-	MemoryMiFree           int        `json:"memoryMiFree"`
-	RuntimePoolConfigured  bool       `json:"runtimePoolConfigured"`
-	RuntimePoolPhase       string     `json:"runtimePoolPhase,omitempty"`
-	RuntimePoolReason      string     `json:"runtimePoolReason,omitempty"`
-	RuntimePoolMinReady    int        `json:"runtimePoolMinReady,omitempty"`
-	RuntimePoolMaxReady    int        `json:"runtimePoolMaxReady,omitempty"`
-	RuntimePoolHeadroomCPU int        `json:"runtimePoolHeadroomCPUMilli,omitempty"`
-	RuntimePoolHeadroomMem int        `json:"runtimePoolHeadroomMemoryMi,omitempty"`
+	ID                 string     `json:"id"`
+	Name               string     `json:"name"`
+	DisplayName        string     `json:"displayName"`
+	Provider           string     `json:"provider"`
+	Region             string     `json:"region"`
+	GRPCEndpoint       string     `json:"grpcEndpoint"`
+	Registered         bool       `json:"registered"`
+	Status             string     `json:"status"`
+	StatusMessage      string     `json:"statusMessage"`
+	OperationState     string     `json:"operationState"`
+	OperationReason    string     `json:"operationReason"`
+	OperationUpdatedAt *time.Time `json:"operationUpdatedAt,omitempty"`
+	AcceptingNewRuns   bool       `json:"acceptingNewRuns"`
+	LastHeartbeatAt    *time.Time `json:"lastHeartbeatAt,omitempty"`
+	LastSyncAt         *time.Time `json:"lastSyncAt,omitempty"`
+	CapacityCapturedAt *time.Time `json:"capacityCapturedAt,omitempty"`
+	NodesTotal         int        `json:"nodesTotal"`
+	NodesReady         int        `json:"nodesReady"`
+	NodesUnavailable   int        `json:"nodesUnavailable"`
+	ServicesTotal      int        `json:"servicesTotal"`
+	RunsTotal          int        `json:"runsTotal"`
+	CPUMilliCapacity   int        `json:"cpuMilliCapacity"`
+	CPUMilliAllocated  int        `json:"cpuMilliAllocated"`
+	CPUMilliFree       int        `json:"cpuMilliFree"`
+	MemoryMiCapacity   int        `json:"memoryMiCapacity"`
+	MemoryMiAllocated  int        `json:"memoryMiAllocated"`
+	MemoryMiFree       int        `json:"memoryMiFree"`
 }
 
 type View struct {
@@ -85,7 +74,7 @@ type View struct {
 	Planes    []Plane `json:"planes"`
 }
 
-func Build(items []plane.Detail, pools []runtimepool.Pool) View {
+func Build(items []plane.Detail) View {
 	view := View{
 		Providers: make([]Group, 0),
 		Regions:   make([]Group, 0),
@@ -94,13 +83,9 @@ func Build(items []plane.Detail, pools []runtimepool.Pool) View {
 
 	providerGroups := make(map[string]*Summary)
 	regionGroups := make(map[string]*Summary)
-	poolByPlane := make(map[string]runtimepool.Pool, len(pools))
-	for _, item := range pools {
-		poolByPlane[item.PlaneID] = item
-	}
 
 	for _, item := range items {
-		planeView := buildPlane(item, poolByPlane[item.ID])
+		planeView := buildPlane(item)
 		view.Planes = append(view.Planes, planeView)
 		accumulateSummary(&view.Summary, planeView)
 
@@ -151,7 +136,7 @@ func Build(items []plane.Detail, pools []runtimepool.Pool) View {
 	return view
 }
 
-func buildPlane(item plane.Detail, pool runtimepool.Pool) Plane {
+func buildPlane(item plane.Detail) Plane {
 	plane := Plane{
 		ID:               item.ID,
 		Name:             item.Name,
@@ -188,16 +173,6 @@ func buildPlane(item plane.Detail, pool runtimepool.Pool) Plane {
 		plane.MemoryMiFree = freeCapacity(record.MemoryMiCapacity, record.MemoryMiAllocated)
 		capturedAt := record.CapturedAt
 		plane.CapacityCapturedAt = &capturedAt
-	}
-	if pool.PlaneID != "" {
-		poolView := runtimepool.BuildView(pool, item)
-		plane.RuntimePoolConfigured = true
-		plane.RuntimePoolPhase = string(poolView.Status.Phase)
-		plane.RuntimePoolReason = poolView.Status.Reason
-		plane.RuntimePoolMinReady = poolView.MinReady
-		plane.RuntimePoolMaxReady = poolView.MaxReady
-		plane.RuntimePoolHeadroomCPU = poolView.HeadroomCPUMilli
-		plane.RuntimePoolHeadroomMem = poolView.HeadroomMemoryMi
 	}
 
 	return plane
@@ -237,15 +212,6 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	summary.CPUMilliAllocated += planeView.CPUMilliAllocated
 	summary.MemoryMiCapacity += planeView.MemoryMiCapacity
 	summary.MemoryMiAllocated += planeView.MemoryMiAllocated
-	if planeView.RuntimePoolConfigured {
-		summary.PlanesWithRuntimePool++
-		if planeView.RuntimePoolPhase == string(runtimepool.StatusPhaseBelowMinReady) {
-			summary.PoolsBelowMinReady++
-		}
-		if planeView.RuntimePoolPhase == string(runtimepool.StatusPhaseBelowHeadroom) {
-			summary.PoolsBelowHeadroom++
-		}
-	}
 }
 
 func finalizeSummary(summary *Summary) {

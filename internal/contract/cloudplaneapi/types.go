@@ -3,7 +3,6 @@ package cloudplaneapi
 import (
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -130,7 +129,6 @@ type ServiceSpec struct {
 	SecretSetID          string               `json:"secretSetID"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
-	PersistentDirs       []persistentdir.Spec `json:"persistentDirs,omitempty"`
 }
 
 const (
@@ -143,12 +141,6 @@ type ExecutionProjectedFile struct {
 	Content   string `json:"content"`
 	Mode      uint32 `json:"mode"`
 	Sensitive bool   `json:"sensitive"`
-}
-
-type ExecutionPersistentDir struct {
-	Name       string `json:"name"`
-	MountPath  string `json:"mountPath"`
-	SourcePath string `json:"sourcePath"`
 }
 
 type ExecutionImageCredential struct {
@@ -167,7 +159,6 @@ type ExecutionPlanRequest struct {
 	Args              []string                  `json:"args"`
 	Env               map[string]string         `json:"env"`
 	ProjectedFiles    []ExecutionProjectedFile  `json:"projectedFiles,omitempty"`
-	PersistentDirs    []ExecutionPersistentDir  `json:"persistentDirs,omitempty"`
 	ImageCredential   *ExecutionImageCredential `json:"imageCredential,omitempty"`
 	ContainerPort     int                       `json:"containerPort"`
 	ReadinessPath     string                    `json:"readinessPath"`

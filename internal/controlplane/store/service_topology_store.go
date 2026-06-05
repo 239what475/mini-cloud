@@ -17,36 +17,8 @@ func (s *Store) UpsertServicePlacement(ctx context.Context, input controlservice
 	return s.upsertServicePlacement(ctx, input, nil)
 }
 
-func (s *Store) UpsertServicePlacementForGeneration(ctx context.Context, input controlservice.ServicePlacement, expectedGeneration int64, lockPersistentDirs bool) (controlservice.ServicePlacement, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return controlservice.ServicePlacement{}, fmt.Errorf("begin upsert service selection state tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	item, err := upsertServicePlacementTx(ctx, s, tx, input, &expectedGeneration)
-	if err != nil {
-		return controlservice.ServicePlacement{}, err
-	}
-	if lockPersistentDirs {
-		result, err := tx.ExecContext(ctx, `
-			UPDATE fleet_services
-			SET persistent_dirs_locked = true, updated_at = now()
-			WHERE id = $1 AND generation = $2
-		`, input.ServiceID, expectedGeneration)
-		if err != nil {
-			return controlservice.ServicePlacement{}, fmt.Errorf("lock service persistent dirs in selection tx: %w", err)
-		}
-		if affected, _ := result.RowsAffected(); affected == 0 {
-			return controlservice.ServicePlacement{}, classifyServiceGenerationConflict(ctx, s, input.ServiceID, expectedGeneration)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		return controlservice.ServicePlacement{}, fmt.Errorf("commit service selection state tx: %w", err)
-	}
-	return item, nil
+func (s *Store) UpsertServicePlacementForGeneration(ctx context.Context, input controlservice.ServicePlacement, expectedGeneration int64) (controlservice.ServicePlacement, error) {
+	return s.upsertServicePlacement(ctx, input, &expectedGeneration)
 }
 
 func (s *Store) upsertServicePlacement(ctx context.Context, input controlservice.ServicePlacement, expectedGeneration *int64) (controlservice.ServicePlacement, error) {

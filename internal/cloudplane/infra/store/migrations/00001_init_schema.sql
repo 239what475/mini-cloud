@@ -71,7 +71,6 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     projected_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    persistent_dirs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     image_credential_server TEXT NULL,
     image_credential_username TEXT NULL,
     image_credential_password TEXT NULL,

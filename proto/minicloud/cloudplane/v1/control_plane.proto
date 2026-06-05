@@ -117,12 +117,6 @@ message ExecutionProjectedFile {
   bool sensitive = 4;
 }
 
-message ExecutionPersistentDir {
-  string name = 1;
-  string mount_path = 2 [json_name = "mountPath"];
-  string source_path = 3 [json_name = "sourcePath"];
-}
-
 message ExecutionImageCredential {
   string server = 1;
   string username = 2;
@@ -139,7 +133,6 @@ message ApplyExecutionPlanRequest {
   repeated string args = 7;
   map<string, string> env = 8;
   repeated ExecutionProjectedFile projected_files = 9 [json_name = "projectedFiles"];
-  repeated ExecutionPersistentDir persistent_dirs = 10 [json_name = "persistentDirs"];
   ExecutionImageCredential image_credential = 11 [json_name = "imageCredential"];
   int32 container_port = 12 [json_name = "containerPort"];
   string readiness_path = 13 [json_name = "readinessPath"];

@@ -12,16 +12,12 @@ import (
 	"mini-cloud/internal/common/logquery"
 	controlplaneapi "mini-cloud/internal/controlplane/api"
 	"mini-cloud/internal/controlplane/deploy"
-	"mini-cloud/internal/controlplane/operatorapi"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/planesync"
 	controlplaneprocessconfig "mini-cloud/internal/controlplane/processconfig"
 	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
 	"mini-cloud/internal/controlplane/store"
 	controlplanemigrations "mini-cloud/internal/controlplane/store/migrations"
-
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 type App struct {
@@ -73,30 +69,10 @@ func Build(logger *slog.Logger) (App, error) {
 		PlaneSelector:     planeSelector,
 		ServiceController: serviceController,
 	}, logger, stores)
-	operatorTransports, err := operatorapi.NewTransportSet(logger, stores, processCfg.AdminToken, planeSyncService, serviceController)
-	if err != nil {
-		backgroundCancel()
-		if closeErr := db.Close(); closeErr != nil {
-			return App{}, errors.Join(fmt.Errorf("initialize operator transport: %w", err), fmt.Errorf("close database after operator transport init failure: %w", closeErr))
-		}
-		return App{}, fmt.Errorf("initialize operator transport: %w", err)
-	}
-
-	publicMux := http.NewServeMux()
-	publicMux.Handle("/api/operator/v1/", operatorTransports.GatewayHTTP)
-	publicMux.Handle("/", httpAPI)
-
-	handler := h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if operatorapi.IsGRPCRequest(r) {
-			operatorTransports.GRPC.ServeHTTP(w, r)
-			return
-		}
-		publicMux.ServeHTTP(w, r)
-	}), &http2.Server{})
 
 	return App{
 		ProcessConfig:  processCfg,
-		Handler:        handler,
+		Handler:        httpAPI,
 		db:             db,
 		stopBackground: backgroundCancel,
 	}, nil

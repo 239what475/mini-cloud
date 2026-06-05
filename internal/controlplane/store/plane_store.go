@@ -5,10 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
-	"mini-cloud/internal/controlplane/incident"
 	plane "mini-cloud/internal/controlplane/plane"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -18,8 +16,6 @@ var (
 	ErrPlaneNotFound                = errors.New("plane not found")
 	ErrPlaneNameAlreadyExists       = errors.New("plane name already exists")
 	ErrPlaneSouthboundTokenNotFound = errors.New("plane southbound token not found")
-	ErrIncidentNotFound             = errors.New("control incident not found")
-	ErrIncidentAlreadyResolved      = errors.New("control incident is already resolved")
 	defaultPlaneStatusMessage       = "awaiting registration handshake"
 	defaultPlaneOperationReason     = ""
 )
@@ -444,209 +440,6 @@ func (s *Store) ListPlaneCapacitySnapshots(ctx context.Context, planeID string, 
 	return items, nil
 }
 
-func (s *Store) CreateIncident(ctx context.Context, input incident.CreateInput) (incident.Incident, error) {
-	if err := input.Validate(); err != nil {
-		return incident.Incident{}, err
-	}
-
-	id, err := newID("inc")
-	if err != nil {
-		return incident.Incident{}, err
-	}
-
-	runbookURL, err := input.ResolvedRunbookURL()
-	if err != nil {
-		return incident.Incident{}, err
-	}
-
-	row := s.db.QueryRowContext(ctx, `
-		INSERT INTO fleet_incidents (
-			id,
-			plane_id,
-			severity,
-			state,
-			summary,
-			description,
-			runbook_url
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING
-			id,
-			plane_id,
-			severity,
-			state,
-			summary,
-			description,
-			resolution,
-			runbook_url,
-			created_at,
-			updated_at,
-			resolved_at
-	`, id, input.PlaneID, input.Severity, incident.StateOpen, input.Summary, input.Description, runbookURL)
-
-	item, err := scanIncident(row)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return incident.Incident{}, ErrPlaneNotFound
-		}
-		return incident.Incident{}, fmt.Errorf("insert control incident: %w", err)
-	}
-	return item, nil
-}
-
-func (s *Store) UpdateIncident(ctx context.Context, incidentID string, input incident.UpdateInput) (incident.Incident, error) {
-	if err := input.Validate(); err != nil {
-		return incident.Incident{}, err
-	}
-
-	runbookURL, err := input.ResolvedRunbookURL()
-	if err != nil {
-		return incident.Incident{}, err
-	}
-
-	row := s.db.QueryRowContext(ctx, `
-		UPDATE fleet_incidents
-		SET
-			severity = $3,
-			summary = $4,
-			description = $5,
-			runbook_url = $6,
-			updated_at = now()
-		WHERE id = $1
-			AND state = $2
-		RETURNING
-			id,
-			plane_id,
-			severity,
-			state,
-			summary,
-			description,
-			resolution,
-			runbook_url,
-			created_at,
-			updated_at,
-			resolved_at
-	`, incidentID, incident.StateOpen, input.Severity, input.Summary, input.Description, runbookURL)
-
-	item, err := scanIncident(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			state, stateErr := s.getIncidentState(ctx, incidentID)
-			if stateErr != nil {
-				return incident.Incident{}, stateErr
-			}
-			if state == incident.StateResolved {
-				return incident.Incident{}, ErrIncidentAlreadyResolved
-			}
-			return incident.Incident{}, ErrIncidentNotFound
-		}
-		return incident.Incident{}, fmt.Errorf("update control incident: %w", err)
-	}
-	return item, nil
-}
-
-func (s *Store) ListIncidents(ctx context.Context, filter incident.ListFilter) ([]incident.Incident, error) {
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = 40
-	}
-	if limit > 200 {
-		limit = 200
-	}
-
-	query := `
-		SELECT
-			id,
-			plane_id,
-			severity,
-			state,
-			summary,
-			description,
-			resolution,
-			runbook_url,
-			created_at,
-			updated_at,
-			resolved_at
-		FROM fleet_incidents
-	`
-	args := make([]any, 0, 3)
-	conditions := make([]string, 0, 2)
-	if planeID := strings.TrimSpace(filter.PlaneID); planeID != "" {
-		args = append(args, planeID)
-		conditions = append(conditions, fmt.Sprintf("plane_id = $%d", len(args)))
-	}
-	if incident.IsState(filter.State) {
-		args = append(args, filter.State)
-		conditions = append(conditions, fmt.Sprintf("state = $%d", len(args)))
-	}
-	if len(conditions) > 0 {
-		query += "\nWHERE " + strings.Join(conditions, " AND ")
-	}
-	args = append(args, limit)
-	query += fmt.Sprintf("\nORDER BY created_at DESC, id DESC\nLIMIT $%d\n", len(args))
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("query control incidents: %w", err)
-	}
-	defer closeRows(rows)
-
-	items := make([]incident.Incident, 0)
-	for rows.Next() {
-		item, err := scanIncident(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate control incidents: %w", err)
-	}
-	return items, nil
-}
-
-func (s *Store) ResolveIncident(ctx context.Context, incidentID string, input incident.ResolveInput) (incident.Incident, error) {
-	row := s.db.QueryRowContext(ctx, `
-		UPDATE fleet_incidents
-		SET
-			state = $3,
-			resolution = $4,
-			updated_at = now(),
-			resolved_at = now()
-		WHERE id = $1
-			AND state = $2
-		RETURNING
-			id,
-			plane_id,
-			severity,
-			state,
-			summary,
-			description,
-			resolution,
-			runbook_url,
-			created_at,
-			updated_at,
-			resolved_at
-	`, incidentID, incident.StateOpen, incident.StateResolved, input.Resolution)
-
-	item, err := scanIncident(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			state, stateErr := s.getIncidentState(ctx, incidentID)
-			if stateErr != nil {
-				return incident.Incident{}, stateErr
-			}
-			if state == incident.StateResolved {
-				return incident.Incident{}, ErrIncidentAlreadyResolved
-			}
-			return incident.Incident{}, ErrIncidentNotFound
-		}
-		return incident.Incident{}, fmt.Errorf("resolve control incident: %w", err)
-	}
-	return item, nil
-}
-
 func planeDetailBaseQuery(suffix string) string {
 	return `
 		SELECT
@@ -944,47 +737,6 @@ func scanPlaneCapacitySnapshot(scanner interface{ Scan(dest ...any) error }) (pl
 		&item.CapturedAt,
 	); err != nil {
 		return plane.CapacitySnapshot{}, fmt.Errorf("scan plane capacity snapshot: %w", err)
-	}
-	return item, nil
-}
-
-func (s *Store) getIncidentState(ctx context.Context, incidentID string) (string, error) {
-	var state string
-	err := s.db.QueryRowContext(ctx, `
-		SELECT state
-		FROM fleet_incidents
-		WHERE id = $1
-	`, incidentID).Scan(&state)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrIncidentNotFound
-		}
-		return "", fmt.Errorf("get control incident state: %w", err)
-	}
-	return state, nil
-}
-
-func scanIncident(scanner interface{ Scan(dest ...any) error }) (incident.Incident, error) {
-	var item incident.Incident
-	var resolvedAt sql.NullTime
-	if err := scanner.Scan(
-		&item.ID,
-		&item.PlaneID,
-		&item.Severity,
-		&item.State,
-		&item.Summary,
-		&item.Description,
-		&item.Resolution,
-		&item.RunbookURL,
-		&item.CreatedAt,
-		&item.UpdatedAt,
-		&resolvedAt,
-	); err != nil {
-		return incident.Incident{}, fmt.Errorf("scan control incident: %w", err)
-	}
-	if resolvedAt.Valid {
-		value := resolvedAt.Time
-		item.ResolvedAt = &value
 	}
 	return item, nil
 }

@@ -37,8 +37,6 @@ type FilteredCounts struct {
 	Region       int `json:"region"`
 	AntiAffinity int `json:"antiAffinity"`
 	Capacity     int `json:"capacity"`
-	PoolMinReady int `json:"poolMinReady"`
-	Headroom     int `json:"headroom"`
 }
 
 type Candidate struct {
@@ -156,12 +154,6 @@ func buildFailureReason(registeredMatched int, readyMatched int, operationMatche
 		return fmt.Sprintf("no ready planes matched region %s", input.Region)
 	case rawCapacityMatched == 0:
 		return "ready planes matched provider/region, but none had enough free cpu/memory"
-	case filtered.PoolMinReady > 0 && filtered.PoolMinReady == rawCapacityMatched:
-		return "ready planes had enough raw cpu/memory, but none currently satisfy runtime node pool minReady"
-	case filtered.Headroom > 0 && filtered.Headroom == rawCapacityMatched:
-		return "ready planes had enough raw cpu/memory, but none could preserve runtime node pool headroom"
-	case filtered.PoolMinReady > 0 || filtered.Headroom > 0:
-		return "ready planes had enough raw cpu/memory, but runtime node pool policy blocked admission"
 	default:
 		return "ready planes matched provider/region, but none had enough free cpu/memory"
 	}

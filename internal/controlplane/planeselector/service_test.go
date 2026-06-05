@@ -7,7 +7,6 @@ import (
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planeselector"
-	"mini-cloud/internal/controlplane/runtimepool"
 	"mini-cloud/internal/testutil"
 	"testing"
 	"time"
@@ -175,79 +174,6 @@ func TestPreviewSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.
 		t.Fatalf("failure reason = %q", result.FailureReason)
 	}
 	if len(result.Candidates) != 1 || result.Candidates[0].OperationState != "maintenance" {
-		t.Fatalf("unexpected candidates: %+v", result.Candidates)
-	}
-}
-
-func TestPreviewSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) {
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
-	planeA := createReadyPlane(t, db.Store, "aliyun-bj-headroom-a", "Aliyun Beijing Headroom A", 2000, 1000, 4096, 1024)
-	planeB := createReadyPlane(t, db.Store, "aliyun-bj-headroom-b", "Aliyun Beijing Headroom B", 3000, 1000, 4096, 1024)
-	if _, err := db.Store.UpsertRuntimeNodePool(context.Background(), planeA.ID, runtimepool.UpsertInput{
-		MinReady:         1,
-		MaxReady:         2,
-		HeadroomCPUMilli: 800,
-		HeadroomMemoryMi: 512,
-	}); err != nil {
-		t.Fatalf("UpsertRuntimeNodePool returned error: %v", err)
-	}
-
-	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
-		Provider:      "aliyun",
-		Region:        "cn-beijing",
-		InstanceClass: deploy.InstanceClassSmall,
-	})
-	if err != nil {
-		t.Fatalf("PreviewSelection returned error: %v", err)
-	}
-	if result.Decision == nil {
-		t.Fatalf("expected selection decision, got failure=%q", result.FailureReason)
-	}
-	if result.Decision.PlaneID != planeB.ID {
-		t.Fatalf("selected plane = %s, want %s", result.Decision.PlaneID, planeB.ID)
-	}
-	if result.FilteredCounts.Headroom != 1 {
-		t.Fatalf("headroom filtered count = %d, want 1", result.FilteredCounts.Headroom)
-	}
-	if len(result.Candidates) != 2 || result.Candidates[0].Reason == "" {
-		t.Fatalf("unexpected candidates: %+v", result.Candidates)
-	}
-}
-
-func TestPreviewSelectionExplainsPoolMinReadyBlock(t *testing.T) {
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
-	planeItem := createReadyPlane(t, db.Store, "aliyun-bj-min-ready", "Aliyun Beijing Min Ready", 3000, 1000, 4096, 1024)
-	if _, err := db.Store.UpsertRuntimeNodePool(context.Background(), planeItem.ID, runtimepool.UpsertInput{
-		MinReady:         2,
-		MaxReady:         4,
-		HeadroomCPUMilli: 0,
-		HeadroomMemoryMi: 0,
-	}); err != nil {
-		t.Fatalf("UpsertRuntimeNodePool returned error: %v", err)
-	}
-
-	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
-		Provider:      "aliyun",
-		Region:        "cn-beijing",
-		InstanceClass: deploy.InstanceClassSmall,
-	})
-	if err != nil {
-		t.Fatalf("PreviewSelection returned error: %v", err)
-	}
-	if result.Decision != nil {
-		t.Fatalf("expected no decision, got %+v", result.Decision)
-	}
-	if result.FilteredCounts.PoolMinReady != 1 {
-		t.Fatalf("pool minReady filtered count = %d, want 1", result.FilteredCounts.PoolMinReady)
-	}
-	if result.FailureReason != "ready planes had enough raw cpu/memory, but none currently satisfy runtime node pool minReady" {
-		t.Fatalf("failure reason = %q", result.FailureReason)
-	}
-	if len(result.Candidates) != 1 || result.Candidates[0].Reason == "" {
 		t.Fatalf("unexpected candidates: %+v", result.Candidates)
 	}
 }

@@ -262,37 +262,6 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		return observability.ReliabilityInputs{}, fmt.Errorf("count runtime node reliability overview: %w", err)
 	}
 
-	// 发布 SLO 按最近 24h 创建且当前为 running/failed 的 execution plan 聚合。
-	if err := s.db.QueryRowContext(ctx, `
-		WITH plan_counts AS (
-			SELECT
-				plan_id,
-				COUNT(*)::int AS intent_count,
-				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
-				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
-				MIN(created_at) AS created_at
-			FROM execution_intents
-			GROUP BY plan_id
-		)
-		SELECT
-			COUNT(*) FILTER (
-				WHERE created_at >= now() - interval '24 hours'
-				  AND (failed_count > 0 OR (intent_count > 0 AND running_count >= intent_count))
-			),
-			COUNT(*) FILTER (
-				WHERE created_at >= now() - interval '24 hours'
-				  AND failed_count = 0
-				  AND intent_count > 0
-				  AND running_count >= intent_count
-			)
-		FROM plan_counts
-	`).Scan(
-		&input.TerminalExecutionPlansLast24h,
-		&input.SuccessfulExecutionPlansLast24h,
-	); err != nil {
-		return observability.ReliabilityInputs{}, fmt.Errorf("count execution plan slo window: %w", err)
-	}
-
 	// 复用卡住 execution plan 信号。
 	input.ExecutionPlanStuck, err = s.GetExecutionPlanStuckSignal(ctx, time.Duration(observability.ExecutionPlanStuckThresholdSeconds)*time.Second)
 	if err != nil {

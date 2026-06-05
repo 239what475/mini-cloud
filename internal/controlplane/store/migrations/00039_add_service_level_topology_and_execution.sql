@@ -26,30 +26,6 @@ BEGIN
 END $$;
 -- +goose StatementEnd
 
-WITH ranked_cells AS (
-    SELECT
-        c.*,
-        ROW_NUMBER() OVER (
-            PARTITION BY c.service_id
-            ORDER BY
-                CASE c.role WHEN 'primary' THEN 0 WHEN 'standby' THEN 1 ELSE 2 END,
-                c.created_at ASC,
-                c.cell_key ASC
-        ) AS row_num
-    FROM fleet_service_cells c
-)
-UPDATE fleet_services AS s
-SET
-    spec_provider = rc.spec_provider,
-    spec_region = rc.spec_region,
-    spec_pinned_plane_id = rc.spec_pinned_plane_id,
-    spec_instance_class = rc.spec_instance_class,
-    updated_at = now()
-FROM ranked_cells rc
-WHERE s.id = rc.service_id
-  AND rc.row_num = 1
-  AND (s.spec_provider = '' OR s.spec_region = '');
-
 CREATE TABLE IF NOT EXISTS fleet_service_placements (
     service_id TEXT PRIMARY KEY REFERENCES fleet_services(id) ON DELETE CASCADE,
     plane_id TEXT NOT NULL REFERENCES fleet_planes(id) ON DELETE RESTRICT,
@@ -62,42 +38,6 @@ CREATE TABLE IF NOT EXISTS fleet_service_placements (
 
 CREATE INDEX IF NOT EXISTS idx_fleet_service_placements_plane
     ON fleet_service_placements (plane_id, updated_at DESC);
-
-WITH ranked_placements AS (
-    SELECT
-        p.*,
-        ROW_NUMBER() OVER (
-            PARTITION BY p.service_id
-            ORDER BY
-                CASE c.role WHEN 'primary' THEN 0 WHEN 'standby' THEN 1 ELSE 2 END,
-                p.created_at ASC,
-                p.cell_key ASC
-        ) AS row_num
-    FROM fleet_service_cell_placements p
-    JOIN fleet_service_cells c
-      ON c.service_id = p.service_id
-     AND c.cell_key = p.cell_key
-)
-INSERT INTO fleet_service_placements (
-    service_id,
-    plane_id,
-    remote_status,
-    remote_healthy,
-    remote_message,
-    created_at,
-    updated_at
-)
-SELECT
-    rp.service_id,
-    rp.plane_id,
-    rp.remote_status,
-    rp.remote_healthy,
-    rp.remote_message,
-    rp.created_at,
-    rp.updated_at
-FROM ranked_placements rp
-WHERE rp.row_num = 1
-ON CONFLICT (service_id) DO NOTHING;
 
 -- +goose Down
 DROP INDEX IF EXISTS idx_fleet_service_placements_plane;

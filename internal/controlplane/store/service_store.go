@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	controlservice "mini-cloud/internal/controlplane/service"
 
@@ -40,8 +39,6 @@ const serviceSelectColumns = `
 	spec_secret_set_id,
 	spec_registry_credential_id,
 	spec_projected_files_json,
-	spec_persistent_dirs_json,
-	spec_persistent_dirs_locked,
 	status_run_json,
 	generation,
 	status_desired_state,
@@ -88,10 +85,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service projected files: %w", err)
 	}
-	persistentDirsJSON, err := marshalJSON(persistentdir.CloneSpecs(input.Spec.PersistentDirs), []persistentdir.Spec{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service persistent dirs: %w", err)
-	}
 	now := time.Now().UTC()
 	initialStatus := controlservice.PendingStatus(0, now, controlservice.ReasonPendingCreate, "waiting for service reconcile")
 	statusConditionsJSON, err := marshalJSON(initialStatus.Conditions, []controlservice.Condition{})
@@ -124,8 +117,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			spec_secret_set_id,
 			spec_registry_credential_id,
 			spec_projected_files_json,
-			spec_persistent_dirs_json,
-			spec_persistent_dirs_locked,
 			status_run_json,
 			generation,
 			status_desired_state,
@@ -136,7 +127,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_conditions_json,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, false, $20, 1, $21, $22, $23, $24, $25, $26, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, $24, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -157,7 +148,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		input.Spec.SecretSetID,
 		input.Spec.RegistryCredentialID,
 		projectedFilesJSON,
-		persistentDirsJSON,
 		runJSON,
 		controlservice.DesiredStateActive,
 		initialStatus.ObservedGeneration,
@@ -252,10 +242,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service projected files for update: %w", err)
 	}
-	persistentDirsJSON, err := marshalJSON(persistentdir.CloneSpecs(input.Spec.PersistentDirs), []persistentdir.Spec{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service persistent dirs for update: %w", err)
-	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -270,9 +256,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		return controlservice.Service{}, err
 	}
 	if err := input.Validate(current.Metadata.Name); err != nil {
-		return controlservice.Service{}, err
-	}
-	if err := controlservice.ValidatePersistentDirUpdate(current, input); err != nil {
 		return controlservice.Service{}, err
 	}
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
@@ -314,19 +297,18 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			spec_secret_set_id = $15,
 			spec_registry_credential_id = $16,
 			spec_projected_files_json = $17,
-			spec_persistent_dirs_json = $18,
-			status_run_json = $19,
-			generation = $20,
-			status_desired_state = $21,
-			status_observed_generation = $22,
-			status_phase = $23,
-			status_healthy = $24,
-			status_message = $25,
-			status_conditions_json = $26,
+			status_run_json = $18,
+			generation = $19,
+			status_desired_state = $20,
+			status_observed_generation = $21,
+			status_phase = $22,
+			status_healthy = $23,
+			status_message = $24,
+			status_conditions_json = $25,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $27
+			AND generation = $26
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -346,7 +328,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		input.Spec.SecretSetID,
 		input.Spec.RegistryCredentialID,
 		projectedFilesJSON,
-		persistentDirsJSON,
 		currentRunJSON,
 		nextGeneration,
 		controlservice.DesiredStateActive,
@@ -436,22 +417,6 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 
 	if err := tx.Commit(); err != nil {
 		return controlservice.Service{}, fmt.Errorf("commit delete service: %w", err)
-	}
-	return item, nil
-}
-
-func (s *Store) LockServicePersistentDirs(ctx context.Context, serviceID string, generation int64) (controlservice.Service, error) {
-	item, err := scanService(s.db.QueryRowContext(ctx, `
-		UPDATE fleet_services
-		SET spec_persistent_dirs_locked = true, updated_at = now()
-		WHERE id = $1 AND generation = $2
-		RETURNING `+serviceSelectColumns+`
-	`, serviceID, generation))
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return controlservice.Service{}, ErrServiceGenerationConflict
-		}
-		return controlservice.Service{}, fmt.Errorf("lock service persistent dirs: %w", err)
 	}
 	return item, nil
 }
@@ -597,8 +562,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var argsJSON []byte
 	var envJSON []byte
 	var projectedFilesJSON []byte
-	var persistentDirsJSON []byte
-	var persistentDirsLocked bool
 	var runJSON []byte
 	var conditionsJSON []byte
 	var pinnedPlaneID sql.NullString
@@ -622,8 +585,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.Spec.SecretSetID,
 		&item.Spec.RegistryCredentialID,
 		&projectedFilesJSON,
-		&persistentDirsJSON,
-		&persistentDirsLocked,
 		&runJSON,
 		&item.Metadata.Generation,
 		&item.Status.DesiredState,
@@ -651,11 +612,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		return controlservice.Service{}, fmt.Errorf("decode service projected files: %w", err)
 	}
 	item.Spec.ProjectedFiles = projectedfile.CloneSpecs(item.Spec.ProjectedFiles)
-	if err := unmarshalJSON(persistentDirsJSON, &item.Spec.PersistentDirs, []persistentdir.Spec{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service persistent dirs: %w", err)
-	}
-	item.Spec.PersistentDirs = persistentdir.CloneSpecs(item.Spec.PersistentDirs)
-	item.Spec.PersistentDirsLocked = persistentDirsLocked
 	if err := unmarshalJSON(runJSON, &item.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending}); err != nil {
 		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}

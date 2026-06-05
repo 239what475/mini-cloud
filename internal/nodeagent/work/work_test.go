@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
@@ -409,7 +408,6 @@ func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
 		ContainerId:    item.ContainerID,
 		HostPort:       int32(item.HostPort),
 		ProjectedFiles: protoProjectedFiles(item.ProjectedFiles),
-		PersistentDirs: protoPersistentDirs(item.PersistentDirs),
 	}
 	if item.ImageCredential != nil {
 		out.ImageCredential = &nodeagentv1.ImageCredential{
@@ -440,21 +438,6 @@ func protoProjectedFiles(items []projectedfile.File) []*nodeagentv1.ProjectedFil
 			Content:   item.Content,
 			Mode:      item.Mode,
 			Sensitive: item.Sensitive,
-		})
-	}
-	return out
-}
-
-func protoPersistentDirs(items []persistentdir.Mount) []*nodeagentv1.PersistentDirMount {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*nodeagentv1.PersistentDirMount, 0, len(items))
-	for _, item := range items {
-		out = append(out, &nodeagentv1.PersistentDirMount{
-			Name:       item.Name,
-			MountPath:  item.MountPath,
-			SourcePath: item.SourcePath,
 		})
 	}
 	return out

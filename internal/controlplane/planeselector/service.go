@@ -8,7 +8,6 @@ import (
 
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/runtimepool"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -42,14 +41,6 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 	planes, err := s.store.ListPlanes(ctx)
 	if err != nil {
 		return SelectionResult{}, err
-	}
-	pools, err := s.store.ListRuntimeNodePools(ctx)
-	if err != nil {
-		return SelectionResult{}, err
-	}
-	poolByPlane := make(map[string]runtimepool.Pool, len(pools))
-	for _, item := range pools {
-		poolByPlane[item.PlaneID] = item
 	}
 	excludedPlaneIDs := make(map[string]struct{}, len(input.ExcludePlaneIDs))
 	for _, planeID := range input.ExcludePlaneIDs {
@@ -164,23 +155,6 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 
 		candidate.CPUMilliFreeAfter = candidate.CPUMilliFree - cpuReq
 		candidate.MemoryMiFreeAfter = candidate.MemoryMiFree - memoryReq
-		if pool, ok := poolByPlane[planeDetail.ID]; ok {
-			admission := runtimepool.EvaluatePlacement(pool, &snapshot, cpuReq, memoryReq)
-			candidate.CPUMilliFreeAfter = admission.CPUMilliFreeAfter
-			candidate.MemoryMiFreeAfter = admission.MemoryMiFreeAfter
-			if snapshot.NodesReady < pool.MinReady {
-				result.FilteredCounts.PoolMinReady++
-				candidate.Reason = admission.Reason
-				result.Candidates = append(result.Candidates, candidate)
-				continue
-			}
-			if !admission.Allowed {
-				result.FilteredCounts.Headroom++
-				candidate.Reason = admission.Reason
-				result.Candidates = append(result.Candidates, candidate)
-				continue
-			}
-		}
 
 		candidate.Eligible = true
 		candidate.Score = score(candidate.CPUMilliFreeAfter, candidate.MemoryMiFreeAfter)

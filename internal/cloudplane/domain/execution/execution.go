@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -51,21 +50,20 @@ const (
 )
 
 type PlanInput struct {
-	PlanID            string                `json:"planID"`
-	ServiceID         string                `json:"serviceID"`
-	ServiceName       string                `json:"serviceName"`
-	ServiceGeneration int64                 `json:"serviceGeneration"`
-	Image             string                `json:"image"`
-	Command           []string              `json:"command"`
-	Args              []string              `json:"args"`
-	Env               map[string]string     `json:"env"`
-	ProjectedFiles    []projectedfile.File  `json:"projectedFiles,omitempty"`
-	PersistentDirs    []persistentdir.Mount `json:"persistentDirs,omitempty"`
-	ImageCredential   *ImageCredential      `json:"imageCredential,omitempty"`
-	ContainerPort     int                   `json:"containerPort"`
-	ReadinessPath     string                `json:"readinessPath"`
-	InstanceClass     string                `json:"instanceClass"`
-	Exposure          string                `json:"exposure"`
+	PlanID            string               `json:"planID"`
+	ServiceID         string               `json:"serviceID"`
+	ServiceName       string               `json:"serviceName"`
+	ServiceGeneration int64                `json:"serviceGeneration"`
+	Image             string               `json:"image"`
+	Command           []string             `json:"command"`
+	Args              []string             `json:"args"`
+	Env               map[string]string    `json:"env"`
+	ProjectedFiles    []projectedfile.File `json:"projectedFiles,omitempty"`
+	ImageCredential   *ImageCredential     `json:"imageCredential,omitempty"`
+	ContainerPort     int                  `json:"containerPort"`
+	ReadinessPath     string               `json:"readinessPath"`
+	InstanceClass     string               `json:"instanceClass"`
+	Exposure          string               `json:"exposure"`
 }
 
 type PlanResult struct {
@@ -113,11 +111,6 @@ func (in PlanInput) Validate() error {
 			return err
 		}
 	}
-	for _, item := range persistentdir.CloneMounts(in.PersistentDirs) {
-		if err := item.Validate(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -145,8 +138,6 @@ type WorkItem struct {
 	Env map[string]string `json:"env"`
 	// ProjectedFiles 表示由 config/secret 渲染到容器内的文件列表。
 	ProjectedFiles []projectedfile.File `json:"projectedFiles,omitempty"`
-	// PersistentDirs 表示需要跨 service run 保持的持久目录列表。
-	PersistentDirs []persistentdir.Mount `json:"persistentDirs,omitempty"`
 	// ImageCredential 记录容器镜像或镜像凭据相关信息。
 	ImageCredential *ImageCredential `json:"imageCredential,omitempty"`
 	// SupersededExecution 是被当前执行替换掉的旧执行信息。

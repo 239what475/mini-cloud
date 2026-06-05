@@ -322,7 +322,6 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) 
 		Args:            item.Args,
 		Env:             env,
 		ProjectedFiles:  item.ProjectedFiles,
-		PersistentDirs:  item.PersistentDirs,
 		ImageCredential: convertExecutionImageCredential(item.ImageCredential),
 		ContainerPort:   item.ContainerPort,
 		HostBindIP:      e.opts.NodePrivateIP,

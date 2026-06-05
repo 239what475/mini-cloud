@@ -92,7 +92,6 @@ func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.Exe
 		Args:              append([]string(nil), input.Args...),
 		Env:               copyStringMap(input.Env),
 		ProjectedFiles:    protoExecutionProjectedFiles(input.ProjectedFiles),
-		PersistentDirs:    protoExecutionPersistentDirs(input.PersistentDirs),
 		ImageCredential:   protoExecutionImageCredential(input.ImageCredential),
 		ContainerPort:     int32(input.ContainerPort),
 		ReadinessPath:     strings.TrimSpace(input.ReadinessPath),
@@ -128,21 +127,6 @@ func protoExecutionProjectedFiles(items []cloudplaneapi.ExecutionProjectedFile) 
 			Content:   item.Content,
 			Mode:      item.Mode,
 			Sensitive: item.Sensitive,
-		})
-	}
-	return out
-}
-
-func protoExecutionPersistentDirs(items []cloudplaneapi.ExecutionPersistentDir) []*cloudplanev1.ExecutionPersistentDir {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*cloudplanev1.ExecutionPersistentDir, 0, len(items))
-	for _, item := range items {
-		out = append(out, &cloudplanev1.ExecutionPersistentDir{
-			Name:       strings.TrimSpace(item.Name),
-			MountPath:  strings.TrimSpace(item.MountPath),
-			SourcePath: strings.TrimSpace(item.SourcePath),
 		})
 	}
 	return out

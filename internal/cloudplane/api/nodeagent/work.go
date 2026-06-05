@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
@@ -59,7 +58,6 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 		// Env 可能包含由 secret set 渲染出的敏感值；这里随 gRPC 响应明文下发，依赖 node session 鉴权和传输层保护。
 		Env:            cloneStringMap(item.Env),
 		ProjectedFiles: protoProjectedFiles(item.ProjectedFiles),
-		PersistentDirs: protoPersistentDirs(item.PersistentDirs),
 		ContainerPort:  int32(item.ContainerPort),
 		ReadinessPath:  item.ReadinessPath,
 		ContainerName:  item.ContainerName,
@@ -115,26 +113,6 @@ func protoProjectedFiles(items []projectedfile.File) []*nodeagentv1.ProjectedFil
 			Content:   item.Content,
 			Mode:      item.Mode,
 			Sensitive: item.Sensitive,
-		})
-	}
-	return out
-}
-
-// protoPersistentDirs 将 persistent dir mount 列表转换为 node-agent protobuf。
-// 参数说明：items 是 node-agent 需要挂载到容器内的持久目录集合。
-func protoPersistentDirs(items []persistentdir.Mount) []*nodeagentv1.PersistentDirMount {
-	// 空列表返回 nil，表示该 work item 没有 persistent dirs。
-	if len(items) == 0 {
-		return nil
-	}
-	// CloneMounts 会复制、规范化并按 Name、MountPath、SourcePath 排序。
-	out := make([]*nodeagentv1.PersistentDirMount, 0, len(items))
-	for _, item := range persistentdir.CloneMounts(items) {
-		// SourcePath 是 node 宿主机路径，由 cloud-plane/store 预先计算。
-		out = append(out, &nodeagentv1.PersistentDirMount{
-			Name:       item.Name,
-			MountPath:  item.MountPath,
-			SourcePath: item.SourcePath,
 		})
 	}
 	return out

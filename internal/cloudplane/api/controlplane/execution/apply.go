@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	cloudexecution "mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
@@ -27,7 +26,6 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 		Args:              append([]string(nil), req.GetArgs()...),
 		Env:               cloneStringMap(req.GetEnv()),
 		ProjectedFiles:    projectedFilesFromProto(req.GetProjectedFiles()),
-		PersistentDirs:    persistentDirsFromProto(req.GetPersistentDirs()),
 		ContainerPort:     int(req.GetContainerPort()),
 		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
 		InstanceClass:     strings.TrimSpace(req.GetInstanceClass()),
@@ -76,22 +74,4 @@ func projectedFilesFromProto(items []*cloudplanev1.ExecutionProjectedFile) []pro
 		})
 	}
 	return projectedfile.CloneFiles(out)
-}
-
-func persistentDirsFromProto(items []*cloudplanev1.ExecutionPersistentDir) []persistentdir.Mount {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]persistentdir.Mount, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, persistentdir.Mount{
-			Name:       strings.TrimSpace(item.GetName()),
-			MountPath:  strings.TrimSpace(item.GetMountPath()),
-			SourcePath: strings.TrimSpace(item.GetSourcePath()),
-		})
-	}
-	return persistentdir.CloneMounts(out)
 }

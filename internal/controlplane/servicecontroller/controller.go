@@ -50,7 +50,7 @@ type serviceStore interface {
 	DeleteServiceForGeneration(context.Context, string, int64) error
 	GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error)
 	UpsertServicePlacement(context.Context, controlservice.ServicePlacement) (controlservice.ServicePlacement, error)
-	UpsertServicePlacementForGeneration(context.Context, controlservice.ServicePlacement, int64, bool) (controlservice.ServicePlacement, error)
+	UpsertServicePlacementForGeneration(context.Context, controlservice.ServicePlacement, int64) (controlservice.ServicePlacement, error)
 	DeleteServicePlacement(context.Context, string) error
 	DeleteServicePlacementForGeneration(context.Context, string, int64) error
 	GetPlane(context.Context, string) (plane.Detail, error)

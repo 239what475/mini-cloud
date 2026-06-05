@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
@@ -206,10 +205,6 @@ func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInpu
 	if err != nil {
 		return cloudplaneapi.ExecutionPlanRequest{}, err
 	}
-	persistentDirs, err := materializePersistentDirs(input.Metadata.ID, spec.PersistentDirs)
-	if err != nil {
-		return cloudplaneapi.ExecutionPlanRequest{}, err
-	}
 	return cloudplaneapi.ExecutionPlanRequest{
 		PlanID:            fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation),
 		ServiceID:         input.Metadata.ID,
@@ -220,7 +215,6 @@ func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInpu
 		Args:              append([]string(nil), spec.Args...),
 		Env:               env,
 		ProjectedFiles:    projectedFiles,
-		PersistentDirs:    persistentDirs,
 		ImageCredential:   imageCredential,
 		ContainerPort:     spec.DefaultPort,
 		ReadinessPath:     spec.ReadinessPath,
@@ -263,22 +257,6 @@ func materializeProjectedFiles(specs []projectedfile.Spec, configs map[string]ma
 			Content:   value,
 			Mode:      projectedfile.DefaultMode(item.SourceKind),
 			Sensitive: sensitive,
-		})
-	}
-	return out, nil
-}
-
-func materializePersistentDirs(serviceID string, specs []persistentdir.Spec) ([]cloudplaneapi.ExecutionPersistentDir, error) {
-	mounts, err := persistentdir.MaterializeMounts("", serviceID, specs)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]cloudplaneapi.ExecutionPersistentDir, 0, len(mounts))
-	for _, item := range mounts {
-		out = append(out, cloudplaneapi.ExecutionPersistentDir{
-			Name:       item.Name,
-			MountPath:  item.MountPath,
-			SourcePath: item.SourcePath,
 		})
 	}
 	return out, nil

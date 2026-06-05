@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/controlplane/deploy"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
@@ -15,8 +14,6 @@ import (
 	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
-
-var ErrPersistentDirsAutoMoveBlocked = errors.New("services with persistentDirs cannot be automatically moved to a different plane after a run has been created")
 
 func (c *Controller) reconcileService(ctx context.Context, item controlservice.Service) error {
 	currentPlacement, hasPlacement, err := c.getPlacement(ctx, item.Metadata.ID)
@@ -65,9 +62,6 @@ func (c *Controller) reconcileServiceDeletion(ctx context.Context, serviceItem c
 }
 
 func (c *Controller) reconcileServiceWithoutPlacement(ctx context.Context, serviceItem controlservice.Service) error {
-	if persistentDirsPlacementLocked(serviceItem) {
-		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, false, false, ErrPersistentDirsAutoMoveBlocked))
-	}
 	decision, err := c.selectPlane(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, false, false, err))
@@ -84,9 +78,6 @@ func (c *Controller) reconcileServiceDesiredSpec(ctx context.Context, serviceIte
 	if c.canReusePlacement(ctx, serviceItem, currentPlacement) {
 		_, err := c.applyServiceToCurrentPlacement(ctx, serviceItem, currentPlacement)
 		return err
-	}
-	if serviceItem.Spec.PersistentDirsLocked {
-		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, true, false, ErrPersistentDirsAutoMoveBlocked))
 	}
 	decision, err := c.selectPlane(ctx, serviceItem)
 	if err != nil {
@@ -108,7 +99,7 @@ func (c *Controller) applyServiceToCurrentPlacement(ctx context.Context, service
 	}
 
 	nextPlacement := acceptedPlacementFromApplyResult(serviceItem.Metadata.ID, result)
-	updatedPlacement, err := c.store.UpsertServicePlacementForGeneration(ctx, nextPlacement, serviceItem.Metadata.Generation, len(serviceItem.Spec.PersistentDirs) > 0 || serviceItem.Spec.PersistentDirsLocked)
+	updatedPlacement, err := c.store.UpsertServicePlacementForGeneration(ctx, nextPlacement, serviceItem.Metadata.Generation)
 	if err != nil {
 		if errors.Is(err, store.ErrServiceGenerationConflict) {
 			return nil, nil
@@ -141,7 +132,7 @@ func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem contro
 		}
 	}
 
-	updatedPlacement, err := c.store.UpsertServicePlacementForGeneration(ctx, nextPlacement, serviceItem.Metadata.Generation, len(serviceItem.Spec.PersistentDirs) > 0 || serviceItem.Spec.PersistentDirsLocked)
+	updatedPlacement, err := c.store.UpsertServicePlacementForGeneration(ctx, nextPlacement, serviceItem.Metadata.Generation)
 	if err != nil {
 		if errors.Is(err, store.ErrServiceGenerationConflict) {
 			if previous == nil || shouldMovePlacement(*previous, nextPlacement) {
@@ -282,10 +273,6 @@ func remoteDeleteInput(serviceItem controlservice.Service, reason string) deploy
 	}
 }
 
-func persistentDirsPlacementLocked(serviceItem controlservice.Service) bool {
-	return serviceItem.Spec.PersistentDirsLocked
-}
-
 func shouldMovePlacement(current controlservice.ServicePlacement, next controlservice.ServicePlacement) bool {
 	return current.PlaneID != next.PlaneID
 }
@@ -323,7 +310,6 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 			SecretSetID:          serviceItem.Spec.SecretSetID,
 			RegistryCredentialID: serviceItem.Spec.RegistryCredentialID,
 			ProjectedFiles:       projectedfile.CloneSpecs(serviceItem.Spec.ProjectedFiles),
-			PersistentDirs:       persistentdir.CloneSpecs(serviceItem.Spec.PersistentDirs),
 		},
 	}
 }

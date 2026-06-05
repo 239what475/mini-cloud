@@ -5,7 +5,6 @@ import (
 	"time"
 
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/runtimepool"
 )
 
 func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
@@ -103,25 +102,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				UpdatedAt: now,
 			},
 		},
-	}, []runtimepool.Pool{
-		{
-			PlaneID:          "pln_a",
-			MinReady:         2,
-			MaxReady:         4,
-			HeadroomCPUMilli: 3000,
-			HeadroomMemoryMi: 1024,
-			CreatedAt:        now,
-			UpdatedAt:        now,
-		},
-		{
-			PlaneID:          "pln_b",
-			MinReady:         1,
-			MaxReady:         2,
-			HeadroomCPUMilli: 2000,
-			HeadroomMemoryMi: 1024,
-			CreatedAt:        now,
-			UpdatedAt:        now,
-		},
 	})
 
 	if view.Summary.PlanesTotal != 3 {
@@ -148,10 +128,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Summary.MemoryMiCapacity != 12288 || view.Summary.MemoryMiAllocated != 3072 || view.Summary.MemoryMiFree != 9216 {
 		t.Fatalf("unexpected memory summary: %+v", view.Summary)
 	}
-	if view.Summary.PlanesWithRuntimePool != 2 || view.Summary.PoolsBelowHeadroom != 1 || view.Summary.PoolsBelowMinReady != 1 {
-		t.Fatalf("unexpected runtime pool summary: %+v", view.Summary)
-	}
-
 	if len(view.Providers) != 2 {
 		t.Fatalf("providers length = %d, want 2", len(view.Providers))
 	}
@@ -180,11 +156,5 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	}
 	if !view.Planes[0].AcceptingNewRuns || view.Planes[1].AcceptingNewRuns || view.Planes[2].AcceptingNewRuns {
 		t.Fatalf("unexpected acceptingNewRuns flags: %+v", view.Planes)
-	}
-	if !view.Planes[0].RuntimePoolConfigured || view.Planes[0].RuntimePoolPhase != "below_headroom" {
-		t.Fatalf("unexpected plane runtime pool view: %+v", view.Planes[0])
-	}
-	if !view.Planes[2].RuntimePoolConfigured || view.Planes[2].RuntimePoolPhase != "below_min_ready" {
-		t.Fatalf("unexpected plane runtime pool view: %+v", view.Planes[2])
 	}
 }

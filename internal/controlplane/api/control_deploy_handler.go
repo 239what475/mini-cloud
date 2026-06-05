@@ -92,12 +92,6 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 		TargetType: "service_apply",
 		TargetID:   input.Metadata.ID,
 		TargetName: input.Metadata.Name,
-		Details: map[string]any{
-			"planeID":   result.PlaneID,
-			"action":    result.Action,
-			"serviceID": input.Metadata.ID,
-			"planID":    result.PlanID,
-		},
 	})
 
 	writeJSON(w, http.StatusOK, targetedServiceApplyResponse{

@@ -12,7 +12,6 @@ import (
 	"mini-cloud/internal/cloudplane/domain/execution"
 	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
 	"mini-cloud/internal/cloudplane/domain/node"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 )
@@ -43,10 +42,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 	projectedFilesJSON, err := marshalJSON(projectedfile.CloneFiles(input.ProjectedFiles), []projectedfile.File{})
 	if err != nil {
 		return execution.PlanResult{}, fmt.Errorf("marshal execution projected files: %w", err)
-	}
-	persistentDirsJSON, err := marshalJSON(persistentdir.CloneMounts(input.PersistentDirs), []persistentdir.Mount{})
-	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("marshal execution persistent dirs: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -88,7 +83,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				args_json,
 				env_json,
 				projected_files_json,
-				persistent_dirs_json,
 				image_credential_server,
 				image_credential_username,
 				image_credential_password,
@@ -99,7 +93,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
 			ON CONFLICT (plan_id) DO UPDATE
 			SET
 				work_action = EXCLUDED.work_action,
@@ -111,7 +105,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				args_json = EXCLUDED.args_json,
 				env_json = EXCLUDED.env_json,
 				projected_files_json = EXCLUDED.projected_files_json,
-				persistent_dirs_json = EXCLUDED.persistent_dirs_json,
 				image_credential_server = EXCLUDED.image_credential_server,
 				image_credential_username = EXCLUDED.image_credential_username,
 				image_credential_password = EXCLUDED.image_credential_password,
@@ -133,7 +126,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 		argsJSON,
 		envJSON,
 		projectedFilesJSON,
-		persistentDirsJSON,
 		nullableStringFromValue(imageCredentialServer(input.ImageCredential)),
 		nullableStringFromValue(imageCredentialUsername(input.ImageCredential)),
 		nullableStringFromValue(imageCredentialPassword(input.ImageCredential)),
@@ -260,7 +252,6 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 				args_json,
 				env_json,
 				projected_files_json,
-				persistent_dirs_json,
 				container_port,
 				readiness_path,
 				cpu_milli_request,
@@ -269,7 +260,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 				status_reason,
 				finished_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
+			VALUES ($1, $2, $3, $4, $5, $6, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
 			ON CONFLICT (plan_id) DO NOTHING
 		`, id, execution.WorkActionDelete, input.PlanID, input.ServiceID, input.ServiceID, input.ServiceGeneration, execution.StatusSuperseded, "service deletion had no running execution intents")
 		if err != nil {
@@ -413,7 +404,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	var argsJSON []byte
 	var envJSON []byte
 	var projectedFilesJSON []byte
-	var persistentDirsJSON []byte
 	var credentialServer sql.NullString
 	var credentialUsername sql.NullString
 	var credentialPassword sql.NullString
@@ -435,7 +425,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			args_json,
 			env_json,
 			projected_files_json,
-			persistent_dirs_json,
 			image_credential_server,
 			image_credential_username,
 			image_credential_password,
@@ -468,7 +457,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		&argsJSON,
 		&envJSON,
 		&projectedFilesJSON,
-		&persistentDirsJSON,
 		&credentialServer,
 		&credentialUsername,
 		&credentialPassword,
@@ -522,10 +510,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		return nil, fmt.Errorf("decode execution projected files: %w", err)
 	}
 	work.ProjectedFiles = projectedfile.CloneFiles(work.ProjectedFiles)
-	if err := unmarshalJSON(persistentDirsJSON, &work.PersistentDirs, []persistentdir.Mount{}); err != nil {
-		return nil, fmt.Errorf("decode execution persistent dirs: %w", err)
-	}
-	work.PersistentDirs = persistentdir.CloneMounts(work.PersistentDirs)
 	if credentialServer.Valid {
 		work.ImageCredential = &execution.ImageCredential{
 			Server:   credentialServer.String,

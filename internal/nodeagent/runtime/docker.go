@@ -29,7 +29,6 @@ import (
 	"github.com/docker/go-connections/nat"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -104,7 +103,7 @@ func NewDockerEngine(logger *slog.Logger) (*Docker, error) {
 	}, nil
 }
 
-// Run 确保镜像可用、创建投影和持久化目录挂载、启动 Docker 容器并返回宿主机端口。
+// Run 确保镜像可用、创建投影文件挂载、启动 Docker 容器并返回宿主机端口。
 func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	registryAuth, err := buildRegistryAuth(input.ImageCredential)
 	if err != nil {
@@ -131,19 +130,10 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if err != nil {
 		return RunResult{}, err
 	}
-	persistentMounts, err := preparePersistentDirMounts(runInput.PersistentDirs)
-	if err != nil {
-		d.cleanupProjectionDir("", projectionDir)
-		return RunResult{}, err
-	}
 	if len(mounts) > 0 {
 		hostConfig.Mounts = append(hostConfig.Mounts, mounts...)
 	}
-	if len(persistentMounts) > 0 {
-		hostConfig.Mounts = append(hostConfig.Mounts, persistentMounts...)
-	}
 	runtimeMounts := append([]mount.Mount{}, mounts...)
-	runtimeMounts = append(runtimeMounts, persistentMounts...)
 	cleanupProjectionDir := true
 	defer func() {
 		if cleanupProjectionDir {
@@ -679,29 +669,6 @@ func prepareProjectedMountsInRoot(rootDir string, input RunInput) (string, []mou
 		return "", nil, fmt.Errorf("publish projected files dir: %w", err)
 	}
 	return executionDir, mounts, nil
-}
-
-// preparePersistentDirMounts 校验并创建持久化目录，然后转换为 Docker bind mount。
-func preparePersistentDirMounts(items []persistentdir.Mount) ([]mount.Mount, error) {
-	persistentMounts := persistentdir.CloneMounts(items)
-	if len(persistentMounts) == 0 {
-		return nil, nil
-	}
-	mounts := make([]mount.Mount, 0, len(persistentMounts))
-	for _, item := range persistentMounts {
-		if err := item.Validate(); err != nil {
-			return nil, err
-		}
-		if err := os.MkdirAll(item.SourcePath, 0o700); err != nil {
-			return nil, fmt.Errorf("create persistent dir %s: %w", item.SourcePath, err)
-		}
-		mounts = append(mounts, mount.Mount{
-			Type:   mount.TypeBind,
-			Source: item.SourcePath,
-			Target: item.MountPath,
-		})
-	}
-	return mounts, nil
 }
 
 // buildContainerEnv 将环境变量 map 转换为 Docker 需要的 KEY=VALUE 列表。

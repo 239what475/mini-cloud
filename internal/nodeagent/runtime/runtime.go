@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -48,8 +47,6 @@ type RunInput struct {
 	Env map[string]string `json:"env"`
 	// ProjectedFiles 是以只读 bind mount 方式投影进容器的文件。
 	ProjectedFiles []projectedfile.File `json:"projectedFiles,omitempty"`
-	// PersistentDirs 是以 bind mount 方式挂载进容器的持久化目录。
-	PersistentDirs []persistentdir.Mount `json:"persistentDirs,omitempty"`
 	// ImageCredential 是拉取私有镜像时使用的认证信息。
 	ImageCredential *ImageCredential `json:"imageCredential,omitempty"`
 	// ContainerPort 是容器内需要暴露并映射到宿主机的 TCP 端口。

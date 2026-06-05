@@ -35,31 +35,7 @@ CREATE TABLE IF NOT EXISTS fleet_plane_capacity_snapshots (
 CREATE INDEX IF NOT EXISTS idx_fleet_plane_capacity_snapshots_plane_captured_at
     ON fleet_plane_capacity_snapshots (plane_id, captured_at DESC, id DESC);
 
-CREATE TABLE IF NOT EXISTS fleet_incidents (
-    id TEXT PRIMARY KEY,
-    plane_id TEXT NOT NULL REFERENCES fleet_planes(id) ON DELETE CASCADE,
-    severity TEXT NOT NULL,
-    state TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    description TEXT NOT NULL DEFAULT '',
-    resolution TEXT NOT NULL DEFAULT '',
-    runbook_url TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    resolved_at TIMESTAMPTZ NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_fleet_incidents_created_at
-    ON fleet_incidents (created_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_fleet_incidents_state_created_at
-    ON fleet_incidents (state, created_at DESC, id DESC);
-
 -- +goose Down
-DROP INDEX IF EXISTS idx_fleet_incidents_state_created_at;
-DROP INDEX IF EXISTS idx_fleet_incidents_created_at;
-DROP TABLE IF EXISTS fleet_incidents;
-
 DROP INDEX IF EXISTS idx_fleet_plane_capacity_snapshots_plane_captured_at;
 DROP TABLE IF EXISTS fleet_plane_capacity_snapshots;
 
