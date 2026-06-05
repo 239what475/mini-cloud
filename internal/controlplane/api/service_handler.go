@@ -20,7 +20,6 @@ type serviceSpec struct {
 	Provider             string               `json:"provider"`
 	Region               string               `json:"region"`
 	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                  `json:"replicas"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -46,16 +45,11 @@ type serviceCondition struct {
 }
 
 type serviceRunStatus struct {
-	CurrentRunID       string `json:"currentRunID,omitempty"`
-	LatestRunID        string `json:"latestRunID,omitempty"`
-	Phase              string `json:"phase"`
-	Message            string `json:"message,omitempty"`
-	DesiredReplicas    int    `json:"desiredReplicas"`
-	DeployingReplicas  int    `json:"deployingReplicas"`
-	RunningReplicas    int    `json:"runningReplicas"`
-	FailedReplicas     int    `json:"failedReplicas"`
-	SupersededReplicas int    `json:"supersededReplicas"`
-	LastObservedAt     string `json:"lastObservedAt,omitempty"`
+	CurrentRunID   string `json:"currentRunID,omitempty"`
+	LatestRunID    string `json:"latestRunID,omitempty"`
+	Phase          string `json:"phase"`
+	Message        string `json:"message,omitempty"`
+	LastObservedAt string `json:"lastObservedAt,omitempty"`
 }
 
 type serviceStatus struct {
@@ -98,7 +92,6 @@ type serviceSpecInput struct {
 	Provider             string               `json:"provider"`
 	Region               string               `json:"region"`
 	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                  `json:"replicas"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -320,7 +313,6 @@ func buildServiceResource(view servicecontroller.View) serviceResource {
 			Provider:             view.Service.Spec.Provider,
 			Region:               view.Service.Spec.Region,
 			PinnedPlaneID:        view.Service.Spec.PinnedPlaneID,
-			Replicas:             view.Service.Spec.Replicas,
 			InstanceClass:        view.Service.Spec.InstanceClass,
 			Exposure:             view.Service.Spec.Exposure,
 			Image:                view.Service.Spec.Image,
@@ -364,15 +356,10 @@ func buildServiceStatus(view servicecontroller.View) serviceStatus {
 
 func buildServiceRun(input controlservice.RunStatus) serviceRunStatus {
 	out := serviceRunStatus{
-		CurrentRunID:       input.CurrentRunID,
-		LatestRunID:        input.LatestRunID,
-		Phase:              input.Phase,
-		Message:            input.Message,
-		DesiredReplicas:    input.DesiredReplicas,
-		DeployingReplicas:  input.DeployingReplicas,
-		RunningReplicas:    input.RunningReplicas,
-		FailedReplicas:     input.FailedReplicas,
-		SupersededReplicas: input.SupersededReplicas,
+		CurrentRunID: input.CurrentRunID,
+		LatestRunID:  input.LatestRunID,
+		Phase:        input.Phase,
+		Message:      input.Message,
 	}
 	if input.LastObservedAt != nil {
 		out.LastObservedAt = input.LastObservedAt.UTC().Format(time.RFC3339)
@@ -402,7 +389,6 @@ func buildServiceOperationDetails(view servicecontroller.View) map[string]any {
 	details := map[string]any{
 		"provider":      view.Service.Spec.Provider,
 		"region":        view.Service.Spec.Region,
-		"replicas":      view.Service.Spec.Replicas,
 		"instanceClass": string(view.Service.Spec.InstanceClass),
 	}
 	if view.Placement != nil {
@@ -423,7 +409,6 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 			Provider:             strings.TrimSpace(spec.Provider),
 			Region:               strings.TrimSpace(spec.Region),
 			PinnedPlaneID:        strings.TrimSpace(spec.PinnedPlaneID),
-			Replicas:             spec.Replicas,
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
 			Image:                strings.TrimSpace(spec.Image),
@@ -452,7 +437,6 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 			Provider:             strings.TrimSpace(spec.Provider),
 			Region:               strings.TrimSpace(spec.Region),
 			PinnedPlaneID:        strings.TrimSpace(spec.PinnedPlaneID),
-			Replicas:             spec.Replicas,
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
 			Image:                strings.TrimSpace(spec.Image),
@@ -478,15 +462,12 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrProviderRequired) ||
 		errors.Is(err, controlservice.ErrRegionRequired) ||
 		errors.Is(err, controlservice.ErrPinnedPlaneIDInvalid) ||
-		errors.Is(err, controlservice.ErrInvalidReplicas) ||
-		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
 		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
 		errors.Is(err, controlservice.ErrInvalidExposure) ||
 		errors.Is(err, controlservice.ErrImageRequired) ||
 		errors.Is(err, controlservice.ErrInvalidDefaultPort) ||
 		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
 		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
-		errors.Is(err, controlservice.ErrPersistentDirsReplicaLimit) ||
 		errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) ||
 		errors.Is(err, controlservice.ErrPersistentDirsPlacementChangeUnsupported) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||

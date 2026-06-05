@@ -40,7 +40,6 @@ var (
 	ErrServiceNameRequired       = errors.New("serviceName is required")
 	ErrImageRequired             = errors.New("image is required")
 	ErrInvalidContainerPort      = errors.New("containerPort must be between 1 and 65535")
-	ErrInvalidReplicas           = errors.New("replicas must be greater than 0")
 )
 
 const (
@@ -65,7 +64,6 @@ type PlanInput struct {
 	ImageCredential   *ImageCredential      `json:"imageCredential,omitempty"`
 	ContainerPort     int                   `json:"containerPort"`
 	ReadinessPath     string                `json:"readinessPath"`
-	Replicas          int                   `json:"replicas"`
 	InstanceClass     string                `json:"instanceClass"`
 	Exposure          string                `json:"exposure"`
 }
@@ -110,9 +108,6 @@ func (in PlanInput) Validate() error {
 	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
 		return ErrInvalidContainerPort
 	}
-	if in.Replicas <= 0 {
-		return ErrInvalidReplicas
-	}
 	for _, item := range projectedfile.CloneFiles(in.ProjectedFiles) {
 		if err := item.Validate(); err != nil {
 			return err
@@ -126,7 +121,7 @@ func (in PlanInput) Validate() error {
 	return nil
 }
 
-// WorkItem 是 cloud-plane 下发给 node-agent 执行的单副本任务。
+// WorkItem 是 cloud-plane 下发给 node-agent 执行的服务实例任务。
 type WorkItem struct {
 	// Action 表示该 work item 的处理类型。
 	Action string `json:"action"`
@@ -134,8 +129,6 @@ type WorkItem struct {
 	ExecutionID string `json:"executionID"`
 	// DeploymentID 表示所属 deployment 的唯一标识。
 	DeploymentID string `json:"deploymentID"`
-	// ReplicaIndex 表示副本序号，从 0 开始。
-	ReplicaIndex int `json:"replicaIndex"`
 	// NodeID 是该副本任务被分配到的 node 标识。
 	NodeID string `json:"nodeID"`
 	// ServiceID 表示所属 service 的唯一标识。
@@ -202,8 +195,6 @@ type Record struct {
 	ID string `json:"id"`
 	// DeploymentID 表示所属 deployment 的唯一标识。
 	DeploymentID string `json:"deploymentID"`
-	// ReplicaIndex 表示副本序号，从 0 开始。
-	ReplicaIndex int `json:"replicaIndex"`
 	// NodeID 是该 execution 实际运行所在的 node 标识。
 	NodeID string `json:"nodeID"`
 	// Image 表示容器镜像。

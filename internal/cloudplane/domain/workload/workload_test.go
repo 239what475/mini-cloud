@@ -35,33 +35,29 @@ func TestInstanceClassResourceRequest(t *testing.T) {
 	}
 }
 
-// TestSpecValidateAllowsMultipleReplicas 验证无状态 service 规格允许多副本。
-func TestSpecValidateAllowsMultipleReplicas(t *testing.T) {
+// TestSpecValidateAllowsStatelessService 验证无状态 service 规格通过校验。
+func TestSpecValidateAllowsStatelessService(t *testing.T) {
 	t.Parallel()
 
-	// 无 persistent dir 的普通 workload 允许多个副本。
+	// 无 persistent dir 的普通 workload 应通过基础规格校验。
 	err := (Spec{
 		Region:        "cn-beijing",
-		Replicas:      2,
 		InstanceClass: InstanceClassSmall,
 		Image:         "nginx:1.27",
 		DefaultPort:   8080,
 		ReadinessPath: "/healthz",
 	}).Validate()
-	// 多副本基础场景通过校验，防止副本限制误伤无状态服务。
 	if err != nil {
 		t.Fatalf("Validate() returned error: %v", err)
 	}
 }
 
-// TestSpecValidateRejectsPersistentDirsWithMultipleReplicas 验证持久目录 service 暂不允许多副本。
-func TestSpecValidateRejectsPersistentDirsWithMultipleReplicas(t *testing.T) {
+// TestSpecValidateAllowsPersistentDirs 验证单实例 service 可以声明持久目录。
+func TestSpecValidateAllowsPersistentDirs(t *testing.T) {
 	t.Parallel()
 
-	// 带 persistent dir 的服务当前只允许单副本，避免多个副本写同一持久目录。
 	err := (Spec{
 		Region:        "cn-beijing",
-		Replicas:      2,
 		InstanceClass: InstanceClassSmall,
 		Image:         "nginx:1.27",
 		DefaultPort:   8080,
@@ -70,9 +66,8 @@ func TestSpecValidateRejectsPersistentDirsWithMultipleReplicas(t *testing.T) {
 			{Name: "data", MountPath: "/var/lib/service"},
 		},
 	}).Validate()
-	// 期望返回专用错误，供 API 层准确转换为请求拒绝。
-	if !errors.Is(err, ErrPersistentDirsReplicaLimit) {
-		t.Fatalf("Validate() error = %v, want %v", err, ErrPersistentDirsReplicaLimit)
+	if err != nil {
+		t.Fatalf("Validate() returned error: %v", err)
 	}
 }
 
@@ -83,7 +78,6 @@ func TestSpecValidateRejectsProjectedFileOverlapWithPersistentDir(t *testing.T) 
 	// projected file 的挂载路径落在 persistent dir 内，会被持久目录覆盖或混用。
 	err := (Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: InstanceClassSmall,
 		Image:         "nginx:1.27",
 		DefaultPort:   8080,

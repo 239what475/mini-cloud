@@ -45,7 +45,6 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 	// 创建 service v1，inline env 会被 config/secret set 中同名 key 覆盖。
 	serviceItem, err := db.Store.InsertService(ctx, "svc-demo-web", "demo-web", "Demo Web", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "registry.example.com/demo:v1",
 		DefaultPort:   8080,
@@ -137,9 +136,8 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 
 	// 创建指向 revisionV1 的 deployment，并推进到 scheduling。
 	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:       serviceItem.Metadata.ID,
-		RevisionID:      revisionV1.ID,
-		DesiredReplicas: 1,
+		ServiceID:  serviceItem.Metadata.ID,
+		RevisionID: revisionV1.ID,
 	}, "test deployment for revision v1")
 	if err != nil {
 		t.Fatalf("CreateDeployment returned error: %v", err)
@@ -159,7 +157,6 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 		Region:          "cn-beijing",
 		CPUMilliRequest: cpuMilliRequest,
 		MemoryMiRequest: memoryMiRequest,
-		Replicas:        1,
 	}, []scheduler.PlacementDecision{{
 		DeploymentID: deploymentItem.ID,
 		NodeID:       runtimeNodeNode.ID,
@@ -200,188 +197,6 @@ func TestIntegrationCreateExecutionClaimUsesRevisionScopedRuntimeInputs(t *testi
 	}
 }
 
-// TestIntegrationFailedReplicaCanBeReclaimedWithoutLeakingNodeAllocation 验证失败副本释放资源且重复上报幂等。
-func TestIntegrationFailedReplicaCanBeReclaimedWithoutLeakingNodeAllocation(t *testing.T) {
-	// 使用真实测试数据库验证失败副本释放资源，重复失败上报不重复释放。
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-	// 创建 service/revision，service 期望两个副本。
-
-	serviceItem, err := db.Store.InsertService(ctx, "svc-retry-web", "retry-web", "Retry Web", workload.Spec{
-		Region:        "cn-beijing",
-		Replicas:      2,
-		InstanceClass: workload.InstanceClassSmall,
-		Image:         "registry.example.com/demo:v1",
-		DefaultPort:   8080,
-		ReadinessPath: "/healthz",
-	})
-	if err != nil {
-		t.Fatalf("CreateService returned error: %v", err)
-	}
-
-	revisionItem, err := db.Store.InsertRevisionFromService(ctx, serviceItem.Metadata.ID)
-	if err != nil {
-		t.Fatalf("CreateRevisionFromService returned error: %v", err)
-	}
-
-	// 注册一个容量足够承载两个 small 副本的 runtime node。
-	runtimeNodeNode, err := db.Store.RegisterNode(ctx, node.RegisterInput{
-		Provider:      "aliyun",
-		Region:        "cn-beijing",
-		Name:          "runtime-node-retry",
-		Role:          node.RoleRuntime,
-		PrivateIP:     "10.0.0.20",
-		PublicIP:      "203.0.113.20",
-		InstanceID:    "i-runtime-node-retry",
-		InstanceType:  "ecs.u1-c1m1.large",
-		CPUMilliTotal: 4000,
-		MemoryMiTotal: 8192,
-	})
-	if err != nil {
-		t.Fatalf("RegisterNode returned error: %v", err)
-	}
-	markIntegrationNodeReady(t, ctx, db, runtimeNodeNode.ID)
-
-	// 创建 deployment 并把 service 标记为 deploying，模拟发布流程已启动。
-	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:       serviceItem.Metadata.ID,
-		RevisionID:      revisionItem.ID,
-		DesiredReplicas: 2,
-	}, "test deployment for failed replica retry")
-	if err != nil {
-		t.Fatalf("CreateDeployment returned error: %v", err)
-	}
-	if _, err := db.Store.UpdateServiceRevisionState(ctx, serviceItem.Metadata.ID, revisionItem.ID, "", deployment.StatusDeploying, workload.RolloutPhaseIdle, ""); err != nil {
-		t.Fatalf("UpdateServiceRevisionState returned error: %v", err)
-	}
-	if _, err := db.Store.UpdateDeploymentStatus(ctx, deploymentItem.ID, deployment.StatusScheduling, "scheduler picked up the deployment"); err != nil {
-		t.Fatalf("UpdateDeploymentStatus(scheduling) returned error: %v", err)
-	}
-
-	// 为两个副本都创建 selection decision，目标是同一个 runtime node。
-	cpuMilliRequest, memoryMiRequest, err := workload.ResourceRequest(serviceItem.Spec.InstanceClass)
-	if err != nil {
-		t.Fatalf("ResourceRequest returned error: %v", err)
-	}
-	if _, err := db.Store.CreatePlacementDecisions(ctx, scheduler.PlacementRequest{
-		DeploymentID:    deploymentItem.ID,
-		Provider:        "aliyun",
-		Region:          "cn-beijing",
-		CPUMilliRequest: cpuMilliRequest,
-		MemoryMiRequest: memoryMiRequest,
-		Replicas:        2,
-	}, []scheduler.PlacementDecision{
-		{
-			DeploymentID: deploymentItem.ID,
-			ReplicaIndex: 0,
-			NodeID:       runtimeNodeNode.ID,
-			Region:       "cn-beijing",
-			Score:        100,
-			Reason:       "replica 0 on retry runtime node",
-		},
-		{
-			DeploymentID: deploymentItem.ID,
-			ReplicaIndex: 1,
-			NodeID:       runtimeNodeNode.ID,
-			Region:       "cn-beijing",
-			Score:        100,
-			Reason:       "replica 1 on retry runtime node",
-		},
-	}); err != nil {
-		t.Fatalf("CreatePlacementDecisions returned error: %v", err)
-	}
-	if _, err := db.Store.UpdateDeploymentStatus(ctx, deploymentItem.ID, deployment.StatusAssigned, "assigned to retry runtime node"); err != nil {
-		t.Fatalf("UpdateDeploymentStatus(assigned) returned error: %v", err)
-	}
-
-	// 领取第一个副本并上报 running，这会保留该副本的资源占用。
-	first, err := db.Store.CreateExecutionClaim(ctx, runtimeNodeNode.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim(first) returned error: %v", err)
-	}
-	if first == nil {
-		t.Fatal("CreateExecutionClaim(first) returned nil work item")
-	}
-	if first.ReplicaIndex != 0 {
-		t.Fatalf("first replicaIndex = %d, want 0", first.ReplicaIndex)
-	}
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, first.ExecutionID, execution.ReportInput{
-		Status:        deployment.StatusRunning,
-		Reason:        "replica 0 is healthy",
-		ContainerID:   "ctr-retry-0",
-		ContainerName: first.ContainerName,
-		HostPort:      18081,
-	}); err != nil {
-		t.Fatalf("UpdateExecutionFromNodeReport(first running) returned error: %v", err)
-	}
-
-	// 领取第二个副本并上报 failed，store 应释放该副本预占的资源。
-	second, err := db.Store.CreateExecutionClaim(ctx, runtimeNodeNode.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim(second) returned error: %v", err)
-	}
-	if second == nil {
-		t.Fatal("CreateExecutionClaim(second) returned nil work item")
-	}
-	if second.ReplicaIndex != 1 {
-		t.Fatalf("second replicaIndex = %d, want 1", second.ReplicaIndex)
-	}
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, second.ExecutionID, execution.ReportInput{
-		Status:        deployment.StatusFailed,
-		Reason:        "replica 1 crashed during bootstrap",
-		ContainerID:   "ctr-retry-1",
-		ContainerName: second.ContainerName,
-	}); err != nil {
-		t.Fatalf("UpdateExecutionFromNodeReport(second failed) returned error: %v", err)
-	}
-
-	// 失败副本释放后，node allocated 应只剩第一个 running 副本的资源请求。
-	refreshedNode, err := db.Store.GetNode(ctx, runtimeNodeNode.ID)
-	if err != nil {
-		t.Fatalf("GetNode returned error: %v", err)
-	}
-	if refreshedNode.CPUMilliAllocated != cpuMilliRequest {
-		t.Fatalf("cpu_milli_allocated = %d, want %d after failed replica revision", refreshedNode.CPUMilliAllocated, cpuMilliRequest)
-	}
-	if refreshedNode.MemoryMiAllocated != memoryMiRequest {
-		t.Fatalf("memory_mi_allocated = %d, want %d after failed replica revision", refreshedNode.MemoryMiAllocated, memoryMiRequest)
-	}
-
-	// 对同一个 failed execution 重复上报，应保持幂等，不再次减少 allocated。
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, second.ExecutionID, execution.ReportInput{
-		Status:        deployment.StatusFailed,
-		Reason:        "duplicate failed report should be idempotent",
-		ContainerID:   "ctr-retry-1",
-		ContainerName: second.ContainerName,
-	}); err != nil {
-		t.Fatalf("UpdateExecutionFromNodeReport(second failed duplicate) returned error: %v", err)
-	}
-
-	// 重复失败上报后 allocated 仍应等于一个副本资源。
-	refreshedNode, err = db.Store.GetNode(ctx, runtimeNodeNode.ID)
-	if err != nil {
-		t.Fatalf("GetNode(after duplicate failed report) returned error: %v", err)
-	}
-	if refreshedNode.CPUMilliAllocated != cpuMilliRequest {
-		t.Fatalf("cpu_milli_allocated after duplicate failed report = %d, want %d", refreshedNode.CPUMilliAllocated, cpuMilliRequest)
-	}
-	if refreshedNode.MemoryMiAllocated != memoryMiRequest {
-		t.Fatalf("memory_mi_allocated after duplicate failed report = %d, want %d", refreshedNode.MemoryMiAllocated, memoryMiRequest)
-	}
-
-	// 失败副本释放后，CreateExecutionClaim 应能再次为 replica 1 生成重试 work。
-	retryWork, err := db.Store.CreateExecutionClaim(ctx, runtimeNodeNode.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim(retry) returned error: %v", err)
-	}
-	if retryWork == nil {
-		t.Fatal("CreateExecutionClaim(retry) returned nil work item")
-	}
-	if retryWork.ReplicaIndex != 1 {
-		t.Fatalf("retry replicaIndex = %d, want 1", retryWork.ReplicaIndex)
-	}
-}
-
 // TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles 验证 projected files 按 revision 快照渲染。
 func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles(t *testing.T) {
 	// 使用真实测试数据库验证 projected files 按 revision 快照物化，而不是读取 service 当前 spec。
@@ -411,7 +226,6 @@ func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles
 	// 创建带 projected files 的 service v1。
 	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", "cliproxyapi", "CLI Proxy API", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "ghcr.io/example/cliproxyapi:v1",
 		DefaultPort:   8317,
@@ -511,9 +325,8 @@ func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles
 
 	// 创建指向 revisionV1 的 deployment，并推进到 assigned。
 	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:       serviceItem.Metadata.ID,
-		RevisionID:      revisionV1.ID,
-		DesiredReplicas: 1,
+		ServiceID:  serviceItem.Metadata.ID,
+		RevisionID: revisionV1.ID,
 	}, "test deployment for revision v1 projected files")
 	if err != nil {
 		t.Fatalf("CreateDeployment returned error: %v", err)
@@ -533,7 +346,6 @@ func TestIntegrationCreateExecutionClaimMaterializesRevisionScopedProjectedFiles
 		Region:          "cn-beijing",
 		CPUMilliRequest: cpuMilliRequest,
 		MemoryMiRequest: memoryMiRequest,
-		Replicas:        1,
 	}, []scheduler.PlacementDecision{{
 		DeploymentID: deploymentItem.ID,
 		NodeID:       runtimeNodeNode.ID,
@@ -576,7 +388,6 @@ func TestIntegrationCreateExecutionClaimMaterializesPersistentDirs(t *testing.T)
 
 	serviceItem, err := db.Store.InsertService(ctx, "svc-cliproxyapi", "cliproxyapi", "CLI Proxy API", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "ghcr.io/example/cliproxyapi:v1",
 		DefaultPort:   8317,
@@ -618,9 +429,8 @@ func TestIntegrationCreateExecutionClaimMaterializesPersistentDirs(t *testing.T)
 
 	// 创建 deployment 并推进到 assigned，使该 node 能领取 execution work。
 	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:       serviceItem.Metadata.ID,
-		RevisionID:      revisionV1.ID,
-		DesiredReplicas: 1,
+		ServiceID:  serviceItem.Metadata.ID,
+		RevisionID: revisionV1.ID,
 	}, "test deployment for revision persistent dirs")
 	if err != nil {
 		t.Fatalf("CreateDeployment returned error: %v", err)
@@ -640,7 +450,6 @@ func TestIntegrationCreateExecutionClaimMaterializesPersistentDirs(t *testing.T)
 		Region:          "cn-beijing",
 		CPUMilliRequest: cpuMilliRequest,
 		MemoryMiRequest: memoryMiRequest,
-		Replicas:        1,
 	}, []scheduler.PlacementDecision{{
 		DeploymentID: deploymentItem.ID,
 		NodeID:       runtimeNodeNode.ID,
@@ -708,7 +517,6 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		Image:             "nginx:1.27-alpine",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
-		Replicas:          1,
 		InstanceClass:     workload.InstanceClassSmall,
 		Exposure:          "public",
 	}); err != nil {
@@ -727,7 +535,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	}
 	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNodeNode.ID, runWork.ExecutionID, execution.ReportInput{
 		Status:        execution.StatusRunning,
-		Reason:        "replica is healthy",
+		Reason:        "execution is healthy",
 		ContainerID:   "ctr-delete-0",
 		ContainerName: runWork.ContainerName,
 		HostPort:      18080,
@@ -782,8 +590,8 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	if deleteSnapshot == nil {
 		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
 	}
-	if deleteSnapshot.DesiredReplicas != 1 || deleteSnapshot.SupersededReplicas != 1 || deleteSnapshot.RunningReplicas != 0 || deleteSnapshot.DeployingReplicas != 0 || deleteSnapshot.FailedReplicas != 0 {
-		t.Fatalf("delete snapshot = %+v, want one superseded replica and no active replicas", *deleteSnapshot)
+	if deleteSnapshot.Status != execution.StatusSuperseded {
+		t.Fatalf("delete snapshot = %+v, want superseded status", *deleteSnapshot)
 	}
 }
 

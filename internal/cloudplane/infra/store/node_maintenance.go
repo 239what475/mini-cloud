@@ -222,12 +222,10 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 				return node.HeartbeatReconcileResult{}, err
 			}
 
-			// deployment 失败后 ready/available 副本清零。
+			// deployment 失败后只更新状态和原因。
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE deployments
 				SET
-					ready_replicas = 0,
-					available_replicas = 0,
 					status = $2,
 					status_reason = $3,
 					updated_at = now()

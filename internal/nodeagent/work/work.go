@@ -482,7 +482,6 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runRes
 		ServiceName:   item.ServiceName,
 		DeploymentID:  item.DeploymentID,
 		ExecutionID:   item.ExecutionID,
-		ReplicaIndex:  item.ReplicaIndex,
 		NodeID:        e.opts.NodeID,
 		ContainerID:   runResult.ContainerID,
 		ContainerName: runResult.ContainerName,

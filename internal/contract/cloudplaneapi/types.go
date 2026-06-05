@@ -158,17 +158,13 @@ type RuntimeConfigSnapshot struct {
 }
 
 type ExecutionSnapshot struct {
-	PlanID             string    `json:"planID"`
-	ServiceID          string    `json:"serviceID"`
-	ServiceName        string    `json:"serviceName"`
-	ServiceGeneration  int64     `json:"serviceGeneration"`
-	DesiredReplicas    int       `json:"desiredReplicas"`
-	DeployingReplicas  int       `json:"deployingReplicas"`
-	RunningReplicas    int       `json:"runningReplicas"`
-	FailedReplicas     int       `json:"failedReplicas"`
-	SupersededReplicas int       `json:"supersededReplicas"`
-	LastStatusReason   string    `json:"lastStatusReason"`
-	ObservedAt         time.Time `json:"observedAt"`
+	PlanID            string    `json:"planID"`
+	ServiceID         string    `json:"serviceID"`
+	ServiceName       string    `json:"serviceName"`
+	ServiceGeneration int64     `json:"serviceGeneration"`
+	Status            string    `json:"status"`
+	LastStatusReason  string    `json:"lastStatusReason"`
+	ObservedAt        time.Time `json:"observedAt"`
 }
 
 type ResourceBundle struct {
@@ -266,7 +262,6 @@ func (c RegistryCredential) Validate() error {
 
 type ServiceSpec struct {
 	Region               string               `json:"region"`
-	Replicas             int                  `json:"replicas"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -320,7 +315,6 @@ type ExecutionPlanRequest struct {
 	ImageCredential   *ExecutionImageCredential `json:"imageCredential,omitempty"`
 	ContainerPort     int                       `json:"containerPort"`
 	ReadinessPath     string                    `json:"readinessPath"`
-	Replicas          int                       `json:"replicas"`
 	InstanceClass     string                    `json:"instanceClass"`
 	Exposure          string                    `json:"exposure"`
 }

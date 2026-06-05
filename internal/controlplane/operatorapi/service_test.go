@@ -6,10 +6,10 @@ import (
 	controlservice "mini-cloud/internal/controlplane/service"
 )
 
-func TestIsServiceInputErrorTreatsPersistentDirReplicaLimitAsUserInput(t *testing.T) {
+func TestIsServiceInputErrorTreatsPersistentDirRunUpdateAsUserInput(t *testing.T) {
 	t.Parallel()
 
-	if !isServiceInputError(controlservice.ErrPersistentDirsReplicaLimit) {
-		t.Fatal("expected persistentDirs replica limit to be treated as service input error")
+	if !isServiceInputError(controlservice.ErrPersistentDirsRunUpdateUnsupported) {
+		t.Fatal("expected persistentDirs run update limit to be treated as service input error")
 	}
 }

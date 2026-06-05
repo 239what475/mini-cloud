@@ -71,8 +71,7 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 				ServiceId:         "svc-1",
 				ServiceName:       "svc-demo",
 				ServiceGeneration: 12,
-				DesiredReplicas:   2,
-				RunningReplicas:   2,
+				Status:            "running",
 			},
 		},
 	}, nil
@@ -165,7 +164,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if snapshot.RuntimeConfig.Fingerprint != "runtime-fp-a" {
 		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.RuntimeConfig)
 	}
-	if len(snapshot.Executions) != 1 || snapshot.Executions[0].PlanID != "svc-1-g12" || snapshot.Executions[0].RunningReplicas != 2 {
+	if len(snapshot.Executions) != 1 || snapshot.Executions[0].PlanID != "svc-1-g12" || snapshot.Executions[0].Status != "running" {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.Executions)
 	}
 
@@ -177,7 +176,6 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		Image:             "nginx:latest",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
-		Replicas:          1,
 		InstanceClass:     "small",
 		ProjectedFiles: []cloudplaneapi.ExecutionProjectedFile{
 			{MountPath: "/etc/app/config.yaml", Content: "app: demo", Mode: 0444},

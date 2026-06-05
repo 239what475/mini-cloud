@@ -238,15 +238,12 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrProviderRequired) ||
 		errors.Is(err, controlservice.ErrRegionRequired) ||
 		errors.Is(err, controlservice.ErrPinnedPlaneIDInvalid) ||
-		errors.Is(err, controlservice.ErrInvalidReplicas) ||
-		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
 		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
 		errors.Is(err, controlservice.ErrInvalidExposure) ||
 		errors.Is(err, controlservice.ErrImageRequired) ||
 		errors.Is(err, controlservice.ErrInvalidDefaultPort) ||
 		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
 		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
-		errors.Is(err, controlservice.ErrPersistentDirsReplicaLimit) ||
 		errors.Is(err, controlservice.ErrPersistentDirsRunUpdateUnsupported) ||
 		errors.Is(err, controlservice.ErrPersistentDirsPlacementChangeUnsupported) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||

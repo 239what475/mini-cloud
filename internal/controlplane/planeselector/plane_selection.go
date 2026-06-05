@@ -19,7 +19,6 @@ type SelectionInput struct {
 	PinnedPlaneID   string   `json:"pinnedPlaneID,omitempty"`
 	ExcludePlaneIDs []string `json:"excludePlaneIDs,omitempty"`
 	InstanceClass   string   `json:"instanceClass"`
-	Replicas        int      `json:"replicas"`
 }
 
 type ApplyServiceInput struct {
@@ -93,9 +92,6 @@ func (in SelectionInput) Validate() error {
 	if strings.TrimSpace(in.Region) == "" {
 		return ErrRegionRequired
 	}
-	if in.Replicas <= 0 {
-		return deploy.ErrInvalidReplicas
-	}
 	if !deploy.IsInstanceClass(in.InstanceClass) {
 		return deploy.ErrInvalidInstanceClass
 	}
@@ -110,7 +106,7 @@ func (in SelectionInput) ResourceRequest() (cpuMilli int, memoryMi int, err erro
 	if err != nil {
 		return 0, 0, err
 	}
-	return cpuMilli * in.Replicas, memoryMi * in.Replicas, nil
+	return cpuMilli, memoryMi, nil
 }
 
 func (in ApplyServiceInput) SelectionInput() SelectionInput {
@@ -119,7 +115,6 @@ func (in ApplyServiceInput) SelectionInput() SelectionInput {
 		Region:        in.Spec.Region,
 		PinnedPlaneID: in.PinnedPlaneID,
 		InstanceClass: in.Spec.InstanceClass,
-		Replicas:      in.Spec.Replicas,
 	}
 }
 

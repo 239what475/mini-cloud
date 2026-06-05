@@ -47,8 +47,6 @@ type ServiceUsageItem struct {
 	DisplayName string `json:"displayName"`
 	// InstanceClass 表示平台抽象的实例规格档位。
 	InstanceClass string `json:"instanceClass"`
-	// Replicas 表示期望副本数。
-	Replicas int `json:"replicas"`
 	// RequestedCPUMilli 是该 service plan 请求的 CPU 毫核数。
 	RequestedCPUMilli int `json:"requestedCPUMilli"`
 	// RequestedMemoryMi 是该 service plan 请求的内存 MiB 数。
@@ -109,16 +107,12 @@ type ResourceUsageSummary struct {
 type ServicePlanPreviewInput struct {
 	// InstanceClass 表示平台抽象的实例规格档位。
 	InstanceClass string `json:"instanceClass"`
-	// Replicas 表示期望副本数。
-	Replicas int `json:"replicas"`
 }
 
 // ServicePlanPreview 表示某个 service plan 对 CPU 和内存的资源请求。
 type ServicePlanPreview struct {
 	// InstanceClass 表示平台抽象的实例规格档位。
 	InstanceClass string `json:"instanceClass"`
-	// Replicas 表示期望副本数。
-	Replicas int `json:"replicas"`
 	// RequestedCPUMilli 是该 service plan 请求的 CPU 毫核数。
 	RequestedCPUMilli int `json:"requestedCPUMilli"`
 	// RequestedMemoryMi 是该 service plan 请求的内存 MiB 数。
@@ -266,10 +260,9 @@ func NewQuotaExceededError(rejectReasons []RejectReason) error {
 // buildServiceUsageItem 根据 service 当前规格计算单服务用量明细。
 // 参数说明：item 是要纳入 resource guardrail 统计的 service 当前规格。
 func buildServiceUsageItem(item workload.Service) (ServiceUsageItem, error) {
-	// 复用 DescribeServicePlan，将 instance class + replicas 转为资源请求。
+	// 复用 DescribeServicePlan，将 instance class 转为资源请求。
 	preview, err := DescribeServicePlan(ServicePlanPreviewInput{
 		InstanceClass: item.Spec.InstanceClass,
-		Replicas:      item.Spec.Replicas,
 	})
 	if err != nil {
 		return ServiceUsageItem{}, err
@@ -281,13 +274,12 @@ func buildServiceUsageItem(item workload.Service) (ServiceUsageItem, error) {
 		ServiceName:       item.Metadata.Name,
 		DisplayName:       item.Metadata.DisplayName,
 		InstanceClass:     item.Spec.InstanceClass,
-		Replicas:          item.Spec.Replicas,
 		RequestedCPUMilli: preview.RequestedCPUMilli,
 		RequestedMemoryMi: preview.RequestedMemoryMi,
 	}, nil
 }
 
-// DescribeServicePlan 根据 instance class 和副本数计算 service plan 用量。
+// DescribeServicePlan 根据 instance class 计算 service plan 用量。
 // 参数说明：input 是待计算的 service plan。
 func DescribeServicePlan(input ServicePlanPreviewInput) (ServicePlanPreview, error) {
 	// instance class 决定单副本 CPU/内存请求。
@@ -295,17 +287,10 @@ func DescribeServicePlan(input ServicePlanPreviewInput) (ServicePlanPreview, err
 	if err != nil {
 		return ServicePlanPreview{}, err
 	}
-	// 副本数必须为正数，才能计算总请求量。
-	if input.Replicas <= 0 {
-		return ServicePlanPreview{}, workload.ErrInvalidReplicas
-	}
-
-	// 总请求量等于单副本请求乘以副本数。
 	return ServicePlanPreview{
 		InstanceClass:     input.InstanceClass,
-		Replicas:          input.Replicas,
-		RequestedCPUMilli: cpuMilli * input.Replicas,
-		RequestedMemoryMi: memoryMi * input.Replicas,
+		RequestedCPUMilli: cpuMilli,
+		RequestedMemoryMi: memoryMi,
 	}, nil
 }
 

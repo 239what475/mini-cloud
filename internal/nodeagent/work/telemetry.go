@@ -2,7 +2,6 @@ package work
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 
 	"mini-cloud/internal/contract/nodeagentapi"
@@ -38,7 +37,6 @@ func injectTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opt
 		"mini_cloud.service_id":    sanitizeOTelResourceValue(item.ServiceID),
 		"mini_cloud.deployment_id": sanitizeOTelResourceValue(item.DeploymentID),
 		"mini_cloud.execution_id":  sanitizeOTelResourceValue(item.ExecutionID),
-		"mini_cloud.replica_index": strconv.Itoa(item.ReplicaIndex),
 	}
 	if strings.TrimSpace(opts.PlatformName) != "" {
 		reserved["mini_cloud.platform_name"] = sanitizeOTelResourceValue(opts.PlatformName)

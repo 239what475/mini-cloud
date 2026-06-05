@@ -24,7 +24,6 @@ func createInputFromProto(req *controlplanev1.CreateServiceRequest) (controlserv
 			Provider:             strings.TrimSpace(spec.GetProvider()),
 			Region:               strings.TrimSpace(spec.GetRegion()),
 			PinnedPlaneID:        strings.TrimSpace(spec.GetPinnedPlaneId()),
-			Replicas:             int(spec.GetReplicas()),
 			InstanceClass:        strings.TrimSpace(spec.GetInstanceClass()),
 			Exposure:             strings.TrimSpace(spec.GetExposure()),
 			Image:                strings.TrimSpace(spec.GetImage()),

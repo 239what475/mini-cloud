@@ -86,7 +86,7 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 	// Commit 成功后 Rollback 会返回错误，这里忽略即可；失败路径则释放事务。
 	defer func() { _ = tx.Rollback() }()
 
-		// 按 serviceID 加锁读取现有 desired；serviceID 是唯一身份，name 是全局唯一的可读名称。
+	// 按 serviceID 加锁读取现有 desired；serviceID 是唯一身份，name 是全局唯一的可读名称。
 	current, err := s.getServiceDesiredByServiceIDTx(ctx, tx, serviceID, true)
 	if err != nil && !errors.Is(err, ErrServiceDesiredNotFound) {
 		return desired.AcceptResult{}, err
@@ -103,7 +103,6 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
                 observed_generation,
                 display_name,
                 spec_region,
-                spec_replicas,
                 spec_instance_class,
                 spec_exposure,
                 spec_image,
@@ -121,13 +120,12 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
                 reconcile_phase,
                 reconcile_message
 			)
-            VALUES ($1, $2, 1, 0, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, '')
+            VALUES ($1, $2, 1, 0, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, '')
         `),
 			serviceID,
 			name,
 			displayName,
 			spec.Region,
-			spec.Replicas,
 			spec.InstanceClass,
 			spec.Exposure,
 			spec.Image,
@@ -181,22 +179,21 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
             generation = $2,
             display_name = $3,
             spec_region = $4,
-            spec_replicas = $5,
-            spec_instance_class = $6,
-            spec_exposure = $7,
-            spec_image = $8,
-            spec_command_json = $9,
-            spec_args_json = $10,
-            spec_default_port = $11,
-            spec_readiness_path = $12,
-            spec_env_json = $13,
-            spec_config_set_id = $14,
-            spec_secret_set_id = $15,
-            spec_registry_credential_id = $16,
-            spec_projected_files_json = $17,
-            spec_persistent_dirs_json = $18,
-            spec_hash = $19,
-            reconcile_phase = $20,
+            spec_instance_class = $5,
+            spec_exposure = $6,
+            spec_image = $7,
+            spec_command_json = $8,
+            spec_args_json = $9,
+            spec_default_port = $10,
+            spec_readiness_path = $11,
+            spec_env_json = $12,
+            spec_config_set_id = $13,
+            spec_secret_set_id = $14,
+            spec_registry_credential_id = $15,
+            spec_projected_files_json = $16,
+            spec_persistent_dirs_json = $17,
+            spec_hash = $18,
+            reconcile_phase = $19,
             reconcile_message = '',
             accepted_at = now(),
             updated_at = now()
@@ -206,7 +203,6 @@ func (s *Store) UpsertServiceDesired(ctx context.Context, input desired.AcceptIn
 		nextGeneration,
 		displayName,
 		spec.Region,
-		spec.Replicas,
 		spec.InstanceClass,
 		spec.Exposure,
 		spec.Image,
@@ -387,7 +383,6 @@ func serviceDesiredSelectSQL() string {
             observed_generation,
             display_name,
             spec_region,
-            spec_replicas,
             spec_instance_class,
             spec_exposure,
             spec_image,
@@ -426,7 +421,6 @@ func serviceDesiredReturningSQL(prefix string) string {
             observed_generation,
             display_name,
             spec_region,
-            spec_replicas,
             spec_instance_class,
             spec_exposure,
             spec_image,
@@ -472,7 +466,6 @@ func scanServiceDesired(scanner interface{ Scan(dest ...any) error }) (desired.S
 		&item.ObservedGeneration,
 		&item.DisplayName,
 		&item.Spec.Region,
-		&item.Spec.Replicas,
 		&item.Spec.InstanceClass,
 		&item.Spec.Exposure,
 		&item.Spec.Image,

@@ -9,9 +9,6 @@ ALTER TABLE fleet_services
     ADD COLUMN IF NOT EXISTS spec_pinned_plane_id TEXT NULL;
 
 ALTER TABLE fleet_services
-    ADD COLUMN IF NOT EXISTS spec_replicas INTEGER NOT NULL DEFAULT 1;
-
-ALTER TABLE fleet_services
     ADD COLUMN IF NOT EXISTS spec_instance_class TEXT NOT NULL DEFAULT 'small';
 
 -- +goose StatementBegin
@@ -46,7 +43,6 @@ SET
     spec_provider = rc.spec_provider,
     spec_region = rc.spec_region,
     spec_pinned_plane_id = rc.spec_pinned_plane_id,
-    spec_replicas = rc.spec_replicas,
     spec_instance_class = rc.spec_instance_class,
     updated_at = now()
 FROM ranked_cells rc
@@ -108,7 +104,6 @@ DROP INDEX IF EXISTS idx_fleet_service_placements_plane;
 DROP TABLE IF EXISTS fleet_service_placements;
 ALTER TABLE fleet_services DROP CONSTRAINT IF EXISTS fleet_services_pinned_plane_fk;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_instance_class;
-ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_replicas;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_pinned_plane_id;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_region;
 ALTER TABLE fleet_services DROP COLUMN IF EXISTS spec_provider;

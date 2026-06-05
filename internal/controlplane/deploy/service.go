@@ -224,7 +224,6 @@ func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInpu
 		ImageCredential:   imageCredential,
 		ContainerPort:     spec.DefaultPort,
 		ReadinessPath:     spec.ReadinessPath,
-		Replicas:          spec.Replicas,
 		InstanceClass:     spec.InstanceClass,
 		Exposure:          spec.Exposure,
 	}, nil

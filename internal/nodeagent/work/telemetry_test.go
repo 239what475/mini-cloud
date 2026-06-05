@@ -19,7 +19,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 		ServiceName:  "hello",
 		DeploymentID: "dep_demo",
 		ExecutionID:  "exec_demo",
-		ReplicaIndex: 2,
 	}
 
 	got := injectTelemetryEnv(base, item, telemetryEnvOptions{
@@ -43,7 +42,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.deployment_id=dep_demo",
 		"mini_cloud.execution_id=exec_demo",
-		"mini_cloud.replica_index=2",
 		"mini_cloud.platform_name=mini-cloud-lab",
 	} {
 		if !strings.Contains(got["OTEL_RESOURCE_ATTRIBUTES"], want) {
@@ -67,7 +65,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		ServiceID:    "svc_demo",
 		DeploymentID: "dep_demo",
 		ExecutionID:  "exec_demo",
-		ReplicaIndex: 1,
 		ServiceName:  "ignored-by-test",
 	}, telemetryEnvOptions{
 		PlatformName:         "mini-cloud-lab",
@@ -82,7 +79,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.deployment_id=dep_demo",
 		"mini_cloud.execution_id=exec_demo",
-		"mini_cloud.replica_index=1",
 		"mini_cloud.platform_name=mini-cloud-lab",
 	} {
 		if !strings.Contains(got["OTEL_RESOURCE_ATTRIBUTES"], want) {

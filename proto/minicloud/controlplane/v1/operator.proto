@@ -119,12 +119,7 @@ message ServiceRunStatus {
   string latest_run_id = 2 [json_name = "latestRunID"];
   string phase = 3;
   string message = 4;
-  int32 desired_replicas = 5 [json_name = "desiredReplicas"];
-  int32 deploying_replicas = 6 [json_name = "deployingReplicas"];
-  int32 running_replicas = 7 [json_name = "runningReplicas"];
-  int32 failed_replicas = 8 [json_name = "failedReplicas"];
-  int32 superseded_replicas = 9 [json_name = "supersededReplicas"];
-  google.protobuf.Timestamp last_observed_at = 10 [json_name = "lastObservedAt"];
+  google.protobuf.Timestamp last_observed_at = 5 [json_name = "lastObservedAt"];
 }
 
 message ServiceStatus {
@@ -168,20 +163,19 @@ message ServiceSpec {
   string provider = 1;
   string region = 2;
   string pinned_plane_id = 3 [json_name = "pinnedPlaneID"];
-  int32 replicas = 4;
-  string instance_class = 5 [json_name = "instanceClass"];
-  string exposure = 6;
-  string image = 7;
-  repeated string command = 8;
-  repeated string args = 9;
-  int32 default_port = 10 [json_name = "defaultPort"];
-  string readiness_path = 11 [json_name = "readinessPath"];
-  map<string, string> env = 12;
-  string config_set_id = 13 [json_name = "configSetID"];
-  string secret_set_id = 14 [json_name = "secretSetID"];
-  string registry_credential_id = 15 [json_name = "registryCredentialID"];
-  repeated ProjectedFileSpec projected_files = 16 [json_name = "projectedFiles"];
-  repeated PersistentDirSpec persistent_dirs = 17 [json_name = "persistentDirs"];
+  string instance_class = 4 [json_name = "instanceClass"];
+  string exposure = 5;
+  string image = 6;
+  repeated string command = 7;
+  repeated string args = 8;
+  int32 default_port = 9 [json_name = "defaultPort"];
+  string readiness_path = 10 [json_name = "readinessPath"];
+  map<string, string> env = 11;
+  string config_set_id = 12 [json_name = "configSetID"];
+  string secret_set_id = 13 [json_name = "secretSetID"];
+  string registry_credential_id = 14 [json_name = "registryCredentialID"];
+  repeated ProjectedFileSpec projected_files = 15 [json_name = "projectedFiles"];
+  repeated PersistentDirSpec persistent_dirs = 16 [json_name = "persistentDirs"];
 }
 
 message CreateServiceRequest {

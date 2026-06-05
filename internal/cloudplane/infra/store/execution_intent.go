@@ -67,13 +67,11 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 	}
 
 	action := execution.PlanActionUpdated
-	inserted := 0
-	for replicaIndex := 0; replicaIndex < input.Replicas; replicaIndex++ {
-		id, err := newID("exe")
-		if err != nil {
-			return execution.PlanResult{}, err
-		}
-		result, err := tx.ExecContext(ctx, `
+	id, err := newID("exe")
+	if err != nil {
+		return execution.PlanResult{}, err
+	}
+	result, err := tx.ExecContext(ctx, `
 			INSERT INTO execution_intents (
 				id,
 				work_action,
@@ -82,7 +80,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				service_name,
 				service_exposure,
 				service_generation,
-				replica_index,
 				image,
 				command_json,
 				args_json,
@@ -99,8 +96,8 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
-			ON CONFLICT (plan_id, replica_index) DO UPDATE
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+			ON CONFLICT (plan_id) DO UPDATE
 			SET
 				work_action = EXCLUDED.work_action,
 				service_name = EXCLUDED.service_name,
@@ -121,42 +118,37 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				memory_mi_request = EXCLUDED.memory_mi_request,
 				updated_at = now()
 		`,
-			id,
-			execution.WorkActionRun,
-			input.PlanID,
-			input.ServiceID,
-			input.ServiceName,
-			normalizeExecutionExposure(input.Exposure),
-			input.ServiceGeneration,
-			replicaIndex,
-			input.Image,
-			commandJSON,
-			argsJSON,
-			envJSON,
-			projectedFilesJSON,
-			persistentDirsJSON,
-			nullableStringFromValue(imageCredentialServer(input.ImageCredential)),
-			nullableStringFromValue(imageCredentialUsername(input.ImageCredential)),
-			nullableStringFromValue(imageCredentialPassword(input.ImageCredential)),
-			input.ContainerPort,
-			input.ReadinessPath,
-			cpuMilliRequest,
-			memoryMiRequest,
-			execution.StatusPending,
-			"execution plan accepted",
-		)
-		if err != nil {
-			return execution.PlanResult{}, fmt.Errorf("upsert execution intent: %w", err)
-		}
-		rows, err := result.RowsAffected()
-		if err != nil {
-			return execution.PlanResult{}, err
-		}
-		if rows > 0 {
-			inserted++
-		}
+		id,
+		execution.WorkActionRun,
+		input.PlanID,
+		input.ServiceID,
+		input.ServiceName,
+		normalizeExecutionExposure(input.Exposure),
+		input.ServiceGeneration,
+		input.Image,
+		commandJSON,
+		argsJSON,
+		envJSON,
+		projectedFilesJSON,
+		persistentDirsJSON,
+		nullableStringFromValue(imageCredentialServer(input.ImageCredential)),
+		nullableStringFromValue(imageCredentialUsername(input.ImageCredential)),
+		nullableStringFromValue(imageCredentialPassword(input.ImageCredential)),
+		input.ContainerPort,
+		input.ReadinessPath,
+		cpuMilliRequest,
+		memoryMiRequest,
+		execution.StatusPending,
+		"execution plan accepted",
+	)
+	if err != nil {
+		return execution.PlanResult{}, fmt.Errorf("upsert execution intent: %w", err)
 	}
-	if inserted == input.Replicas {
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return execution.PlanResult{}, err
+	}
+	if rows > 0 {
 		action = execution.PlanActionCreated
 	}
 	if err := tx.Commit(); err != nil {
@@ -201,43 +193,29 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 	}
 
 	result, err := tx.ExecContext(ctx, `
-		WITH existing AS (
-			SELECT COUNT(*)::int AS count
-			FROM execution_intents
-			WHERE service_id = $1
-			  AND plan_id = $3
-			  AND work_action = $2
-		),
-		locked AS (
+		WITH locked AS (
 			SELECT id, updated_at
 			FROM execution_intents
 			WHERE service_id = $1
-			  AND work_action = $8
-			  AND status = $7
+			  AND work_action = $7
+			  AND status = $8
 			  AND node_id IS NOT NULL
 			  AND container_id <> ''
 			FOR UPDATE
-		),
-		candidates AS (
-			SELECT
-				id,
-				(SELECT count FROM existing) + row_number() OVER (ORDER BY updated_at ASC, id ASC)::int - 1 AS next_replica_index
-			FROM locked
 		)
 		UPDATE execution_intents
 		SET
 			work_action = $2,
 			plan_id = $3,
 			service_generation = $4,
-			replica_index = candidates.next_replica_index,
 			status = $5,
 			status_reason = $6,
 			started_at = NULL,
 			finished_at = NULL,
 			updated_at = now()
-		FROM candidates
-		WHERE execution_intents.id = candidates.id
-	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, execution.StatusPending, "service deletion requested by control-plane", execution.StatusRunning, execution.WorkActionRun)
+		FROM locked
+		WHERE execution_intents.id = locked.id
+	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, execution.StatusPending, "service deletion requested by control-plane", execution.WorkActionRun, execution.StatusRunning)
 	if err != nil {
 		return false, fmt.Errorf("mark running execution intents for delete: %w", err)
 	}
@@ -274,7 +252,6 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 				service_id,
 				service_name,
 				service_generation,
-				replica_index,
 				image,
 				command_json,
 				args_json,
@@ -289,8 +266,8 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 				status_reason,
 				finished_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, 0, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
-			ON CONFLICT (plan_id, replica_index) DO NOTHING
+			VALUES ($1, $2, $3, $4, $5, $6, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
+			ON CONFLICT (plan_id) DO NOTHING
 		`, id, execution.WorkActionDelete, input.PlanID, input.ServiceID, input.ServiceID, input.ServiceGeneration, execution.StatusSuperseded, "service deletion had no running execution intents")
 		if err != nil {
 			return false, fmt.Errorf("record empty delete execution plan: %w", err)
@@ -330,7 +307,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]domainingress.Ro
 		   AND e.node_id IS NOT NULL
 		   AND e.host_port > 0
 		WHERE p.service_exposure = 'public'
-		ORDER BY p.service_name ASC, p.plan_id ASC, e.replica_index ASC, e.id ASC
+		ORDER BY p.service_name ASC, p.plan_id ASC, e.id ASC
 	`, execution.StatusRunning, execution.StatusSuperseded)
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
@@ -370,18 +347,13 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.Exe
 			e.service_id,
 			e.service_name,
 			e.service_generation,
-			COUNT(*)::int AS desired_replicas,
-			COUNT(*) FILTER (WHERE e.status = $1)::int AS deploying_replicas,
-			COUNT(*) FILTER (WHERE e.status = $2)::int AS running_replicas,
-			COUNT(*) FILTER (WHERE e.status = $3)::int AS failed_replicas,
-			COUNT(*) FILTER (WHERE e.status = $4)::int AS superseded_replicas,
+			e.status,
 			COALESCE(l.status_reason, '') AS last_status_reason,
-			MAX(e.updated_at) AS observed_at
+			e.updated_at AS observed_at
 		FROM execution_intents e
 		LEFT JOIN latest_reason l ON l.plan_id = e.plan_id
-		GROUP BY e.plan_id, e.service_id, e.service_name, e.service_generation, l.status_reason
-		ORDER BY MAX(e.updated_at) DESC, e.plan_id ASC
-	`, execution.StatusDeploying, execution.StatusRunning, execution.StatusFailed, execution.StatusSuperseded)
+		ORDER BY e.updated_at DESC, e.plan_id ASC
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("query execution snapshots: %w", err)
 	}
@@ -395,11 +367,7 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.Exe
 			&item.ServiceID,
 			&item.ServiceName,
 			&item.ServiceGeneration,
-			&item.DesiredReplicas,
-			&item.DeployingReplicas,
-			&item.RunningReplicas,
-			&item.FailedReplicas,
-			&item.SupersededReplicas,
+			&item.Status,
 			&item.LastStatusReason,
 			&item.ObservedAt,
 		); err != nil {
@@ -455,7 +423,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			id,
 			work_action,
 			plan_id,
-			replica_index,
 			node_id,
 			service_id,
 			service_name,
@@ -482,14 +449,13 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			(work_action = $2 AND node_id = $3)
 			OR (work_action = $4 AND $5)
 		  )
-		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC, replica_index ASC
+		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
 	`, execution.StatusPending, execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
 		&work.ExecutionID,
 		&work.Action,
 		&work.DeploymentID,
-		&work.ReplicaIndex,
 		&storedNodeID,
 		&work.ServiceID,
 		&work.ServiceName,
@@ -571,7 +537,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		return nil, err
 	}
 	work.SupersededExecution = superseded
-	work.ContainerName = fmt.Sprintf("mini-cloud-%s-r%d", work.DeploymentID, work.ReplicaIndex)
+	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.DeploymentID)
 
 	startedAt := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `
@@ -641,11 +607,10 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 			finished_at = $7,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING id, plan_id, replica_index, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at
+		RETURNING id, plan_id, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at
 	`, executionID, input.ContainerName, input.ContainerID, input.HostPort, input.Status, input.Reason, finishedAt).Scan(
 		&updated.ID,
 		&updated.DeploymentID,
-		&updated.ReplicaIndex,
 		&updated.NodeID,
 		&updated.Image,
 		&updated.ContainerName,
@@ -684,7 +649,7 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 	var cpuMilliRequest int
 	var memoryMiRequest int
 	err := tx.QueryRowContext(ctx, `
-		SELECT id, plan_id, replica_index, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at, cpu_milli_request, memory_mi_request
+		SELECT id, plan_id, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at, cpu_milli_request, memory_mi_request
 		FROM execution_intents
 		WHERE id = $1
 		  AND node_id = $2
@@ -692,7 +657,6 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 	`, executionID, nodeID).Scan(
 		&current.ID,
 		&current.DeploymentID,
-		&current.ReplicaIndex,
 		&current.NodeID,
 		&current.Image,
 		&current.ContainerName,

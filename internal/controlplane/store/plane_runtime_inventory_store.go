@@ -308,7 +308,6 @@ func (s *Store) UpsertServiceCellAssignment(ctx context.Context, input controlse
 		INSERT INTO fleet_service_cell_assignments (
 			service_id,
 			cell_key,
-			replica_index,
 			plane_id,
 			target_node_id,
 			target_node_epoch,
@@ -318,8 +317,8 @@ func (s *Store) UpsertServiceCellAssignment(ctx context.Context, input controlse
 			state,
 			last_error
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		ON CONFLICT (service_id, cell_key, replica_index) DO UPDATE
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (service_id, cell_key) DO UPDATE
 		SET
 			plane_id = EXCLUDED.plane_id,
 			target_node_id = EXCLUDED.target_node_id,
@@ -333,7 +332,6 @@ func (s *Store) UpsertServiceCellAssignment(ctx context.Context, input controlse
 		RETURNING
 			service_id,
 			cell_key,
-			replica_index,
 			plane_id,
 			target_node_id,
 			target_node_epoch,
@@ -347,7 +345,6 @@ func (s *Store) UpsertServiceCellAssignment(ctx context.Context, input controlse
 	`,
 		input.ServiceID,
 		input.CellKey,
-		input.ReplicaIndex,
 		input.PlaneID,
 		input.TargetNodeID,
 		input.TargetNodeEpoch,
@@ -369,7 +366,6 @@ func (s *Store) GetServiceCellAssignment(ctx context.Context, serviceID string, 
 		SELECT
 			service_id,
 			cell_key,
-			replica_index,
 			plane_id,
 			target_node_id,
 			target_node_epoch,
@@ -382,7 +378,6 @@ func (s *Store) GetServiceCellAssignment(ctx context.Context, serviceID string, 
 			updated_at
 		FROM fleet_service_cell_assignments
 		WHERE service_id = $1 AND cell_key = $2
-		ORDER BY replica_index ASC
 		LIMIT 1
 	`, serviceID, cellKey)
 	item, err := scanServiceCellAssignment(row)
@@ -400,7 +395,6 @@ func (s *Store) ListServiceCellAssignmentsByCell(ctx context.Context, serviceID 
 		SELECT
 			service_id,
 			cell_key,
-			replica_index,
 			plane_id,
 			target_node_id,
 			target_node_epoch,
@@ -413,7 +407,7 @@ func (s *Store) ListServiceCellAssignmentsByCell(ctx context.Context, serviceID 
 			updated_at
 		FROM fleet_service_cell_assignments
 		WHERE service_id = $1 AND cell_key = $2
-		ORDER BY replica_index ASC
+		ORDER BY created_at ASC
 	`, serviceID, cellKey)
 	if err != nil {
 		return nil, fmt.Errorf("query service cell assignments by cell: %w", err)
@@ -439,7 +433,6 @@ func (s *Store) ListServiceCellAssignments(ctx context.Context) ([]controlservic
 		SELECT
 			service_id,
 			cell_key,
-			replica_index,
 			plane_id,
 			target_node_id,
 			target_node_epoch,
@@ -451,7 +444,7 @@ func (s *Store) ListServiceCellAssignments(ctx context.Context) ([]controlservic
 			created_at,
 			updated_at
 		FROM fleet_service_cell_assignments
-		ORDER BY service_id ASC, cell_key ASC, replica_index ASC
+		ORDER BY service_id ASC, cell_key ASC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query service cell assignments: %w", err)
@@ -541,7 +534,6 @@ func scanServiceCellAssignment(scanner interface{ Scan(dest ...any) error }) (co
 	if err := scanner.Scan(
 		&item.ServiceID,
 		&item.CellKey,
-		&item.ReplicaIndex,
 		&item.PlaneID,
 		&item.TargetNodeID,
 		&item.TargetNodeEpoch,

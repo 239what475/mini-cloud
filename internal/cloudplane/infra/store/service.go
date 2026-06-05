@@ -11,7 +11,6 @@ import (
 
 	"mini-cloud/internal/cloudplane/domain/deployment"
 	"mini-cloud/internal/cloudplane/domain/revision"
-	"mini-cloud/internal/cloudplane/domain/scheduler"
 	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/common/persistentdir"
 	"mini-cloud/internal/common/projectedfile"
@@ -30,12 +29,6 @@ var (
 type ServiceUpdateImpact struct {
 	// RevisionChanged 表示更新是否改变了 revision 规格。
 	RevisionChanged bool
-	// ReplicasChanged 表示本次更新是否改变了副本数；是否为 replica-only 需结合 RevisionChanged 判断。
-	ReplicasChanged bool
-	// PreviousReplicas 是更新前的期望副本数。
-	PreviousReplicas int
-	// UpdatedReplicas 是更新后的期望副本数。
-	UpdatedReplicas int
 }
 
 // InsertService 校验资源引用后创建 service 规格记录。
@@ -105,7 +98,6 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, name string
 				name,
 				display_name,
 			spec_region,
-			spec_replicas,
 			spec_instance_class,
 			spec_exposure,
 			spec_image,
@@ -123,13 +115,12 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, name string
 			status_rollout_message,
 				status_phase
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 			RETURNING
 				id,
 				name,
 			display_name,
 			spec_region,
-			spec_replicas,
 			spec_instance_class,
 			spec_exposure,
 			spec_image,
@@ -151,11 +142,10 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, name string
 			created_at,
 			updated_at
 			`,
-			serviceID,
-			name,
-			displayName,
+		serviceID,
+		name,
+		displayName,
 		spec.Region,
-		spec.Replicas,
 		spec.InstanceClass,
 		spec.Exposure,
 		spec.Image,
@@ -172,12 +162,11 @@ func (s *Store) InsertService(ctx context.Context, serviceID string, name string
 		workload.RolloutPhaseIdle,
 		"",
 		workload.RolloutPhaseIdle,
-		).Scan(
-			&created.Metadata.ID,
-			&created.Metadata.Name,
+	).Scan(
+		&created.Metadata.ID,
+		&created.Metadata.Name,
 		&created.Metadata.DisplayName,
 		&created.Spec.Region,
-		&created.Spec.Replicas,
 		&created.Spec.InstanceClass,
 		&created.Spec.Exposure,
 		&created.Spec.Image,
@@ -266,7 +255,6 @@ func (s *Store) ListServices(ctx context.Context) ([]workload.Service, error) {
 			name,
 				display_name,
 				spec_region,
-				spec_replicas,
 				spec_instance_class,
 				spec_exposure,
 				spec_image,
@@ -322,7 +310,6 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (workload.Serv
 			name,
 				display_name,
 				spec_region,
-				spec_replicas,
 				spec_instance_class,
 				spec_exposure,
 				spec_image,
@@ -363,8 +350,7 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (workload.Serv
 // 参数说明：ctx 控制数据库请求生命周期；serviceID 是 service 唯一标识；spec 是目标 service 运行规格。
 func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, displayName string, spec workload.Spec) (workload.Service, ServiceUpdateImpact, error) {
 	// 阶段一：校验目标规格、资源引用和 persistent dir 变更限制。
-	// 阶段二：计算当前 plan 与目标 plan 的 quota 差异。
-	// 阶段三：区分 revision-changing、replica-only 和 metadata-only 更新，供 lifecycle 决定后续动作。
+	// 阶段二：区分 revision-changing 和 metadata-only 更新，供 lifecycle 决定后续动作。
 	// exposure 入库前归一化，保证比较逻辑使用稳定值。
 	spec.Exposure = spec.NormalizedExposure()
 	if err := spec.Validate(); err != nil {
@@ -428,20 +414,19 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 		SET
 			display_name = $2,
 			spec_region = $3,
-			spec_replicas = $4,
-			spec_instance_class = $5,
-			spec_exposure = $6,
-			spec_image = $7,
-			spec_command_json = $8,
-			spec_args_json = $9,
-			spec_default_port = $10,
-			spec_readiness_path = $11,
-			spec_config_set_id = $12,
-			spec_secret_set_id = $13,
-			spec_registry_credential_id = $14,
-			spec_projected_files_json = $15,
-			spec_persistent_dirs_json = $16,
-			spec_env_json = $17,
+			spec_instance_class = $4,
+			spec_exposure = $5,
+			spec_image = $6,
+			spec_command_json = $7,
+			spec_args_json = $8,
+			spec_default_port = $9,
+			spec_readiness_path = $10,
+			spec_config_set_id = $11,
+			spec_secret_set_id = $12,
+			spec_registry_credential_id = $13,
+			spec_projected_files_json = $14,
+			spec_persistent_dirs_json = $15,
+			spec_env_json = $16,
 			updated_at = now()
 		WHERE id = $1
 			RETURNING
@@ -449,7 +434,6 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 				name,
 			display_name,
 			spec_region,
-			spec_replicas,
 			spec_instance_class,
 			spec_exposure,
 			spec_image,
@@ -470,12 +454,11 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 			status_phase,
 			created_at,
 			updated_at
-	`, serviceID, displayName, spec.Region, spec.Replicas, spec.InstanceClass, spec.Exposure, spec.Image, commandJSON, argsJSON, spec.DefaultPort, spec.ReadinessPath, nullableString(spec.ConfigSetID), nullableString(spec.SecretSetID), nullableString(spec.RegistryCredentialID), projectedFilesJSON, persistentDirsJSON, envJSON).Scan(
+	`, serviceID, displayName, spec.Region, spec.InstanceClass, spec.Exposure, spec.Image, commandJSON, argsJSON, spec.DefaultPort, spec.ReadinessPath, nullableString(spec.ConfigSetID), nullableString(spec.SecretSetID), nullableString(spec.RegistryCredentialID), projectedFilesJSON, persistentDirsJSON, envJSON).Scan(
 		&updated.Metadata.ID,
 		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
-		&updated.Spec.Replicas,
 		&updated.Spec.InstanceClass,
 		&updated.Spec.Exposure,
 		&updated.Spec.Image,
@@ -543,10 +526,7 @@ func (s *Store) UpdateServiceSpec(ctx context.Context, serviceID string, display
 
 	// impact 描述本次更新对后续 rollout 或 scale 的影响。
 	return updated, ServiceUpdateImpact{
-		RevisionChanged:  serviceNeedsNewRevision(current, updated),
-		ReplicasChanged:  current.Spec.Replicas != updated.Spec.Replicas,
-		PreviousReplicas: current.Spec.Replicas,
-		UpdatedReplicas:  updated.Spec.Replicas,
+		RevisionChanged: serviceNeedsNewRevision(current, updated),
 	}, nil
 }
 
@@ -605,10 +585,9 @@ func (s *Store) UpdateServiceRevisionState(
 			RETURNING
 				id,
 				name,
-				display_name,
-				spec_region,
-				spec_replicas,
-				spec_instance_class,
+					display_name,
+					spec_region,
+					spec_instance_class,
 				spec_exposure,
 				spec_image,
 				spec_command_json,
@@ -633,7 +612,6 @@ func (s *Store) UpdateServiceRevisionState(
 		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
-		&updated.Spec.Replicas,
 		&updated.Spec.InstanceClass,
 		&updated.Spec.Exposure,
 		&updated.Spec.Image,
@@ -972,7 +950,7 @@ func (s *Store) GetRevisionByService(ctx context.Context, serviceID string, revi
 // InsertDeployment 创建 deployment 并写入初始 transition。
 // 参数说明：ctx 控制数据库请求生命周期；input 是 deployment 创建参数；reason 记录初始状态原因。
 func (s *Store) InsertDeployment(ctx context.Context, input deployment.CreateInput, reason string) (deployment.Deployment, error) {
-	// 校验 service/revision/replica 输入。
+	// 校验 service/revision 输入。
 	if err := input.Validate(); err != nil {
 		return deployment.Deployment{}, err
 	}
@@ -992,34 +970,27 @@ func (s *Store) InsertDeployment(ctx context.Context, input deployment.CreateInp
 	}()
 
 	var created deployment.Deployment
-	// 新 deployment 初始为 pending，ready/available 副本数为 0。
+	// 新 deployment 初始为 pending。
 	err = tx.QueryRowContext(ctx, `
 			INSERT INTO deployments (
 				id,
 				service_id,
 				revision_id,
-				desired_replicas,
-				ready_replicas,
-				available_replicas,
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, 0, 0, $5, $6)
-			RETURNING id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
+			VALUES ($1, $2, $3, $4, $5)
+			RETURNING id, service_id, revision_id, status, status_reason, created_at, updated_at
 		`,
 		id,
 		input.ServiceID,
 		input.RevisionID,
-		input.DesiredReplicas,
 		deployment.StatusPending,
 		reason,
 	).Scan(
 		&created.ID,
 		&created.ServiceID,
 		&created.RevisionID,
-		&created.DesiredReplicas,
-		&created.ReadyReplicas,
-		&created.AvailableReplicas,
 		&created.Status,
 		&created.StatusReason,
 		&created.CreatedAt,
@@ -1060,7 +1031,7 @@ func (s *Store) UpdateDeploymentStatus(ctx context.Context, deploymentID string,
 	// 锁定 deployment 当前状态，避免并发 transition 交错。
 	var current deployment.Deployment
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
+		SELECT id, service_id, revision_id, status, status_reason, created_at, updated_at
 		FROM deployments
 		WHERE id = $1
 		FOR UPDATE
@@ -1068,9 +1039,6 @@ func (s *Store) UpdateDeploymentStatus(ctx context.Context, deploymentID string,
 		&current.ID,
 		&current.ServiceID,
 		&current.RevisionID,
-		&current.DesiredReplicas,
-		&current.ReadyReplicas,
-		&current.AvailableReplicas,
 		&current.Status,
 		&current.StatusReason,
 		&current.CreatedAt,
@@ -1099,14 +1067,11 @@ func (s *Store) UpdateDeploymentStatus(ctx context.Context, deploymentID string,
 			status_reason = $3,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
+		RETURNING id, service_id, revision_id, status, status_reason, created_at, updated_at
 	`, deploymentID, toStatus, reason).Scan(
 		&updated.ID,
 		&updated.ServiceID,
 		&updated.RevisionID,
-		&updated.DesiredReplicas,
-		&updated.ReadyReplicas,
-		&updated.AvailableReplicas,
 		&updated.Status,
 		&updated.StatusReason,
 		&updated.CreatedAt,
@@ -1129,84 +1094,12 @@ func (s *Store) UpdateDeploymentStatus(ctx context.Context, deploymentID string,
 	return updated, nil
 }
 
-// AddDeploymentPlacements 在同一事务内更新扩容副本数并追加新增副本的 selection decisions。
-// 参数说明：ctx 控制数据库请求生命周期；deploymentID 是 deployment 唯一标识；desiredReplicas 是目标副本数；reason 记录状态变化原因；request 是调度请求；decisions 是新增副本的调度决策。
-func (s *Store) AddDeploymentPlacements(
-	ctx context.Context,
-	deploymentID string,
-	desiredReplicas int,
-	reason string,
-	request scheduler.PlacementRequest,
-	decisions []scheduler.PlacementDecision,
-) (deployment.Deployment, []scheduler.StoredDecision, error) {
-	// 扩容后的期望副本数必须为正数。
-	if desiredReplicas <= 0 {
-		return deployment.Deployment{}, nil, deployment.ErrDesiredReplicasInvalid
-	}
-	if len(decisions) == 0 {
-		return deployment.Deployment{}, nil, fmt.Errorf("scale-up requires at least one selection decision")
-	}
-
-	// 更新 deployment 和追加 selection decisions 必须原子提交。
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return deployment.Deployment{}, nil, fmt.Errorf("begin deployment scale-up tx: %w", err)
-	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
-
-	// 更新 deployment 期望副本数。
-	var updated deployment.Deployment
-	if err := tx.QueryRowContext(ctx, `
-		UPDATE deployments
-		SET
-			desired_replicas = $2,
-			status_reason = $3,
-			updated_at = now()
-		WHERE id = $1
-		RETURNING id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
-	`, deploymentID, desiredReplicas, reason).Scan(
-		&updated.ID,
-		&updated.ServiceID,
-		&updated.RevisionID,
-		&updated.DesiredReplicas,
-		&updated.ReadyReplicas,
-		&updated.AvailableReplicas,
-		&updated.Status,
-		&updated.StatusReason,
-		&updated.CreatedAt,
-		&updated.UpdatedAt,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// deployment 不存在时返回 not found。
-			return deployment.Deployment{}, nil, ErrDeploymentNotFound
-		}
-		return deployment.Deployment{}, nil, fmt.Errorf("update deployment desired replicas for scale-up: %w", err)
-	}
-
-	// 只插入调用方传入的新增副本 selection decisions。
-	items := make([]scheduler.StoredDecision, 0, len(decisions))
-	for _, decision := range decisions {
-		stored, err := s.insertPlacementDecisionTx(ctx, tx, request, decision)
-		if err != nil {
-			return deployment.Deployment{}, nil, err
-		}
-		items = append(items, stored)
-	}
-
-	if err := tx.Commit(); err != nil {
-		return deployment.Deployment{}, nil, fmt.Errorf("commit deployment scale-up tx: %w", err)
-	}
-	return updated, items, nil
-}
-
 // GetCurrentDeploymentByService 查询 service 最新创建的 deployment。
 // 参数说明：ctx 控制数据库请求生命周期；serviceID 是 service 唯一标识。
 func (s *Store) GetCurrentDeploymentByService(ctx context.Context, serviceID string) (*deployment.Deployment, error) {
 	// 当前语义取最新 deployment，不要求其 revision 等于 service.status_current_revision_id。
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
+		SELECT id, service_id, revision_id, status, status_reason, created_at, updated_at
 		FROM deployments
 		WHERE service_id = $1
 		ORDER BY created_at DESC, id DESC
@@ -1218,9 +1111,6 @@ func (s *Store) GetCurrentDeploymentByService(ctx context.Context, serviceID str
 		&item.ID,
 		&item.ServiceID,
 		&item.RevisionID,
-		&item.DesiredReplicas,
-		&item.ReadyReplicas,
-		&item.AvailableReplicas,
 		&item.Status,
 		&item.StatusReason,
 		&item.CreatedAt,
@@ -1246,9 +1136,6 @@ func (s *Store) GetPromotedDeploymentByService(ctx context.Context, serviceID st
 				d.id,
 				d.service_id,
 				d.revision_id,
-			d.desired_replicas,
-			d.ready_replicas,
-			d.available_replicas,
 			d.status,
 			d.status_reason,
 			d.created_at,
@@ -1274,9 +1161,6 @@ func (s *Store) GetPromotedDeploymentByService(ctx context.Context, serviceID st
 		&item.ID,
 		&item.ServiceID,
 		&item.RevisionID,
-		&item.DesiredReplicas,
-		&item.ReadyReplicas,
-		&item.AvailableReplicas,
 		&item.Status,
 		&item.StatusReason,
 		&item.CreatedAt,
@@ -1316,7 +1200,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (workload.Service
 		&item.Metadata.Name,
 		&item.Metadata.DisplayName,
 		&item.Spec.Region,
-		&item.Spec.Replicas,
 		&item.Spec.InstanceClass,
 		&item.Spec.Exposure,
 		&item.Spec.Image,
@@ -1544,7 +1427,6 @@ func persistentDirRevisionChangeBlocked(current workload.Service, spec workload.
 	// 构造拟更新后的 service，用统一 revision diff 逻辑判断是否会触发 rollout。
 	proposed := current
 	proposed.Spec.Region = spec.Region
-	proposed.Spec.Replicas = spec.Replicas
 	proposed.Spec.InstanceClass = spec.InstanceClass
 	proposed.Spec.Exposure = spec.NormalizedExposure()
 	proposed.Spec.Image = spec.Image

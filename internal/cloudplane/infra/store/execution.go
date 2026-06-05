@@ -18,11 +18,11 @@ import (
 // ErrExecutionNotFound 定义当前 cloud-plane 模块复用的错误或状态变量。
 var ErrExecutionNotFound = errors.New("execution not found")
 
-// CreateExecutionClaim 为指定 node 原子领取一个尚未执行的 deployment replica。
+// CreateExecutionClaim 为指定 node 原子领取一个尚未执行的 deployment。
 // 参数说明：ctx 控制本次请求或后台操作生命周期；nodeID 是 node 唯一标识。
 func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID string) (*execution.WorkItem, error) {
-	// node-agent claim work 必须在事务内完成，避免多个节点领取同一 replica。
-	// 阶段一：锁定最早可执行的 deployment，并排除已有 deploying/running execution 的 replica。
+	// node-agent claim work 必须在事务内完成，避免多个节点领取同一 execution。
+	// 阶段一：锁定最早可执行的 deployment，并排除已有 deploying/running execution。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin claim execution tx: %w", err)
@@ -46,7 +46,7 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 	var cpuMilliRequest int
 	var memoryMiRequest int
 
-	// 查询一条分配给当前 node、对应 replica 尚未有 deploying/running execution、
+	// 查询一条分配给当前 node、尚未有 deploying/running execution、
 	// 且当前 node 仍然 ready/schedulable 的任务；draining 节点不能继续领取新 work。
 	err = tx.QueryRowContext(ctx, `
 			SELECT
@@ -69,7 +69,6 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 			a.current_revision_id,
 			r.port,
 			r.readiness_path,
-			pd.replica_index,
 			pd.node_id,
 			pd.cpu_milli_request,
 			pd.memory_mi_request
@@ -80,18 +79,17 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 		LEFT JOIN registry_credentials prc ON prc.id = r.registry_credential_id
 		JOIN LATERAL (
 			SELECT
-				replica_index,
 				node_id,
 				cpu_milli_request,
 				memory_mi_request
 			FROM placement_decisions
 			WHERE deployment_id = d.id
-			ORDER BY replica_index ASC
+			ORDER BY created_at ASC, id ASC
+			LIMIT 1
 		) pd ON TRUE
 		JOIN nodes n ON n.id = pd.node_id
 		LEFT JOIN deployment_executions existing
 			ON existing.deployment_id = d.id
-		   AND existing.replica_index = pd.replica_index
 		   AND existing.status IN ($4, $5)
 		WHERE d.status IN ($1, $2, $3)
 		  AND pd.node_id = $6
@@ -121,7 +119,6 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 		&currentRevisionID,
 		&work.ContainerPort,
 		&work.ReadinessPath,
-		&work.ReplicaIndex,
 		&work.NodeID,
 		&cpuMilliRequest,
 		&memoryMiRequest,
@@ -190,12 +187,12 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 		}
 	}
 
-	// 为本次领取创建 execution ID 和容器名；容器名包含 deployment/replica 方便定位。
+	// 为本次领取创建 execution ID 和容器名。
 	work.ExecutionID, err = newID("exe")
 	if err != nil {
 		return nil, err
 	}
-	work.ContainerName = fmt.Sprintf("mini-cloud-%s-r%d", work.DeploymentID, work.ReplicaIndex)
+	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.DeploymentID)
 
 	// 第一次领取 assigned deployment 时，把 deployment 推进到 deploying。
 	reason := fmt.Sprintf("agent on node %s started runtime execution", nodeID)
@@ -224,13 +221,12 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 		}
 	}
 
-	// 插入 execution 记录，表示该 replica 已被当前 node 领取并进入 deploying。
+	// 插入 execution 记录，表示该 deployment 已被当前 node 领取并进入 deploying。
 	startedAt := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO deployment_executions (
 			id,
 			deployment_id,
-			replica_index,
 			node_id,
 			image,
 			container_name,
@@ -240,11 +236,10 @@ func (s *Store) createLegacyDeploymentExecutionClaim(ctx context.Context, nodeID
 			status_reason,
 			started_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`,
 		work.ExecutionID,
 		work.DeploymentID,
-		work.ReplicaIndex,
 		nodeID,
 		work.Image,
 		work.ContainerName,
@@ -358,7 +353,6 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		SELECT
 			e.id,
 			e.deployment_id,
-			e.replica_index,
 			e.node_id,
 			e.image,
 			e.container_name,
@@ -374,10 +368,7 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 			e.updated_at,
 			d.id,
 			d.service_id,
-				d.revision_id,
-			d.desired_replicas,
-			d.ready_replicas,
-			d.available_replicas,
+			d.revision_id,
 			d.status,
 			d.status_reason,
 			d.created_at,
@@ -388,14 +379,12 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		JOIN deployments d ON d.id = e.deployment_id
 		JOIN placement_decisions pd
 			ON pd.deployment_id = d.id
-		   AND pd.replica_index = e.replica_index
 		WHERE e.id = $1
 		  AND e.node_id = $2
 		FOR UPDATE OF e, d
 	`, executionID, nodeID).Scan(
 		&current.ID,
 		&current.DeploymentID,
-		&current.ReplicaIndex,
 		&current.NodeID,
 		&current.Image,
 		&current.ContainerName,
@@ -412,9 +401,6 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		&currentDeployment.ID,
 		&currentDeployment.ServiceID,
 		&currentDeployment.RevisionID,
-		&currentDeployment.DesiredReplicas,
-		&currentDeployment.ReadyReplicas,
-		&currentDeployment.AvailableReplicas,
 		&currentDeployment.Status,
 		&currentDeployment.StatusReason,
 		&currentDeployment.CreatedAt,
@@ -497,7 +483,7 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 			finished_at = $7,
 			updated_at = now()
 		WHERE id = $1
-		RETURNING id, deployment_id, replica_index, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at
+		RETURNING id, deployment_id, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at
 	`,
 		executionID,
 		input.ContainerName,
@@ -509,7 +495,6 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 	).Scan(
 		&updated.ID,
 		&updated.DeploymentID,
-		&updated.ReplicaIndex,
 		&updated.NodeID,
 		&updated.Image,
 		&updated.ContainerName,
@@ -528,19 +513,10 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		return execution.ReportAck{}, deployment.Deployment{}, workload.Service{}, fmt.Errorf("update execution report: %w", err)
 	}
 
-	// 重新统计当前 deployment 下已 running 且暴露 host port 的副本数。
-	runningReplicas, err := countRunningExecutionsByDeploymentTx(ctx, tx, currentDeployment.ID)
-	if err != nil {
-		return execution.ReportAck{}, deployment.Deployment{}, workload.Service{}, err
-	}
-	// ready/available 当前都按 running 且已分配 host_port 的 execution 数量计算。
-	allReplicasReady := runningReplicas == currentDeployment.DesiredReplicas
-	hasRunningReplica := runningReplicas > 0
-	// candidate revision 的全部副本 ready 后由 legacy cloud-plane lifecycle 在本地事务中自动转正。
+	// candidate revision running 后由 legacy cloud-plane lifecycle 在本地事务中自动转正。
 	// 这段逻辑仅服务迁移期旧表路径；v8 southbound 主链路已经改为 ApplyExecutionPlan。
 	// 因此转正条件仍必须绑定到 node-agent 上报的真实 running 状态，避免把“已接受 desired”误认为“已上线”。
 	if input.Status == execution.StatusRunning &&
-		allReplicasReady &&
 		nextCandidateRevisionID != "" &&
 		currentDeployment.RevisionID == nextCandidateRevisionID {
 		// oldCurrentRevisionID 非空时表示当前是一次替换发布；候选转正后需要释放旧 current 的 runtime 占用。
@@ -553,7 +529,7 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 			currentDeployment.RevisionID,
 		)
 		// 替换发布中，旧 current revision 仍可能有 running deployment 承载流量。
-		// 候选副本全部 ready 后立即 supersede 旧 execution，释放节点资源，并让 ingress 后续只发布新 current。
+		// 候选实例 running 后立即 supersede 旧 execution，释放节点资源，并让 ingress 后续只发布新 current。
 		if oldCurrentRevisionID != "" && oldCurrentRevisionID != currentDeployment.RevisionID {
 			oldDeployment, err := loadRunningDeploymentForRevision(ctx, tx, currentDeployment.ServiceID, oldCurrentRevisionID)
 			if err != nil {
@@ -567,54 +543,33 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		}
 	}
 
-	// 根据 execution 终态和副本整体 ready 情况计算 deployment/service 目标状态。
+	// 根据 execution 终态计算 deployment/service 目标状态。
 	switch input.Status {
 	case execution.StatusRunning:
-		if allReplicasReady {
-			// 所有副本 ready 时 deployment running；若该 revision 是 current，则 service running。
-			targetDeploymentStatus = deployment.StatusRunning
-			if nextCurrentRevisionID == "" || currentDeployment.RevisionID == nextCurrentRevisionID {
-				targetServiceStatus = workload.StatusRunning
-			} else {
-				// 候选 revision ready 但尚未晋升时，service 状态仍由 current revision 决定。
-				targetServiceStatus = statusWhileHoldingCurrentRevision(nextCurrentRevisionID)
-			}
+		targetDeploymentStatus = deployment.StatusRunning
+		if nextCurrentRevisionID == "" || currentDeployment.RevisionID == nextCurrentRevisionID {
+			targetServiceStatus = workload.StatusRunning
 		} else {
-			// 只有部分副本 ready 时 deployment 仍 deploying。
-			targetDeploymentStatus = deployment.StatusDeploying
-			if nextCurrentRevisionID == "" || currentDeployment.RevisionID == nextCurrentRevisionID {
-				targetServiceStatus = workload.StatusDegraded
-			} else {
-				// 有稳定 current 时，新 revision 部分 ready 不直接影响稳定服务状态。
-				targetServiceStatus = statusWhileHoldingCurrentRevision(nextCurrentRevisionID)
-			}
+			// 候选 revision running 但尚未晋升时，service 状态仍由 current revision 决定。
+			targetServiceStatus = statusWhileHoldingCurrentRevision(nextCurrentRevisionID)
 		}
 	case execution.StatusFailed:
-		if hasRunningReplica {
-			// 同 deployment 仍有 running 副本时，deployment 保持 running，service 降级但不整体失败。
-			targetDeploymentStatus = deployment.StatusRunning
-			targetServiceStatus = workload.StatusDegraded
-		} else {
-			// 没有任何 running 副本时，该 deployment failed。
-			targetDeploymentStatus = deployment.StatusFailed
-			targetServiceStatus = workload.StatusFailed
-			if nextCurrentRevisionID != "" && nextCurrentRevisionID != currentDeployment.RevisionID {
-				// 如果还有旧 current revision 的 running deployment，则 service 可保持 degraded。
-				hasFallback, err := hasRunningDeploymentForRevision(ctx, tx, currentDeployment.ServiceID, nextCurrentRevisionID, currentDeployment.ID)
-				if err != nil {
-					return execution.ReportAck{}, deployment.Deployment{}, workload.Service{}, err
-				}
-				if hasFallback {
-					targetServiceStatus = workload.StatusDegraded
-				}
+		targetDeploymentStatus = deployment.StatusFailed
+		targetServiceStatus = workload.StatusFailed
+		if nextCurrentRevisionID != "" && nextCurrentRevisionID != currentDeployment.RevisionID {
+			// 如果还有旧 current revision 的 running deployment，则 service 可保持 degraded。
+			hasFallback, err := hasRunningDeploymentForRevision(ctx, tx, currentDeployment.ServiceID, nextCurrentRevisionID, currentDeployment.ID)
+			if err != nil {
+				return execution.ReportAck{}, deployment.Deployment{}, workload.Service{}, err
+			}
+			if hasFallback {
+				targetServiceStatus = workload.StatusDegraded
 			}
 		}
 	}
 
-	// 准备写回 deployment 状态和副本计数。
+	// 准备写回 deployment 状态。
 	var reportedDeployment deployment.Deployment
-	readyReplicas := runningReplicas
-	availableReplicas := runningReplicas
 	if targetDeploymentStatus != currentDeployment.Status {
 		// 状态变化必须符合 deployment 状态机。
 		if err := deployment.ValidateTransition(currentDeployment.Status, targetDeploymentStatus, input.Reason); err != nil {
@@ -622,30 +577,23 @@ func (s *Store) updateLegacyDeploymentExecutionFromNodeReport(ctx context.Contex
 		}
 	}
 
-	// 更新 deployment 的 ready/available 副本数和当前状态。
+	// 更新 deployment 当前状态。
 	err = tx.QueryRowContext(ctx, `
 		UPDATE deployments
 		SET
-			ready_replicas = $2,
-			available_replicas = $3,
-			status = $4,
-			status_reason = $5,
+			status = $2,
+			status_reason = $3,
 			updated_at = now()
 		WHERE id = $1
-			RETURNING id, service_id, revision_id, desired_replicas, ready_replicas, available_replicas, status, status_reason, created_at, updated_at
+			RETURNING id, service_id, revision_id, status, status_reason, created_at, updated_at
 	`,
 		currentDeployment.ID,
-		readyReplicas,
-		availableReplicas,
 		targetDeploymentStatus,
 		input.Reason,
 	).Scan(
 		&reportedDeployment.ID,
 		&reportedDeployment.ServiceID,
 		&reportedDeployment.RevisionID,
-		&reportedDeployment.DesiredReplicas,
-		&reportedDeployment.ReadyReplicas,
-		&reportedDeployment.AvailableReplicas,
 		&reportedDeployment.Status,
 		&reportedDeployment.StatusReason,
 		&reportedDeployment.CreatedAt,
@@ -807,10 +755,9 @@ func supersedeRunningExecutionsByDeployment(ctx context.Context, tx *sql.Tx, dep
 		FROM deployment_executions e
 		JOIN placement_decisions pd
 			ON pd.deployment_id = e.deployment_id
-		   AND pd.replica_index = e.replica_index
 		WHERE e.deployment_id = $1
 		  AND e.status = $2
-		ORDER BY e.replica_index ASC, e.id ASC
+		ORDER BY e.id ASC
 		FOR UPDATE
 	`, deploymentID, execution.StatusRunning)
 	if err != nil {
@@ -881,8 +828,6 @@ func supersedeRunningExecutionsByDeployment(ctx context.Context, tx *sql.Tx, dep
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE deployments
 		SET
-			ready_replicas = 0,
-			available_replicas = 0,
 			status = $2,
 			status_reason = $3,
 			updated_at = now()
@@ -969,9 +914,6 @@ func loadRunningDeploymentForRevision(ctx context.Context, tx *sql.Tx, serviceID
 			id,
 			service_id,
 			revision_id,
-			desired_replicas,
-			ready_replicas,
-			available_replicas,
 			status,
 			status_reason,
 			created_at,
@@ -987,9 +929,6 @@ func loadRunningDeploymentForRevision(ctx context.Context, tx *sql.Tx, serviceID
 		&item.ID,
 		&item.ServiceID,
 		&item.RevisionID,
-		&item.DesiredReplicas,
-		&item.ReadyReplicas,
-		&item.AvailableReplicas,
 		&item.Status,
 		&item.StatusReason,
 		&item.CreatedAt,
@@ -1046,7 +985,6 @@ func updateServiceRevisionStateTx(
 				name,
 				display_name,
 			region,
-			replicas,
 			instance_class,
 			exposure,
 			image,
@@ -1070,7 +1008,6 @@ func updateServiceRevisionStateTx(
 		&updated.Metadata.Name,
 		&updated.Metadata.DisplayName,
 		&updated.Spec.Region,
-		&updated.Spec.Replicas,
 		&updated.Spec.InstanceClass,
 		&updated.Spec.Exposure,
 		&updated.Spec.Image,
@@ -1143,7 +1080,6 @@ func (s *Store) GetLatestExecutionByDeployment(ctx context.Context, deploymentID
 		SELECT
 			id,
 			deployment_id,
-			replica_index,
 			node_id,
 			image,
 			container_name,
@@ -1168,7 +1104,6 @@ func (s *Store) GetLatestExecutionByDeployment(ctx context.Context, deploymentID
 	err := row.Scan(
 		&item.ID,
 		&item.DeploymentID,
-		&item.ReplicaIndex,
 		&item.NodeID,
 		&item.Image,
 		&item.ContainerName,
@@ -1202,7 +1137,6 @@ func (s *Store) ListRunningExecutionsByDeployment(ctx context.Context, deploymen
 		SELECT
 			id,
 			deployment_id,
-			replica_index,
 			node_id,
 			image,
 			container_name,
@@ -1220,7 +1154,7 @@ func (s *Store) ListRunningExecutionsByDeployment(ctx context.Context, deploymen
 		WHERE deployment_id = $1
 		  AND status = $2
 		  AND host_port > 0
-		ORDER BY replica_index ASC, created_at ASC, id ASC
+		ORDER BY created_at ASC, id ASC
 	`, deploymentID, execution.StatusRunning)
 	if err != nil {
 		return nil, fmt.Errorf("query running executions by deployment: %w", err)
@@ -1234,7 +1168,6 @@ func (s *Store) ListRunningExecutionsByDeployment(ctx context.Context, deploymen
 		if err := rows.Scan(
 			&item.ID,
 			&item.DeploymentID,
-			&item.ReplicaIndex,
 			&item.NodeID,
 			&item.Image,
 			&item.ContainerName,

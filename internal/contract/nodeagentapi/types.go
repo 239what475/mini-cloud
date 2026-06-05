@@ -103,7 +103,6 @@ type WorkItem struct {
 	Action              string                `json:"action"`
 	ExecutionID         string                `json:"executionID"`
 	DeploymentID        string                `json:"deploymentID"`
-	ReplicaIndex        int                   `json:"replicaIndex"`
 	NodeID              string                `json:"nodeID"`
 	ServiceID           string                `json:"serviceID"`
 	ServiceName         string                `json:"serviceName"`

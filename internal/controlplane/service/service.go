@@ -54,9 +54,7 @@ var (
 	ErrMultiplePrimaryCells                     = errors.New("cells must contain exactly one primary cell")
 	ErrProviderRequired                         = errors.New("provider is required")
 	ErrRegionRequired                           = errors.New("region is required")
-	ErrInvalidReplicas                          = errors.New("replicas must be greater than 0")
 	ErrInvalidInstanceClass                     = errors.New("instanceClass must be one of small, medium, large")
-	ErrPersistentDirsReplicaLimit               = errors.New("persistentDirs currently require replicas to be exactly 1")
 	ErrPersistentDirsRunUpdateUnsupported       = errors.New("services with persistentDirs do not support run-changing updates once locked")
 	ErrPersistentDirsPlacementChangeUnsupported = errors.New("services with persistentDirs do not support placement-changing updates once a run exists")
 	serviceNamePattern                          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -102,7 +100,6 @@ type Spec struct {
 	Provider             string               `json:"provider"`
 	Region               string               `json:"region"`
 	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
-	Replicas             int                  `json:"replicas"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -126,17 +123,16 @@ type ServiceStatus struct {
 }
 
 type ServiceRun struct {
-	ID              string     `json:"id"`
-	ServiceID       string     `json:"serviceID"`
-	Generation      int64      `json:"generation"`
-	PlanID          string     `json:"planID"`
-	Spec            Spec       `json:"spec"`
-	DesiredReplicas int        `json:"desiredReplicas"`
-	Status          string     `json:"status"`
-	Message         string     `json:"message,omitempty"`
-	CreatedAt       time.Time  `json:"createdAt"`
-	ObservedAt      *time.Time `json:"observedAt,omitempty"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
+	ID         string     `json:"id"`
+	ServiceID  string     `json:"serviceID"`
+	Generation int64      `json:"generation"`
+	PlanID     string     `json:"planID"`
+	Spec       Spec       `json:"spec"`
+	Status     string     `json:"status"`
+	Message    string     `json:"message,omitempty"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	ObservedAt *time.Time `json:"observedAt,omitempty"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 type ServicePlacement struct {
@@ -156,7 +152,6 @@ type Cell struct {
 	Provider      string    `json:"provider"`
 	Region        string    `json:"region"`
 	PinnedPlaneID string    `json:"pinnedPlaneID,omitempty"`
-	Replicas      int       `json:"replicas"`
 	InstanceClass string    `json:"instanceClass"`
 	DesiredState  string    `json:"desiredState"`
 	Status        Status    `json:"status"`
@@ -186,7 +181,6 @@ const (
 type CellAssignment struct {
 	ServiceID        string    `json:"serviceID"`
 	CellKey          string    `json:"cellKey"`
-	ReplicaIndex     int       `json:"replicaIndex"`
 	PlaneID          string    `json:"planeID"`
 	TargetNodeID     string    `json:"targetNodeID"`
 	TargetNodeEpoch  int64     `json:"targetNodeEpoch"`
@@ -228,15 +222,14 @@ type UpdateStatusInput struct {
 }
 
 type CreateRunInput struct {
-	ID              string
-	ServiceID       string
-	Generation      int64
-	PlanID          string
-	Spec            Spec
-	DesiredReplicas int
-	Status          string
-	Message         string
-	ObservedAt      *time.Time
+	ID         string
+	ServiceID  string
+	Generation int64
+	PlanID     string
+	Spec       Spec
+	Status     string
+	Message    string
+	ObservedAt *time.Time
 }
 
 type UpdateRunInput struct {
@@ -251,7 +244,6 @@ type CellInput struct {
 	Provider      string `json:"provider"`
 	Region        string `json:"region"`
 	PinnedPlaneID string `json:"pinnedPlaneID,omitempty"`
-	Replicas      int    `json:"replicas"`
 	InstanceClass string `json:"instanceClass"`
 }
 
@@ -264,16 +256,11 @@ const (
 )
 
 type RunStatus struct {
-	CurrentRunID       string     `json:"currentRunID,omitempty"`
-	LatestRunID        string     `json:"latestRunID,omitempty"`
-	Phase              string     `json:"phase"`
-	Message            string     `json:"message,omitempty"`
-	DesiredReplicas    int        `json:"desiredReplicas"`
-	DeployingReplicas  int        `json:"deployingReplicas"`
-	RunningReplicas    int        `json:"runningReplicas"`
-	FailedReplicas     int        `json:"failedReplicas"`
-	SupersededReplicas int        `json:"supersededReplicas"`
-	LastObservedAt     *time.Time `json:"lastObservedAt,omitempty"`
+	CurrentRunID   string     `json:"currentRunID,omitempty"`
+	LatestRunID    string     `json:"latestRunID,omitempty"`
+	Phase          string     `json:"phase"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"lastObservedAt,omitempty"`
 }
 
 func CloneRunStatus(input RunStatus) RunStatus {
@@ -446,7 +433,6 @@ func CloneSpec(input Spec) Spec {
 		Provider:             input.Provider,
 		Region:               input.Region,
 		PinnedPlaneID:        input.PinnedPlaneID,
-		Replicas:             input.Replicas,
 		InstanceClass:        input.InstanceClass,
 		Exposure:             input.Exposure,
 		Image:                input.Image,
@@ -465,7 +451,7 @@ func CloneSpec(input Spec) Spec {
 }
 
 func (spec Spec) Validate() error {
-	provider, region, pinnedPlaneID, replicas, instanceClass, err := ResolveServicePlacementFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.Replicas, spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := ResolveServicePlacementFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.InstanceClass)
 	if err != nil {
 		return err
 	}
@@ -496,13 +482,9 @@ func (spec Spec) Validate() error {
 	if err := persistentdir.ValidateContainerInputs(spec.PersistentDirs, spec.ProjectedFiles); err != nil {
 		return err
 	}
-	if len(spec.PersistentDirs) > 0 && replicas != 1 {
-		return ErrPersistentDirsReplicaLimit
-	}
 	_ = provider
 	_ = region
 	_ = pinnedPlaneID
-	_ = replicas
 	_ = instanceClass
 	return nil
 }
@@ -525,21 +507,19 @@ func persistentDirPlacementChangeBlocked(current Service, input UpdateInput) boo
 		return false
 	}
 
-	currentProvider, currentRegion, currentPinnedPlaneID, _, _, err := ResolveServicePlacementFields(
+	currentProvider, currentRegion, currentPinnedPlaneID, _, err := ResolveServicePlacementFields(
 		current.Spec.Provider,
 		current.Spec.Region,
 		current.Spec.PinnedPlaneID,
-		current.Spec.Replicas,
 		current.Spec.InstanceClass,
 	)
 	if err != nil {
 		return false
 	}
-	nextProvider, nextRegion, nextPinnedPlaneID, _, _, err := ResolveServicePlacementFields(
+	nextProvider, nextRegion, nextPinnedPlaneID, _, err := ResolveServicePlacementFields(
 		input.Spec.Provider,
 		input.Spec.Region,
 		input.Spec.PinnedPlaneID,
-		input.Spec.Replicas,
 		input.Spec.InstanceClass,
 	)
 	if err != nil {
@@ -570,26 +550,23 @@ func SpecRuntimeEqual(before Spec, after Spec) bool {
 		reflect.DeepEqual(persistentdir.CloneSpecs(before.PersistentDirs), persistentdir.CloneSpecs(after.PersistentDirs))
 }
 
-func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, replicas int, instanceClass string) (string, string, string, int, string, error) {
+func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {
 	if strings.TrimSpace(provider) == "" {
-		return "", "", "", 0, "", ErrProviderRequired
+		return "", "", "", "", ErrProviderRequired
 	}
 	if strings.TrimSpace(region) == "" {
-		return "", "", "", 0, "", ErrRegionRequired
+		return "", "", "", "", ErrRegionRequired
 	}
 	if strings.TrimSpace(pinnedPlaneID) == "" {
 		pinnedPlaneID = ""
 	}
 	if pinnedPlaneID != "" && strings.TrimSpace(pinnedPlaneID) == "" {
-		return "", "", "", 0, "", ErrPinnedPlaneIDInvalid
-	}
-	if replicas <= 0 {
-		return "", "", "", 0, "", ErrInvalidReplicas
+		return "", "", "", "", ErrPinnedPlaneIDInvalid
 	}
 	if !IsInstanceClass(instanceClass) {
-		return "", "", "", 0, "", ErrInvalidInstanceClass
+		return "", "", "", "", ErrInvalidInstanceClass
 	}
-	return strings.TrimSpace(provider), strings.TrimSpace(region), strings.TrimSpace(pinnedPlaneID), replicas, instanceClass, nil
+	return strings.TrimSpace(provider), strings.TrimSpace(region), strings.TrimSpace(pinnedPlaneID), instanceClass, nil
 }
 
 func NormalizeRunPhase(phase string) string {

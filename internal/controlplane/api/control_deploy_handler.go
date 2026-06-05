@@ -60,7 +60,6 @@ func (h controlDeployHandler) applyService(w http.ResponseWriter, r *http.Reques
 			errors.Is(err, deploy.ErrInvalidServiceName),
 			errors.Is(err, deploy.ErrDisplayNameRequired),
 			errors.Is(err, deploy.ErrRegionRequired),
-			errors.Is(err, deploy.ErrInvalidReplicas),
 			errors.Is(err, deploy.ErrInvalidInstanceClass),
 			errors.Is(err, deploy.ErrImageRequired),
 			errors.Is(err, deploy.ErrInvalidDefaultPort),

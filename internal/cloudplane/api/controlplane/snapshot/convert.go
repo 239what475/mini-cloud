@@ -130,17 +130,13 @@ func protoExecutionSnapshots(items []cloudplaneapi.ExecutionSnapshot) []*cloudpl
 	out := make([]*cloudplanev1.PlaneExecutionSnapshot, 0, len(items))
 	for _, item := range items {
 		out = append(out, &cloudplanev1.PlaneExecutionSnapshot{
-			PlanId:             item.PlanID,
-			ServiceId:          item.ServiceID,
-			ServiceName:        item.ServiceName,
-			ServiceGeneration:  item.ServiceGeneration,
-			DesiredReplicas:    int32(item.DesiredReplicas),
-			DeployingReplicas:  int32(item.DeployingReplicas),
-			RunningReplicas:    int32(item.RunningReplicas),
-			FailedReplicas:     int32(item.FailedReplicas),
-			SupersededReplicas: int32(item.SupersededReplicas),
-			LastStatusReason:   item.LastStatusReason,
-			ObservedAt:         controlplane.ProtoTimestamp(item.ObservedAt),
+			PlanId:            item.PlanID,
+			ServiceId:         item.ServiceID,
+			ServiceName:       item.ServiceName,
+			ServiceGeneration: item.ServiceGeneration,
+			Status:            item.Status,
+			LastStatusReason:  item.LastStatusReason,
+			ObservedAt:        controlplane.ProtoTimestamp(item.ObservedAt),
 		})
 	}
 	return out

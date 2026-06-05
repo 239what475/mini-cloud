@@ -18,7 +18,6 @@ func TestPlanSelectsOnlyReadyCandidate(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -44,7 +43,6 @@ func TestPlanFailsWhenRegionDoesNotMatch(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -75,7 +73,6 @@ func TestPlanFiltersNonReadyNodes(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -105,7 +102,6 @@ func TestPlanFailsWhenCapacityIsInsufficient(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 400,
 		MemoryMiRequest: 400,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -137,7 +133,6 @@ func TestPlanSelectsBestNodeDeterministically(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -163,7 +158,6 @@ func TestPlanFiltersUnschedulableNodes(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -193,7 +187,6 @@ func TestPlanFiltersPlatformNodes(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 500,
 		MemoryMiRequest: 512,
-		Replicas:        1,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -211,11 +204,10 @@ func TestPlanFiltersPlatformNodes(t *testing.T) {
 	}
 }
 
-// TestPlanDistributesMultipleReplicasWithinCapacity 验证多副本调度会按临时容量分布到多个节点。
-func TestPlanDistributesMultipleReplicasWithinCapacity(t *testing.T) {
+// TestPlanCreatesSingleDecision 验证调度器只为 deployment 生成一个放置决策。
+func TestPlanCreatesSingleDecision(t *testing.T) {
 	t.Parallel()
 
-	// 两个 runtime node 的总容量足以承载三个副本，用来验证多副本分配会更新临时容量。
 	result, err := Plan([]node.Node{
 		makeNode("node_a", node.RoleRuntime, "aliyun", "cn-beijing", node.StatusReady, true, 2000, 4096, 0, 0),
 		makeNode("node_b", node.RoleRuntime, "aliyun", "cn-beijing", node.StatusReady, true, 2000, 4096, 0, 0),
@@ -224,7 +216,6 @@ func TestPlanDistributesMultipleReplicasWithinCapacity(t *testing.T) {
 		Region:          "cn-beijing",
 		CPUMilliRequest: 1000,
 		MemoryMiRequest: 1024,
-		Replicas:        3,
 	})
 	if err != nil {
 		t.Fatalf("Plan returned error: %v", err)
@@ -233,20 +224,11 @@ func TestPlanDistributesMultipleReplicasWithinCapacity(t *testing.T) {
 	if result.FailureReason != "" {
 		t.Fatalf("Plan failure = %q, want success", result.FailureReason)
 	}
-	if len(result.Decisions) != 3 {
-		t.Fatalf("expected 3 selection decisions, got %d", len(result.Decisions))
+	if len(result.Decisions) != 1 {
+		t.Fatalf("expected 1 selection decision, got %d", len(result.Decisions))
 	}
-
-	// 统计每个节点获得的副本数，同时确认 replicaIndex 按请求顺序生成。
-	counts := map[string]int{}
-	for idx, item := range result.Decisions {
-		if item.ReplicaIndex != idx {
-			t.Fatalf("decision[%d].ReplicaIndex = %d, want %d", idx, item.ReplicaIndex, idx)
-		}
-		counts[item.NodeID]++
-	}
-	if counts["node_a"] == 0 || counts["node_b"] == 0 {
-		t.Fatalf("expected placements to use both nodes, got %+v", counts)
+	if result.Decisions[0].NodeID != "node_a" {
+		t.Fatalf("expected deterministic node_a selection, got %s", result.Decisions[0].NodeID)
 	}
 }
 

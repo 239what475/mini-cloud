@@ -1002,19 +1002,14 @@ func (x *SyncPlaneResponse) GetAlertsFiring() int32 {
 }
 
 type ServiceRunStatus struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	CurrentRunId       string                 `protobuf:"bytes,1,opt,name=current_run_id,json=currentRunID,proto3" json:"current_run_id,omitempty"`
-	LatestRunId        string                 `protobuf:"bytes,2,opt,name=latest_run_id,json=latestRunID,proto3" json:"latest_run_id,omitempty"`
-	Phase              string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
-	Message            string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
-	DesiredReplicas    int32                  `protobuf:"varint,5,opt,name=desired_replicas,json=desiredReplicas,proto3" json:"desired_replicas,omitempty"`
-	DeployingReplicas  int32                  `protobuf:"varint,6,opt,name=deploying_replicas,json=deployingReplicas,proto3" json:"deploying_replicas,omitempty"`
-	RunningReplicas    int32                  `protobuf:"varint,7,opt,name=running_replicas,json=runningReplicas,proto3" json:"running_replicas,omitempty"`
-	FailedReplicas     int32                  `protobuf:"varint,8,opt,name=failed_replicas,json=failedReplicas,proto3" json:"failed_replicas,omitempty"`
-	SupersededReplicas int32                  `protobuf:"varint,9,opt,name=superseded_replicas,json=supersededReplicas,proto3" json:"superseded_replicas,omitempty"`
-	LastObservedAt     *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=last_observed_at,json=lastObservedAt,proto3" json:"last_observed_at,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	CurrentRunId   string                 `protobuf:"bytes,1,opt,name=current_run_id,json=currentRunID,proto3" json:"current_run_id,omitempty"`
+	LatestRunId    string                 `protobuf:"bytes,2,opt,name=latest_run_id,json=latestRunID,proto3" json:"latest_run_id,omitempty"`
+	Phase          string                 `protobuf:"bytes,3,opt,name=phase,proto3" json:"phase,omitempty"`
+	Message        string                 `protobuf:"bytes,4,opt,name=message,proto3" json:"message,omitempty"`
+	LastObservedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=last_observed_at,json=lastObservedAt,proto3" json:"last_observed_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ServiceRunStatus) Reset() {
@@ -1073,41 +1068,6 @@ func (x *ServiceRunStatus) GetMessage() string {
 		return x.Message
 	}
 	return ""
-}
-
-func (x *ServiceRunStatus) GetDesiredReplicas() int32 {
-	if x != nil {
-		return x.DesiredReplicas
-	}
-	return 0
-}
-
-func (x *ServiceRunStatus) GetDeployingReplicas() int32 {
-	if x != nil {
-		return x.DeployingReplicas
-	}
-	return 0
-}
-
-func (x *ServiceRunStatus) GetRunningReplicas() int32 {
-	if x != nil {
-		return x.RunningReplicas
-	}
-	return 0
-}
-
-func (x *ServiceRunStatus) GetFailedReplicas() int32 {
-	if x != nil {
-		return x.FailedReplicas
-	}
-	return 0
-}
-
-func (x *ServiceRunStatus) GetSupersededReplicas() int32 {
-	if x != nil {
-		return x.SupersededReplicas
-	}
-	return 0
 }
 
 func (x *ServiceRunStatus) GetLastObservedAt() *timestamppb.Timestamp {
@@ -1478,20 +1438,19 @@ type ServiceSpec struct {
 	Provider             string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
 	Region               string                 `protobuf:"bytes,2,opt,name=region,proto3" json:"region,omitempty"`
 	PinnedPlaneId        string                 `protobuf:"bytes,3,opt,name=pinned_plane_id,json=pinnedPlaneID,proto3" json:"pinned_plane_id,omitempty"`
-	Replicas             int32                  `protobuf:"varint,4,opt,name=replicas,proto3" json:"replicas,omitempty"`
-	InstanceClass        string                 `protobuf:"bytes,5,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
-	Exposure             string                 `protobuf:"bytes,6,opt,name=exposure,proto3" json:"exposure,omitempty"`
-	Image                string                 `protobuf:"bytes,7,opt,name=image,proto3" json:"image,omitempty"`
-	Command              []string               `protobuf:"bytes,8,rep,name=command,proto3" json:"command,omitempty"`
-	Args                 []string               `protobuf:"bytes,9,rep,name=args,proto3" json:"args,omitempty"`
-	DefaultPort          int32                  `protobuf:"varint,10,opt,name=default_port,json=defaultPort,proto3" json:"default_port,omitempty"`
-	ReadinessPath        string                 `protobuf:"bytes,11,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	Env                  map[string]string      `protobuf:"bytes,12,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ConfigSetId          string                 `protobuf:"bytes,13,opt,name=config_set_id,json=configSetID,proto3" json:"config_set_id,omitempty"`
-	SecretSetId          string                 `protobuf:"bytes,14,opt,name=secret_set_id,json=secretSetID,proto3" json:"secret_set_id,omitempty"`
-	RegistryCredentialId string                 `protobuf:"bytes,15,opt,name=registry_credential_id,json=registryCredentialID,proto3" json:"registry_credential_id,omitempty"`
-	ProjectedFiles       []*ProjectedFileSpec   `protobuf:"bytes,16,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
-	PersistentDirs       []*PersistentDirSpec   `protobuf:"bytes,17,rep,name=persistent_dirs,json=persistentDirs,proto3" json:"persistent_dirs,omitempty"`
+	InstanceClass        string                 `protobuf:"bytes,4,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
+	Exposure             string                 `protobuf:"bytes,5,opt,name=exposure,proto3" json:"exposure,omitempty"`
+	Image                string                 `protobuf:"bytes,6,opt,name=image,proto3" json:"image,omitempty"`
+	Command              []string               `protobuf:"bytes,7,rep,name=command,proto3" json:"command,omitempty"`
+	Args                 []string               `protobuf:"bytes,8,rep,name=args,proto3" json:"args,omitempty"`
+	DefaultPort          int32                  `protobuf:"varint,9,opt,name=default_port,json=defaultPort,proto3" json:"default_port,omitempty"`
+	ReadinessPath        string                 `protobuf:"bytes,10,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	Env                  map[string]string      `protobuf:"bytes,11,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ConfigSetId          string                 `protobuf:"bytes,12,opt,name=config_set_id,json=configSetID,proto3" json:"config_set_id,omitempty"`
+	SecretSetId          string                 `protobuf:"bytes,13,opt,name=secret_set_id,json=secretSetID,proto3" json:"secret_set_id,omitempty"`
+	RegistryCredentialId string                 `protobuf:"bytes,14,opt,name=registry_credential_id,json=registryCredentialID,proto3" json:"registry_credential_id,omitempty"`
+	ProjectedFiles       []*ProjectedFileSpec   `protobuf:"bytes,15,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
+	PersistentDirs       []*PersistentDirSpec   `protobuf:"bytes,16,rep,name=persistent_dirs,json=persistentDirs,proto3" json:"persistent_dirs,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
@@ -1545,13 +1504,6 @@ func (x *ServiceSpec) GetPinnedPlaneId() string {
 		return x.PinnedPlaneId
 	}
 	return ""
-}
-
-func (x *ServiceSpec) GetReplicas() int32 {
-	if x != nil {
-		return x.Replicas
-	}
-	return 0
 }
 
 func (x *ServiceSpec) GetInstanceClass() string {
@@ -1972,19 +1924,13 @@ const file_minicloud_controlplane_v1_operator_proto_rawDesc = "" +
 	"\x0fobserved_region\x18\x03 \x01(\tR\x0eobservedRegion\x12F\n" +
 	"\x11health_checked_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\x0fhealthCheckedAt\x127\n" +
 	"\tsynced_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\bsyncedAt\x12#\n" +
-	"\ralerts_firing\x18\x06 \x01(\x05R\falertsFiring\"\xb1\x03\n" +
+	"\ralerts_firing\x18\x06 \x01(\x05R\falertsFiring\"\xd2\x01\n" +
 	"\x10ServiceRunStatus\x12$\n" +
 	"\x0ecurrent_run_id\x18\x01 \x01(\tR\fcurrentRunID\x12\"\n" +
 	"\rlatest_run_id\x18\x02 \x01(\tR\vlatestRunID\x12\x14\n" +
 	"\x05phase\x18\x03 \x01(\tR\x05phase\x12\x18\n" +
-	"\amessage\x18\x04 \x01(\tR\amessage\x12)\n" +
-	"\x10desired_replicas\x18\x05 \x01(\x05R\x0fdesiredReplicas\x12-\n" +
-	"\x12deploying_replicas\x18\x06 \x01(\x05R\x11deployingReplicas\x12)\n" +
-	"\x10running_replicas\x18\a \x01(\x05R\x0frunningReplicas\x12'\n" +
-	"\x0ffailed_replicas\x18\b \x01(\x05R\x0efailedReplicas\x12/\n" +
-	"\x13superseded_replicas\x18\t \x01(\x05R\x12supersededReplicas\x12D\n" +
-	"\x10last_observed_at\x18\n" +
-	" \x01(\v2\x1a.google.protobuf.TimestampR\x0elastObservedAt\"\x83\x03\n" +
+	"\amessage\x18\x04 \x01(\tR\amessage\x12D\n" +
+	"\x10last_observed_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\x0elastObservedAt\"\x83\x03\n" +
 	"\rServiceStatus\x12#\n" +
 	"\rdesired_state\x18\x01 \x01(\tR\fdesiredState\x12/\n" +
 	"\x13observed_generation\x18\x02 \x01(\x03R\x12observedGeneration\x12\x14\n" +
@@ -2017,26 +1963,25 @@ const file_minicloud_controlplane_v1_operator_proto_rawDesc = "" +
 	"\fdisplay_name\x18\x04 \x01(\tR\vdisplayName\x12\x1e\n" +
 	"\n" +
 	"generation\x18\x05 \x01(\x03R\n" +
-	"generation\"\xfd\x05\n" +
+	"generation\"\xe1\x05\n" +
 	"\vServiceSpec\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x16\n" +
 	"\x06region\x18\x02 \x01(\tR\x06region\x12&\n" +
-	"\x0fpinned_plane_id\x18\x03 \x01(\tR\rpinnedPlaneID\x12\x1a\n" +
-	"\breplicas\x18\x04 \x01(\x05R\breplicas\x12%\n" +
-	"\x0einstance_class\x18\x05 \x01(\tR\rinstanceClass\x12\x1a\n" +
-	"\bexposure\x18\x06 \x01(\tR\bexposure\x12\x14\n" +
-	"\x05image\x18\a \x01(\tR\x05image\x12\x18\n" +
-	"\acommand\x18\b \x03(\tR\acommand\x12\x12\n" +
-	"\x04args\x18\t \x03(\tR\x04args\x12!\n" +
-	"\fdefault_port\x18\n" +
-	" \x01(\x05R\vdefaultPort\x12%\n" +
-	"\x0ereadiness_path\x18\v \x01(\tR\rreadinessPath\x12A\n" +
-	"\x03env\x18\f \x03(\v2/.minicloud.controlplane.v1.ServiceSpec.EnvEntryR\x03env\x12\"\n" +
-	"\rconfig_set_id\x18\r \x01(\tR\vconfigSetID\x12\"\n" +
-	"\rsecret_set_id\x18\x0e \x01(\tR\vsecretSetID\x124\n" +
-	"\x16registry_credential_id\x18\x0f \x01(\tR\x14registryCredentialID\x12U\n" +
-	"\x0fprojected_files\x18\x10 \x03(\v2,.minicloud.controlplane.v1.ProjectedFileSpecR\x0eprojectedFiles\x12U\n" +
-	"\x0fpersistent_dirs\x18\x11 \x03(\v2,.minicloud.controlplane.v1.PersistentDirSpecR\x0epersistentDirs\x1a6\n" +
+	"\x0fpinned_plane_id\x18\x03 \x01(\tR\rpinnedPlaneID\x12%\n" +
+	"\x0einstance_class\x18\x04 \x01(\tR\rinstanceClass\x12\x1a\n" +
+	"\bexposure\x18\x05 \x01(\tR\bexposure\x12\x14\n" +
+	"\x05image\x18\x06 \x01(\tR\x05image\x12\x18\n" +
+	"\acommand\x18\a \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\b \x03(\tR\x04args\x12!\n" +
+	"\fdefault_port\x18\t \x01(\x05R\vdefaultPort\x12%\n" +
+	"\x0ereadiness_path\x18\n" +
+	" \x01(\tR\rreadinessPath\x12A\n" +
+	"\x03env\x18\v \x03(\v2/.minicloud.controlplane.v1.ServiceSpec.EnvEntryR\x03env\x12\"\n" +
+	"\rconfig_set_id\x18\f \x01(\tR\vconfigSetID\x12\"\n" +
+	"\rsecret_set_id\x18\r \x01(\tR\vsecretSetID\x124\n" +
+	"\x16registry_credential_id\x18\x0e \x01(\tR\x14registryCredentialID\x12U\n" +
+	"\x0fprojected_files\x18\x0f \x03(\v2,.minicloud.controlplane.v1.ProjectedFileSpecR\x0eprojectedFiles\x12U\n" +
+	"\x0fpersistent_dirs\x18\x10 \x03(\v2,.minicloud.controlplane.v1.PersistentDirSpecR\x0epersistentDirs\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x89\x01\n" +

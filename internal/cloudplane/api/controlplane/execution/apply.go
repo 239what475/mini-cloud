@@ -30,7 +30,6 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 		PersistentDirs:    persistentDirsFromProto(req.GetPersistentDirs()),
 		ContainerPort:     int(req.GetContainerPort()),
 		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
-		Replicas:          int(req.GetReplicas()),
 		InstanceClass:     strings.TrimSpace(req.GetInstanceClass()),
 		Exposure:          strings.TrimSpace(req.GetExposure()),
 	}

@@ -61,7 +61,7 @@ func (s *Store) ListNodes(ctx context.Context) ([]node.Node, error) {
 	return items, nil
 }
 
-// CreatePlacementDecisions 批量创建 selection decisions。
+// CreatePlacementDecisions 创建 selection decisions。
 // 参数说明：ctx 控制数据库请求生命周期；request 是调度请求；decisions 是预计算的调度放置决策。
 func (s *Store) CreatePlacementDecisions(ctx context.Context, request scheduler.PlacementRequest, decisions []scheduler.PlacementDecision) ([]scheduler.StoredDecision, error) {
 	// 空决策列表无需写库。
@@ -69,7 +69,7 @@ func (s *Store) CreatePlacementDecisions(ctx context.Context, request scheduler.
 		return nil, nil
 	}
 
-	// 多条 decision 必须在同一事务内写入，避免部分副本落库。
+	// 写入 decision 必须在同一事务内完成。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin selection decision tx: %w", err)
@@ -138,37 +138,31 @@ func (s *Store) insertPlacementDecisionTx(ctx context.Context, tx *sql.Tx, reque
 		INSERT INTO placement_decisions (
 			id,
 			deployment_id,
-			replica_index,
 			node_id,
 			region,
 			cpu_milli_request,
 			memory_mi_request,
-			replicas,
 			score,
 			reason
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, deployment_id, replica_index, node_id, region, cpu_milli_request, memory_mi_request, replicas, score, reason, created_at
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		RETURNING id, deployment_id, node_id, region, cpu_milli_request, memory_mi_request, score, reason, created_at
 	`,
 		id,
 		deploymentID,
-		decision.ReplicaIndex,
 		decision.NodeID,
 		decision.Region,
 		request.CPUMilliRequest,
 		request.MemoryMiRequest,
-		request.Replicas,
 		decision.Score,
 		decision.Reason,
 	).Scan(
 		&stored.ID,
 		&storedDeploymentID,
-		&stored.ReplicaIndex,
 		&stored.NodeID,
 		&stored.Region,
 		&stored.CPUMilliRequest,
 		&stored.MemoryMiRequest,
-		&stored.Replicas,
 		&stored.Score,
 		&stored.Reason,
 		&stored.CreatedAt,
@@ -202,20 +196,18 @@ func (s *Store) insertPlacementDecisionTx(ctx context.Context, tx *sql.Tx, reque
 // ListPlacementDecisionsByDeployment 列出 deployment 下所有 selection decision。
 // 参数说明：ctx 控制数据库请求生命周期；deploymentID 是 deployment 唯一标识。
 func (s *Store) ListPlacementDecisionsByDeployment(ctx context.Context, deploymentID string) ([]scheduler.StoredDecision, error) {
-	// 按 replica_index 升序返回，方便调用方按副本顺序展示或执行。
+	// 按创建时间稳定返回 deployment 对应的 decision。
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			d.id,
 			d.deployment_id,
 			COALESCE(a.id, ''),
 			COALESCE(a.name, ''),
-			d.replica_index,
 			d.node_id,
 			n.name,
 			d.region,
 			d.cpu_milli_request,
 			d.memory_mi_request,
-			d.replicas,
 			d.score,
 			d.reason,
 			d.created_at
@@ -224,7 +216,7 @@ func (s *Store) ListPlacementDecisionsByDeployment(ctx context.Context, deployme
 		LEFT JOIN deployments dep ON dep.id = d.deployment_id
 		LEFT JOIN services a ON a.id = dep.service_id
 		WHERE d.deployment_id = $1
-		ORDER BY d.replica_index ASC, d.created_at DESC, d.id DESC
+		ORDER BY d.created_at DESC, d.id DESC
 	`, deploymentID)
 	if err != nil {
 		return nil, fmt.Errorf("query selection decisions by deployment: %w", err)
@@ -241,13 +233,11 @@ func (s *Store) ListPlacementDecisionsByDeployment(ctx context.Context, deployme
 			&deployment,
 			&item.ServiceID,
 			&item.ServiceName,
-			&item.ReplicaIndex,
 			&item.NodeID,
 			&item.NodeName,
 			&item.Region,
 			&item.CPUMilliRequest,
 			&item.MemoryMiRequest,
-			&item.Replicas,
 			&item.Score,
 			&item.Reason,
 			&item.CreatedAt,

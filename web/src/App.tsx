@@ -25,7 +25,6 @@ type PlatformOverview = {
 
 type ServiceSpec = {
   region: string;
-  replicas: number;
   instanceClass: string;
   exposure: string;
   image: string;
@@ -44,11 +43,6 @@ type ServiceRunStatus = {
   latestRunID?: string;
   phase: string;
   message: string;
-  desiredReplicas: number;
-  deployingReplicas: number;
-  runningReplicas: number;
-  failedReplicas: number;
-  supersededReplicas: number;
   lastObservedAt?: string;
 };
 
@@ -151,7 +145,6 @@ type ServiceFormState = {
   name: string;
   displayName: string;
   region: string;
-  replicas: string;
   instanceClass: string;
   exposure: string;
   image: string;
@@ -166,7 +159,6 @@ type ServiceFormState = {
 type ServiceEditFormState = {
   displayName: string;
   region: string;
-  replicas: string;
   instanceClass: string;
   exposure: string;
   image: string;
@@ -235,7 +227,6 @@ function defaultCreateServiceForm(): ServiceFormState {
     name: "",
     displayName: "",
     region: "cn-beijing",
-    replicas: "1",
     instanceClass: "small",
     exposure: "public",
     image: "nginx:1.27-alpine",
@@ -252,7 +243,6 @@ function defaultEditServiceForm(): ServiceEditFormState {
   return {
     displayName: "",
     region: "cn-beijing",
-    replicas: "1",
     instanceClass: "small",
     exposure: "public",
     image: "nginx:1.27-alpine",
@@ -269,7 +259,6 @@ function editFormFromService(service: ServiceResource): ServiceEditFormState {
   return {
     displayName: service.metadata.displayName,
     region: service.spec.region,
-    replicas: String(service.spec.replicas),
     instanceClass: service.spec.instanceClass,
     exposure: service.spec.exposure,
     image: service.spec.image,
@@ -346,7 +335,6 @@ function toCreateServicePayload(form: ServiceFormState) {
     displayName: form.displayName.trim(),
     spec: {
       region: form.region.trim(),
-      replicas: parseIntegerField("副本数", form.replicas, { min: 1 }),
       instanceClass: form.instanceClass,
       exposure: form.exposure,
       image: form.image.trim(),
@@ -368,7 +356,6 @@ function toUpdateServicePayload(form: ServiceEditFormState) {
     displayName: form.displayName.trim(),
     spec: {
       region: form.region.trim(),
-      replicas: parseIntegerField("副本数", form.replicas, { min: 1 }),
       instanceClass: form.instanceClass,
       exposure: form.exposure,
       image: form.image.trim(),
@@ -992,21 +979,6 @@ function App() {
               </select>
             </label>
             <label>
-              <span>副本数</span>
-              <input
-                type="number"
-                min={1}
-                step={1}
-                value={serviceForm.replicas}
-                onChange={(event) =>
-                  setServiceForm((current) => ({
-                    ...current,
-                    replicas: event.target.value,
-                  }))
-                }
-              />
-            </label>
-            <label>
               <span>镜像</span>
               <input
                 value={serviceForm.image}
@@ -1154,8 +1126,8 @@ function App() {
                   <p className="app-card__section-title">spec</p>
                   <p>
                     {item.service.spec.region} ·{" "}
-                    {item.service.spec.instanceClass} · replicas{" "}
-                    {item.service.spec.replicas} · {item.service.spec.exposure}
+                    {item.service.spec.instanceClass} ·{" "}
+                    {item.service.spec.exposure}
                   </p>
                   <p>{item.service.spec.image}</p>
                   <p>
@@ -1235,7 +1207,6 @@ function App() {
                   <strong>{selectedServiceDetail.service.spec.image}</strong>
                   <p>
                     {selectedServiceDetail.service.spec.instanceClass} ·
-                    replicas {selectedServiceDetail.service.spec.replicas} ·{" "}
                     {selectedServiceDetail.service.spec.exposure}
                   </p>
                 </div>
@@ -1309,18 +1280,6 @@ function App() {
                     <option value="public">public</option>
                     <option value="private">private</option>
                   </select>
-                </label>
-                <label>
-                  <span>副本数</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={editForm.replicas}
-                    onChange={(event) =>
-                      updateEditFormField("replicas", event.target.value)
-                    }
-                  />
                 </label>
                 <label>
                   <span>镜像</span>
@@ -1443,12 +1402,6 @@ function App() {
                     <div>
                       <strong>{selectedStatus?.run.phase ?? "-"}</strong>
                       <p>{selectedStatus?.run.message ?? "-"}</p>
-                      <p>
-                        desired {selectedStatus?.run.desiredReplicas ?? 0} ·
-                        deploying {selectedStatus?.run.deployingReplicas ?? 0} ·
-                        running {selectedStatus?.run.runningReplicas ?? 0} ·
-                        failed {selectedStatus?.run.failedReplicas ?? 0}
-                      </p>
                     </div>
                     <span>
                       {selectedStatus?.run.lastObservedAt
@@ -1465,10 +1418,7 @@ function App() {
                   <div className="history-row">
                     <div>
                       <strong>{selectedStatus?.run.latestRunID ?? "-"}</strong>
-                      <p>
-                        superseded {selectedStatus?.run.supersededReplicas ?? 0}{" "}
-                        · current {selectedStatus?.run.currentRunID ?? "-"}
-                      </p>
+                      <p>current {selectedStatus?.run.currentRunID ?? "-"}</p>
                     </div>
                     <span>{selectedStatus?.desiredState ?? "-"}</span>
                   </div>

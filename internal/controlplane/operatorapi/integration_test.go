@@ -43,7 +43,6 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "nginx:1.27-alpine",
@@ -125,7 +124,6 @@ func TestOperatorTransportServesGRPCAndGateway(t *testing.T) {
 		Spec: &controlplanev1.ServiceSpec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: "small",
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:demo",

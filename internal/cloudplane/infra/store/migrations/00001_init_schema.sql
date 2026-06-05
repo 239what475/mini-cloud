@@ -91,7 +91,6 @@ CREATE TABLE IF NOT EXISTS services (
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     spec_region TEXT NOT NULL,
-    spec_replicas INTEGER NOT NULL CHECK (spec_replicas > 0),
     spec_instance_class TEXT NOT NULL,
     spec_exposure TEXT NOT NULL DEFAULT 'public',
     spec_image TEXT NOT NULL DEFAULT '',
@@ -156,9 +155,6 @@ CREATE TABLE IF NOT EXISTS deployments (
     id TEXT PRIMARY KEY,
     service_id TEXT NOT NULL REFERENCES services(id) ON DELETE CASCADE,
     revision_id TEXT NOT NULL REFERENCES revisions(id) ON DELETE CASCADE,
-    desired_replicas INTEGER NOT NULL CHECK (desired_replicas > 0),
-    ready_replicas INTEGER NOT NULL DEFAULT 0 CHECK (ready_replicas >= 0),
-    available_replicas INTEGER NOT NULL DEFAULT 0 CHECK (available_replicas >= 0),
     status TEXT NOT NULL,
     status_reason TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -183,12 +179,10 @@ CREATE INDEX IF NOT EXISTS idx_deployment_transitions_created_at
 CREATE TABLE IF NOT EXISTS placement_decisions (
     id TEXT PRIMARY KEY,
     deployment_id TEXT NULL REFERENCES deployments(id) ON DELETE CASCADE,
-    replica_index INTEGER NOT NULL DEFAULT 0 CHECK (replica_index >= 0),
     node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE RESTRICT,
     region TEXT NOT NULL,
     cpu_milli_request INTEGER NOT NULL CHECK (cpu_milli_request > 0),
     memory_mi_request INTEGER NOT NULL CHECK (memory_mi_request > 0),
-    spec_replicas INTEGER NOT NULL CHECK (spec_replicas > 0),
     score BIGINT NOT NULL,
     reason TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -197,14 +191,13 @@ CREATE TABLE IF NOT EXISTS placement_decisions (
 CREATE INDEX IF NOT EXISTS idx_placement_decisions_created_at
     ON placement_decisions (created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_placement_decisions_deployment_replica
-    ON placement_decisions (deployment_id, replica_index)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_placement_decisions_deployment
+    ON placement_decisions (deployment_id)
     WHERE deployment_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS deployment_executions (
     id TEXT PRIMARY KEY,
     deployment_id TEXT NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
-    replica_index INTEGER NOT NULL DEFAULT 0 CHECK (replica_index >= 0),
     node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE RESTRICT,
     image TEXT NOT NULL,
     container_name TEXT NOT NULL DEFAULT '',
@@ -226,8 +219,8 @@ CREATE INDEX IF NOT EXISTS idx_deployment_executions_deployment_created_at
 CREATE INDEX IF NOT EXISTS idx_deployment_executions_node_created_at
     ON deployment_executions (node_id, created_at DESC);
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_executions_deployment_replica
-    ON deployment_executions (deployment_id, replica_index)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_deployment_executions_deployment_active
+    ON deployment_executions (deployment_id)
     WHERE status IN ('deploying', 'running');
 
 CREATE TABLE IF NOT EXISTS execution_intents (
@@ -238,7 +231,6 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     service_name TEXT NOT NULL,
     service_exposure TEXT NOT NULL DEFAULT 'public',
     service_generation BIGINT NOT NULL CHECK (service_generation > 0),
-    replica_index INTEGER NOT NULL CHECK (replica_index >= 0),
     node_id TEXT NULL REFERENCES nodes(id) ON DELETE SET NULL,
     image TEXT NOT NULL,
     command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -262,7 +254,7 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     finished_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (plan_id, replica_index)
+    UNIQUE (plan_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at
@@ -302,7 +294,6 @@ CREATE TABLE IF NOT EXISTS service_desired (
     observed_generation BIGINT NOT NULL DEFAULT 0 CHECK (observed_generation >= 0),
     display_name TEXT NOT NULL,
     spec_region TEXT NOT NULL,
-    spec_replicas INTEGER NOT NULL CHECK (spec_replicas > 0),
     spec_instance_class TEXT NOT NULL,
     spec_exposure TEXT NOT NULL,
     spec_image TEXT NOT NULL,

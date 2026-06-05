@@ -78,7 +78,6 @@ func TestClientCreatesService(t *testing.T) {
 		Spec: &controlplanev1.ServiceSpec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: "small",
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:demo",

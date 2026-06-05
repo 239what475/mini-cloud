@@ -115,7 +115,6 @@ func serviceSpec(image string) controlservice.Spec {
 	return controlservice.Spec{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: controlservice.InstanceClassSmall,
 		Exposure:      "public",
 		Image:         image,

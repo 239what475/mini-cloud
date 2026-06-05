@@ -19,7 +19,6 @@ func TestIntegrationRevisionOnlyUpdatePersistsSpec(t *testing.T) {
 
 	created, err := db.Store.InsertService(context.Background(), "svc-demo", "demo", "Demo", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "nginx:1.27-alpine",
 		DefaultPort:   8080,
@@ -51,7 +50,6 @@ func TestIntegrationServiceDesiredRejectsIdentityRewrite(t *testing.T) {
 
 	spec := workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "nginx:1.27-alpine",
 		DefaultPort:   8080,
@@ -86,7 +84,6 @@ func TestIntegrationUpdateServiceRejectsRevisionChangeWhenPersistentDirsAndRevis
 
 	created, err := db.Store.InsertService(ctx, "svc-cliproxyapi", "cliproxyapi", "CLI Proxy API", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "ghcr.io/example/cliproxyapi:v1",
 		DefaultPort:   8317,

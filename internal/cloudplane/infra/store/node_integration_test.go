@@ -193,7 +193,6 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 		Image:             "nginx:1.27-alpine",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
-		Replicas:          1,
 		InstanceClass:     workload.InstanceClassSmall,
 		Exposure:          "public",
 	}); err != nil {
@@ -276,8 +275,8 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 			continue
 		}
 		found = true
-		if item.DesiredReplicas != 1 || item.FailedReplicas != 1 || item.RunningReplicas != 0 || item.DeployingReplicas != 0 {
-			t.Fatalf("execution snapshot = %+v, want one failed replica and no active replicas", item)
+		if item.Status != execution.StatusFailed {
+			t.Fatalf("execution snapshot = %+v, want failed status", item)
 		}
 		if !strings.Contains(item.LastStatusReason, "marked offline") {
 			t.Fatalf("snapshot reason = %q, want marked offline", item.LastStatusReason)

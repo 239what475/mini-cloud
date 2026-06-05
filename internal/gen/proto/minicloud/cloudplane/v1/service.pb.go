@@ -145,7 +145,6 @@ func (x *PersistentDirSpec) GetMountPath() string {
 type ServiceSpec struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	Region               string                 `protobuf:"bytes,1,opt,name=region,proto3" json:"region,omitempty"`
-	Replicas             int32                  `protobuf:"varint,2,opt,name=replicas,proto3" json:"replicas,omitempty"`
 	InstanceClass        string                 `protobuf:"bytes,3,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
 	Image                string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`
 	Command              []string               `protobuf:"bytes,5,rep,name=command,proto3" json:"command,omitempty"`
@@ -198,13 +197,6 @@ func (x *ServiceSpec) GetRegion() string {
 		return x.Region
 	}
 	return ""
-}
-
-func (x *ServiceSpec) GetReplicas() int32 {
-	if x != nil {
-		return x.Replicas
-	}
-	return 0
 }
 
 func (x *ServiceSpec) GetInstanceClass() string {
@@ -478,10 +470,9 @@ const file_minicloud_cloudplane_v1_service_proto_rawDesc = "" +
 	"\x11PersistentDirSpec\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"mount_path\x18\x02 \x01(\tR\tmountPath\"\xb3\x05\n" +
+	"mount_path\x18\x02 \x01(\tR\tmountPath\"\x97\x05\n" +
 	"\vServiceSpec\x12\x16\n" +
-	"\x06region\x18\x01 \x01(\tR\x06region\x12\x1a\n" +
-	"\breplicas\x18\x02 \x01(\x05R\breplicas\x12%\n" +
+	"\x06region\x18\x01 \x01(\tR\x06region\x12%\n" +
 	"\x0einstance_class\x18\x03 \x01(\tR\rinstanceClass\x12\x14\n" +
 	"\x05image\x18\x04 \x01(\tR\x05image\x12\x18\n" +
 	"\acommand\x18\x05 \x03(\tR\acommand\x12\x12\n" +

@@ -17,7 +17,6 @@ const serviceRunSelectColumns = `
 	generation,
 	plan_id,
 	spec_json,
-	desired_replicas,
 	status,
 	message,
 	observed_at,
@@ -47,12 +46,11 @@ func (s *Store) CreateServiceRun(ctx context.Context, input controlservice.Creat
 				generation,
 				plan_id,
 				spec_json,
-				desired_replicas,
 				status,
 				message,
 				observed_at
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (service_id, generation) DO NOTHING
 			RETURNING `+serviceRunSelectColumns+`
 		)
@@ -64,7 +62,7 @@ func (s *Store) CreateServiceRun(ctx context.Context, input controlservice.Creat
 		  AND generation = $3
 		  AND NOT EXISTS (SELECT 1 FROM inserted)
 		LIMIT 1
-	`, id, input.ServiceID, input.Generation, input.PlanID, specJSON, input.DesiredReplicas, status, input.Message, input.ObservedAt))
+	`, id, input.ServiceID, input.Generation, input.PlanID, specJSON, status, input.Message, input.ObservedAt))
 }
 
 func (s *Store) GetServiceRunByGeneration(ctx context.Context, serviceID string, generation int64) (controlservice.ServiceRun, error) {
@@ -155,7 +153,6 @@ func scanServiceRun(scanner interface{ Scan(dest ...any) error }) (controlservic
 		&item.Generation,
 		&item.PlanID,
 		&specJSON,
-		&item.DesiredReplicas,
 		&item.Status,
 		&item.Message,
 		&observedAt,

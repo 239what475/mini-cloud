@@ -39,8 +39,6 @@ type StartRequest struct {
 	DeploymentID string
 	// ExecutionID 是执行 ID，也是去重和关闭日志采集的 key。
 	ExecutionID string
-	// ReplicaIndex 是执行对应的副本序号。
-	ReplicaIndex int
 	// NodeID 是承载该执行的节点 ID。
 	NodeID string
 	// ContainerID 是要跟随日志的运行时容器 ID。
@@ -264,7 +262,6 @@ func formatLogfmtLine(platformName string, req StartRequest, stream string, time
 	writeLogfmtKV(&builder, "service_name", req.ServiceName)
 	writeLogfmtKV(&builder, "deployment_id", req.DeploymentID)
 	writeLogfmtKV(&builder, "execution_id", req.ExecutionID)
-	writeLogfmtKV(&builder, "replica_index", strconv.Itoa(req.ReplicaIndex))
 	writeLogfmtKV(&builder, "node_id", req.NodeID)
 	writeLogfmtKV(&builder, "container_name", req.ContainerName)
 	writeLogfmtKV(&builder, "stream", stream)

@@ -185,8 +185,7 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 		candidate.Eligible = true
 		candidate.Score = score(candidate.CPUMilliFreeAfter, candidate.MemoryMiFreeAfter)
 		candidate.Reason = fmt.Sprintf(
-			"selected plane candidate because it has enough aggregate runtime capacity for %d replica(s) in provider %s region %s",
-			input.Replicas,
+			"selected plane candidate because it has enough aggregate runtime capacity in provider %s region %s",
 			input.Provider,
 			input.Region,
 		)

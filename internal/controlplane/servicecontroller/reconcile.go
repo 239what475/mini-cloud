@@ -174,14 +174,13 @@ func (c *Controller) createDispatchedRun(ctx context.Context, serviceItem contro
 	}
 	message := fmt.Sprintf("execution plan %s dispatched; waiting for node-agent execution result", runID)
 	if _, err := c.store.CreateServiceRun(ctx, controlservice.CreateRunInput{
-		ID:              runID,
-		ServiceID:       serviceItem.Metadata.ID,
-		Generation:      serviceItem.Metadata.Generation,
-		PlanID:          runID,
-		Spec:            controlservice.CloneSpec(serviceItem.Spec),
-		DesiredReplicas: serviceItem.Spec.Replicas,
-		Status:          controlservice.RunPhaseDispatching,
-		Message:         message,
+		ID:         runID,
+		ServiceID:  serviceItem.Metadata.ID,
+		Generation: serviceItem.Metadata.Generation,
+		PlanID:     runID,
+		Spec:       controlservice.CloneSpec(serviceItem.Spec),
+		Status:     controlservice.RunPhaseDispatching,
+		Message:    message,
 	}); err != nil {
 		return controlservice.RunStatus{}, err
 	}
@@ -189,25 +188,19 @@ func (c *Controller) createDispatchedRun(ctx context.Context, serviceItem contro
 	runStatus.LatestRunID = runID
 	runStatus.Phase = controlservice.RunPhaseDispatching
 	runStatus.Message = message
-	runStatus.DesiredReplicas = serviceItem.Spec.Replicas
-	runStatus.DeployingReplicas = serviceItem.Spec.Replicas
-	runStatus.RunningReplicas = 0
-	runStatus.FailedReplicas = 0
-	runStatus.SupersededReplicas = 0
 	return runStatus, nil
 }
 
 func (c *Controller) createDeletingRun(ctx context.Context, serviceItem controlservice.Service, runID string) (controlservice.RunStatus, error) {
 	message := fmt.Sprintf("delete execution plan %s dispatched; waiting for node-agent cleanup result", runID)
 	if _, err := c.store.CreateServiceRun(ctx, controlservice.CreateRunInput{
-		ID:              runID,
-		ServiceID:       serviceItem.Metadata.ID,
-		Generation:      serviceItem.Metadata.Generation,
-		PlanID:          runID,
-		Spec:            controlservice.CloneSpec(serviceItem.Spec),
-		DesiredReplicas: serviceItem.Spec.Replicas,
-		Status:          controlservice.RunPhaseDispatching,
-		Message:         message,
+		ID:         runID,
+		ServiceID:  serviceItem.Metadata.ID,
+		Generation: serviceItem.Metadata.Generation,
+		PlanID:     runID,
+		Spec:       controlservice.CloneSpec(serviceItem.Spec),
+		Status:     controlservice.RunPhaseDispatching,
+		Message:    message,
 	}); err != nil {
 		return controlservice.RunStatus{}, err
 	}
@@ -215,11 +208,6 @@ func (c *Controller) createDeletingRun(ctx context.Context, serviceItem controls
 	runStatus.LatestRunID = runID
 	runStatus.Phase = controlservice.RunPhaseDispatching
 	runStatus.Message = message
-	runStatus.DesiredReplicas = serviceItem.Spec.Replicas
-	runStatus.DeployingReplicas = serviceItem.Spec.Replicas
-	runStatus.RunningReplicas = 0
-	runStatus.FailedReplicas = 0
-	runStatus.SupersededReplicas = 0
 	return runStatus, nil
 }
 
@@ -229,7 +217,6 @@ func (c *Controller) selectPlane(ctx context.Context, serviceItem controlservice
 		Region:        serviceItem.Spec.Region,
 		PinnedPlaneID: serviceItem.Spec.PinnedPlaneID,
 		InstanceClass: serviceItem.Spec.InstanceClass,
-		Replicas:      serviceItem.Spec.Replicas,
 	})
 	if err != nil {
 		return nil, err
@@ -324,7 +311,6 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 		},
 		Spec: deploy.ServiceSpec{
 			Region:               serviceItem.Spec.Region,
-			Replicas:             serviceItem.Spec.Replicas,
 			InstanceClass:        serviceItem.Spec.InstanceClass,
 			Exposure:             serviceItem.Spec.Exposure,
 			Image:                serviceItem.Spec.Image,

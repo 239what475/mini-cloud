@@ -25,8 +25,6 @@ const (
 )
 
 var (
-	// ErrDesiredReplicasInvalid 表示 deployment 期望副本数不是正数。
-	ErrDesiredReplicasInvalid = errors.New("desiredReplicas must be greater than 0")
 	// ErrDeploymentStatusInvalid 表示状态值不属于 deployment 状态机。
 	ErrDeploymentStatusInvalid = errors.New("invalid deployment status")
 	// ErrTransitionReasonRequired 表示状态流转缺少原因说明。
@@ -35,7 +33,7 @@ var (
 	ErrInvalidStatusTransition = errors.New("invalid deployment status transition")
 )
 
-// Deployment 表示一次 revision 发布对应的副本部署记录。
+// Deployment 表示一次 revision 发布对应的部署记录。
 type Deployment struct {
 	// ID 是 deployment 记录的唯一标识。
 	ID string `json:"id"`
@@ -43,12 +41,6 @@ type Deployment struct {
 	ServiceID string `json:"serviceID"`
 	// RevisionID 表示所属 revision 的唯一标识。
 	RevisionID string `json:"revisionID"`
-	// DesiredReplicas 表示 deployment 期望副本数。
-	DesiredReplicas int `json:"desiredReplicas"`
-	// ReadyReplicas 表示已通过运行时上报的 ready 副本数。
-	ReadyReplicas int `json:"readyReplicas"`
-	// AvailableReplicas 表示可对外承载流量的副本数。
-	AvailableReplicas int `json:"availableReplicas"`
 	// Status 是 deployment 当前状态。
 	Status string `json:"status"`
 	// StatusReason 表示最近一次 deployment 状态变化的原因。
@@ -65,15 +57,10 @@ type CreateInput struct {
 	ServiceID string
 	// RevisionID 表示所属 revision 的唯一标识。
 	RevisionID string
-	// DesiredReplicas 表示 deployment 期望副本数。
-	DesiredReplicas int
 }
 
 // Validate 校验创建 deployment 所需字段是否满足领域约束。
 func (in CreateInput) Validate() error {
-	if in.DesiredReplicas <= 0 {
-		return ErrDesiredReplicasInvalid
-	}
 	return nil
 }
 

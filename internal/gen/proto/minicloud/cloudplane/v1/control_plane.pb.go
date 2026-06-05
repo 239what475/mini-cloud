@@ -769,20 +769,16 @@ func (x *PlaneRuntimeConfig) GetSummary() *structpb.Struct {
 }
 
 type PlaneExecutionSnapshot struct {
-	state              protoimpl.MessageState `protogen:"open.v1"`
-	PlanId             string                 `protobuf:"bytes,1,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
-	ServiceId          string                 `protobuf:"bytes,2,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	ServiceName        string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	ServiceGeneration  int64                  `protobuf:"varint,4,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
-	DesiredReplicas    int32                  `protobuf:"varint,5,opt,name=desired_replicas,json=desiredReplicas,proto3" json:"desired_replicas,omitempty"`
-	DeployingReplicas  int32                  `protobuf:"varint,6,opt,name=deploying_replicas,json=deployingReplicas,proto3" json:"deploying_replicas,omitempty"`
-	RunningReplicas    int32                  `protobuf:"varint,7,opt,name=running_replicas,json=runningReplicas,proto3" json:"running_replicas,omitempty"`
-	FailedReplicas     int32                  `protobuf:"varint,8,opt,name=failed_replicas,json=failedReplicas,proto3" json:"failed_replicas,omitempty"`
-	SupersededReplicas int32                  `protobuf:"varint,9,opt,name=superseded_replicas,json=supersededReplicas,proto3" json:"superseded_replicas,omitempty"`
-	LastStatusReason   string                 `protobuf:"bytes,10,opt,name=last_status_reason,json=lastStatusReason,proto3" json:"last_status_reason,omitempty"`
-	ObservedAt         *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
-	unknownFields      protoimpl.UnknownFields
-	sizeCache          protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	PlanId            string                 `protobuf:"bytes,1,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
+	ServiceId         string                 `protobuf:"bytes,2,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceName       string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	ServiceGeneration int64                  `protobuf:"varint,4,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
+	Status            string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	LastStatusReason  string                 `protobuf:"bytes,6,opt,name=last_status_reason,json=lastStatusReason,proto3" json:"last_status_reason,omitempty"`
+	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *PlaneExecutionSnapshot) Reset() {
@@ -843,39 +839,11 @@ func (x *PlaneExecutionSnapshot) GetServiceGeneration() int64 {
 	return 0
 }
 
-func (x *PlaneExecutionSnapshot) GetDesiredReplicas() int32 {
+func (x *PlaneExecutionSnapshot) GetStatus() string {
 	if x != nil {
-		return x.DesiredReplicas
+		return x.Status
 	}
-	return 0
-}
-
-func (x *PlaneExecutionSnapshot) GetDeployingReplicas() int32 {
-	if x != nil {
-		return x.DeployingReplicas
-	}
-	return 0
-}
-
-func (x *PlaneExecutionSnapshot) GetRunningReplicas() int32 {
-	if x != nil {
-		return x.RunningReplicas
-	}
-	return 0
-}
-
-func (x *PlaneExecutionSnapshot) GetFailedReplicas() int32 {
-	if x != nil {
-		return x.FailedReplicas
-	}
-	return 0
-}
-
-func (x *PlaneExecutionSnapshot) GetSupersededReplicas() int32 {
-	if x != nil {
-		return x.SupersededReplicas
-	}
-	return 0
+	return ""
 }
 
 func (x *PlaneExecutionSnapshot) GetLastStatusReason() string {
@@ -1315,9 +1283,8 @@ type ApplyExecutionPlanRequest struct {
 	ImageCredential   *ExecutionImageCredential `protobuf:"bytes,11,opt,name=image_credential,json=imageCredential,proto3" json:"image_credential,omitempty"`
 	ContainerPort     int32                     `protobuf:"varint,12,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
 	ReadinessPath     string                    `protobuf:"bytes,13,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	Replicas          int32                     `protobuf:"varint,14,opt,name=replicas,proto3" json:"replicas,omitempty"`
-	InstanceClass     string                    `protobuf:"bytes,15,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
-	Exposure          string                    `protobuf:"bytes,16,opt,name=exposure,proto3" json:"exposure,omitempty"`
+	InstanceClass     string                    `protobuf:"bytes,14,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
+	Exposure          string                    `protobuf:"bytes,15,opt,name=exposure,proto3" json:"exposure,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1441,13 +1408,6 @@ func (x *ApplyExecutionPlanRequest) GetReadinessPath() string {
 		return x.ReadinessPath
 	}
 	return ""
-}
-
-func (x *ApplyExecutionPlanRequest) GetReplicas() int32 {
-	if x != nil {
-		return x.Replicas
-	}
-	return 0
 }
 
 func (x *ApplyExecutionPlanRequest) GetInstanceClass() string {
@@ -1708,21 +1668,16 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\x12 \n" +
 	"\vfingerprint\x18\x02 \x01(\tR\vfingerprint\x121\n" +
-	"\asummary\x18\x03 \x01(\v2\x17.google.protobuf.StructR\asummary\"\xec\x03\n" +
+	"\asummary\x18\x03 \x01(\v2\x17.google.protobuf.StructR\asummary\"\xa5\x02\n" +
 	"\x16PlaneExecutionSnapshot\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x02 \x01(\tR\tserviceID\x12!\n" +
 	"\fservice_name\x18\x03 \x01(\tR\vserviceName\x12-\n" +
-	"\x12service_generation\x18\x04 \x01(\x03R\x11serviceGeneration\x12)\n" +
-	"\x10desired_replicas\x18\x05 \x01(\x05R\x0fdesiredReplicas\x12-\n" +
-	"\x12deploying_replicas\x18\x06 \x01(\x05R\x11deployingReplicas\x12)\n" +
-	"\x10running_replicas\x18\a \x01(\x05R\x0frunningReplicas\x12'\n" +
-	"\x0ffailed_replicas\x18\b \x01(\x05R\x0efailedReplicas\x12/\n" +
-	"\x13superseded_replicas\x18\t \x01(\x05R\x12supersededReplicas\x12,\n" +
-	"\x12last_status_reason\x18\n" +
-	" \x01(\tR\x10lastStatusReason\x12;\n" +
-	"\vobserved_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"\x12service_generation\x18\x04 \x01(\x03R\x11serviceGeneration\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12,\n" +
+	"\x12last_status_reason\x18\x06 \x01(\tR\x10lastStatusReason\x12;\n" +
+	"\vobserved_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\"\xe1\x04\n" +
 	"\rPlaneSnapshot\x12;\n" +
 	"\x05plane\x18\x01 \x01(\v2%.minicloud.cloudplane.v1.PlaneSummaryR\x05plane\x12<\n" +
@@ -1762,7 +1717,7 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x18ExecutionImageCredential\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
-	"\bpassword\x18\x03 \x01(\tR\bpassword\"\xaf\x06\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\"\x93\x06\n" +
 	"\x19ApplyExecutionPlanRequest\x12\x17\n" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12\x1d\n" +
 	"\n" +
@@ -1778,10 +1733,9 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	" \x03(\v2/.minicloud.cloudplane.v1.ExecutionPersistentDirR\x0epersistentDirs\x12\\\n" +
 	"\x10image_credential\x18\v \x01(\v21.minicloud.cloudplane.v1.ExecutionImageCredentialR\x0fimageCredential\x12%\n" +
 	"\x0econtainer_port\x18\f \x01(\x05R\rcontainerPort\x12%\n" +
-	"\x0ereadiness_path\x18\r \x01(\tR\rreadinessPath\x12\x1a\n" +
-	"\breplicas\x18\x0e \x01(\x05R\breplicas\x12%\n" +
-	"\x0einstance_class\x18\x0f \x01(\tR\rinstanceClass\x12\x1a\n" +
-	"\bexposure\x18\x10 \x01(\tR\bexposure\x1a6\n" +
+	"\x0ereadiness_path\x18\r \x01(\tR\rreadinessPath\x12%\n" +
+	"\x0einstance_class\x18\x0e \x01(\tR\rinstanceClass\x12\x1a\n" +
+	"\bexposure\x18\x0f \x01(\tR\bexposure\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"M\n" +

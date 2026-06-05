@@ -62,7 +62,6 @@ control-plane 是全局事实来源，负责：
 - revision
 - deployment
 - placement
-- desired replicas
 - global service status
 - plane selection
 - operation history and audit
@@ -328,16 +327,18 @@ cloud-plane 检测 node heartbeat 过期
 
 node health 是 plane-local 事实，但 service/deployment 状态仍由 control-plane 聚合。
 
-### Slice 5：scale out / scale in 链路
+### Slice 5：移除 replica 模型
 
 ```text
-control-plane 期望 replicas 变化
--> 生成新增或删除 execution
--> cloud-plane 调度到 node-agent
--> control-plane 汇总 replica 状态
+service spec 只描述一个 workload/container
+-> execution plan 只下发一个运行实例
+-> cloud-plane / node-agent 只传递 execution 身份
+-> control-plane 按单个 execution 状态聚合 service run
 ```
 
-scale 链路完成后，再考虑 provider runtime node scale out / scale in 的保留和收缩。
+mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service 表示一个运行中的 workload/container。
+
+运行态只表达单个 run / execution 的状态，例如 `pending`、`deploying`、`running`、`failed`、`superseded`。
 
 ## 迁移策略
 

@@ -10,7 +10,7 @@ import (
 func TestPreviewServicePlanAllowsWithinGuardrail(t *testing.T) {
 	t.Parallel()
 
-	// resource guardrail 足够容纳现有服务和新增 small 单副本服务。
+	// resource guardrail 足够容纳现有服务和新增 small 服务。
 	preview, err := PreviewServicePlan(Guardrails{
 		MaxServices: 3,
 		CPUMilli:    2000,
@@ -19,11 +19,10 @@ func TestPreviewServicePlanAllowsWithinGuardrail(t *testing.T) {
 		{
 			Metadata: workload.Metadata{ID: "service_01", Name: "demo-one", DisplayName: "Demo One"},
 			Status:   workload.ServiceStatus{Phase: workload.StatusRunning},
-			Spec:     workload.Spec{InstanceClass: workload.InstanceClassSmall, Replicas: 1},
+			Spec:     workload.Spec{InstanceClass: workload.InstanceClassSmall},
 		},
 	}, ServicePlanPreviewInput{
 		InstanceClass: workload.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewServicePlan returned error: %v", err)
@@ -57,11 +56,10 @@ func TestPreviewServicePlanRejectsServiceCountGuardrailOverflow(t *testing.T) {
 		{
 			Metadata: workload.Metadata{ID: "service_01", Name: "demo-one", DisplayName: "Demo One"},
 			Status:   workload.ServiceStatus{Phase: workload.StatusIdle},
-			Spec:     workload.Spec{InstanceClass: workload.InstanceClassMedium, Replicas: 1},
+			Spec:     workload.Spec{InstanceClass: workload.InstanceClassMedium},
 		},
 	}, ServicePlanPreviewInput{
 		InstanceClass: workload.InstanceClassLarge,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewServicePlan returned error: %v", err)

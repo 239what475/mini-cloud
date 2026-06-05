@@ -37,9 +37,8 @@ func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 		ServiceName:   "hello",
 		DeploymentID:  "dep_demo",
 		ExecutionID:   "exec_demo",
-		ReplicaIndex:  3,
 		NodeID:        "node_demo",
-		ContainerName: "mini-cloud-dep-demo-r3",
+		ContainerName: "mini-cloud-dep-demo",
 	}, "stdout", time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), "hello world")
 
 	for _, want := range []string{
@@ -47,7 +46,6 @@ func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 		`service_id="svc_demo"`,
 		`deployment_id="dep_demo"`,
 		`execution_id="exec_demo"`,
-		`replica_index="3"`,
 		`stream="stdout"`,
 		`msg="hello world"`,
 	} {
@@ -96,9 +94,8 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 		ServiceName:   "hello",
 		DeploymentID:  "dep_demo",
 		ExecutionID:   "exec_demo",
-		ReplicaIndex:  1,
 		NodeID:        "node_demo",
-		ContainerName: "mini-cloud-dep-demo-r1",
+		ContainerName: "mini-cloud-dep-demo",
 	}, "stderr", time.Date(2026, 4, 16, 12, 34, 56, 0, time.UTC), "boom")
 
 	if gotPath != "/loki/api/v1/push" {

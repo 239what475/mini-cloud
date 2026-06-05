@@ -97,7 +97,6 @@ func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.Exe
 		ImageCredential:   protoExecutionImageCredential(input.ImageCredential),
 		ContainerPort:     int32(input.ContainerPort),
 		ReadinessPath:     strings.TrimSpace(input.ReadinessPath),
-		Replicas:          int32(input.Replicas),
 		InstanceClass:     strings.TrimSpace(input.InstanceClass),
 		Exposure:          strings.TrimSpace(input.Exposure),
 	})
@@ -319,16 +318,12 @@ func executionSnapshotsFromProto(items []*cloudplanev1.PlaneExecutionSnapshot) [
 			continue
 		}
 		view := cloudplaneapi.ExecutionSnapshot{
-			PlanID:             item.GetPlanId(),
-			ServiceID:          item.GetServiceId(),
-			ServiceName:        item.GetServiceName(),
-			ServiceGeneration:  item.GetServiceGeneration(),
-			DesiredReplicas:    int(item.GetDesiredReplicas()),
-			DeployingReplicas:  int(item.GetDeployingReplicas()),
-			RunningReplicas:    int(item.GetRunningReplicas()),
-			FailedReplicas:     int(item.GetFailedReplicas()),
-			SupersededReplicas: int(item.GetSupersededReplicas()),
-			LastStatusReason:   item.GetLastStatusReason(),
+			PlanID:            item.GetPlanId(),
+			ServiceID:         item.GetServiceId(),
+			ServiceName:       item.GetServiceName(),
+			ServiceGeneration: item.GetServiceGeneration(),
+			Status:            item.GetStatus(),
+			LastStatusReason:  item.GetLastStatusReason(),
 		}
 		if ts := item.GetObservedAt(); ts != nil {
 			view.ObservedAt = ts.AsTime().UTC()

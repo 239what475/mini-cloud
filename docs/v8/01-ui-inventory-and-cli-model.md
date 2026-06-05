@@ -148,7 +148,7 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 
 - 创建和更新都使用 `apply -f`。
 - YAML 是主要用户界面，也是后续 agent 修改和解释资源的主要对象。
-- CLI 不提供长 flag 表单来拼装 service spec，例如不设计 `service create --image --replicas --port ...` 作为主路径。
+- CLI 不提供长 flag 表单来拼装 service spec，例如不设计 `service create --image --port ...` 作为主路径。
 - `get -o yaml` 输出应尽量能作为 `apply -f` 的输入基础。
 - 复杂资源支持 `apiVersion`、`kind`、`metadata`、`spec` 结构。
 - 密钥类输入不在默认 table 输出中回显 secret value。
@@ -275,7 +275,6 @@ metadata:
 spec:
   provider: aliyun
   region: cn-beijing
-  replicas: 1
   instanceClass: small
   exposure: public
   image: nginx:1.27-alpine

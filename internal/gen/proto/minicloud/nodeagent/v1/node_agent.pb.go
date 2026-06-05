@@ -618,7 +618,6 @@ type WorkItem struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ExecutionId         string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
 	DeploymentId        string                 `protobuf:"bytes,2,opt,name=deployment_id,json=deploymentID,proto3" json:"deployment_id,omitempty"`
-	ReplicaIndex        int32                  `protobuf:"varint,3,opt,name=replica_index,json=replicaIndex,proto3" json:"replica_index,omitempty"`
 	NodeId              string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
 	ServiceId           string                 `protobuf:"bytes,6,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
 	ServiceName         string                 `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
@@ -684,13 +683,6 @@ func (x *WorkItem) GetDeploymentId() string {
 		return x.DeploymentId
 	}
 	return ""
-}
-
-func (x *WorkItem) GetReplicaIndex() int32 {
-	if x != nil {
-		return x.ReplicaIndex
-	}
-	return 0
 }
 
 func (x *WorkItem) GetNodeId() string {
@@ -1326,11 +1318,10 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
 	"mount_path\x18\x02 \x01(\tR\tmountPath\x12\x1f\n" +
 	"\vsource_path\x18\x03 \x01(\tR\n" +
-	"sourcePath\"\x8b\b\n" +
+	"sourcePath\"\xe6\a\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12#\n" +
-	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12#\n" +
-	"\rreplica_index\x18\x03 \x01(\x05R\freplicaIndex\x12\x17\n" +
+	"\rdeployment_id\x18\x02 \x01(\tR\fdeploymentID\x12\x17\n" +
 	"\anode_id\x18\x04 \x01(\tR\x06nodeID\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x06 \x01(\tR\tserviceID\x12!\n" +

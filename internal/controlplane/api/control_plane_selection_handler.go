@@ -51,7 +51,6 @@ func (h controlPlaneSelectionHandler) previewSelection(w http.ResponseWriter, r 
 		switch {
 		case errors.Is(err, planeselector.ErrProviderRequired),
 			errors.Is(err, planeselector.ErrRegionRequired),
-			errors.Is(err, deploy.ErrInvalidReplicas),
 			errors.Is(err, deploy.ErrInvalidInstanceClass):
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
@@ -72,7 +71,6 @@ func (h controlPlaneSelectionHandler) previewSelection(w http.ResponseWriter, r 
 			"region":        input.Region,
 			"pinnedPlaneID": input.PinnedPlaneID,
 			"instanceClass": input.InstanceClass,
-			"replicas":      input.Replicas,
 			"selectedPlane": selectedPlaneID(result.Decision),
 			"failureReason": result.FailureReason,
 		},
@@ -100,7 +98,6 @@ func (h controlPlaneSelectionHandler) applyService(w http.ResponseWriter, r *htt
 		case errors.Is(err, planeselector.ErrProviderRequired),
 			errors.Is(err, planeselector.ErrRegionRequired),
 			errors.Is(err, deploy.ErrServiceNameRequired),
-			errors.Is(err, deploy.ErrInvalidReplicas),
 			errors.Is(err, deploy.ErrInvalidInstanceClass),
 			errors.Is(err, deploy.ErrInvalidServiceName),
 			errors.Is(err, deploy.ErrDisplayNameRequired),

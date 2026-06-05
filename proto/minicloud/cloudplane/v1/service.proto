@@ -20,7 +20,6 @@ message PersistentDirSpec {
 
 message ServiceSpec {
   string region = 1;
-  int32 replicas = 2;
   string instance_class = 3 [json_name = "instanceClass"];
   string image = 4;
   repeated string command = 5;

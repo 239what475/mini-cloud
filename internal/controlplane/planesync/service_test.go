@@ -166,7 +166,6 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      2,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "nginx:latest",
@@ -218,8 +217,7 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 							ServiceID:         serviceItem.Metadata.ID,
 							ServiceName:       serviceItem.Metadata.Name,
 							ServiceGeneration: serviceItem.Metadata.Generation,
-							DesiredReplicas:   2,
-							RunningReplicas:   2,
+							Status:            "running",
 							ObservedAt:        checkedAt,
 						},
 					},
@@ -239,8 +237,8 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 	if reloaded.Status.Observed.Phase != controlservice.PhaseReady || !reloaded.Status.Observed.Healthy {
 		t.Fatalf("service status = %+v, want ready healthy", reloaded.Status.Observed)
 	}
-	if reloaded.Status.Run.DesiredReplicas != 2 || reloaded.Status.Run.RunningReplicas != 2 {
-		t.Fatalf("service run = %+v, want 2/2 running replicas", reloaded.Status.Run)
+	if reloaded.Status.Run.Phase != controlservice.RunPhaseRunning || reloaded.Status.Run.CurrentRunID != serviceItem.Metadata.ID+"-g1" {
+		t.Fatalf("service run = %+v, want running current run", reloaded.Status.Run)
 	}
 }
 
@@ -260,8 +258,7 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 		PlanID:            "svc-api-g2",
 		ServiceID:         "svc-api",
 		ServiceGeneration: 2,
-		DesiredReplicas:   2,
-		RunningReplicas:   2,
+		Status:            "running",
 		ObservedAt:        observedAt,
 	})
 
@@ -271,8 +268,8 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 	if status.Run.CurrentRunID != "svc-api-g2" || status.Run.LatestRunID != "svc-api-g2" {
 		t.Fatalf("run ids = %+v, want current/latest g2", status.Run)
 	}
-	if status.Run.Phase != controlservice.RunPhaseRunning || status.Run.RunningReplicas != 2 {
-		t.Fatalf("run = %+v, want running 2 replicas", status.Run)
+	if status.Run.Phase != controlservice.RunPhaseRunning {
+		t.Fatalf("run = %+v, want running", status.Run)
 	}
 }
 
@@ -292,8 +289,7 @@ func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *te
 		PlanID:            "svc-api-g2",
 		ServiceID:         "svc-api",
 		ServiceGeneration: 2,
-		DesiredReplicas:   2,
-		FailedReplicas:    1,
+		Status:            "failed",
 		ObservedAt:        observedAt,
 	})
 
@@ -321,14 +317,11 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 	}
 
 	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
-		PlanID:             "svc-api-g2",
-		ServiceID:          "svc-api",
-		ServiceGeneration:  2,
-		DesiredReplicas:    2,
-		DeployingReplicas:  1,
-		RunningReplicas:    1,
-		SupersededReplicas: 1,
-		ObservedAt:         observedAt,
+		PlanID:            "svc-api-g2",
+		ServiceID:         "svc-api",
+		ServiceGeneration: 2,
+		Status:            "deploying",
+		ObservedAt:        observedAt,
 	})
 
 	if status.Phase != controlservice.PhaseProgressing || status.Healthy {
@@ -337,8 +330,8 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 	if status.Run.CurrentRunID != "svc-api-g1" {
 		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
 	}
-	if status.Run.LatestRunID != "svc-api-g2" || status.Run.SupersededReplicas != 1 {
-		t.Fatalf("run = %+v, want latest g2 with superseded replica count", status.Run)
+	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != controlservice.RunPhaseDispatching {
+		t.Fatalf("run = %+v, want latest g2 dispatching", status.Run)
 	}
 }
 
@@ -371,8 +364,7 @@ func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T)
 			PlanID:            "svc-api-g2",
 			ServiceID:         "svc-api",
 			ServiceGeneration: 2,
-			DesiredReplicas:   2,
-			RunningReplicas:   2,
+			Status:            "running",
 			ObservedAt:        observedAt,
 		},
 	})
@@ -419,8 +411,7 @@ func TestApplyExecutionSnapshotsMarksServiceDegradedAfterFailedExecution(t *test
 			PlanID:            "svc-api-g1",
 			ServiceID:         "svc-api",
 			ServiceGeneration: 1,
-			DesiredReplicas:   1,
-			FailedReplicas:    1,
+			Status:            "failed",
 			LastStatusReason:  "node runtime-node-a marked offline",
 			ObservedAt:        observedAt,
 		},
@@ -431,8 +422,8 @@ func TestApplyExecutionSnapshotsMarksServiceDegradedAfterFailedExecution(t *test
 	if store.service.Status.Observed.Phase != controlservice.PhaseDegraded || store.service.Status.Observed.Healthy {
 		t.Fatalf("service observed status = %+v, want degraded unhealthy", store.service.Status.Observed)
 	}
-	if store.service.Status.Run.Phase != controlservice.RunPhaseFailed || store.service.Status.Run.FailedReplicas != 1 {
-		t.Fatalf("service run = %+v, want failed with one failed replica", store.service.Status.Run)
+	if store.service.Status.Run.Phase != controlservice.RunPhaseFailed {
+		t.Fatalf("service run = %+v, want failed", store.service.Status.Run)
 	}
 	if store.runs[1].Status != controlservice.RunPhaseFailed {
 		t.Fatalf("stored run status = %s, want failed", store.runs[1].Status)
@@ -464,12 +455,11 @@ func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing
 
 	err := service.applyExecutionSnapshots(context.Background(), "plane-a", []cloudplaneapi.ExecutionSnapshot{
 		{
-			PlanID:             "svc-api-delete-g2",
-			ServiceID:          "svc-api",
-			ServiceGeneration:  2,
-			DesiredReplicas:    2,
-			SupersededReplicas: 2,
-			ObservedAt:         observedAt,
+			PlanID:            "svc-api-delete-g2",
+			ServiceID:         "svc-api",
+			ServiceGeneration: 2,
+			Status:            "superseded",
+			ObservedAt:        observedAt,
 		},
 	})
 	if err != nil {

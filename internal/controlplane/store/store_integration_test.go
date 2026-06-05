@@ -372,7 +372,6 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:v1",
@@ -423,7 +422,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeAfterRun(t *testin
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v1",
@@ -444,11 +442,9 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeAfterRun(t *testin
 		Healthy:            true,
 		Message:            "remote service is ready",
 		Run: &controlservice.RunStatus{
-			CurrentRunID:    "run-1",
-			LatestRunID:     "run-1",
-			Phase:           controlservice.RunPhaseRunning,
-			DesiredReplicas: 1,
-			RunningReplicas: 1,
+			CurrentRunID: "run-1",
+			LatestRunID:  "run-1",
+			Phase:        controlservice.RunPhaseRunning,
 		},
 	})
 	if err != nil {
@@ -460,7 +456,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeAfterRun(t *testin
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v2",
@@ -497,7 +492,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeWhenLockedWithoutR
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v1",
@@ -525,7 +519,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirRunChangeWhenLockedWithoutR
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v2",
@@ -560,7 +553,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWi
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
 			PinnedPlaneID: "pln-001",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v1",
@@ -589,7 +581,6 @@ func TestIntegrationUpdateServiceRejectsPersistentDirPlacementChangeWhenLockedWi
 			Provider:      "tencent",
 			Region:        "ap-beijing",
 			PinnedPlaneID: "pln-002",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxy:v1",
@@ -623,7 +614,6 @@ func TestIntegrationCreateServicePersistsPersistentDirs(t *testing.T) {
 		Spec: controlservice.Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:v1",

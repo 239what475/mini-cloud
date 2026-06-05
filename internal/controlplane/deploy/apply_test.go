@@ -20,7 +20,6 @@ func TestApplyServiceInputResolvedSpecRejectsProjectedFileOverlapWithPersistentD
 		},
 		Spec: ServiceSpec{
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/app:v1",

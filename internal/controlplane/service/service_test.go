@@ -17,7 +17,6 @@ func TestCreateInputValidateRejectsProjectedFileOverlapWithPersistentDir(t *test
 		Spec: Spec{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
-			Replicas:      1,
 			InstanceClass: InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/app:v1",
@@ -89,7 +88,6 @@ func serviceWithPersistentDir(image string, locked bool) Service {
 		Spec: Spec{
 			Provider:             "aliyun",
 			Region:               "cn-beijing",
-			Replicas:             1,
 			InstanceClass:        InstanceClassSmall,
 			Exposure:             "public",
 			Image:                image,
@@ -108,7 +106,6 @@ func updateWithPersistentDir(displayName string, provider string, region string,
 			Provider:      provider,
 			Region:        region,
 			PinnedPlaneID: pinnedPlaneID,
-			Replicas:      1,
 			InstanceClass: InstanceClassSmall,
 			Exposure:      "public",
 			Image:         image,

@@ -354,7 +354,6 @@ func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
 		Action:         item.GetAction(),
 		ExecutionID:    item.GetExecutionId(),
 		DeploymentID:   item.GetDeploymentId(),
-		ReplicaIndex:   int(item.GetReplicaIndex()),
 		NodeID:         item.GetNodeId(),
 		ServiceID:      item.GetServiceId(),
 		ServiceName:    item.GetServiceName(),

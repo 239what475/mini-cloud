@@ -96,13 +96,9 @@ message PlaneExecutionSnapshot {
   string service_id = 2 [json_name = "serviceID"];
   string service_name = 3 [json_name = "serviceName"];
   int64 service_generation = 4 [json_name = "serviceGeneration"];
-  int32 desired_replicas = 5 [json_name = "desiredReplicas"];
-  int32 deploying_replicas = 6 [json_name = "deployingReplicas"];
-  int32 running_replicas = 7 [json_name = "runningReplicas"];
-  int32 failed_replicas = 8 [json_name = "failedReplicas"];
-  int32 superseded_replicas = 9 [json_name = "supersededReplicas"];
-  string last_status_reason = 10 [json_name = "lastStatusReason"];
-  google.protobuf.Timestamp observed_at = 11 [json_name = "observedAt"];
+  string status = 5;
+  string last_status_reason = 6 [json_name = "lastStatusReason"];
+  google.protobuf.Timestamp observed_at = 7 [json_name = "observedAt"];
 }
 
 message PlaneSnapshot {
@@ -161,9 +157,8 @@ message ApplyExecutionPlanRequest {
   ExecutionImageCredential image_credential = 11 [json_name = "imageCredential"];
   int32 container_port = 12 [json_name = "containerPort"];
   string readiness_path = 13 [json_name = "readinessPath"];
-  int32 replicas = 14;
-  string instance_class = 15 [json_name = "instanceClass"];
-  string exposure = 16;
+  string instance_class = 14 [json_name = "instanceClass"];
+  string exposure = 15;
 }
 
 message ApplyExecutionPlanResponse {

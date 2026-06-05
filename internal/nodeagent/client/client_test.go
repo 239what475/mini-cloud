@@ -96,7 +96,7 @@ func TestRegisterNodeUsesBootstrapToken(t *testing.T) {
 	}
 }
 
-// TestPollExecutionWorkDecodesScopedFields 验证拉取任务响应会解码服务、部署和副本作用域字段。
+// TestPollExecutionWorkDecodesScopedFields 验证拉取任务响应会解码服务和部署作用域字段。
 func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	t.Parallel()
 
@@ -106,7 +106,6 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 				Item: &nodeagentv1.WorkItem{
 					ExecutionId:   "exec_demo",
 					DeploymentId:  "dep_demo",
-					ReplicaIndex:  2,
 					NodeId:        "node_demo",
 					ServiceId:     "svc_demo",
 					ServiceName:   "hello",
@@ -120,7 +119,7 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 					},
 					ContainerPort: 8080,
 					ReadinessPath: "/healthz",
-					ContainerName: "mini-cloud-dep-demo-r2",
+					ContainerName: "mini-cloud-dep-demo",
 				},
 			}, nil
 		},
@@ -139,9 +138,6 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	}
 	if item.ServiceName != "hello" {
 		t.Fatalf("ServiceName = %q, want hello", item.ServiceName)
-	}
-	if item.ReplicaIndex != 2 {
-		t.Fatalf("ReplicaIndex = %d, want 2", item.ReplicaIndex)
 	}
 }
 

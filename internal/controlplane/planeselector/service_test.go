@@ -24,7 +24,6 @@ func TestPreviewSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing.T) {
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -58,7 +57,6 @@ func TestPreviewSelectionHonorsPinnedPlane(t *testing.T) {
 		Region:        "cn-beijing",
 		PinnedPlaneID: planeA.ID,
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -101,7 +99,6 @@ func TestPreviewSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *testing.
 		Region:        "cn-beijing",
 		PinnedPlaneID: pinnedPlane.ID,
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -130,7 +127,6 @@ func TestPreviewSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassLarge,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -165,7 +161,6 @@ func TestPreviewSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -203,7 +198,6 @@ func TestPreviewSelectionPrefersPlaneThatPreservesHeadroom(t *testing.T) {
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)
@@ -240,7 +234,6 @@ func TestPreviewSelectionExplainsPoolMinReadyBlock(t *testing.T) {
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		InstanceClass: deploy.InstanceClassSmall,
-		Replicas:      1,
 	})
 	if err != nil {
 		t.Fatalf("PreviewSelection returned error: %v", err)

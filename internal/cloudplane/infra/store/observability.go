@@ -22,10 +22,10 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 				plan_id,
 				service_id,
 				service_generation,
-				COUNT(*)::int AS desired_replicas,
-				COUNT(*) FILTER (WHERE status IN ('pending', 'deploying'))::int AS active_replicas,
-				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
-				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				COUNT(*)::int AS intent_count,
+				COUNT(*) FILTER (WHERE status IN ('pending', 'deploying'))::int AS active_count,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
 				MAX(updated_at) AS observed_at
 			FROM execution_intents
 			GROUP BY plan_id, service_id, service_generation
@@ -33,20 +33,20 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		latest_plan AS (
 			SELECT DISTINCT ON (service_id)
 				service_id,
-				desired_replicas,
-				active_replicas,
-				running_replicas,
-				failed_replicas
+				intent_count,
+				active_count,
+				running_count,
+				failed_count
 			FROM plan_counts
 			ORDER BY service_id, service_generation DESC, observed_at DESC, plan_id DESC
 		)
 		SELECT
 			COUNT(*),
 			0,
-			COUNT(*) FILTER (WHERE failed_replicas = 0 AND active_replicas > 0),
-			COUNT(*) FILTER (WHERE failed_replicas = 0 AND desired_replicas > 0 AND running_replicas >= desired_replicas),
-			COUNT(*) FILTER (WHERE failed_replicas > 0 AND running_replicas > 0),
-			COUNT(*) FILTER (WHERE failed_replicas > 0 AND running_replicas = 0)
+			COUNT(*) FILTER (WHERE failed_count = 0 AND active_count > 0),
+			COUNT(*) FILTER (WHERE failed_count = 0 AND intent_count > 0 AND running_count >= intent_count),
+			COUNT(*) FILTER (WHERE failed_count > 0 AND running_count > 0),
+			COUNT(*) FILTER (WHERE failed_count > 0 AND running_count = 0)
 		FROM latest_plan
 	`).Scan(
 		&out.ServicesTotal,
@@ -85,22 +85,22 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		WITH plan_counts AS (
 			SELECT
 				plan_id,
-				COUNT(*)::int AS desired_replicas,
-				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_replicas,
-				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_replicas,
-				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
-				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas
+				COUNT(*)::int AS intent_count,
+				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_count,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count
 			FROM execution_intents
 			GROUP BY plan_id
 		)
 		SELECT
 			COUNT(*),
-			COUNT(*) FILTER (WHERE pending_replicas > 0 AND deploying_replicas = 0 AND running_replicas = 0 AND failed_replicas = 0),
+			COUNT(*) FILTER (WHERE pending_count > 0 AND deploying_count = 0 AND running_count = 0 AND failed_count = 0),
 			0,
 			0,
-			COUNT(*) FILTER (WHERE failed_replicas = 0 AND deploying_replicas > 0),
-			COUNT(*) FILTER (WHERE failed_replicas = 0 AND desired_replicas > 0 AND running_replicas >= desired_replicas),
-			COUNT(*) FILTER (WHERE failed_replicas > 0)
+			COUNT(*) FILTER (WHERE failed_count = 0 AND deploying_count > 0),
+			COUNT(*) FILTER (WHERE failed_count = 0 AND intent_count > 0 AND running_count >= intent_count),
+			COUNT(*) FILTER (WHERE failed_count > 0)
 		FROM plan_counts
 	`).Scan(
 		&out.DeploymentsTotal,
@@ -152,10 +152,10 @@ func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Dur
 		WITH plan_counts AS (
 			SELECT
 				plan_id,
-				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_replicas,
-				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_replicas,
-				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
-				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_count,
+				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_count,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
 				MAX(updated_at) AS updated_at
 			FROM execution_intents
 			GROUP BY plan_id
@@ -163,17 +163,17 @@ func (s *Store) GetDeploymentStuckSignal(ctx context.Context, threshold time.Dur
 		stuck AS (
 			SELECT *
 			FROM plan_counts
-			WHERE failed_replicas = 0
-			  AND (pending_replicas > 0 OR deploying_replicas > 0)
+			WHERE failed_count = 0
+			  AND (pending_count > 0 OR deploying_count > 0)
 			  AND updated_at <= now() - ($1 * interval '1 second')
 		)
 		SELECT
-			COUNT(*) FILTER (WHERE pending_replicas > 0 AND deploying_replicas = 0),
+			COUNT(*) FILTER (WHERE pending_count > 0 AND deploying_count = 0),
 			0,
 			0,
-			COUNT(*) FILTER (WHERE deploying_replicas > 0),
+			COUNT(*) FILTER (WHERE deploying_count > 0),
 			COALESCE(MAX(EXTRACT(EPOCH FROM (now() - updated_at))) FILTER (
-				WHERE pending_replicas > 0 OR deploying_replicas > 0
+				WHERE pending_count > 0 OR deploying_count > 0
 			), 0)::BIGINT
 		FROM stuck
 	`, out.ThresholdSeconds).Scan(
@@ -267,9 +267,9 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		WITH plan_counts AS (
 			SELECT
 				plan_id,
-				COUNT(*)::int AS desired_replicas,
-				COUNT(*) FILTER (WHERE status = 'running')::int AS running_replicas,
-				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_replicas,
+				COUNT(*)::int AS intent_count,
+				COUNT(*) FILTER (WHERE status = 'running')::int AS running_count,
+				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
 				MIN(created_at) AS created_at
 			FROM execution_intents
 			GROUP BY plan_id
@@ -277,13 +277,13 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		SELECT
 			COUNT(*) FILTER (
 				WHERE created_at >= now() - interval '24 hours'
-				  AND (failed_replicas > 0 OR (desired_replicas > 0 AND running_replicas >= desired_replicas))
+				  AND (failed_count > 0 OR (intent_count > 0 AND running_count >= intent_count))
 			),
 			COUNT(*) FILTER (
 				WHERE created_at >= now() - interval '24 hours'
-				  AND failed_replicas = 0
-				  AND desired_replicas > 0
-				  AND running_replicas >= desired_replicas
+				  AND failed_count = 0
+				  AND intent_count > 0
+				  AND running_count >= intent_count
 			)
 		FROM plan_counts
 	`).Scan(

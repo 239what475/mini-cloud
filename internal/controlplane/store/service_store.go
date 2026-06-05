@@ -28,7 +28,6 @@ const serviceSelectColumns = `
 	spec_provider,
 	spec_region,
 	spec_pinned_plane_id,
-	spec_replicas,
 	spec_instance_class,
 	spec_exposure,
 	spec_image,
@@ -63,7 +62,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, replicas, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
@@ -113,7 +112,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			spec_provider,
 			spec_region,
 			spec_pinned_plane_id,
-			spec_replicas,
 			spec_instance_class,
 			spec_exposure,
 			spec_image,
@@ -138,7 +136,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_conditions_json,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, false, $21, 1, $22, $23, $24, $25, $26, $27, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, false, $20, 1, $21, $22, $23, $24, $25, $26, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -147,7 +145,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		provider,
 		region,
 		nullableString(pinnedPlaneID),
-		replicas,
 		instanceClass,
 		input.Spec.Exposure,
 		input.Spec.Image,
@@ -281,7 +278,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, replicas, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.Replicas, input.Spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
@@ -305,32 +302,31 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			spec_provider = $3,
 			spec_region = $4,
 			spec_pinned_plane_id = $5,
-			spec_replicas = $6,
-			spec_instance_class = $7,
-			spec_exposure = $8,
-			spec_image = $9,
-			spec_command_json = $10,
-			spec_args_json = $11,
-			spec_default_port = $12,
-			spec_readiness_path = $13,
-			spec_env_json = $14,
-			spec_config_set_id = $15,
-			spec_secret_set_id = $16,
-			spec_registry_credential_id = $17,
-			spec_projected_files_json = $18,
-			spec_persistent_dirs_json = $19,
-			status_run_json = $20,
-			generation = $21,
-			status_desired_state = $22,
-			status_observed_generation = $23,
-			status_phase = $24,
-			status_healthy = $25,
-			status_message = $26,
-			status_conditions_json = $27,
+			spec_instance_class = $6,
+			spec_exposure = $7,
+			spec_image = $8,
+			spec_command_json = $9,
+			spec_args_json = $10,
+			spec_default_port = $11,
+			spec_readiness_path = $12,
+			spec_env_json = $13,
+			spec_config_set_id = $14,
+			spec_secret_set_id = $15,
+			spec_registry_credential_id = $16,
+			spec_projected_files_json = $17,
+			spec_persistent_dirs_json = $18,
+			status_run_json = $19,
+			generation = $20,
+			status_desired_state = $21,
+			status_observed_generation = $22,
+			status_phase = $23,
+			status_healthy = $24,
+			status_message = $25,
+			status_conditions_json = $26,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $28
+			AND generation = $27
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -338,7 +334,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		provider,
 		region,
 		nullableString(pinnedPlaneID),
-		replicas,
 		instanceClass,
 		input.Spec.Exposure,
 		input.Spec.Image,
@@ -615,7 +610,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.Spec.Provider,
 		&item.Spec.Region,
 		&pinnedPlaneID,
-		&item.Spec.Replicas,
 		&item.Spec.InstanceClass,
 		&item.Spec.Exposure,
 		&item.Spec.Image,

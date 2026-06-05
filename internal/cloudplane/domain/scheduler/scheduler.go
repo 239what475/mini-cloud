@@ -18,11 +18,9 @@ var (
 	ErrInvalidCPUMilliReq = errors.New("cpuMilliRequest must be greater than 0")
 	// ErrInvalidMemoryMiReq 表示单副本内存请求不是正数。
 	ErrInvalidMemoryMiReq = errors.New("memoryMiRequest must be greater than 0")
-	// ErrInvalidReplicas 表示调度请求副本数不是正数。
-	ErrInvalidReplicas = errors.New("replicas must be greater than 0")
 )
 
-// PlacementRequest 描述一次 deployment 副本放置请求。
+// PlacementRequest 描述一次 deployment 放置请求。
 type PlacementRequest struct {
 	// DeploymentID 表示所属 deployment 的唯一标识。
 	DeploymentID string `json:"deploymentID"`
@@ -34,8 +32,6 @@ type PlacementRequest struct {
 	CPUMilliRequest int `json:"cpuMilliRequest"`
 	// MemoryMiRequest 记录内存资源，单位为 MiB。
 	MemoryMiRequest int `json:"memoryMiRequest"`
-	// Replicas 表示期望副本数。
-	Replicas int `json:"replicas"`
 }
 
 // FilteredCounts 记录调度过程中各过滤阶段剔除的节点数量。
@@ -54,19 +50,17 @@ type FilteredCounts struct {
 	Capacity int `json:"capacity"`
 }
 
-// PlacementDecision 表示一个副本最终选择的 node 和放置原因。
+// PlacementDecision 表示一个 deployment 最终选择的 node 和放置原因。
 type PlacementDecision struct {
 	// DeploymentID 表示所属 deployment 的唯一标识。
 	DeploymentID string `json:"deploymentID"`
-	// ReplicaIndex 表示副本序号，从 0 开始。
-	ReplicaIndex int `json:"replicaIndex"`
-	// NodeID 是该副本被放置到的目标 node 标识。
+	// NodeID 是该 deployment 被放置到的目标 node 标识。
 	NodeID string `json:"nodeID"`
 	// Region 是目标 node 所在地域。
 	Region string `json:"region"`
 	// Score 表示本次放置后的资源评分，用于记录和展示；实际选点规则见 better。
 	Score int64 `json:"score"`
-	// Reason 说明该副本为何被放置到该 node。
+	// Reason 说明该 deployment 为何被放置到该 node。
 	Reason string `json:"reason"`
 }
 
@@ -84,16 +78,12 @@ type StoredDecision struct {
 	NodeID string `json:"nodeID"`
 	// NodeName 表示 node 名称。
 	NodeName string `json:"nodeName"`
-	// ReplicaIndex 表示副本序号，从 0 开始。
-	ReplicaIndex int `json:"replicaIndex"`
 	// Region 是目标 node 所在地域。
 	Region string `json:"region"`
 	// CPUMilliRequest 记录 CPU 资源，单位为 millicore。
 	CPUMilliRequest int `json:"cpuMilliRequest"`
 	// MemoryMiRequest 记录内存资源，单位为 MiB。
 	MemoryMiRequest int `json:"memoryMiRequest"`
-	// Replicas 是生成该放置决策时 deployment 请求的总副本数。
-	Replicas int `json:"replicas"`
 	// Score 表示本次放置后的资源评分，用于记录和展示；实际选点规则见 better。
 	Score int64 `json:"score"`
 	// Reason 是持久化的副本放置原因。
@@ -104,7 +94,7 @@ type StoredDecision struct {
 
 // PlanResult 汇总一次调度计划的成功决策或失败原因。
 type PlanResult struct {
-	// Decisions 表示调度器为每个副本生成的放置决策。
+	// Decisions 表示调度器生成的放置决策。
 	Decisions []PlacementDecision `json:"decisions"`
 	// FailureReason 表示调度或操作失败的可读原因。
 	FailureReason string `json:"failureReason"`
@@ -116,9 +106,7 @@ type PlanResult struct {
 type candidate struct {
 	// nodeID 表示 node 的唯一标识。
 	nodeID string
-	// unused 表示本次 plan 中还没有任何副本落到该节点；多副本优先分散到不同节点。
-	unused bool
-	// postPlacementCPU 是放置当前副本后节点剩余 CPU 毫核数。
+	// postPlacementCPU 是放置当前 deployment 后节点剩余 CPU 毫核数。
 	postPlacementCPU int
 	// postPlacementMem 是放置当前副本后节点剩余内存 MiB 数。
 	postPlacementMem int
@@ -144,19 +132,14 @@ func (r PlacementRequest) Validate() error {
 	if r.MemoryMiRequest <= 0 {
 		return ErrInvalidMemoryMiReq
 	}
-	// 调度副本数必须为正数。
-	if r.Replicas <= 0 {
-		return ErrInvalidReplicas
-	}
 	// 调度请求满足当前 scheduler 的基础输入约束。
 	return nil
 }
 
-// Plan 在一组节点里为请求的所有副本生成可解释的放置计划。
-// 参数说明：nodes 是当前可参与调度判断的节点列表；request 是本次 deployment 副本放置请求。
+// Plan 在一组节点里为请求生成可解释的放置计划。
+// 参数说明：nodes 是当前可参与调度判断的节点列表；request 是本次 deployment 放置请求。
 func Plan(nodes []node.Node, request PlacementRequest) (PlanResult, error) {
 	// 复杂流程说明：调度先逐层过滤 provider/role/status/schedulable/region，再按剩余容量选点。
-	// 多副本会逐个扣减临时容量，确保同一次 plan 不会把多个副本塞爆同一节点。
 	// 先校验请求本身；节点列表为空不是输入错误，而是返回可解释 failure reason。
 	if err := request.Validate(); err != nil {
 		return PlanResult{}, err
@@ -223,76 +206,43 @@ func Plan(nodes []node.Node, request PlacementRequest) (PlanResult, error) {
 	// simulatedCPU/Mem 保存本次 plan 内的临时已分配量，不直接修改 node 对象或持久化状态。
 	simulatedCPU := make(map[string]int, len(eligible))
 	simulatedMem := make(map[string]int, len(eligible))
-	usedInPlan := make(map[string]bool, len(eligible))
 	for _, item := range eligible {
 		// 初始值来自 cloud-plane 已持久化的 selection 分配量。
 		simulatedCPU[item.ID] = item.CPUMilliAllocated
 		simulatedMem[item.ID] = item.MemoryMiAllocated
 	}
 
-	// 第二阶段逐个副本选择节点，并在内存中扣减临时容量。
-	result.Decisions = make([]PlacementDecision, 0, request.Replicas)
-	for replicaIndex := 0; replicaIndex < request.Replicas; replicaIndex++ {
-		// best 保存当前副本遍历到的最优候选节点。
-		var best *candidate
-		for _, item := range eligible {
-			// 根据模拟已分配量计算当前节点剩余容量。
-			remainingCPU := item.CPUMilliAllocatable - simulatedCPU[item.ID]
-			remainingMem := item.MemoryMiAllocatable - simulatedMem[item.ID]
-			// 当前节点无法容纳该副本时跳过。
-			if remainingCPU < request.CPUMilliRequest || remainingMem < request.MemoryMiRequest {
-				continue
-			}
-
-			// 计算放置当前副本后的剩余资源，用于打分。
-			postCPU := remainingCPU - request.CPUMilliRequest
-			postMem := remainingMem - request.MemoryMiRequest
-			current := candidate{
-				nodeID:           item.ID,
-				unused:           !usedInPlan[item.ID],
-				postPlacementCPU: postCPU,
-				postPlacementMem: postMem,
-				score:            score(postCPU, postMem),
-			}
-			// 如果当前节点比当前最佳节点更合适，就更新 best。
-			if best == nil || better(current, *best) {
-				copied := current
-				best = &copied
-			}
+	var best *candidate
+	for _, item := range eligible {
+		remainingCPU := item.CPUMilliAllocatable - simulatedCPU[item.ID]
+		remainingMem := item.MemoryMiAllocatable - simulatedMem[item.ID]
+		if remainingCPU < request.CPUMilliRequest || remainingMem < request.MemoryMiRequest {
+			continue
 		}
-
-		// 任一副本无法放置时，整个 plan 失败；不返回部分副本决策。
-		if best == nil {
-			result.Decisions = nil
-			result.FilteredCounts.Capacity = len(eligible)
-			// 单副本和多副本使用不同提示，便于区分单节点容量不足与总副本放置失败。
-			if request.Replicas == 1 {
-				result.FailureReason = "runtime nodes matched provider/region/status, but none had enough free cpu/memory"
-			} else {
-				result.FailureReason = "runtime nodes matched provider/region/status, but none had enough free cpu/memory to place all requested replicas"
-			}
-			return result, nil
+		postCPU := remainingCPU - request.CPUMilliRequest
+		postMem := remainingMem - request.MemoryMiRequest
+		current := candidate{nodeID: item.ID, postPlacementCPU: postCPU, postPlacementMem: postMem, score: score(postCPU, postMem)}
+		if best == nil || better(current, *best) {
+			copied := current
+			best = &copied
 		}
-
-		// 在模拟容量中扣减本副本资源，影响后续副本选择。
-		simulatedCPU[best.nodeID] += request.CPUMilliRequest
-		simulatedMem[best.nodeID] += request.MemoryMiRequest
-		usedInPlan[best.nodeID] = true
-		// 记录当前副本的 selection decision。
-		result.Decisions = append(result.Decisions, PlacementDecision{
-			DeploymentID: request.DeploymentID,
-			ReplicaIndex: replicaIndex,
-			NodeID:       best.nodeID,
-			Region:       request.Region,
-			Score:        best.score,
-			Reason: fmt.Sprintf(
-				"placed replica %d on provider %s, region %s, runtime node with the highest remaining cpu/memory after this assignment",
-				replicaIndex,
-				request.Provider,
-				request.Region,
-			),
-		})
 	}
+	if best == nil {
+		result.FilteredCounts.Capacity = len(eligible)
+		result.FailureReason = "runtime nodes matched provider/region/status, but none had enough free cpu/memory"
+		return result, nil
+	}
+	result.Decisions = []PlacementDecision{{
+		DeploymentID: request.DeploymentID,
+		NodeID:       best.nodeID,
+		Region:       request.Region,
+		Score:        best.score,
+		Reason: fmt.Sprintf(
+			"placed deployment on provider %s, region %s, runtime node with the highest remaining cpu/memory after this assignment",
+			request.Provider,
+			request.Region,
+		),
+	}}
 
 	// 所有副本都成功放置，返回 decisions 且 FailureReason 保持空。
 	return result, nil
@@ -322,10 +272,6 @@ func buildFailureReason(providerMatched int, runtimeRoleMatched int, readyMatche
 // better 判断 current 是否比 best 更适合作为当前副本的放置节点。
 // 参数说明：current 是当前待比较节点；best 是当前已选出的最佳节点。
 func better(current candidate, best candidate) bool {
-	// 多副本默认优先打散到尚未使用的节点；节点数量不足时才允许同一节点承载多个副本。
-	if current.unused != best.unused {
-		return current.unused
-	}
 	// 优先选择放置后 CPU 剩余更多的节点。
 	if current.postPlacementCPU != best.postPlacementCPU {
 		return current.postPlacementCPU > best.postPlacementCPU

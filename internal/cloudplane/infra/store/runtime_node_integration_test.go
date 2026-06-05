@@ -230,7 +230,6 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 		INSERT INTO deployment_executions (
 			id,
 			deployment_id,
-			replica_index,
 			node_id,
 			image,
 			container_name,
@@ -240,7 +239,7 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 			status_reason,
 			started_at
 		)
-		VALUES ($1, $2, 0, $3, $4, $5, 8080, '/', $6, $7, $8)
+		VALUES ($1, $2, $3, $4, $5, 8080, '/', $6, $7, $8)
 	`,
 		"exe-scale-in-active",
 		deploymentItem.ID,
@@ -261,7 +260,6 @@ func seedUnsettledDeployment(t *testing.T, ctx context.Context, db testutil.Test
 
 	serviceItem, err := db.Store.InsertService(ctx, "svc-scale-in-service", "scale-in-service", "Scale In Service", workload.Spec{
 		Region:        "cn-beijing",
-		Replicas:      1,
 		InstanceClass: workload.InstanceClassSmall,
 		Image:         "nginx:1.27-alpine",
 		DefaultPort:   8080,
@@ -275,9 +273,8 @@ func seedUnsettledDeployment(t *testing.T, ctx context.Context, db testutil.Test
 		t.Fatalf("CreateRevisionFromService returned error: %v", err)
 	}
 	deploymentItem, err := db.Store.InsertDeployment(ctx, deployment.CreateInput{
-		ServiceID:       serviceItem.Metadata.ID,
-		RevisionID:      revisionItem.ID,
-		DesiredReplicas: 1,
+		ServiceID:  serviceItem.Metadata.ID,
+		RevisionID: revisionItem.ID,
 	}, "test deployment for active execution")
 	if err != nil {
 		t.Fatalf("CreateDeployment returned error: %v", err)

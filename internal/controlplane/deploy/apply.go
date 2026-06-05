@@ -11,21 +11,19 @@ import (
 )
 
 var (
-	ErrPlaneIDRequired            = errors.New("planeID is required")
-	ErrServiceIDRequired          = errors.New("serviceID is required")
-	ErrServiceNameRequired        = errors.New("name is required")
-	ErrInvalidServiceName         = errors.New("name must use lowercase letters, digits, and hyphens")
-	ErrDisplayNameRequired        = errors.New("displayName is required")
-	ErrRegionRequired             = errors.New("region is required")
-	ErrInvalidReplicas            = errors.New("replicas must be greater than 0")
-	ErrInvalidInstanceClass       = errors.New("instanceClass must be one of small, medium, large")
-	ErrInvalidExposure            = errors.New("exposure must be one of public, private")
-	ErrImageRequired              = errors.New("image is required")
-	ErrInvalidDefaultPort         = errors.New("defaultPort must be between 1 and 65535")
-	ErrInvalidReadinessPath       = errors.New("readinessPath must start with /")
-	ErrInvalidEnvironmentKey      = errors.New("env keys must not be empty")
-	ErrPersistentDirsReplicaLimit = errors.New("persistentDirs currently require replicas to be exactly 1")
-	serviceNamePattern            = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	ErrPlaneIDRequired       = errors.New("planeID is required")
+	ErrServiceIDRequired     = errors.New("serviceID is required")
+	ErrServiceNameRequired   = errors.New("name is required")
+	ErrInvalidServiceName    = errors.New("name must use lowercase letters, digits, and hyphens")
+	ErrDisplayNameRequired   = errors.New("displayName is required")
+	ErrRegionRequired        = errors.New("region is required")
+	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
+	ErrInvalidExposure       = errors.New("exposure must be one of public, private")
+	ErrImageRequired         = errors.New("image is required")
+	ErrInvalidDefaultPort    = errors.New("defaultPort must be between 1 and 65535")
+	ErrInvalidReadinessPath  = errors.New("readinessPath must start with /")
+	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
+	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 const (
@@ -51,7 +49,6 @@ type ServiceMetadata struct {
 
 type ServiceSpec struct {
 	Region               string               `json:"region"`
-	Replicas             int                  `json:"replicas"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -105,9 +102,6 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 	if strings.TrimSpace(resolvedRegion) == "" {
 		return cloudplaneapi.ServiceSpec{}, ErrRegionRequired
 	}
-	if in.Spec.Replicas <= 0 {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidReplicas
-	}
 	if !IsInstanceClass(in.Spec.InstanceClass) {
 		return cloudplaneapi.ServiceSpec{}, ErrInvalidInstanceClass
 	}
@@ -138,13 +132,8 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 	if err := persistentdir.ValidateContainerInputs(in.Spec.PersistentDirs, in.Spec.ProjectedFiles); err != nil {
 		return cloudplaneapi.ServiceSpec{}, err
 	}
-	if len(in.Spec.PersistentDirs) > 0 && in.Spec.Replicas != 1 {
-		return cloudplaneapi.ServiceSpec{}, ErrPersistentDirsReplicaLimit
-	}
-
 	return cloudplaneapi.ServiceSpec{
 		Region:               resolvedRegion,
-		Replicas:             in.Spec.Replicas,
 		InstanceClass:        in.Spec.InstanceClass,
 		Exposure:             resolvedExposure,
 		Image:                in.Spec.Image,

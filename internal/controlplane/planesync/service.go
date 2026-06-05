@@ -334,11 +334,7 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 }
 
 func deleteExecutionPlanComplete(item cloudplaneapi.ExecutionSnapshot) bool {
-	return item.DesiredReplicas > 0 &&
-		item.SupersededReplicas >= item.DesiredReplicas &&
-		item.DeployingReplicas == 0 &&
-		item.RunningReplicas == 0 &&
-		item.FailedReplicas == 0
+	return strings.TrimSpace(item.Status) == "superseded"
 }
 
 type executionDerivedStatus struct {
@@ -358,16 +354,18 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 	readyReason := controlservice.ReasonPlaneServiceNotHealthy
 	runPhase := controlservice.RunPhaseDispatching
 
-	switch {
-	case item.FailedReplicas > 0:
+	switch strings.TrimSpace(item.Status) {
+	case "failed":
 		phase = controlservice.PhaseDegraded
 		runPhase = controlservice.RunPhaseFailed
-	case item.DesiredReplicas > 0 && item.RunningReplicas >= item.DesiredReplicas:
+	case "running":
 		phase = controlservice.PhaseReady
 		healthy = true
 		readyCondition = controlservice.ConditionTrue
 		readyReason = controlservice.ReasonPlaneServiceReady
 		runPhase = controlservice.RunPhaseRunning
+	case "superseded":
+		runPhase = controlservice.RunPhaseSuperseded
 	}
 	runStatus := controlservice.CloneRunStatus(serviceItem.Status.Run)
 	runStatus.LatestRunID = item.PlanID
@@ -376,11 +374,6 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 	}
 	runStatus.Phase = runPhase
 	runStatus.Message = message
-	runStatus.DesiredReplicas = item.DesiredReplicas
-	runStatus.DeployingReplicas = item.DeployingReplicas
-	runStatus.RunningReplicas = item.RunningReplicas
-	runStatus.FailedReplicas = item.FailedReplicas
-	runStatus.SupersededReplicas = item.SupersededReplicas
 	runStatus.LastObservedAt = &now
 
 	return executionDerivedStatus{
@@ -404,13 +397,15 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 	if strings.TrimSpace(item.LastStatusReason) != "" {
 		return item.LastStatusReason
 	}
-	switch {
-	case item.FailedReplicas > 0:
-		return fmt.Sprintf("execution plan %s has %d failed replica(s)", item.PlanID, item.FailedReplicas)
-	case item.DesiredReplicas > 0 && item.RunningReplicas >= item.DesiredReplicas:
-		return fmt.Sprintf("execution plan %s is running %d/%d replica(s)", item.PlanID, item.RunningReplicas, item.DesiredReplicas)
+	switch strings.TrimSpace(item.Status) {
+	case "failed":
+		return fmt.Sprintf("execution plan %s failed", item.PlanID)
+	case "running":
+		return fmt.Sprintf("execution plan %s is running", item.PlanID)
+	case "superseded":
+		return fmt.Sprintf("execution plan %s is superseded", item.PlanID)
 	default:
-		return fmt.Sprintf("execution plan %s is running %d/%d replica(s)", item.PlanID, item.RunningReplicas, item.DesiredReplicas)
+		return fmt.Sprintf("execution plan %s is %s", item.PlanID, strings.TrimSpace(item.Status))
 	}
 }
 

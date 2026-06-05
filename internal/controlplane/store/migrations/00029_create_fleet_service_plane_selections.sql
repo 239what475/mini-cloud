@@ -6,7 +6,6 @@ CREATE TABLE IF NOT EXISTS fleet_service_cells (
     spec_provider TEXT NOT NULL,
     spec_region TEXT NOT NULL,
     spec_pinned_plane_id TEXT NULL,
-    spec_replicas INTEGER NOT NULL,
     spec_instance_class TEXT NOT NULL,
     status_desired_state TEXT NOT NULL DEFAULT 'active',
     status_observed_generation BIGINT NOT NULL DEFAULT 0,

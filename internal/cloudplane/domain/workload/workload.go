@@ -56,8 +56,6 @@ var (
 	ErrServiceDisplayNameRequired = errors.New("displayName is required")
 	// ErrServiceRegionRequired 表示 service 输入缺少目标地域。
 	ErrServiceRegionRequired = errors.New("region is required")
-	// ErrInvalidReplicas 表示 service 副本数不是正数。
-	ErrInvalidReplicas = errors.New("replicas must be greater than 0")
 	// ErrInvalidInstanceClass 表示实例规格档位不属于允许集合。
 	ErrInvalidInstanceClass = errors.New("instanceClass must be one of small, medium, large")
 	// ErrInvalidExposure 表示暴露策略不属于允许集合。
@@ -74,8 +72,6 @@ var (
 	ErrInvalidRolloutPhase = errors.New("invalid rollout phase")
 	// ErrInvalidEnvironmentKey 表示环境变量中存在空 key。
 	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
-	// ErrPersistentDirsReplicaLimit 表示持久目录当前只支持单副本 service。
-	ErrPersistentDirsReplicaLimit = errors.New("persistentDirs currently require replicas to be exactly 1")
 	// ErrPersistentDirsRolloutUnsupported 表示带持久目录的 service 不支持改变 revision 的更新。
 	ErrPersistentDirsRolloutUnsupported = errors.New("services with persistentDirs do not support revision-changing updates once a revision exists")
 	serviceNamePattern                  = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
@@ -109,8 +105,6 @@ type Metadata struct {
 type Spec struct {
 	// Region 是 service 期望部署的目标地域。
 	Region string `json:"region"`
-	// Replicas 表示期望副本数。
-	Replicas int `json:"replicas"`
 	// InstanceClass 表示平台抽象的实例规格档位。
 	InstanceClass string `json:"instanceClass"`
 	// Exposure 表示 service 对外暴露策略。
@@ -183,10 +177,6 @@ func (in Spec) Validate() error {
 	if strings.TrimSpace(in.Region) == "" {
 		return ErrServiceRegionRequired
 	}
-	// replicas 必须为正数；缩容限制由 lifecycle 更新路径处理。
-	if in.Replicas <= 0 {
-		return ErrInvalidReplicas
-	}
 	// instance class 决定单副本资源请求。
 	if !IsInstanceClass(in.InstanceClass) {
 		return ErrInvalidInstanceClass
@@ -216,10 +206,6 @@ func (in Spec) Validate() error {
 	// persistent dir 与 projected file 的路径冲突、嵌套和命名规则由公共包统一校验。
 	if err := persistentdir.ValidateContainerInputs(in.PersistentDirs, in.ProjectedFiles); err != nil {
 		return err
-	}
-	// 当前 node-local persistent dir 只支持单副本，避免多副本共享本地目录语义不清。
-	if len(in.PersistentDirs) > 0 && in.Replicas != 1 {
-		return ErrPersistentDirsReplicaLimit
 	}
 	// 所有创建输入领域约束通过。
 	return nil
@@ -284,7 +270,6 @@ func (in Spec) NormalizedExposure() string {
 func SpecFromService(current Service) Spec {
 	return Spec{
 		Region:               current.Spec.Region,
-		Replicas:             current.Spec.Replicas,
 		InstanceClass:        current.Spec.InstanceClass,
 		Exposure:             current.Spec.Exposure,
 		Image:                current.Spec.Image,
@@ -348,14 +333,12 @@ func IsInputError(err error) bool {
 		errors.Is(err, ErrInvalidServiceName) ||
 		errors.Is(err, ErrServiceDisplayNameRequired) ||
 		errors.Is(err, ErrServiceRegionRequired) ||
-		errors.Is(err, ErrInvalidReplicas) ||
 		errors.Is(err, ErrInvalidInstanceClass) ||
 		errors.Is(err, ErrInvalidExposure) ||
 		errors.Is(err, ErrImageRequired) ||
 		errors.Is(err, ErrInvalidDefaultPort) ||
 		errors.Is(err, ErrInvalidReadinessPath) ||
 		errors.Is(err, ErrInvalidEnvironmentKey) ||
-		errors.Is(err, ErrPersistentDirsReplicaLimit) ||
 		// projected file 校验错误也属于 workload 输入错误。
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||

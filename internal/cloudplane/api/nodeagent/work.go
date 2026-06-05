@@ -49,7 +49,6 @@ func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
 		Action:        item.Action,
 		ExecutionId:   item.ExecutionID,
 		DeploymentId:  item.DeploymentID,
-		ReplicaIndex:  int32(item.ReplicaIndex),
 		NodeId:        item.NodeID,
 		ServiceId:     item.ServiceID,
 		ServiceName:   item.ServiceName,

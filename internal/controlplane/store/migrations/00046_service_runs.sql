@@ -1,6 +1,6 @@
 -- +goose Up
 ALTER TABLE fleet_services
-    ADD COLUMN IF NOT EXISTS status_run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":"","desiredReplicas":0,"deployingReplicas":0,"runningReplicas":0,"failedReplicas":0,"supersededReplicas":0}'::jsonb;
+    ADD COLUMN IF NOT EXISTS status_run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS fleet_service_runs (
     id TEXT PRIMARY KEY,
@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS fleet_service_runs (
     generation BIGINT NOT NULL,
     plan_id TEXT NOT NULL,
     spec_json JSONB NOT NULL,
-    desired_replicas INTEGER NOT NULL,
     status TEXT NOT NULL,
     message TEXT NOT NULL DEFAULT '',
     observed_at TIMESTAMPTZ NULL,
