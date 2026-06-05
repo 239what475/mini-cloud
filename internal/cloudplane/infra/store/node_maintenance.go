@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"time"
@@ -142,6 +143,21 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 			cutoffTime.Format(time.RFC3339),
 		)
 
+		impactedIntents, err := failExecutionIntentsForOfflineNode(ctx, tx, staleNode, reason)
+		if err != nil {
+			return node.HeartbeatReconcileResult{}, err
+		}
+		for _, item := range impactedIntents {
+			result.ImpactedDeployments = append(result.ImpactedDeployments, node.ReconcileImpact{
+				NodeID:       staleNode.ID,
+				NodeName:     staleNode.Name,
+				DeploymentID: item.PlanID,
+				ServiceID:    item.ServiceID,
+				ServiceName:  item.ServiceName,
+				Reason:       reason,
+			})
+		}
+
 		// 查找最近 selection 指向该节点且仍处于活跃状态的 deployment。
 		deploymentRows, err := tx.QueryContext(ctx, `
 			SELECT
@@ -275,4 +291,64 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 
 	// 返回本轮被标记 offline 的节点和被失败化的 deployment 摘要。
 	return result, nil
+}
+
+type impactedExecutionIntent struct {
+	ID              string
+	PlanID          string
+	ServiceID       string
+	ServiceName     string
+	CPUMilliRequest int
+	MemoryMiRequest int
+}
+
+func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode node.Node, reason string) ([]impactedExecutionIntent, error) {
+	intentRows, err := tx.QueryContext(ctx, `
+		SELECT
+			id,
+			plan_id,
+			service_id,
+			service_name,
+			cpu_milli_request,
+			memory_mi_request
+		FROM execution_intents
+		WHERE node_id = $1
+		  AND status IN ($2, $3, $4)
+		ORDER BY updated_at ASC, id ASC
+		FOR UPDATE
+	`, staleNode.ID, execution.StatusPending, execution.StatusDeploying, execution.StatusRunning)
+	if err != nil {
+		return nil, fmt.Errorf("query impacted execution intents: %w", err)
+	}
+	defer closeRows(intentRows)
+
+	var impacted []impactedExecutionIntent
+	for intentRows.Next() {
+		var item impactedExecutionIntent
+		if err := intentRows.Scan(&item.ID, &item.PlanID, &item.ServiceID, &item.ServiceName, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
+			return nil, fmt.Errorf("scan impacted execution intent: %w", err)
+		}
+		impacted = append(impacted, item)
+	}
+	if err := intentRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate impacted execution intents: %w", err)
+	}
+
+	for _, item := range impacted {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE execution_intents
+			SET
+				status = $2,
+				status_reason = $3,
+				finished_at = COALESCE(finished_at, now()),
+				updated_at = now()
+			WHERE id = $1
+		`, item.ID, execution.StatusFailed, reason); err != nil {
+			return nil, fmt.Errorf("mark execution intent failed during node offline reconcile: %w", err)
+		}
+		if err := freeNodeAllocation(ctx, tx, staleNode.ID, item.CPUMilliRequest, item.MemoryMiRequest); err != nil {
+			return nil, err
+		}
+	}
+	return impacted, nil
 }

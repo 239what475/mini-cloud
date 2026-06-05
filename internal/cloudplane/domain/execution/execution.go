@@ -11,6 +11,8 @@ import (
 )
 
 const (
+	// StatusPending 表示 execution intent 已创建但还未被 node-agent 领取。
+	StatusPending = "pending"
 	// StatusDeploying 表示 node-agent 正在创建或更新该副本容器。
 	StatusDeploying = "deploying"
 	// StatusRunning 表示该副本容器已启动并通过运行时上报。

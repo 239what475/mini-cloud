@@ -391,6 +391,54 @@ func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T)
 	}
 }
 
+func TestApplyExecutionSnapshotsMarksServiceDegradedAfterFailedExecution(t *testing.T) {
+	observedAt := time.Now().UTC()
+	store := &fakeExecutionSnapshotStore{
+		planeID: "plane-a",
+		service: controlservice.Service{
+			Metadata: controlservice.Metadata{
+				ID:         "svc-api",
+				Generation: 1,
+			},
+			Status: controlservice.ServiceStatus{
+				DesiredState: controlservice.DesiredStateActive,
+				Run: controlservice.RunStatus{
+					LatestRunID: "svc-api-g1",
+					Phase:       controlservice.RunPhaseDispatching,
+				},
+			},
+		},
+		runs: map[int64]controlservice.ServiceRun{
+			1: {Generation: 1, Status: controlservice.RunPhaseDispatching},
+		},
+	}
+	service := &Service{store: store}
+
+	err := service.applyExecutionSnapshots(context.Background(), "plane-a", []cloudplaneapi.ExecutionSnapshot{
+		{
+			PlanID:            "svc-api-g1",
+			ServiceID:         "svc-api",
+			ServiceGeneration: 1,
+			DesiredReplicas:   1,
+			FailedReplicas:    1,
+			LastStatusReason:  "node runtime-node-a marked offline",
+			ObservedAt:        observedAt,
+		},
+	})
+	if err != nil {
+		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+	}
+	if store.service.Status.Observed.Phase != controlservice.PhaseDegraded || store.service.Status.Observed.Healthy {
+		t.Fatalf("service observed status = %+v, want degraded unhealthy", store.service.Status.Observed)
+	}
+	if store.service.Status.Run.Phase != controlservice.RunPhaseFailed || store.service.Status.Run.FailedReplicas != 1 {
+		t.Fatalf("service run = %+v, want failed with one failed replica", store.service.Status.Run)
+	}
+	if store.runs[1].Status != controlservice.RunPhaseFailed {
+		t.Fatalf("stored run status = %s, want failed", store.runs[1].Status)
+	}
+}
+
 func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing.T) {
 	observedAt := time.Now().UTC()
 	store := &fakeExecutionSnapshotStore{

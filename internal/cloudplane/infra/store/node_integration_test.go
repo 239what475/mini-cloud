@@ -2,10 +2,13 @@ package store_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/domain/node"
+	"mini-cloud/internal/cloudplane/domain/workload"
 	"mini-cloud/internal/testutil"
 )
 
@@ -148,5 +151,139 @@ func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchan
 	// updated_at 代表 inventory 版本，库存未变时不能推进，避免 control-plane 误判 inventory 变化。
 	if !second.UpdatedAt.Equal(first.UpdatedAt) {
 		t.Fatalf("updated_at advanced even though inventory was unchanged: first=%s second=%s", first.UpdatedAt, second.UpdatedAt)
+	}
+}
+
+// TestIntegrationStaleNodeHeartbeatFailsExecutionIntent 验证 node offline 链路会失败化 v8 execution intent，并通过 snapshot 暴露给 control-plane 聚合。
+func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+
+	registered, err := db.Store.RegisterNode(ctx, node.RegisterInput{
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		Name:          "runtime-node-stale",
+		Role:          node.RoleRuntime,
+		PrivateIP:     "10.0.0.12",
+		PublicIP:      "203.0.113.12",
+		InstanceID:    "i-runtime-node-stale",
+		InstanceType:  "ecs.u1-c1m2.large",
+		CPUMilliTotal: 2000,
+		MemoryMiTotal: 4096,
+	})
+	if err != nil {
+		t.Fatalf("RegisterNode returned error: %v", err)
+	}
+	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, registered.ID, node.HeartbeatInput{
+		ReportedAt:          time.Now().UTC(),
+		AgentVersion:        "test-agent",
+		CPUMilliAllocatable: 1500,
+		MemoryMiAllocatable: 3584,
+		RunningContainers:   0,
+		Status:              node.StatusReady,
+	}); err != nil {
+		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
+	}
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+		PlanID:            "svc-stale-g1",
+		ServiceID:         "svc-stale",
+		ServiceName:       "stale-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		Replicas:          1,
+		InstanceClass:     workload.InstanceClassSmall,
+		Exposure:          "public",
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+	}
+
+	work, err := db.Store.CreateExecutionClaim(ctx, registered.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim returned error: %v", err)
+	}
+	if work == nil {
+		t.Fatal("CreateExecutionClaim returned nil work item")
+	}
+	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, execution.ReportInput{
+		Status:        execution.StatusRunning,
+		Reason:        "replica is healthy",
+		ContainerID:   "ctr-stale-0",
+		ContainerName: work.ContainerName,
+		HostPort:      18081,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(running) returned error: %v", err)
+	}
+
+	runningNode, err := db.Store.GetNode(ctx, registered.ID)
+	if err != nil {
+		t.Fatalf("GetNode before stale reconcile returned error: %v", err)
+	}
+	if runningNode.CPUMilliAllocated == 0 || runningNode.MemoryMiAllocated == 0 {
+		t.Fatalf("expected running execution to reserve node allocation, got cpu=%d memory=%d", runningNode.CPUMilliAllocated, runningNode.MemoryMiAllocated)
+	}
+
+	if _, err := db.DB.ExecContext(ctx, `
+		UPDATE nodes
+		SET last_heartbeat_at = $2
+		WHERE id = $1
+	`, registered.ID, time.Now().UTC().Add(-10*time.Minute)); err != nil {
+		t.Fatalf("seed stale heartbeat timestamp: %v", err)
+	}
+
+	result, err := db.Store.UpdateStaleNodeHeartbeatState(ctx, time.Minute)
+	if err != nil {
+		t.Fatalf("UpdateStaleNodeHeartbeatState returned error: %v", err)
+	}
+	if len(result.NodesMarkedOffline) != 1 || result.NodesMarkedOffline[0].ID != registered.ID {
+		t.Fatalf("NodesMarkedOffline = %+v, want node %s", result.NodesMarkedOffline, registered.ID)
+	}
+	if len(result.ImpactedDeployments) != 1 || result.ImpactedDeployments[0].DeploymentID != "svc-stale-g1" || result.ImpactedDeployments[0].ServiceID != "svc-stale" {
+		t.Fatalf("ImpactedDeployments = %+v, want svc-stale-g1 impact", result.ImpactedDeployments)
+	}
+	if !strings.Contains(result.ImpactedDeployments[0].Reason, "marked offline") {
+		t.Fatalf("impact reason = %q, want marked offline", result.ImpactedDeployments[0].Reason)
+	}
+
+	offlineNode, err := db.Store.GetNode(ctx, registered.ID)
+	if err != nil {
+		t.Fatalf("GetNode after stale reconcile returned error: %v", err)
+	}
+	if offlineNode.Status != node.StatusOffline || offlineNode.Schedulable {
+		t.Fatalf("node after stale reconcile = status %s schedulable %v, want offline false", offlineNode.Status, offlineNode.Schedulable)
+	}
+	if offlineNode.CPUMilliAllocated != 0 || offlineNode.MemoryMiAllocated != 0 {
+		t.Fatalf("node allocation after stale reconcile = cpu %d memory %d, want 0/0", offlineNode.CPUMilliAllocated, offlineNode.MemoryMiAllocated)
+	}
+
+	again, err := db.Store.UpdateStaleNodeHeartbeatState(ctx, time.Minute)
+	if err != nil {
+		t.Fatalf("UpdateStaleNodeHeartbeatState(second) returned error: %v", err)
+	}
+	if len(again.NodesMarkedOffline) != 0 || len(again.ImpactedDeployments) != 0 {
+		t.Fatalf("second reconcile result = %+v, want no-op", again)
+	}
+
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	var found bool
+	for _, item := range snapshots {
+		if item.PlanID != "svc-stale-g1" {
+			continue
+		}
+		found = true
+		if item.DesiredReplicas != 1 || item.FailedReplicas != 1 || item.RunningReplicas != 0 || item.DeployingReplicas != 0 {
+			t.Fatalf("execution snapshot = %+v, want one failed replica and no active replicas", item)
+		}
+		if !strings.Contains(item.LastStatusReason, "marked offline") {
+			t.Fatalf("snapshot reason = %q, want marked offline", item.LastStatusReason)
+		}
+	}
+	if !found {
+		t.Fatalf("execution snapshot for svc-stale-g1 not found in %+v", snapshots)
 	}
 }

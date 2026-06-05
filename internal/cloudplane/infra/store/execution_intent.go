@@ -62,7 +62,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 		WHERE service_id = $1
 		  AND plan_id <> $4
 		  AND status IN ($5, $6)
-	`, input.ServiceID, execution.StatusSuperseded, "superseded by a newer execution plan", input.PlanID, "pending", execution.StatusDeploying); err != nil {
+	`, input.ServiceID, execution.StatusSuperseded, "superseded by a newer execution plan", input.PlanID, execution.StatusPending, execution.StatusDeploying); err != nil {
 		return execution.PlanResult{}, fmt.Errorf("supersede old execution intents: %w", err)
 	}
 
@@ -142,7 +142,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 			input.ReadinessPath,
 			cpuMilliRequest,
 			memoryMiRequest,
-			"pending",
+			execution.StatusPending,
 			"execution plan accepted",
 		)
 		if err != nil {
@@ -196,7 +196,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 		WHERE service_id = $1
 		  AND work_action = $6
 		  AND status = $4
-	`, input.ServiceID, execution.StatusSuperseded, "service deletion requested before execution started", "pending", execution.StatusDeploying, execution.WorkActionRun); err != nil {
+	`, input.ServiceID, execution.StatusSuperseded, "service deletion requested before execution started", execution.StatusPending, execution.StatusDeploying, execution.WorkActionRun); err != nil {
 		return false, fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
 	}
 
@@ -237,7 +237,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 			updated_at = now()
 		FROM candidates
 		WHERE execution_intents.id = candidates.id
-	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, "pending", "service deletion requested by control-plane", execution.StatusRunning, execution.WorkActionRun)
+	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, execution.StatusPending, "service deletion requested by control-plane", execution.StatusRunning, execution.WorkActionRun)
 	if err != nil {
 		return false, fmt.Errorf("mark running execution intents for delete: %w", err)
 	}
@@ -485,7 +485,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC, replica_index ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
-	`, "pending", execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
+	`, execution.StatusPending, execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
 		&work.ExecutionID,
 		&work.Action,
 		&work.DeploymentID,
