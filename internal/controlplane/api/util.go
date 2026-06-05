@@ -81,7 +81,6 @@ func serveRootJSONOrIndex(logger *slog.Logger, uiDir string, mux *http.ServeMux)
 			"healthz":        "/api/healthz",
 			"controlMetrics": "/metrics/control",
 			"services":       "/api/v1/services",
-			"configSets":     "/api/v1/config-sets",
 			"controlPlanes":  "/api/v1/control/planes",
 		})
 	})

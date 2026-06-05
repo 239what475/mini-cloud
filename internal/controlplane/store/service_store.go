@@ -34,10 +34,9 @@ const serviceSelectColumns = `
 	spec_default_port,
 	spec_readiness_path,
 	spec_env_json,
-	spec_config_set_id,
-	spec_secret_set_id,
+	spec_secret_env_json,
 	spec_registry_credential_id,
-	spec_projected_files_json,
+	spec_files_json,
 	status_run_json,
 	generation,
 	status_desired_state,
@@ -57,7 +56,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := input.Validate(); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.RegistryCredentialID); err != nil {
 		return controlservice.Service{}, err
 	}
 	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
@@ -82,9 +81,13 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service env: %w", err)
 	}
-	projectedFilesJSON, err := marshalJSON(projectedfile.CloneSpecs(input.Spec.ProjectedFiles), []projectedfile.Spec{})
+	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service projected files: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service secret env: %w", err)
+	}
+	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
+	if err != nil {
+		return controlservice.Service{}, fmt.Errorf("marshal service files: %w", err)
 	}
 	initialStatus := controlservice.PendingStatus(0, "waiting for service reconcile")
 	initialRun := controlservice.RunStatus{Phase: controlservice.RunPhasePending}
@@ -109,10 +112,9 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			spec_default_port,
 			spec_readiness_path,
 			spec_env_json,
-			spec_config_set_id,
-			spec_secret_set_id,
+			spec_secret_env_json,
 			spec_registry_credential_id,
-			spec_projected_files_json,
+			spec_files_json,
 			status_run_json,
 			generation,
 			status_desired_state,
@@ -142,10 +144,9 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		input.Spec.DefaultPort,
 		input.Spec.ReadinessPath,
 		envJSON,
-		input.Spec.ConfigSetID,
-		input.Spec.SecretSetID,
+		secretEnvJSON,
 		input.Spec.RegistryCredentialID,
-		projectedFilesJSON,
+		filesJSON,
 		runJSON,
 		controlservice.DesiredStateActive,
 		initialStatus.ObservedGeneration,
@@ -235,9 +236,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service env for update: %w", err)
 	}
-	projectedFilesJSON, err := marshalJSON(projectedfile.CloneSpecs(input.Spec.ProjectedFiles), []projectedfile.Spec{})
+	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service projected files for update: %w", err)
+		return controlservice.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
+	}
+	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
+	if err != nil {
+		return controlservice.Service{}, fmt.Errorf("marshal service files for update: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -255,7 +260,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err := input.Validate(current.Metadata.Name); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
+	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.RegistryCredentialID); err != nil {
 		return controlservice.Service{}, err
 	}
 	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
@@ -285,24 +290,23 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			spec_default_port = $11,
 			spec_readiness_path = $12,
 			spec_env_json = $13,
-			spec_config_set_id = $14,
-			spec_secret_set_id = $15,
-			spec_registry_credential_id = $16,
-			spec_projected_files_json = $17,
-			status_run_json = $18,
-			generation = $19,
-			status_desired_state = $20,
-			status_observed_generation = $21,
-			status_phase = $22,
-			status_healthy = $23,
-			status_message = $24,
+			spec_secret_env_json = $14,
+			spec_registry_credential_id = $15,
+			spec_files_json = $16,
+			status_run_json = $17,
+			generation = $18,
+			status_desired_state = $19,
+			status_observed_generation = $20,
+			status_phase = $21,
+			status_healthy = $22,
+			status_message = $23,
 			status_last_reconciled_at = NULL,
 			status_assigned_plane_id = NULL,
 			status_remote_status = '',
 			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $25
+			AND generation = $24
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -318,10 +322,9 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		input.Spec.DefaultPort,
 		input.Spec.ReadinessPath,
 		envJSON,
-		input.Spec.ConfigSetID,
-		input.Spec.SecretSetID,
+		secretEnvJSON,
 		input.Spec.RegistryCredentialID,
-		projectedFilesJSON,
+		filesJSON,
 		currentRunJSON,
 		nextGeneration,
 		controlservice.DesiredStateActive,
@@ -525,7 +528,8 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
-	var projectedFilesJSON []byte
+	var secretEnvJSON []byte
+	var filesJSON []byte
 	var runJSON []byte
 	var pinnedPlaneID sql.NullString
 	var lastReconciledAt sql.NullTime
@@ -545,10 +549,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.Spec.DefaultPort,
 		&item.Spec.ReadinessPath,
 		&envJSON,
-		&item.Spec.ConfigSetID,
-		&item.Spec.SecretSetID,
+		&secretEnvJSON,
 		&item.Spec.RegistryCredentialID,
-		&projectedFilesJSON,
+		&filesJSON,
 		&runJSON,
 		&item.Metadata.Generation,
 		&item.Status.DesiredState,
@@ -574,10 +577,13 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	if err := unmarshalJSON(envJSON, &item.Spec.Env, map[string]string{}); err != nil {
 		return controlservice.Service{}, fmt.Errorf("decode service env: %w", err)
 	}
-	if err := unmarshalJSON(projectedFilesJSON, &item.Spec.ProjectedFiles, []projectedfile.Spec{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service projected files: %w", err)
+	if err := unmarshalJSON(secretEnvJSON, &item.Spec.SecretEnv, map[string]string{}); err != nil {
+		return controlservice.Service{}, fmt.Errorf("decode service secret env: %w", err)
 	}
-	item.Spec.ProjectedFiles = projectedfile.CloneSpecs(item.Spec.ProjectedFiles)
+	if err := unmarshalJSON(filesJSON, &item.Spec.Files, []projectedfile.File{}); err != nil {
+		return controlservice.Service{}, fmt.Errorf("decode service files: %w", err)
+	}
+	item.Spec.Files = projectedfile.CloneFiles(item.Spec.Files)
 	if err := unmarshalJSON(runJSON, &item.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending}); err != nil {
 		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
@@ -609,68 +615,10 @@ func nullableOptionalString(value *string) any {
 	return strings.TrimSpace(*value)
 }
 
-func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, configSetID string, secretSetID string, registryCredentialID string, projectedFiles []projectedfile.Spec) error {
-	configSets := make(map[string]map[string]string)
-	secretSets := make(map[string]map[string]string)
-
-	loadConfigSet := func(id string) (map[string]string, error) {
-		if values, ok := configSets[id]; ok {
-			return values, nil
-		}
-		item, err := s.GetConfigSet(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		configSets[id] = item.Values
-		return item.Values, nil
-	}
-	loadSecretSet := func(id string) (map[string]string, error) {
-		if values, ok := secretSets[id]; ok {
-			return values, nil
-		}
-		item, err := s.GetSecretSet(ctx, id)
-		if err != nil {
-			return nil, err
-		}
-		secretSets[id] = item.Values
-		return item.Values, nil
-	}
-
-	if configSetID != "" {
-		if _, err := loadConfigSet(configSetID); err != nil {
-			return err
-		}
-	}
-	if secretSetID != "" {
-		if _, err := loadSecretSet(secretSetID); err != nil {
-			return err
-		}
-	}
+func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, registryCredentialID string) error {
 	if registryCredentialID != "" {
 		if _, err := s.GetRegistryCredential(ctx, registryCredentialID); err != nil {
 			return err
-		}
-	}
-	for _, item := range projectedfile.CloneSpecs(projectedFiles) {
-		switch item.SourceKind {
-		case projectedfile.SourceKindConfigSet:
-			values, err := loadConfigSet(item.SourceID)
-			if err != nil {
-				return err
-			}
-			if _, ok := values[item.SourceKey]; !ok {
-				return fmt.Errorf("config set %s does not contain key %s", item.SourceID, item.SourceKey)
-			}
-		case projectedfile.SourceKindSecretSet:
-			values, err := loadSecretSet(item.SourceID)
-			if err != nil {
-				return err
-			}
-			if _, ok := values[item.SourceKey]; !ok {
-				return fmt.Errorf("secret set %s does not contain key %s", item.SourceID, item.SourceKey)
-			}
-		default:
-			return projectedfile.ErrSourceKindInvalid
 		}
 	}
 	return nil

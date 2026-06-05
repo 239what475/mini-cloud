@@ -215,10 +215,9 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 			DefaultPort:          serviceItem.Spec.DefaultPort,
 			ReadinessPath:        serviceItem.Spec.ReadinessPath,
 			Env:                  cloneStringMap(serviceItem.Spec.Env),
-			ConfigSetID:          serviceItem.Spec.ConfigSetID,
-			SecretSetID:          serviceItem.Spec.SecretSetID,
+			SecretEnv:            cloneStringMap(serviceItem.Spec.SecretEnv),
 			RegistryCredentialID: serviceItem.Spec.RegistryCredentialID,
-			ProjectedFiles:       projectedfile.CloneSpecs(serviceItem.Spec.ProjectedFiles),
+			Files:                projectedfile.CloneFiles(serviceItem.Spec.Files),
 		},
 	}
 }

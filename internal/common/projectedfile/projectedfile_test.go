@@ -5,25 +5,22 @@ import (
 	"testing"
 )
 
-func TestValidateSpecsRejectsDuplicateMountPathAfterNormalization(t *testing.T) {
+func TestValidateFilesRejectsDuplicateMountPathAfterNormalization(t *testing.T) {
 	t.Parallel()
 
-	err := ValidateSpecs([]Spec{
+	err := ValidateFiles([]File{
 		{
-			MountPath:  "/etc/app/../app/config.yaml",
-			SourceKind: SourceKindConfigSet,
-			SourceID:   "cfg_demo",
-			SourceKey:  "config.yaml",
+			MountPath: "/etc/app/../app/config.yaml",
+			Content:   "config",
 		},
 		{
-			MountPath:  "/etc/app/config.yaml",
-			SourceKind: SourceKindSecretSet,
-			SourceID:   "sec_demo",
-			SourceKey:  "token",
+			MountPath: "/etc/app/config.yaml",
+			Content:   "secret",
+			Sensitive: true,
 		},
 	})
 	if !errors.Is(err, ErrDuplicateMountPath) {
-		t.Fatalf("ValidateSpecs error = %v, want ErrDuplicateMountPath", err)
+		t.Fatalf("ValidateFiles error = %v, want ErrDuplicateMountPath", err)
 	}
 }
 

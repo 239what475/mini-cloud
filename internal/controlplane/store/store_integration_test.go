@@ -8,7 +8,6 @@ import (
 
 	"mini-cloud/internal/common/projectedfile"
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/resource"
 	controlservice "mini-cloud/internal/controlplane/service"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
@@ -208,25 +207,6 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 
-	configSet, err := db.Store.CreateConfigSet(ctx, resource.CreateConfigSetInput{
-		Name: "cliproxy-config",
-		Values: map[string]string{
-			"config.yaml": "listen: :8317\n",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CreateConfigSet returned error: %v", err)
-	}
-	secretSet, err := db.Store.CreateSecretSet(ctx, resource.CreateSecretSetInput{
-		Name: "cliproxy-secret",
-		Values: map[string]string{
-			"token": "token-v1",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CreateSecretSet returned error: %v", err)
-	}
-
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
@@ -238,18 +218,18 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 			Image:         "ghcr.io/example/cliproxyapi:v1",
 			DefaultPort:   8317,
 			ReadinessPath: "/healthz",
-			ProjectedFiles: []projectedfile.Spec{
+			SecretEnv: map[string]string{
+				"CLIPROXY_TOKEN": "token-v1",
+			},
+			Files: []projectedfile.File{
 				{
-					MountPath:  "/etc/cliproxy/config.yaml",
-					SourceKind: projectedfile.SourceKindConfigSet,
-					SourceID:   configSet.ID,
-					SourceKey:  "config.yaml",
+					MountPath: "/etc/cliproxy/config.yaml",
+					Content:   "listen: :8317\n",
 				},
 				{
-					MountPath:  "/etc/cliproxy/auth/token",
-					SourceKind: projectedfile.SourceKindSecretSet,
-					SourceID:   secretSet.ID,
-					SourceKey:  "token",
+					MountPath: "/etc/cliproxy/auth/token",
+					Content:   "token-v1",
+					Sensitive: true,
 				},
 			},
 		},
@@ -257,18 +237,24 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
 	}
-	if len(serviceItem.Spec.ProjectedFiles) != 2 {
-		t.Fatalf("service projected files len = %d, want 2", len(serviceItem.Spec.ProjectedFiles))
+	if len(serviceItem.Spec.Files) != 2 {
+		t.Fatalf("service files len = %d, want 2", len(serviceItem.Spec.Files))
+	}
+	if serviceItem.Spec.SecretEnv["CLIPROXY_TOKEN"] != "token-v1" {
+		t.Fatalf("service secret env was not persisted")
 	}
 
 	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
 	if err != nil {
 		t.Fatalf("GetService returned error: %v", err)
 	}
-	if len(reloaded.Spec.ProjectedFiles) != 2 {
-		t.Fatalf("reloaded projected files len = %d, want 2", len(reloaded.Spec.ProjectedFiles))
+	if len(reloaded.Spec.Files) != 2 {
+		t.Fatalf("reloaded files len = %d, want 2", len(reloaded.Spec.Files))
 	}
-	if reloaded.Spec.ProjectedFiles[0].MountPath != "/etc/cliproxy/auth/token" {
-		t.Fatalf("first projected mountPath = %q, want /etc/cliproxy/auth/token", reloaded.Spec.ProjectedFiles[0].MountPath)
+	if reloaded.Spec.Files[0].MountPath != "/etc/cliproxy/auth/token" {
+		t.Fatalf("first file mountPath = %q, want /etc/cliproxy/auth/token", reloaded.Spec.Files[0].MountPath)
+	}
+	if !reloaded.Spec.Files[0].Sensitive {
+		t.Fatalf("first file should be sensitive")
 	}
 }

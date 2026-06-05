@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -27,10 +28,9 @@ type serviceSpec struct {
 	DefaultPort          int                  `json:"defaultPort"`
 	ReadinessPath        string               `json:"readinessPath"`
 	Env                  map[string]string    `json:"env,omitempty"`
-	ConfigSetID          string               `json:"configSetID,omitempty"`
-	SecretSetID          string               `json:"secretSetID,omitempty"`
+	SecretEnvKeys        []string             `json:"secretEnvKeys,omitempty"`
 	RegistryCredentialID string               `json:"registryCredentialID,omitempty"`
-	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
+	Files                []projectedfile.File `json:"files,omitempty"`
 }
 
 type serviceRunStatus struct {
@@ -83,10 +83,9 @@ type serviceSpecInput struct {
 	DefaultPort          int                  `json:"defaultPort"`
 	ReadinessPath        string               `json:"readinessPath"`
 	Env                  map[string]string    `json:"env"`
-	ConfigSetID          string               `json:"configSetID"`
-	SecretSetID          string               `json:"secretSetID"`
+	SecretEnv            map[string]string    `json:"secretEnv"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles"`
+	Files                []projectedfile.File `json:"files"`
 }
 
 type serviceCreateRequest struct {
@@ -151,9 +150,7 @@ func (h serviceHandler) createService(w http.ResponseWriter, r *http.Request) {
 		case isServiceInputError(err):
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrConfigSetNotFound),
-			errors.Is(err, store.ErrSecretSetNotFound),
-			errors.Is(err, store.ErrRegistryCredentialNotFound):
+		case errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
@@ -226,9 +223,7 @@ func (h serviceHandler) updateService(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, store.ErrServiceNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrConfigSetNotFound),
-			errors.Is(err, store.ErrSecretSetNotFound),
-			errors.Is(err, store.ErrRegistryCredentialNotFound):
+		case errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -301,10 +296,9 @@ func buildServiceResource(view servicecontroller.View) serviceResource {
 			DefaultPort:          view.Service.Spec.DefaultPort,
 			ReadinessPath:        view.Service.Spec.ReadinessPath,
 			Env:                  cloneStringMap(view.Service.Spec.Env),
-			ConfigSetID:          view.Service.Spec.ConfigSetID,
-			SecretSetID:          view.Service.Spec.SecretSetID,
+			SecretEnvKeys:        sortedKeys(view.Service.Spec.SecretEnv),
 			RegistryCredentialID: view.Service.Spec.RegistryCredentialID,
-			ProjectedFiles:       projectedfile.CloneSpecs(view.Service.Spec.ProjectedFiles),
+			Files:                projectedfile.CloneFiles(view.Service.Spec.Files),
 		},
 		Status: status,
 	}
@@ -340,6 +334,18 @@ func buildServiceRun(input controlservice.RunStatus) serviceRunStatus {
 	return out
 }
 
+func sortedKeys(values map[string]string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
 func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error) {
 	if r.Spec == nil {
 		return controlservice.CreateInput{}, errServiceSpecRequired
@@ -360,10 +366,9 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 			DefaultPort:          spec.DefaultPort,
 			ReadinessPath:        strings.TrimSpace(spec.ReadinessPath),
 			Env:                  cloneStringMap(spec.Env),
-			ConfigSetID:          strings.TrimSpace(spec.ConfigSetID),
-			SecretSetID:          strings.TrimSpace(spec.SecretSetID),
+			SecretEnv:            cloneStringMap(spec.SecretEnv),
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
-			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
+			Files:                projectedfile.CloneFiles(spec.Files),
 		},
 	}, nil
 }
@@ -387,10 +392,9 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 			DefaultPort:          spec.DefaultPort,
 			ReadinessPath:        strings.TrimSpace(spec.ReadinessPath),
 			Env:                  cloneStringMap(spec.Env),
-			ConfigSetID:          strings.TrimSpace(spec.ConfigSetID),
-			SecretSetID:          strings.TrimSpace(spec.SecretSetID),
+			SecretEnv:            cloneStringMap(spec.SecretEnv),
 			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
-			ProjectedFiles:       projectedfile.CloneSpecs(spec.ProjectedFiles),
+			Files:                projectedfile.CloneFiles(spec.Files),
 		},
 	}, nil
 }
@@ -412,8 +416,7 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||
 		errors.Is(err, projectedfile.ErrMountPathInvalid) ||
-		errors.Is(err, projectedfile.ErrSourceKindInvalid) ||
-		errors.Is(err, projectedfile.ErrSourceIDRequired) ||
-		errors.Is(err, projectedfile.ErrSourceKeyRequired) ||
+		errors.Is(err, projectedfile.ErrContentRequired) ||
+		errors.Is(err, projectedfile.ErrFileModeInvalid) ||
 		errors.Is(err, projectedfile.ErrDuplicateMountPath)
 }

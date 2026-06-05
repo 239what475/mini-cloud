@@ -125,10 +125,9 @@ type ServiceSpec struct {
 	DefaultPort          int                  `json:"defaultPort"`
 	ReadinessPath        string               `json:"readinessPath"`
 	Env                  map[string]string    `json:"env"`
-	ConfigSetID          string               `json:"configSetID"`
-	SecretSetID          string               `json:"secretSetID"`
+	SecretEnv            map[string]string    `json:"secretEnv,omitempty"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
+	Files                []projectedfile.File `json:"files,omitempty"`
 }
 
 const (

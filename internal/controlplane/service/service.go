@@ -70,10 +70,9 @@ type Spec struct {
 	DefaultPort          int                  `json:"defaultPort"`
 	ReadinessPath        string               `json:"readinessPath"`
 	Env                  map[string]string    `json:"env"`
-	ConfigSetID          string               `json:"configSetID"`
-	SecretSetID          string               `json:"secretSetID"`
+	SecretEnv            map[string]string    `json:"secretEnv,omitempty"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
+	Files                []projectedfile.File `json:"files,omitempty"`
 }
 
 type ServiceStatus struct {
@@ -216,10 +215,9 @@ func CloneSpec(input Spec) Spec {
 		DefaultPort:          input.DefaultPort,
 		ReadinessPath:        input.ReadinessPath,
 		Env:                  copyStringMap(input.Env),
-		ConfigSetID:          input.ConfigSetID,
-		SecretSetID:          input.SecretSetID,
+		SecretEnv:            copyStringMap(input.SecretEnv),
 		RegistryCredentialID: input.RegistryCredentialID,
-		ProjectedFiles:       projectedfile.CloneSpecs(input.ProjectedFiles),
+		Files:                projectedfile.CloneFiles(input.Files),
 	}
 }
 
@@ -249,7 +247,12 @@ func (spec Spec) Validate() error {
 			return ErrInvalidEnvironmentKey
 		}
 	}
-	if err := projectedfile.ValidateSpecs(spec.ProjectedFiles); err != nil {
+	for key := range spec.SecretEnv {
+		if strings.TrimSpace(key) == "" {
+			return ErrInvalidEnvironmentKey
+		}
+	}
+	if err := projectedfile.ValidateFiles(spec.Files); err != nil {
 		return err
 	}
 	_ = provider
@@ -270,12 +273,11 @@ func SpecRuntimeEqual(before Spec, after Spec) bool {
 		reflect.DeepEqual(before.Command, after.Command) &&
 		reflect.DeepEqual(before.Args, after.Args) &&
 		reflect.DeepEqual(before.Env, after.Env) &&
+		reflect.DeepEqual(before.SecretEnv, after.SecretEnv) &&
 		before.DefaultPort == after.DefaultPort &&
 		before.ReadinessPath == after.ReadinessPath &&
-		before.ConfigSetID == after.ConfigSetID &&
-		before.SecretSetID == after.SecretSetID &&
 		before.RegistryCredentialID == after.RegistryCredentialID &&
-		reflect.DeepEqual(projectedfile.CloneSpecs(before.ProjectedFiles), projectedfile.CloneSpecs(after.ProjectedFiles))
+		reflect.DeepEqual(projectedfile.CloneFiles(before.Files), projectedfile.CloneFiles(after.Files))
 }
 
 func ResolveServiceAssignmentFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {

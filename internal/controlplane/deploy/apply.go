@@ -56,10 +56,9 @@ type ServiceSpec struct {
 	DefaultPort          int                  `json:"defaultPort"`
 	ReadinessPath        string               `json:"readinessPath"`
 	Env                  map[string]string    `json:"env"`
-	ConfigSetID          string               `json:"configSetID"`
-	SecretSetID          string               `json:"secretSetID"`
+	SecretEnv            map[string]string    `json:"secretEnv,omitempty"`
 	RegistryCredentialID string               `json:"registryCredentialID"`
-	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
+	Files                []projectedfile.File `json:"files,omitempty"`
 }
 
 type ApplyResult struct {
@@ -124,7 +123,12 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 			return cloudplaneapi.ServiceSpec{}, ErrInvalidEnvironmentKey
 		}
 	}
-	if err := projectedfile.ValidateSpecs(in.Spec.ProjectedFiles); err != nil {
+	for key := range in.Spec.SecretEnv {
+		if strings.TrimSpace(key) == "" {
+			return cloudplaneapi.ServiceSpec{}, ErrInvalidEnvironmentKey
+		}
+	}
+	if err := projectedfile.ValidateFiles(in.Spec.Files); err != nil {
 		return cloudplaneapi.ServiceSpec{}, err
 	}
 	return cloudplaneapi.ServiceSpec{
@@ -137,10 +141,9 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 		DefaultPort:          in.Spec.DefaultPort,
 		ReadinessPath:        strings.TrimSpace(in.Spec.ReadinessPath),
 		Env:                  in.Spec.Env,
-		ConfigSetID:          in.Spec.ConfigSetID,
-		SecretSetID:          in.Spec.SecretSetID,
+		SecretEnv:            in.Spec.SecretEnv,
 		RegistryCredentialID: in.Spec.RegistryCredentialID,
-		ProjectedFiles:       projectedfile.CloneSpecs(in.Spec.ProjectedFiles),
+		Files:                projectedfile.CloneFiles(in.Spec.Files),
 	}, nil
 }
 

@@ -144,66 +144,21 @@ func (s *Service) DeleteService(ctx context.Context, planeID string, input Delet
 }
 
 func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
-	collector := resourceCollector{}
-	if spec.ConfigSetID != "" {
-		collector.addConfigSet(spec.ConfigSetID)
-	}
-	if spec.SecretSetID != "" {
-		collector.addSecretSet(spec.SecretSetID)
-	}
-	if spec.RegistryCredentialID != "" {
-		collector.addRegistryCredential(spec.RegistryCredentialID)
-	}
-	for _, item := range projectedfile.CloneSpecs(spec.ProjectedFiles) {
-		switch item.SourceKind {
-		case projectedfile.SourceKindConfigSet:
-			collector.addConfigSet(item.SourceID)
-		case projectedfile.SourceKindSecretSet:
-			collector.addSecretSet(item.SourceID)
-		default:
-			return cloudplaneapi.ExecutionPlanRequest{}, projectedfile.ErrSourceKindInvalid
-		}
-	}
-
-	configs := map[string]map[string]string{}
-	for _, id := range collector.configSetIDs {
-		local, err := s.store.GetConfigSet(ctx, id)
-		if err != nil {
-			return cloudplaneapi.ExecutionPlanRequest{}, err
-		}
-		configs[id] = local.Values
-	}
-	secrets := map[string]map[string]string{}
-	for _, id := range collector.secretSetIDs {
-		local, err := s.store.GetSecretSet(ctx, id)
-		if err != nil {
-			return cloudplaneapi.ExecutionPlanRequest{}, err
-		}
-		secrets[id] = local.Values
-	}
 	var imageCredential *cloudplaneapi.ExecutionImageCredential
-	for _, id := range collector.registryCredentialIDs {
-		local, err := s.store.GetRegistryCredential(ctx, id)
+	if spec.RegistryCredentialID != "" {
+		local, err := s.store.GetRegistryCredential(ctx, spec.RegistryCredentialID)
 		if err != nil {
 			return cloudplaneapi.ExecutionPlanRequest{}, err
 		}
-		if id == spec.RegistryCredentialID {
-			imageCredential = &cloudplaneapi.ExecutionImageCredential{
-				Server:   local.Server,
-				Username: local.Username,
-				Password: local.Password,
-			}
+		imageCredential = &cloudplaneapi.ExecutionImageCredential{
+			Server:   local.Server,
+			Username: local.Username,
+			Password: local.Password,
 		}
 	}
 	env := cloneStringMap(spec.Env)
-	if spec.SecretSetID != "" {
-		for key, value := range secrets[spec.SecretSetID] {
-			env[key] = value
-		}
-	}
-	projectedFiles, err := materializeProjectedFiles(spec.ProjectedFiles, configs, secrets)
-	if err != nil {
-		return cloudplaneapi.ExecutionPlanRequest{}, err
+	for key, value := range spec.SecretEnv {
+		env[key] = value
 	}
 	return cloudplaneapi.ExecutionPlanRequest{
 		PlanID:            fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation),
@@ -214,7 +169,7 @@ func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInpu
 		Command:           append([]string(nil), spec.Command...),
 		Args:              append([]string(nil), spec.Args...),
 		Env:               env,
-		ProjectedFiles:    projectedFiles,
+		ProjectedFiles:    executionProjectedFiles(spec.Files),
 		ImageCredential:   imageCredential,
 		ContainerPort:     spec.DefaultPort,
 		ReadinessPath:     spec.ReadinessPath,
@@ -234,81 +189,15 @@ func cloneStringMap(input map[string]string) map[string]string {
 	return out
 }
 
-func materializeProjectedFiles(specs []projectedfile.Spec, configs map[string]map[string]string, secrets map[string]map[string]string) ([]cloudplaneapi.ExecutionProjectedFile, error) {
-	out := make([]cloudplaneapi.ExecutionProjectedFile, 0, len(specs))
-	for _, item := range projectedfile.CloneSpecs(specs) {
-		var values map[string]string
-		sensitive := false
-		switch item.SourceKind {
-		case projectedfile.SourceKindConfigSet:
-			values = configs[item.SourceID]
-		case projectedfile.SourceKindSecretSet:
-			values = secrets[item.SourceID]
-			sensitive = true
-		default:
-			return nil, projectedfile.ErrSourceKindInvalid
-		}
-		value, ok := values[item.SourceKey]
-		if !ok {
-			return nil, fmt.Errorf("projected file source %s does not contain key %s", item.SourceID, item.SourceKey)
-		}
+func executionProjectedFiles(files []projectedfile.File) []cloudplaneapi.ExecutionProjectedFile {
+	out := make([]cloudplaneapi.ExecutionProjectedFile, 0, len(files))
+	for _, item := range projectedfile.CloneFiles(files) {
 		out = append(out, cloudplaneapi.ExecutionProjectedFile{
 			MountPath: item.MountPath,
-			Content:   value,
-			Mode:      projectedfile.DefaultMode(item.SourceKind),
-			Sensitive: sensitive,
+			Content:   item.Content,
+			Mode:      item.Mode,
+			Sensitive: item.Sensitive,
 		})
 	}
-	return out, nil
-}
-
-type resourceCollector struct {
-	configSetIDs           []string
-	secretSetIDs           []string
-	registryCredentialIDs  []string
-	seenConfigSet          map[string]struct{}
-	seenSecretSet          map[string]struct{}
-	seenRegistryCredential map[string]struct{}
-}
-
-func (c *resourceCollector) addConfigSet(id string) {
-	if id == "" {
-		return
-	}
-	if c.seenConfigSet == nil {
-		c.seenConfigSet = make(map[string]struct{})
-	}
-	if _, ok := c.seenConfigSet[id]; ok {
-		return
-	}
-	c.seenConfigSet[id] = struct{}{}
-	c.configSetIDs = append(c.configSetIDs, id)
-}
-
-func (c *resourceCollector) addSecretSet(id string) {
-	if id == "" {
-		return
-	}
-	if c.seenSecretSet == nil {
-		c.seenSecretSet = make(map[string]struct{})
-	}
-	if _, ok := c.seenSecretSet[id]; ok {
-		return
-	}
-	c.seenSecretSet[id] = struct{}{}
-	c.secretSetIDs = append(c.secretSetIDs, id)
-}
-
-func (c *resourceCollector) addRegistryCredential(id string) {
-	if id == "" {
-		return
-	}
-	if c.seenRegistryCredential == nil {
-		c.seenRegistryCredential = make(map[string]struct{})
-	}
-	if _, ok := c.seenRegistryCredential[id]; ok {
-		return
-	}
-	c.seenRegistryCredential[id] = struct{}{}
-	c.registryCredentialIDs = append(c.registryCredentialIDs, id)
+	return out
 }

@@ -10,9 +10,9 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     spec_default_port INTEGER NOT NULL,
     spec_readiness_path TEXT NOT NULL,
     spec_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    spec_config_set_id TEXT NOT NULL DEFAULT '',
-    spec_secret_set_id TEXT NOT NULL DEFAULT '',
+    spec_secret_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     spec_registry_credential_id TEXT NOT NULL DEFAULT '',
+    spec_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT fleet_services_name_key UNIQUE (name)
