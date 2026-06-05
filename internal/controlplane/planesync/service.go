@@ -54,15 +54,10 @@ type serviceStore interface {
 	GetPlaneSouthboundToken(context.Context, string) (string, error)
 	ListRegisteredPlaneIDs(context.Context) ([]string, error)
 	UpdatePlaneStatus(context.Context, string, plane.UpdateStatusInput) (plane.PlaneStatus, error)
-	RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error)
 	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
 	RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error)
 	GetService(context.Context, string) (controlservice.Service, error)
-	GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error)
-	UpdateServiceRun(context.Context, string, int64, controlservice.UpdateRunInput) (controlservice.ServiceRun, error)
-	SupersedeServiceRunsBeforeGeneration(context.Context, string, int64, string) error
 	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
-	DeleteServicePlacementForGeneration(context.Context, string, int64) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
 }
 
@@ -240,9 +235,6 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 	if _, err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
 		return Result{}, err
 	}
-	if _, err := s.store.RecordPlaneCapacitySnapshot(ctx, planeID, buildCapacitySnapshot(snapshot)); err != nil {
-		return Result{}, err
-	}
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.Executions); err != nil {
 		return Result{}, err
 	}
@@ -268,16 +260,6 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 		if strings.TrimSpace(item.ServiceID) == "" || item.ServiceGeneration <= 0 {
 			continue
 		}
-		placement, err := s.store.GetServicePlacement(ctx, item.ServiceID)
-		if err != nil {
-			if errors.Is(err, store.ErrServicePlacementNotFound) || errors.Is(err, store.ErrServiceNotFound) {
-				continue
-			}
-			return err
-		}
-		if placement.PlaneID != planeID {
-			continue
-		}
 		serviceItem, err := s.store.GetService(ctx, item.ServiceID)
 		if err != nil {
 			if errors.Is(err, store.ErrServiceNotFound) {
@@ -285,35 +267,20 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 			}
 			return err
 		}
+		if strings.TrimSpace(serviceItem.Status.Observed.AssignedPlaneID) != planeID {
+			continue
+		}
 		if item.ServiceGeneration != serviceItem.Metadata.Generation {
 			continue
 		}
 		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
-		_, runErr := s.store.UpdateServiceRun(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateRunInput{
-			Status:     status.Run.Phase,
-			Message:    status.Run.Message,
-			ObservedAt: status.Run.LastObservedAt,
-		})
-		if runErr != nil && !errors.Is(runErr, store.ErrServiceRunNotFound) {
-			return runErr
-		}
 		if serviceItem.Status.DesiredState == controlservice.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
-			if err := s.store.DeleteServicePlacementForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
-				!errors.Is(err, store.ErrServicePlacementNotFound) &&
-				!errors.Is(err, store.ErrServiceGenerationConflict) {
-				return err
-			}
 			if err := s.store.DeleteServiceForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
 				!errors.Is(err, store.ErrServiceNotFound) &&
 				!errors.Is(err, store.ErrServiceGenerationConflict) {
 				return err
 			}
 			continue
-		}
-		if status.Run.Phase == controlservice.RunPhaseRunning {
-			if err := s.store.SupersedeServiceRunsBeforeGeneration(ctx, item.ServiceID, item.ServiceGeneration, "superseded by a newer running service run"); err != nil {
-				return err
-			}
 		}
 		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateStatusInput{
 			ObservedGeneration: status.ObservedGeneration,
@@ -323,6 +290,8 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 			Conditions:         status.Conditions,
 			LastReconciledAt:   status.LastReconciledAt,
 			Run:                &status.Run,
+			RemoteStatus:       &status.RemoteStatus,
+			RemoteMessage:      &status.RemoteMessage,
 		}); err != nil {
 			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 				continue
@@ -382,8 +351,10 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 			Phase:              phase,
 			Healthy:            healthy,
 			Message:            message,
+			RemoteStatus:       strings.TrimSpace(item.Status),
+			RemoteMessage:      message,
 			Conditions: []controlservice.Condition{
-				controlservice.NewCondition(controlservice.ConditionPlacementReady, controlservice.ConditionTrue, controlservice.ReasonApplied, "service placement accepted by cloud-plane", item.ServiceGeneration, now),
+				controlservice.NewCondition(controlservice.ConditionAssignmentReady, controlservice.ConditionTrue, controlservice.ReasonApplied, "service assignment accepted by cloud-plane", item.ServiceGeneration, now),
 				controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionTrue, controlservice.ReasonApplied, "execution plan accepted by cloud-plane", item.ServiceGeneration, now),
 				controlservice.NewCondition(controlservice.ConditionReady, readyCondition, readyReason, message, item.ServiceGeneration, now),
 			},
@@ -458,24 +429,6 @@ func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string
 	}
 
 	return plane.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
-}
-
-func buildCapacitySnapshot(snapshot planeSnapshot) plane.RecordCapacitySnapshotInput {
-	out := plane.RecordCapacitySnapshotInput{
-		// v6/03 开始，这里的 capacity snapshot 明确代表 runtime node 供给侧，
-		// 所以节点计数优先使用 CapacitySummary.RuntimeNodes*，
-		// 而不是更泛化的 Overview.Nodes*。
-		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
-		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
-		ServicesTotal:     snapshot.Overview.ServicesTotal,
-		RunsTotal:         snapshot.Overview.ExecutionPlansTotal,
-		CapturedAt:        snapshot.Health.CheckedAt,
-		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
-		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
-		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
-		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
-	}
-	return out
 }
 
 func buildRuntimeInventory(snapshot planeSnapshot) plane.RecordRuntimeInventoryInput {

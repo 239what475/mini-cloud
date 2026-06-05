@@ -84,20 +84,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("UpdatePlaneOperation(active) returned error: %v", err)
 	}
 
-	snapshot, err := db.Store.RecordPlaneCapacitySnapshot(context.Background(), createdPlane.ID, plane.RecordCapacitySnapshotInput{
-		NodesTotal:        4,
-		NodesReady:        3,
-		ServicesTotal:     7,
-		RunsTotal:         8,
-		CPUMilliCapacity:  16000,
-		CPUMilliAllocated: 7000,
-		MemoryMiCapacity:  32768,
-		MemoryMiAllocated: 12288,
-	})
-	if err != nil {
-		t.Fatalf("RecordPlaneCapacitySnapshot returned error: %v", err)
-	}
-
 	gotPlane, err := db.Store.GetPlane(context.Background(), createdPlane.ID)
 	if err != nil {
 		t.Fatalf("GetPlane returned error: %v", err)
@@ -110,12 +96,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	}
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
 		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)
-	}
-	if gotPlane.LatestCapacityRecord == nil {
-		t.Fatalf("expected latest capacity snapshot to be populated")
-	}
-	if gotPlane.LatestCapacityRecord.ID != snapshot.ID {
-		t.Fatalf("latest capacity snapshot id = %s, want %s", gotPlane.LatestCapacityRecord.ID, snapshot.ID)
 	}
 	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, plane.RecordRuntimeInventoryInput{
 		SyncVersion:       7,
@@ -214,14 +194,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	}
 	if listedPlanes[0].LatestRuntimeConfig == nil {
 		t.Fatalf("expected listed plane runtime config to be populated")
-	}
-
-	snapshots, err := db.Store.ListPlaneCapacitySnapshots(context.Background(), createdPlane.ID, 10)
-	if err != nil {
-		t.Fatalf("ListPlaneCapacitySnapshots returned error: %v", err)
-	}
-	if len(snapshots) != 1 {
-		t.Fatalf("expected 1 capacity snapshot, got %d", len(snapshots))
 	}
 
 	if err := db.Store.DeletePlane(context.Background(), createdPlane.ID); err != nil {

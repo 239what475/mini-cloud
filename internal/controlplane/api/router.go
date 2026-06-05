@@ -34,7 +34,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 		opts.DeployService = deploy.NewService(logger, stores)
 	}
 	if opts.PlaneSelector == nil {
-		opts.PlaneSelector = planeselector.NewService(logger, stores, opts.DeployService)
+		opts.PlaneSelector = planeselector.NewService(logger, stores)
 	}
 	if opts.ServiceController == nil {
 		opts.ServiceController = servicecontroller.New(logger, stores, opts.PlaneSelector, opts.DeployService)
@@ -89,11 +89,8 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/register", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.registerPlane))
 	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/sync", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.syncPlane))
 	mux.HandleFunc("PUT /api/v1/control/planes/{planeID}/operation", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.updatePlaneOperation))
-	mux.HandleFunc("GET /api/v1/control/planes/{planeID}/capacity-snapshots", authz.platformAccessFunc(authPermissionControlRead, controlHandler.listPlaneCapacitySnapshots))
-	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/capacity-snapshots", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.recordPlaneCapacitySnapshot))
 	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/apply-service", authz.platformAccessFunc(authPermissionServiceDeploy, controlDeployHandler.applyService))
 	mux.HandleFunc("POST /api/v1/control/plane-selection/preview-service", authz.platformAccessFunc(authPermissionControlRead, controlPlaneSelectionHandler.previewSelection))
-	mux.HandleFunc("POST /api/v1/control/actions/apply-service", authz.platformAccessFunc(authPermissionServiceDeploy, controlPlaneSelectionHandler.applyService))
 	mux.HandleFunc("GET /api/v1/control/operations", authz.platformAccessFunc(authPermissionOperationsRead, operationHistoryHandler.listControlOperations))
 
 	return requestLogger(logger, recoverPanics(logger, authz.wrap(mux)))

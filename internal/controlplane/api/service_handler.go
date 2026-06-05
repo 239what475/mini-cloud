@@ -59,14 +59,9 @@ type serviceStatus struct {
 	Conditions         []serviceCondition `json:"conditions,omitempty"`
 	LastReconciledAt   *time.Time         `json:"lastReconciledAt,omitempty"`
 	Run                serviceRunStatus   `json:"run"`
-	Placement          *servicePlacement  `json:"placement,omitempty"`
-}
-
-type servicePlacement struct {
-	PlaneID       string `json:"planeID"`
-	RemoteStatus  string `json:"remoteStatus,omitempty"`
-	RemoteHealthy bool   `json:"remoteHealthy"`
-	RemoteMessage string `json:"remoteMessage,omitempty"`
+	AssignedPlaneID    string             `json:"assignedPlaneID,omitempty"`
+	RemoteStatus       string             `json:"remoteStatus,omitempty"`
+	RemoteMessage      string             `json:"remoteMessage,omitempty"`
 }
 
 type serviceMetadata struct {
@@ -336,14 +331,9 @@ func buildServiceStatus(view servicecontroller.View) serviceStatus {
 		Conditions:         buildServiceConditions(serviceItem.Status.Observed.Conditions),
 		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
 		Run:                buildServiceRun(serviceItem.Status.Run),
-	}
-	if view.Placement != nil {
-		status.Placement = &servicePlacement{
-			PlaneID:       view.Placement.PlaneID,
-			RemoteStatus:  view.Placement.RemoteStatus,
-			RemoteHealthy: view.Placement.RemoteHealthy,
-			RemoteMessage: view.Placement.RemoteMessage,
-		}
+		AssignedPlaneID:    serviceItem.Status.Observed.AssignedPlaneID,
+		RemoteStatus:       serviceItem.Status.Observed.RemoteStatus,
+		RemoteMessage:      serviceItem.Status.Observed.RemoteMessage,
 	}
 	return status
 }

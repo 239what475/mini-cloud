@@ -33,8 +33,6 @@ var (
 	ErrInvalidNodesTotal             = errors.New("nodesTotal must be greater than or equal to 0")
 	ErrInvalidNodesReady             = errors.New("nodesReady must be greater than or equal to 0")
 	ErrInvalidNodesReadyExceedsTotal = errors.New("nodesReady must be less than or equal to nodesTotal")
-	ErrInvalidServicesTotal          = errors.New("servicesTotal must be greater than or equal to 0")
-	ErrInvalidRunsTotal              = errors.New("runsTotal must be greater than or equal to 0")
 	ErrInvalidCPUMilliCapacity       = errors.New("cpuMilliCapacity must be greater than or equal to 0")
 	ErrInvalidCPUMilliAllocated      = errors.New("cpuMilliAllocated must be greater than or equal to 0")
 	ErrInvalidCPUMilliAllocation     = errors.New("cpuMilliAllocated must be less than or equal to cpuMilliCapacity")
@@ -75,23 +73,6 @@ type Operation struct {
 	State     string    `json:"state"`
 	Reason    string    `json:"reason"`
 	UpdatedAt time.Time `json:"updatedAt"`
-}
-
-type CapacitySnapshot struct {
-	// 这里的 Nodes* 表示 control-plane 看到的“plane 供给侧节点计数”。
-	// 当前实现中，它同步自远端 plane 的 Capacity.RuntimeNodes*，
-	// 也就是 role=runtime 的 node 汇总，而不是更泛化的 Overview.Nodes*。
-	ID                string    `json:"id"`
-	PlaneID           string    `json:"planeID"`
-	NodesTotal        int       `json:"nodesTotal"`
-	NodesReady        int       `json:"nodesReady"`
-	ServicesTotal     int       `json:"servicesTotal"`
-	RunsTotal         int       `json:"runsTotal"`
-	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
-	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
-	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
-	MemoryMiAllocated int       `json:"memoryMiAllocated"`
-	CapturedAt        time.Time `json:"capturedAt"`
 }
 
 type RuntimeInventorySnapshot struct {
@@ -140,7 +121,6 @@ type Detail struct {
 	Status                 PlaneStatus               `json:"status"`
 	Registration           Registration              `json:"registration"`
 	Operation              Operation                 `json:"operation"`
-	LatestCapacityRecord   *CapacitySnapshot         `json:"latestCapacitySnapshot,omitempty"`
 	LatestRuntimeInventory *RuntimeInventorySnapshot `json:"latestRuntimeInventory,omitempty"`
 	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }
@@ -167,20 +147,6 @@ type RegisterInput struct {
 type UpdateOperationInput struct {
 	State  string `json:"state"`
 	Reason string `json:"reason"`
-}
-
-type RecordCapacitySnapshotInput struct {
-	// 这里沿用 Nodes* 命名，是因为 control-plane 里的 node 仍然就是“节点”这一层实体；
-	// 真正需要单独区分的是 runtime node 生命周期记录，它在 cloud-plane 里由 runtimenode.Record 表达。
-	NodesTotal        int       `json:"nodesTotal"`
-	NodesReady        int       `json:"nodesReady"`
-	ServicesTotal     int       `json:"servicesTotal"`
-	RunsTotal         int       `json:"runsTotal"`
-	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
-	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
-	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
-	MemoryMiAllocated int       `json:"memoryMiAllocated"`
-	CapturedAt        time.Time `json:"capturedAt,omitempty"`
 }
 
 type RecordRuntimeInventoryInput struct {
@@ -252,42 +218,6 @@ func (in UpdateOperationInput) ResolvedReason() string {
 		return ""
 	}
 	return strings.TrimSpace(in.Reason)
-}
-
-func (in RecordCapacitySnapshotInput) Validate() error {
-	switch {
-	case in.NodesTotal < 0:
-		return ErrInvalidNodesTotal
-	case in.NodesReady < 0:
-		return ErrInvalidNodesReady
-	case in.NodesReady > in.NodesTotal:
-		return ErrInvalidNodesReadyExceedsTotal
-	case in.ServicesTotal < 0:
-		return ErrInvalidServicesTotal
-	case in.RunsTotal < 0:
-		return ErrInvalidRunsTotal
-	case in.CPUMilliCapacity < 0:
-		return ErrInvalidCPUMilliCapacity
-	case in.CPUMilliAllocated < 0:
-		return ErrInvalidCPUMilliAllocated
-	case in.CPUMilliAllocated > in.CPUMilliCapacity:
-		return ErrInvalidCPUMilliAllocation
-	case in.MemoryMiCapacity < 0:
-		return ErrInvalidMemoryMiCapacity
-	case in.MemoryMiAllocated < 0:
-		return ErrInvalidMemoryMiAllocated
-	case in.MemoryMiAllocated > in.MemoryMiCapacity:
-		return ErrInvalidMemoryMiAllocation
-	default:
-		return nil
-	}
-}
-
-func (in RecordCapacitySnapshotInput) ResolvedCapturedAt(now time.Time) time.Time {
-	if in.CapturedAt.IsZero() {
-		return now.UTC()
-	}
-	return in.CapturedAt.UTC()
 }
 
 func (in RecordRuntimeInventoryInput) ResolvedObservedAt(now time.Time) time.Time {

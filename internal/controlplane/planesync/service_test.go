@@ -78,42 +78,6 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	}
 }
 
-func TestBuildCapacitySnapshotUsesRuntimeNodeCapacityCounts(t *testing.T) {
-	capturedAt := time.Now().UTC()
-	snapshot := buildCapacitySnapshot(planeSnapshot{
-		Health: cloudplaneapi.HealthSummary{
-			CheckedAt: capturedAt,
-		},
-		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:          3,
-			NodesReady:          2,
-			ServicesTotal:       1,
-			ExecutionPlansTotal: 2,
-		},
-		Capacity: cloudplaneapi.CapacitySummary{
-			RuntimeNodesTotal:   2,
-			RuntimeNodesReady:   2,
-			CPUMilliAllocatable: 3000,
-			CPUMilliAllocated:   750,
-			MemoryMiAllocatable: 6144,
-			MemoryMiAllocated:   1536,
-		},
-	})
-
-	if snapshot.NodesTotal != 2 || snapshot.NodesReady != 2 {
-		t.Fatalf("unexpected node totals: %+v", snapshot)
-	}
-	if snapshot.CPUMilliCapacity != 3000 || snapshot.CPUMilliAllocated != 750 {
-		t.Fatalf("unexpected cpu totals: %+v", snapshot)
-	}
-	if snapshot.MemoryMiCapacity != 6144 || snapshot.MemoryMiAllocated != 1536 {
-		t.Fatalf("unexpected memory totals: %+v", snapshot)
-	}
-	if !snapshot.CapturedAt.Equal(capturedAt) {
-		t.Fatalf("capturedAt = %v, want %v", snapshot.CapturedAt, capturedAt)
-	}
-}
-
 func TestBuildRuntimeConfigUsesObservedSnapshot(t *testing.T) {
 	observedAt := time.Now().UTC()
 	input := buildRuntimeConfig(planeSnapshot{
@@ -176,11 +140,16 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
 	}
-	if _, err := db.Store.UpsertServicePlacement(ctx, controlservice.ServicePlacement{
-		ServiceID: serviceItem.Metadata.ID,
-		PlaneID:   planeItem.ID,
+	if _, err := db.Store.UpdateServiceStatusForGeneration(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, controlservice.UpdateStatusInput{
+		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
+		Phase:              serviceItem.Status.Observed.Phase,
+		Healthy:            serviceItem.Status.Observed.Healthy,
+		Message:            serviceItem.Status.Observed.Message,
+		Conditions:         serviceItem.Status.Observed.Conditions,
+		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
+		AssignedPlaneID:    &planeItem.ID,
 	}); err != nil {
-		t.Fatalf("UpsertServicePlacement returned error: %v", err)
+		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
 	}
 
 	service := NewServiceWithFetcher(logger, db.Store, fakePlaneSnapshotFetcher{
@@ -335,7 +304,7 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 	}
 }
 
-func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T) {
+func TestApplyExecutionSnapshotsPromotesCurrentRunAfterNewRunRunning(t *testing.T) {
 	observedAt := time.Now().UTC()
 	store := &fakeExecutionSnapshotStore{
 		planeID: "plane-a",
@@ -345,16 +314,15 @@ func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T)
 				Generation: 2,
 			},
 			Status: controlservice.ServiceStatus{
+				Observed: controlservice.Status{
+					AssignedPlaneID: "plane-a",
+				},
 				Run: controlservice.RunStatus{
 					CurrentRunID: "svc-api-g1",
 					LatestRunID:  "svc-api-g2",
 					Phase:        controlservice.RunPhaseDispatching,
 				},
 			},
-		},
-		runs: map[int64]controlservice.ServiceRun{
-			1: {ID: "svc-api-g1", ServiceID: "svc-api", Generation: 1, Status: controlservice.RunPhaseRunning},
-			2: {ID: "svc-api-g2", ServiceID: "svc-api", Generation: 2, Status: controlservice.RunPhaseDispatching},
 		},
 	}
 	service := &Service{store: store}
@@ -375,11 +343,8 @@ func TestApplyExecutionSnapshotsSupersedesOldRunAfterNewRunRunning(t *testing.T)
 	if store.service.Status.Run.CurrentRunID != "svc-api-g2" {
 		t.Fatalf("current run = %q, want new run", store.service.Status.Run.CurrentRunID)
 	}
-	if store.runs[2].Status != controlservice.RunPhaseRunning {
-		t.Fatalf("new run status = %s, want running", store.runs[2].Status)
-	}
-	if store.runs[1].Status != controlservice.RunPhaseSuperseded {
-		t.Fatalf("old run status = %s, want superseded", store.runs[1].Status)
+	if store.service.Status.Run.Phase != controlservice.RunPhaseRunning {
+		t.Fatalf("run phase = %s, want running", store.service.Status.Run.Phase)
 	}
 }
 
@@ -394,14 +359,14 @@ func TestApplyExecutionSnapshotsMarksServiceDegradedAfterFailedExecution(t *test
 			},
 			Status: controlservice.ServiceStatus{
 				DesiredState: controlservice.DesiredStateActive,
+				Observed: controlservice.Status{
+					AssignedPlaneID: "plane-a",
+				},
 				Run: controlservice.RunStatus{
 					LatestRunID: "svc-api-g1",
 					Phase:       controlservice.RunPhaseDispatching,
 				},
 			},
-		},
-		runs: map[int64]controlservice.ServiceRun{
-			1: {Generation: 1, Status: controlservice.RunPhaseDispatching},
 		},
 	}
 	service := &Service{store: store}
@@ -425,9 +390,6 @@ func TestApplyExecutionSnapshotsMarksServiceDegradedAfterFailedExecution(t *test
 	if store.service.Status.Run.Phase != controlservice.RunPhaseFailed {
 		t.Fatalf("service run = %+v, want failed", store.service.Status.Run)
 	}
-	if store.runs[1].Status != controlservice.RunPhaseFailed {
-		t.Fatalf("stored run status = %s, want failed", store.runs[1].Status)
-	}
 }
 
 func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing.T) {
@@ -441,14 +403,14 @@ func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing
 			},
 			Status: controlservice.ServiceStatus{
 				DesiredState: controlservice.DesiredStateDeleted,
+				Observed: controlservice.Status{
+					AssignedPlaneID: "plane-a",
+				},
 				Run: controlservice.RunStatus{
 					LatestRunID: "svc-api-delete-g2",
 					Phase:       controlservice.RunPhaseDispatching,
 				},
 			},
-		},
-		runs: map[int64]controlservice.ServiceRun{
-			2: {Generation: 2, Status: controlservice.RunPhaseDispatching},
 		},
 	}
 	service := &Service{store: store}
@@ -465,8 +427,8 @@ func TestApplyExecutionSnapshotsDeletesServiceAfterDeletePlanComplete(t *testing
 	if err != nil {
 		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
 	}
-	if !store.deletedPlacement || !store.deletedService {
-		t.Fatalf("deletedPlacement=%v deletedService=%v, want both true", store.deletedPlacement, store.deletedService)
+	if !store.deletedService {
+		t.Fatalf("deletedService=%v, want true", store.deletedService)
 	}
 }
 
@@ -655,11 +617,9 @@ func (f fakePlaneSnapshotFetcher) Fetch(_ context.Context, grpcEndpoint string, 
 }
 
 type fakeExecutionSnapshotStore struct {
-	planeID          string
-	service          controlservice.Service
-	runs             map[int64]controlservice.ServiceRun
-	deletedService   bool
-	deletedPlacement bool
+	planeID        string
+	service        controlservice.Service
+	deletedService bool
 }
 
 func (f *fakeExecutionSnapshotStore) GetPlane(context.Context, string) (plane.Detail, error) {
@@ -686,10 +646,6 @@ func (f *fakeExecutionSnapshotStore) UpdatePlaneStatus(context.Context, string, 
 	return plane.PlaneStatus{}, nil
 }
 
-func (f *fakeExecutionSnapshotStore) RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error) {
-	return plane.CapacitySnapshot{}, nil
-}
-
 func (f *fakeExecutionSnapshotStore) ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error) {
 	return plane.RuntimeInventorySnapshot{}, nil, nil
 }
@@ -700,30 +656,6 @@ func (f *fakeExecutionSnapshotStore) RecordPlaneRuntimeConfig(context.Context, s
 
 func (f *fakeExecutionSnapshotStore) GetService(context.Context, string) (controlservice.Service, error) {
 	return f.service, nil
-}
-
-func (f *fakeExecutionSnapshotStore) GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error) {
-	return controlservice.ServicePlacement{ServiceID: f.service.Metadata.ID, PlaneID: f.planeID}, nil
-}
-
-func (f *fakeExecutionSnapshotStore) UpdateServiceRun(_ context.Context, _ string, generation int64, input controlservice.UpdateRunInput) (controlservice.ServiceRun, error) {
-	run := f.runs[generation]
-	run.Status = controlservice.NormalizeRunPhase(input.Status)
-	run.Message = input.Message
-	run.ObservedAt = input.ObservedAt
-	f.runs[generation] = run
-	return run, nil
-}
-
-func (f *fakeExecutionSnapshotStore) SupersedeServiceRunsBeforeGeneration(_ context.Context, _ string, generation int64, message string) error {
-	for key, run := range f.runs {
-		if key < generation {
-			run.Status = controlservice.RunPhaseSuperseded
-			run.Message = message
-			f.runs[key] = run
-		}
-	}
-	return nil
 }
 
 func (f *fakeExecutionSnapshotStore) UpdateServiceStatusForGeneration(_ context.Context, _ string, expectedGeneration int64, input controlservice.UpdateStatusInput) (controlservice.Service, error) {
@@ -737,16 +669,18 @@ func (f *fakeExecutionSnapshotStore) UpdateServiceStatusForGeneration(_ context.
 		Message:            input.Message,
 		Conditions:         controlservice.CloneConditions(input.Conditions),
 		LastReconciledAt:   input.LastReconciledAt,
+		AssignedPlaneID:    f.service.Status.Observed.AssignedPlaneID,
+	}
+	if input.RemoteStatus != nil {
+		f.service.Status.Observed.RemoteStatus = *input.RemoteStatus
+	}
+	if input.RemoteMessage != nil {
+		f.service.Status.Observed.RemoteMessage = *input.RemoteMessage
 	}
 	if input.Run != nil {
 		f.service.Status.Run = controlservice.CloneRunStatus(*input.Run)
 	}
 	return f.service, nil
-}
-
-func (f *fakeExecutionSnapshotStore) DeleteServicePlacementForGeneration(context.Context, string, int64) error {
-	f.deletedPlacement = true
-	return nil
 }
 
 func (f *fakeExecutionSnapshotStore) DeleteServiceForGeneration(context.Context, string, int64) error {

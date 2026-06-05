@@ -48,7 +48,7 @@ func Build(logger *slog.Logger) (App, error) {
 	stores := store.New(db)
 	planeSyncService := planesync.NewService(logger, stores)
 	deployService := deploy.NewService(logger, stores)
-	planeSelector := planeselector.NewService(logger, stores, deployService)
+	planeSelector := planeselector.NewService(logger, stores)
 	serviceController := servicecontroller.New(logger, stores, planeSelector, deployService)
 	serviceController.SetReconcileTimeout(time.Duration(processCfg.ServiceReconcileTimeoutSeconds) * time.Second)
 	backgroundCtx, backgroundCancel := context.WithCancel(context.Background())

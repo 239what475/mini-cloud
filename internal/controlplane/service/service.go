@@ -47,17 +47,17 @@ var (
 )
 
 const (
-	ConditionPlacementReady = "PlacementReady"
-	ConditionApplied        = "Applied"
-	ConditionReady          = "Ready"
+	ConditionAssignmentReady = "AssignmentReady"
+	ConditionApplied         = "Applied"
+	ConditionReady           = "Ready"
 )
 
 const (
 	ReasonPendingCreate          = "PendingCreate"
 	ReasonSpecUpdated            = "SpecUpdated"
 	ReasonDeletionRequested      = "DeletionRequested"
-	ReasonNoPlacement            = "NoPlacement"
-	ReasonNoEligiblePlacement    = "NoEligiblePlacement"
+	ReasonNoAssignment           = "NoAssignment"
+	ReasonNoEligibleAssignment   = "NoEligibleAssignment"
 	ReasonApplyFailed            = "ApplyFailed"
 	ReasonApplied                = "Applied"
 	ReasonPlaneServiceNotHealthy = "PlaneServiceNotHealthy"
@@ -106,29 +106,6 @@ type ServiceStatus struct {
 	Run          RunStatus `json:"run"`
 }
 
-type ServiceRun struct {
-	ID         string     `json:"id"`
-	ServiceID  string     `json:"serviceID"`
-	Generation int64      `json:"generation"`
-	PlanID     string     `json:"planID"`
-	Spec       Spec       `json:"spec"`
-	Status     string     `json:"status"`
-	Message    string     `json:"message,omitempty"`
-	CreatedAt  time.Time  `json:"createdAt"`
-	ObservedAt *time.Time `json:"observedAt,omitempty"`
-	UpdatedAt  time.Time  `json:"updatedAt"`
-}
-
-type ServicePlacement struct {
-	ServiceID     string    `json:"serviceID"`
-	PlaneID       string    `json:"planeID"`
-	RemoteStatus  string    `json:"remoteStatus"`
-	RemoteHealthy bool      `json:"remoteHealthy"`
-	RemoteMessage string    `json:"remoteMessage"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
 type Status struct {
 	ObservedGeneration int64       `json:"observedGeneration"`
 	Phase              string      `json:"phase"`
@@ -136,6 +113,9 @@ type Status struct {
 	Message            string      `json:"message,omitempty"`
 	Conditions         []Condition `json:"conditions,omitempty"`
 	LastReconciledAt   *time.Time  `json:"lastReconciledAt,omitempty"`
+	AssignedPlaneID    string      `json:"assignedPlaneID,omitempty"`
+	RemoteStatus       string      `json:"remoteStatus,omitempty"`
+	RemoteMessage      string      `json:"remoteMessage,omitempty"`
 }
 
 type Condition struct {
@@ -155,23 +135,9 @@ type UpdateStatusInput struct {
 	Conditions         []Condition
 	LastReconciledAt   *time.Time
 	Run                *RunStatus
-}
-
-type CreateRunInput struct {
-	ID         string
-	ServiceID  string
-	Generation int64
-	PlanID     string
-	Spec       Spec
-	Status     string
-	Message    string
-	ObservedAt *time.Time
-}
-
-type UpdateRunInput struct {
-	Status     string
-	Message    string
-	ObservedAt *time.Time
+	AssignedPlaneID    *string
+	RemoteStatus       *string
+	RemoteMessage      *string
 }
 
 const (
@@ -250,7 +216,7 @@ func PendingStatus(observedGeneration int64, now time.Time, reason string, messa
 		Healthy:            false,
 		Message:            message,
 		Conditions: []Condition{
-			NewCondition(ConditionPlacementReady, ConditionFalse, reason, message, observedGeneration, now),
+			NewCondition(ConditionAssignmentReady, ConditionFalse, reason, message, observedGeneration, now),
 			NewCondition(ConditionApplied, ConditionFalse, reason, message, observedGeneration, now),
 			NewCondition(ConditionReady, ConditionFalse, reason, message, observedGeneration, now),
 		},
@@ -264,7 +230,7 @@ func DeletingStatus(observedGeneration int64, now time.Time, message string) Sta
 		Healthy:            false,
 		Message:            message,
 		Conditions: []Condition{
-			NewCondition(ConditionPlacementReady, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
+			NewCondition(ConditionAssignmentReady, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
 			NewCondition(ConditionApplied, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
 			NewCondition(ConditionReady, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
 		},
@@ -323,7 +289,7 @@ func CloneSpec(input Spec) Spec {
 }
 
 func (spec Spec) Validate() error {
-	provider, region, pinnedPlaneID, instanceClass, err := ResolveServicePlacementFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := ResolveServiceAssignmentFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.InstanceClass)
 	if err != nil {
 		return err
 	}
@@ -377,7 +343,7 @@ func SpecRuntimeEqual(before Spec, after Spec) bool {
 		reflect.DeepEqual(projectedfile.CloneSpecs(before.ProjectedFiles), projectedfile.CloneSpecs(after.ProjectedFiles))
 }
 
-func ResolveServicePlacementFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {
+func ResolveServiceAssignmentFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {
 	if strings.TrimSpace(provider) == "" {
 		return "", "", "", "", ErrProviderRequired
 	}

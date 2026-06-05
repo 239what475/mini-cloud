@@ -19,12 +19,11 @@ const (
 	defaultReconcileTimeout  = 30 * time.Second
 )
 
-var ErrNoEligiblePlacement = errors.New("no eligible plane matched the requested provider/region/capacity")
+var ErrNoEligibleAssignment = errors.New("no eligible plane matched the requested provider/region/capacity")
 
 type View struct {
-	Service   controlservice.Service           `json:"service"`
-	Placement *controlservice.ServicePlacement `json:"placement,omitempty"`
-	Plane     *plane.Detail                    `json:"plane,omitempty"`
+	Service controlservice.Service `json:"service"`
+	Plane   *plane.Detail          `json:"plane,omitempty"`
 }
 
 type planeSelector interface {
@@ -41,18 +40,11 @@ type serviceStore interface {
 	ListServices(context.Context) ([]controlservice.Service, error)
 	GetService(context.Context, string) (controlservice.Service, error)
 	UpdateService(context.Context, string, controlservice.UpdateInput) (controlservice.Service, error)
-	CreateServiceRun(context.Context, controlservice.CreateRunInput) (controlservice.ServiceRun, error)
-	UpdateServiceRun(context.Context, string, int64, controlservice.UpdateRunInput) (controlservice.ServiceRun, error)
 	MarkServiceDeletionRequested(context.Context, string) (controlservice.Service, error)
 	UpdateServiceStatus(context.Context, string, controlservice.UpdateStatusInput) (controlservice.Service, error)
 	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
 	DeleteService(context.Context, string) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
-	GetServicePlacement(context.Context, string) (controlservice.ServicePlacement, error)
-	UpsertServicePlacement(context.Context, controlservice.ServicePlacement) (controlservice.ServicePlacement, error)
-	UpsertServicePlacementForGeneration(context.Context, controlservice.ServicePlacement, int64) (controlservice.ServicePlacement, error)
-	DeleteServicePlacement(context.Context, string) error
-	DeleteServicePlacementForGeneration(context.Context, string, int64) error
 	GetPlane(context.Context, string) (plane.Detail, error)
 }
 
@@ -239,19 +231,8 @@ func (c *Controller) validateConfigured() error {
 }
 
 func (c *Controller) buildView(ctx context.Context, item controlservice.Service) (View, error) {
-	var placementRecord *controlservice.ServicePlacement
-	placementItem, err := c.store.GetServicePlacement(ctx, item.Metadata.ID)
-	switch {
-	case err == nil:
-		copyPlacement := placementItem
-		placementRecord = &copyPlacement
-	case errors.Is(err, store.ErrServicePlacementNotFound):
-	default:
-		return View{}, err
-	}
 	return View{
-		Service:   item,
-		Placement: placementRecord,
+		Service: item,
 	}, nil
 }
 

@@ -33,16 +33,14 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				State:     plane.OperationStateActive,
 				UpdatedAt: now,
 			},
-			LatestCapacityRecord: &plane.CapacitySnapshot{
+			LatestRuntimeInventory: &plane.RuntimeInventorySnapshot{
 				NodesTotal:        2,
 				NodesReady:        2,
-				ServicesTotal:     3,
-				RunsTotal:         4,
 				CPUMilliCapacity:  4000,
 				CPUMilliAllocated: 1500,
 				MemoryMiCapacity:  8192,
 				MemoryMiAllocated: 2048,
-				CapturedAt:        now,
+				ObservedAt:        now,
 			},
 		},
 		{
@@ -68,16 +66,14 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				Reason:    "planned evacuation",
 				UpdatedAt: now,
 			},
-			LatestCapacityRecord: &plane.CapacitySnapshot{
+			LatestRuntimeInventory: &plane.RuntimeInventorySnapshot{
 				NodesTotal:        1,
 				NodesReady:        0,
-				ServicesTotal:     1,
-				RunsTotal:         2,
 				CPUMilliCapacity:  2000,
 				CPUMilliAllocated: 500,
 				MemoryMiCapacity:  4096,
 				MemoryMiAllocated: 1024,
-				CapturedAt:        now,
+				ObservedAt:        now,
 			},
 		},
 		{
@@ -119,7 +115,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Summary.NodesTotal != 3 || view.Summary.NodesReady != 2 || view.Summary.NodesUnavailable != 1 {
 		t.Fatalf("unexpected node summary: %+v", view.Summary)
 	}
-	if view.Summary.ServicesTotal != 4 || view.Summary.RunsTotal != 6 {
+	if view.Summary.ServicesTotal != 0 || view.Summary.RunsTotal != 0 {
 		t.Fatalf("unexpected service/run summary: %+v", view.Summary)
 	}
 	if view.Summary.CPUMilliCapacity != 6000 || view.Summary.CPUMilliAllocated != 2000 || view.Summary.CPUMilliFree != 4000 {

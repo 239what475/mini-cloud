@@ -15,7 +15,7 @@ import (
 func TestPreviewSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
+	service := planeselector.NewService(logger, db.Store)
 	planeA := createReadyPlane(t, db.Store, "aliyun-bj-a", "Aliyun Beijing A", 2000, 1000, 4096, 1024)
 	planeB := createReadyPlane(t, db.Store, "aliyun-bj-b", "Aliyun Beijing B", 3000, 1000, 4096, 1024)
 
@@ -47,7 +47,7 @@ func TestPreviewSelectionSelectsPlaneWithMoreRemainingCapacity(t *testing.T) {
 func TestPreviewSelectionHonorsPinnedPlane(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
+	service := planeselector.NewService(logger, db.Store)
 	planeA := createReadyPlane(t, db.Store, "aliyun-bj-pinned-a", "Aliyun Beijing Pinned A", 2000, 1000, 4096, 1024)
 	planeB := createReadyPlane(t, db.Store, "aliyun-bj-pinned-b", "Aliyun Beijing Pinned B", 3000, 1000, 4096, 1024)
 
@@ -83,7 +83,7 @@ func TestPreviewSelectionHonorsPinnedPlane(t *testing.T) {
 func TestPreviewSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
+	service := planeselector.NewService(logger, db.Store)
 	createReadyPlane(t, db.Store, "aliyun-bj-pinned-healthy", "Aliyun Beijing Pinned Healthy", 2000, 1000, 4096, 1024)
 	pinnedPlane := createReadyPlane(t, db.Store, "aliyun-bj-pinned-maint", "Aliyun Beijing Pinned Maintenance", 3000, 1000, 4096, 1024)
 	if _, err := db.Store.UpdatePlaneOperation(context.Background(), pinnedPlane.ID, plane.UpdateOperationInput{
@@ -119,7 +119,7 @@ func TestPreviewSelectionDoesNotFallbackWhenPinnedPlaneIsUnavailable(t *testing.
 func TestPreviewSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
+	service := planeselector.NewService(logger, db.Store)
 	createReadyPlane(t, db.Store, "aliyun-bj-tight", "Aliyun Beijing Tight", 500, 250, 1024, 512)
 
 	result, err := service.PreviewSelection(context.Background(), planeselector.SelectionInput{
@@ -147,7 +147,7 @@ func TestPreviewSelectionExplainsWhyNoPlaneWasEligible(t *testing.T) {
 func TestPreviewSelectionFiltersPlanesThatAreNotAcceptingDeployments(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	service := planeselector.NewService(logger, db.Store, nil)
+	service := planeselector.NewService(logger, db.Store)
 	planeItem := createReadyPlane(t, db.Store, "aliyun-bj-maint", "Aliyun Beijing Maintenance", 2000, 500, 4096, 1024)
 	if _, err := db.Store.UpdatePlaneOperation(context.Background(), planeItem.ID, plane.UpdateOperationInput{
 		State:  plane.OperationStateMaintenance,
@@ -182,7 +182,6 @@ func createReadyPlane(t *testing.T, stores interface {
 	CreatePlane(context.Context, plane.CreateInput) (plane.Detail, error)
 	SetPlaneSouthboundToken(context.Context, string, string) (plane.Registration, error)
 	UpdatePlaneStatus(context.Context, string, plane.UpdateStatusInput) (plane.PlaneStatus, error)
-	RecordPlaneCapacitySnapshot(context.Context, string, plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error)
 	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
 }, name string, displayName string, cpuCapacity int, cpuAllocated int, memoryCapacity int, memoryAllocated int) plane.Detail {
 	t.Helper()
@@ -205,18 +204,6 @@ func createReadyPlane(t *testing.T, stores interface {
 		Message: "healthy",
 	}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-	if _, err := stores.RecordPlaneCapacitySnapshot(context.Background(), created.ID, plane.RecordCapacitySnapshotInput{
-		NodesTotal:        1,
-		NodesReady:        1,
-		ServicesTotal:     0,
-		RunsTotal:         0,
-		CPUMilliCapacity:  cpuCapacity,
-		CPUMilliAllocated: cpuAllocated,
-		MemoryMiCapacity:  memoryCapacity,
-		MemoryMiAllocated: memoryAllocated,
-	}); err != nil {
-		t.Fatalf("RecordPlaneCapacitySnapshot returned error: %v", err)
 	}
 	if _, _, err := stores.ReplacePlaneRuntimeInventory(context.Background(), created.ID, plane.RecordRuntimeInventoryInput{
 		SyncVersion:       1,

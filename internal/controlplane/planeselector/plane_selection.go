@@ -21,13 +21,6 @@ type SelectionInput struct {
 	InstanceClass   string   `json:"instanceClass"`
 }
 
-type ApplyServiceInput struct {
-	Metadata      deploy.ServiceMetadata `json:"metadata"`
-	Provider      string                 `json:"provider"`
-	PinnedPlaneID string                 `json:"pinnedPlaneID,omitempty"`
-	Spec          deploy.ServiceSpec     `json:"spec"`
-}
-
 type FilteredCounts struct {
 	Registration int `json:"registration"`
 	Status       int `json:"status"`
@@ -78,11 +71,6 @@ type SelectionResult struct {
 	Candidates     []Candidate    `json:"candidates"`
 }
 
-type ApplyResult struct {
-	Selection SelectionResult    `json:"selection"`
-	Accepted  deploy.ApplyResult `json:"accepted"`
-}
-
 func (in SelectionInput) Validate() error {
 	if strings.TrimSpace(in.Provider) == "" {
 		return ErrProviderRequired
@@ -105,35 +93,6 @@ func (in SelectionInput) ResourceRequest() (cpuMilli int, memoryMi int, err erro
 		return 0, 0, err
 	}
 	return cpuMilli, memoryMi, nil
-}
-
-func (in ApplyServiceInput) SelectionInput() SelectionInput {
-	return SelectionInput{
-		Provider:      in.Provider,
-		Region:        in.Spec.Region,
-		PinnedPlaneID: in.PinnedPlaneID,
-		InstanceClass: in.Spec.InstanceClass,
-	}
-}
-
-func (in ApplyServiceInput) Validate() error {
-	if strings.TrimSpace(in.Provider) == "" {
-		return ErrProviderRequired
-	}
-	deployInput := deploy.ApplyServiceInput{
-		Metadata: in.Metadata,
-		Spec:     in.Spec,
-	}
-	return deployInput.Validate()
-}
-
-func (in ApplyServiceInput) ToDeployInput(region string) deploy.ApplyServiceInput {
-	out := deploy.ApplyServiceInput{
-		Metadata: in.Metadata,
-		Spec:     in.Spec,
-	}
-	out.Spec.Region = region
-	return out
 }
 
 func buildFailureReason(registeredMatched int, readyMatched int, operationMatched int, providerMatched int, regionMatched int, rawCapacityMatched int, filtered FilteredCounts, input SelectionInput) string {

@@ -158,20 +158,18 @@ func buildPlane(item plane.Detail) Plane {
 		plane.OperationUpdatedAt = &updatedAt
 	}
 
-	if item.LatestCapacityRecord != nil {
-		record := item.LatestCapacityRecord
+	if item.LatestRuntimeInventory != nil {
+		record := item.LatestRuntimeInventory
 		plane.NodesTotal = record.NodesTotal
 		plane.NodesReady = record.NodesReady
 		plane.NodesUnavailable = unavailableNodes(record.NodesTotal, record.NodesReady)
-		plane.ServicesTotal = record.ServicesTotal
-		plane.RunsTotal = record.RunsTotal
 		plane.CPUMilliCapacity = record.CPUMilliCapacity
 		plane.CPUMilliAllocated = record.CPUMilliAllocated
 		plane.CPUMilliFree = freeCapacity(record.CPUMilliCapacity, record.CPUMilliAllocated)
 		plane.MemoryMiCapacity = record.MemoryMiCapacity
 		plane.MemoryMiAllocated = record.MemoryMiAllocated
 		plane.MemoryMiFree = freeCapacity(record.MemoryMiCapacity, record.MemoryMiAllocated)
-		capturedAt := record.CapturedAt
+		capturedAt := record.ObservedAt
 		plane.CapacityCapturedAt = &capturedAt
 	}
 

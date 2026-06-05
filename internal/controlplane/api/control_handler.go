@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/operationhistory"
@@ -304,86 +303,6 @@ func (h controlHandler) updatePlaneOperation(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusOK, planeDetail)
 }
 
-func (h controlHandler) recordPlaneCapacitySnapshot(w http.ResponseWriter, r *http.Request) {
-	planeID := r.PathValue("planeID")
-	if planeID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	r = withRequestLogFields(r, logctx.Fields{PlaneID: planeID})
-	logger := requestScopedLogger(r, h.logger)
-
-	var input plane.RecordCapacitySnapshotInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
-		return
-	}
-
-	created, err := h.store.RecordPlaneCapacitySnapshot(r.Context(), planeID, input)
-	if err != nil {
-		switch {
-		case isPlaneInputError(err):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("record plane capacity snapshot failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		Action:     "control.capacity_snapshot.record",
-		TargetType: "plane",
-		TargetID:   planeID,
-	})
-
-	writeJSON(w, http.StatusCreated, created)
-}
-
-func (h controlHandler) listPlaneCapacitySnapshots(w http.ResponseWriter, r *http.Request) {
-	planeID := r.PathValue("planeID")
-	if planeID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	r = withRequestLogFields(r, logctx.Fields{PlaneID: planeID})
-	logger := requestScopedLogger(r, h.logger)
-
-	limit, ok := parseControlListLimit(w, r, 20)
-	if !ok {
-		return
-	}
-
-	items, err := h.store.ListPlaneCapacitySnapshots(r.Context(), planeID, limit)
-	if err != nil {
-		logger.Error("list plane capacity snapshots failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"items": items})
-}
-
-func parseControlListLimit(w http.ResponseWriter, r *http.Request, defaultValue int) (int, bool) {
-	raw := r.URL.Query().Get("limit")
-	if raw == "" {
-		return defaultValue, true
-	}
-	limit, err := strconv.Atoi(raw)
-	if err != nil || limit <= 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "limit must be a positive integer"})
-		return 0, false
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	return limit, true
-}
-
 func isPlaneInputError(err error) bool {
 	return errors.Is(err, plane.ErrPlaneNameRequired) ||
 		errors.Is(err, plane.ErrInvalidPlaneName) ||
@@ -399,8 +318,6 @@ func isPlaneInputError(err error) bool {
 		errors.Is(err, plane.ErrInvalidNodesTotal) ||
 		errors.Is(err, plane.ErrInvalidNodesReady) ||
 		errors.Is(err, plane.ErrInvalidNodesReadyExceedsTotal) ||
-		errors.Is(err, plane.ErrInvalidServicesTotal) ||
-		errors.Is(err, plane.ErrInvalidRunsTotal) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliCapacity) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliAllocated) ||
 		errors.Is(err, plane.ErrInvalidCPUMilliAllocation) ||

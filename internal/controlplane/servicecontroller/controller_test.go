@@ -14,7 +14,7 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestCreateReconcilesServiceToPlacement(t *testing.T) {
+func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-create")
@@ -33,15 +33,15 @@ func TestCreateReconcilesServiceToPlacement(t *testing.T) {
 	if view.Service.Status.Observed.Phase != controlservice.PhaseReady {
 		t.Fatalf("phase = %s, want ready", view.Service.Status.Observed.Phase)
 	}
-	if view.Placement == nil || view.Placement.PlaneID != planeItem.ID {
-		t.Fatalf("placement = %+v, want plane %s", view.Placement, planeItem.ID)
+	if view.Service.Status.Observed.AssignedPlaneID != planeItem.ID {
+		t.Fatalf("assigned plane = %q, want %s", view.Service.Status.Observed.AssignedPlaneID, planeItem.ID)
 	}
 	if len(deployer.applyInputs) != 1 || deployer.applyInputs[0].Metadata.Name != "web" {
 		t.Fatalf("unexpected apply inputs: %+v", deployer.applyInputs)
 	}
 }
 
-func TestUpdateReusesCurrentPlacement(t *testing.T) {
+func TestUpdateReusesCurrentAssignment(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-update")
@@ -58,8 +58,8 @@ func TestUpdateReusesCurrentPlacement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
-	if updated.Placement == nil || updated.Placement.PlaneID != planeItem.ID {
-		t.Fatalf("placement = %+v, want plane %s", updated.Placement, planeItem.ID)
+	if updated.Service.Status.Observed.AssignedPlaneID != planeItem.ID {
+		t.Fatalf("assigned plane = %q, want %s", updated.Service.Status.Observed.AssignedPlaneID, planeItem.ID)
 	}
 	if len(deployer.applyInputs) != 2 {
 		t.Fatalf("applyInputs = %d, want 2", len(deployer.applyInputs))

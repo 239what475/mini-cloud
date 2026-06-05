@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -14,14 +13,12 @@ import (
 type Service struct {
 	logger *slog.Logger
 	store  *store.Store
-	deploy *deploy.Service
 }
 
-func NewService(logger *slog.Logger, stores *store.Store, deploy *deploy.Service) *Service {
+func NewService(logger *slog.Logger, stores *store.Store) *Service {
 	return &Service{
 		logger: logger,
 		store:  stores,
-		deploy: deploy,
 	}
 }
 
@@ -133,9 +130,9 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 			continue
 		}
 
-		snapshot := placementCapacitySnapshot(planeDetail.LatestRuntimeInventory)
-		cpuFree := snapshot.CPUMilliCapacity - snapshot.CPUMilliAllocated
-		memFree := snapshot.MemoryMiCapacity - snapshot.MemoryMiAllocated
+		inventory := planeDetail.LatestRuntimeInventory
+		cpuFree := inventory.CPUMilliCapacity - inventory.CPUMilliAllocated
+		memFree := inventory.MemoryMiCapacity - inventory.MemoryMiAllocated
 		candidate.CPUMilliFree = nonNegative(cpuFree)
 		candidate.MemoryMiFree = nonNegative(memFree)
 		candidate.BasedOnInventorySyncVersion = planeDetail.LatestRuntimeInventory.SyncVersion
@@ -200,57 +197,11 @@ func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (S
 	return result, nil
 }
 
-func (s *Service) ApplyService(ctx context.Context, _ string, input ApplyServiceInput) (ApplyResult, error) {
-	return s.Apply(ctx, input)
-}
-
-func (s *Service) Apply(ctx context.Context, input ApplyServiceInput) (ApplyResult, error) {
-	if s == nil || s.store == nil || s.deploy == nil {
-		return ApplyResult{}, fmt.Errorf("plane selector is not configured")
-	}
-	if err := input.Validate(); err != nil {
-		return ApplyResult{}, err
-	}
-
-	selection, err := s.PreviewSelection(ctx, input.SelectionInput())
-	if err != nil {
-		return ApplyResult{}, err
-	}
-	if selection.Decision == nil {
-		return ApplyResult{Selection: selection}, nil
-	}
-
-	remoteResult, err := s.deploy.ApplyService(ctx, selection.Decision.PlaneID, input.ToDeployInput(selection.Decision.Region))
-	if err != nil {
-		return ApplyResult{}, err
-	}
-	return ApplyResult{
-		Selection: selection,
-		Accepted:  remoteResult,
-	}, nil
-}
-
 func better(current Decision, best Decision) bool {
 	if current.Score != best.Score {
 		return current.Score > best.Score
 	}
 	return current.PlaneID < best.PlaneID
-}
-
-func placementCapacitySnapshot(inventory *plane.RuntimeInventorySnapshot) plane.CapacitySnapshot {
-	if inventory == nil {
-		return plane.CapacitySnapshot{}
-	}
-	return plane.CapacitySnapshot{
-		PlaneID:           inventory.PlaneID,
-		NodesTotal:        inventory.NodesTotal,
-		NodesReady:        inventory.NodesReady,
-		CPUMilliCapacity:  inventory.CPUMilliCapacity,
-		CPUMilliAllocated: inventory.CPUMilliAllocated,
-		MemoryMiCapacity:  inventory.MemoryMiCapacity,
-		MemoryMiAllocated: inventory.MemoryMiAllocated,
-		CapturedAt:        inventory.ObservedAt,
-	}
 }
 
 func nonNegative(value int) int {

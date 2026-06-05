@@ -48,6 +48,9 @@ const serviceSelectColumns = `
 	status_message,
 	status_conditions_json,
 	status_last_reconciled_at,
+	status_assigned_plane_id,
+	status_remote_status,
+	status_remote_message,
 	created_at,
 	updated_at
 `
@@ -59,7 +62,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
@@ -125,9 +128,12 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_healthy,
 			status_message,
 			status_conditions_json,
-			status_last_reconciled_at
+			status_last_reconciled_at,
+			status_assigned_plane_id,
+			status_remote_status,
+			status_remote_message
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, $24, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, $24, NULL, NULL, '', '')
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -261,7 +267,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.ConfigSetID, input.Spec.SecretSetID, input.Spec.RegistryCredentialID, input.Spec.ProjectedFiles); err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
+	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return controlservice.Service{}, err
 	}
@@ -306,6 +312,9 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			status_message = $24,
 			status_conditions_json = $25,
 			status_last_reconciled_at = NULL,
+			status_assigned_plane_id = NULL,
+			status_remote_status = '',
+			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
 			AND generation = $26
@@ -392,6 +401,8 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 			status_conditions_json = $8,
 			status_run_json = $9,
 			status_last_reconciled_at = NULL,
+			status_remote_status = 'deleting',
+			status_remote_message = 'waiting for remote service teardown',
 			updated_at = now()
 		WHERE id = $1
 			AND generation = $10
@@ -462,6 +473,9 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 			status_conditions_json = $6,
 			status_last_reconciled_at = $7,
 			status_run_json = $8,
+			status_assigned_plane_id = COALESCE($9, status_assigned_plane_id),
+			status_remote_status = COALESCE($10, status_remote_status),
+			status_remote_message = COALESCE($11, status_remote_message),
 			updated_at = now()
 		WHERE id = $1
 	`
@@ -474,9 +488,12 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 		statusConditionsJSON,
 		input.LastReconciledAt,
 		runJSON,
+		nullableOptionalString(input.AssignedPlaneID),
+		nullableOptionalString(input.RemoteStatus),
+		nullableOptionalString(input.RemoteMessage),
 	}
 	if expectedGeneration != nil {
-		query += ` AND generation = $9`
+		query += ` AND generation = $12`
 		args = append(args, *expectedGeneration)
 	}
 	query += ` RETURNING ` + serviceSelectColumns
@@ -566,6 +583,7 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var conditionsJSON []byte
 	var pinnedPlaneID sql.NullString
 	var lastReconciledAt sql.NullTime
+	var assignedPlaneID sql.NullString
 	if err := scanner.Scan(
 		&item.Metadata.ID,
 		&item.Metadata.Name,
@@ -594,6 +612,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.Status.Observed.Message,
 		&conditionsJSON,
 		&lastReconciledAt,
+		&assignedPlaneID,
+		&item.Status.Observed.RemoteStatus,
+		&item.Status.Observed.RemoteMessage,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
@@ -626,6 +647,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		lastValue := lastReconciledAt.Time.UTC()
 		item.Status.Observed.LastReconciledAt = &lastValue
 	}
+	if assignedPlaneID.Valid {
+		item.Status.Observed.AssignedPlaneID = assignedPlaneID.String
+	}
 	return item, nil
 }
 
@@ -634,6 +658,13 @@ func nullableString(value string) any {
 		return nil
 	}
 	return strings.TrimSpace(value)
+}
+
+func nullableOptionalString(value *string) any {
+	if value == nil {
+		return nil
+	}
+	return strings.TrimSpace(*value)
 }
 
 func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, configSetID string, secretSetID string, registryCredentialID string, projectedFiles []projectedfile.Spec) error {

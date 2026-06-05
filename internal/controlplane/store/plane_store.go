@@ -344,102 +344,6 @@ func (s *Store) UpdatePlaneOperation(ctx context.Context, planeID string, input 
 	return operation, nil
 }
 
-func (s *Store) RecordPlaneCapacitySnapshot(ctx context.Context, planeID string, input plane.RecordCapacitySnapshotInput) (plane.CapacitySnapshot, error) {
-	if err := input.Validate(); err != nil {
-		return plane.CapacitySnapshot{}, err
-	}
-
-	id, err := newID("pcs")
-	if err != nil {
-		return plane.CapacitySnapshot{}, err
-	}
-
-	capturedAt := input.ResolvedCapturedAt(time.Now())
-	row := s.db.QueryRowContext(ctx, `
-		INSERT INTO fleet_plane_capacity_snapshots (
-			id,
-			plane_id,
-			nodes_total,
-			nodes_ready,
-			services_total,
-			runs_total,
-			cpu_milli_capacity,
-			cpu_milli_allocated,
-			memory_mi_capacity,
-			memory_mi_allocated,
-			captured_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-		RETURNING
-			id,
-			plane_id,
-			nodes_total,
-			nodes_ready,
-			services_total,
-			runs_total,
-			cpu_milli_capacity,
-			cpu_milli_allocated,
-			memory_mi_capacity,
-			memory_mi_allocated,
-			captured_at
-	`, id, planeID, input.NodesTotal, input.NodesReady, input.ServicesTotal, input.RunsTotal, input.CPUMilliCapacity, input.CPUMilliAllocated, input.MemoryMiCapacity, input.MemoryMiAllocated, capturedAt)
-
-	item, err := scanPlaneCapacitySnapshot(row)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return plane.CapacitySnapshot{}, ErrPlaneNotFound
-		}
-		return plane.CapacitySnapshot{}, fmt.Errorf("insert plane capacity snapshot: %w", err)
-	}
-	return item, nil
-}
-
-func (s *Store) ListPlaneCapacitySnapshots(ctx context.Context, planeID string, limit int) ([]plane.CapacitySnapshot, error) {
-	if limit <= 0 {
-		limit = 20
-	}
-	if limit > 200 {
-		limit = 200
-	}
-
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			id,
-			plane_id,
-			nodes_total,
-			nodes_ready,
-			services_total,
-			runs_total,
-			cpu_milli_capacity,
-			cpu_milli_allocated,
-			memory_mi_capacity,
-			memory_mi_allocated,
-			captured_at
-		FROM fleet_plane_capacity_snapshots
-		WHERE plane_id = $1
-		ORDER BY captured_at DESC, id DESC
-		LIMIT $2
-	`, planeID, limit)
-	if err != nil {
-		return nil, fmt.Errorf("query plane capacity snapshots: %w", err)
-	}
-	defer closeRows(rows)
-
-	items := make([]plane.CapacitySnapshot, 0)
-	for rows.Next() {
-		item, err := scanPlaneCapacitySnapshot(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate plane capacity snapshots: %w", err)
-	}
-	return items, nil
-}
-
 func planeDetailBaseQuery(suffix string) string {
 	return `
 		SELECT
@@ -462,17 +366,6 @@ func planeDetailBaseQuery(suffix string) string {
 			o.state,
 			o.reason,
 			o.updated_at,
-			cs.id,
-			cs.plane_id,
-			cs.nodes_total,
-			cs.nodes_ready,
-			cs.services_total,
-			cs.runs_total,
-			cs.cpu_milli_capacity,
-			cs.cpu_milli_allocated,
-			cs.memory_mi_capacity,
-			cs.memory_mi_allocated,
-			cs.captured_at,
 			ris.plane_id,
 			ris.sync_version,
 			ris.observed_at,
@@ -495,24 +388,6 @@ func planeDetailBaseQuery(suffix string) string {
 			ON bt.plane_id = p.id
 		JOIN fleet_plane_operations o
 			ON o.plane_id = p.id
-		LEFT JOIN LATERAL (
-			SELECT
-				id,
-				plane_id,
-				nodes_total,
-				nodes_ready,
-				services_total,
-				runs_total,
-				cpu_milli_capacity,
-				cpu_milli_allocated,
-				memory_mi_capacity,
-				memory_mi_allocated,
-				captured_at
-			FROM fleet_plane_capacity_snapshots
-			WHERE plane_id = p.id
-			ORDER BY captured_at DESC, id DESC
-			LIMIT 1
-		) cs ON true
 		LEFT JOIN fleet_plane_runtime_inventory_states ris
 			ON ris.plane_id = p.id
 		LEFT JOIN fleet_plane_runtime_config_states rcs
@@ -527,17 +402,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (plane.Detail
 	var registrationLastVerifiedAt sql.NullTime
 	var registrationUpdatedAt sql.NullTime
 	var operationUpdatedAt time.Time
-	var snapshotID sql.NullString
-	var snapshotPlaneID sql.NullString
-	var snapshotNodesTotal sql.NullInt64
-	var snapshotNodesReady sql.NullInt64
-	var snapshotServicesTotal sql.NullInt64
-	var snapshotRunsTotal sql.NullInt64
-	var snapshotCPUMilliCapacity sql.NullInt64
-	var snapshotCPUMilliAllocated sql.NullInt64
-	var snapshotMemoryMiCapacity sql.NullInt64
-	var snapshotMemoryMiAllocated sql.NullInt64
-	var snapshotCapturedAt sql.NullTime
 	var runtimePlaneID sql.NullString
 	var runtimeSyncVersion sql.NullInt64
 	var runtimeObservedAt sql.NullTime
@@ -574,17 +438,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (plane.Detail
 		&item.Operation.State,
 		&item.Operation.Reason,
 		&operationUpdatedAt,
-		&snapshotID,
-		&snapshotPlaneID,
-		&snapshotNodesTotal,
-		&snapshotNodesReady,
-		&snapshotServicesTotal,
-		&snapshotRunsTotal,
-		&snapshotCPUMilliCapacity,
-		&snapshotCPUMilliAllocated,
-		&snapshotMemoryMiCapacity,
-		&snapshotMemoryMiAllocated,
-		&snapshotCapturedAt,
 		&runtimePlaneID,
 		&runtimeSyncVersion,
 		&runtimeObservedAt,
@@ -621,21 +474,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (plane.Detail
 		item.Registration.TokenUpdatedAt = &value
 	}
 	item.Operation.UpdatedAt = operationUpdatedAt
-	if snapshotID.Valid {
-		item.LatestCapacityRecord = &plane.CapacitySnapshot{
-			ID:                snapshotID.String,
-			PlaneID:           snapshotPlaneID.String,
-			NodesTotal:        int(snapshotNodesTotal.Int64),
-			NodesReady:        int(snapshotNodesReady.Int64),
-			ServicesTotal:     int(snapshotServicesTotal.Int64),
-			RunsTotal:         int(snapshotRunsTotal.Int64),
-			CPUMilliCapacity:  int(snapshotCPUMilliCapacity.Int64),
-			CPUMilliAllocated: int(snapshotCPUMilliAllocated.Int64),
-			MemoryMiCapacity:  int(snapshotMemoryMiCapacity.Int64),
-			MemoryMiAllocated: int(snapshotMemoryMiAllocated.Int64),
-			CapturedAt:        snapshotCapturedAt.Time,
-		}
-	}
 	if runtimePlaneID.Valid {
 		item.LatestRuntimeInventory = &plane.RuntimeInventorySnapshot{
 			PlaneID:           runtimePlaneID.String,
@@ -717,26 +555,6 @@ func scanPlaneStatus(scanner interface{ Scan(dest ...any) error }) (plane.PlaneS
 	if syncAt.Valid {
 		value := syncAt.Time
 		item.LastSyncAt = &value
-	}
-	return item, nil
-}
-
-func scanPlaneCapacitySnapshot(scanner interface{ Scan(dest ...any) error }) (plane.CapacitySnapshot, error) {
-	var item plane.CapacitySnapshot
-	if err := scanner.Scan(
-		&item.ID,
-		&item.PlaneID,
-		&item.NodesTotal,
-		&item.NodesReady,
-		&item.ServicesTotal,
-		&item.RunsTotal,
-		&item.CPUMilliCapacity,
-		&item.CPUMilliAllocated,
-		&item.MemoryMiCapacity,
-		&item.MemoryMiAllocated,
-		&item.CapturedAt,
-	); err != nil {
-		return plane.CapacitySnapshot{}, fmt.Errorf("scan plane capacity snapshot: %w", err)
 	}
 	return item, nil
 }
