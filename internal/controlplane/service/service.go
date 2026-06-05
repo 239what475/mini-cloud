@@ -25,9 +25,6 @@ const (
 	PhaseReady       = "ready"
 	PhaseDegraded    = "degraded"
 	PhaseDeleting    = "deleting"
-
-	ConditionTrue  = "True"
-	ConditionFalse = "False"
 )
 
 var (
@@ -44,27 +41,6 @@ var (
 	ErrRegionRequired        = errors.New("region is required")
 	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
 	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
-)
-
-const (
-	ConditionAssignmentReady = "AssignmentReady"
-	ConditionApplied         = "Applied"
-	ConditionReady           = "Ready"
-)
-
-const (
-	ReasonPendingCreate          = "PendingCreate"
-	ReasonSpecUpdated            = "SpecUpdated"
-	ReasonDeletionRequested      = "DeletionRequested"
-	ReasonNoAssignment           = "NoAssignment"
-	ReasonNoEligibleAssignment   = "NoEligibleAssignment"
-	ReasonApplyFailed            = "ApplyFailed"
-	ReasonApplied                = "Applied"
-	ReasonPlaneServiceNotHealthy = "PlaneServiceNotHealthy"
-	ReasonPlaneServiceReady      = "PlaneServiceReady"
-	ReasonPlaneServiceMissing    = "PlaneServiceMissing"
-	ReasonObservationFailed      = "ObservationFailed"
-	ReasonReconcileFailed        = "ReconcileFailed"
 )
 
 type Service struct {
@@ -107,24 +83,14 @@ type ServiceStatus struct {
 }
 
 type Status struct {
-	ObservedGeneration int64       `json:"observedGeneration"`
-	Phase              string      `json:"phase"`
-	Healthy            bool        `json:"healthy"`
-	Message            string      `json:"message,omitempty"`
-	Conditions         []Condition `json:"conditions,omitempty"`
-	LastReconciledAt   *time.Time  `json:"lastReconciledAt,omitempty"`
-	AssignedPlaneID    string      `json:"assignedPlaneID,omitempty"`
-	RemoteStatus       string      `json:"remoteStatus,omitempty"`
-	RemoteMessage      string      `json:"remoteMessage,omitempty"`
-}
-
-type Condition struct {
-	Type               string    `json:"type"`
-	Status             string    `json:"status"`
-	Reason             string    `json:"reason,omitempty"`
-	Message            string    `json:"message,omitempty"`
-	ObservedGeneration int64     `json:"observedGeneration"`
-	LastTransitionAt   time.Time `json:"lastTransitionAt"`
+	ObservedGeneration int64      `json:"observedGeneration"`
+	Phase              string     `json:"phase"`
+	Healthy            bool       `json:"healthy"`
+	Message            string     `json:"message,omitempty"`
+	LastReconciledAt   *time.Time `json:"lastReconciledAt,omitempty"`
+	AssignedPlaneID    string     `json:"assignedPlaneID,omitempty"`
+	RemoteStatus       string     `json:"remoteStatus,omitempty"`
+	RemoteMessage      string     `json:"remoteMessage,omitempty"`
 }
 
 type UpdateStatusInput struct {
@@ -132,7 +98,6 @@ type UpdateStatusInput struct {
 	Phase              string
 	Healthy            bool
 	Message            string
-	Conditions         []Condition
 	LastReconciledAt   *time.Time
 	Run                *RunStatus
 	AssignedPlaneID    *string
@@ -209,52 +174,22 @@ func (s Service) UpdateInput() UpdateInput {
 	}
 }
 
-func PendingStatus(observedGeneration int64, now time.Time, reason string, message string) Status {
+func PendingStatus(observedGeneration int64, message string) Status {
 	return Status{
 		ObservedGeneration: observedGeneration,
 		Phase:              PhasePending,
 		Healthy:            false,
 		Message:            message,
-		Conditions: []Condition{
-			NewCondition(ConditionAssignmentReady, ConditionFalse, reason, message, observedGeneration, now),
-			NewCondition(ConditionApplied, ConditionFalse, reason, message, observedGeneration, now),
-			NewCondition(ConditionReady, ConditionFalse, reason, message, observedGeneration, now),
-		},
 	}
 }
 
-func DeletingStatus(observedGeneration int64, now time.Time, message string) Status {
+func DeletingStatus(observedGeneration int64, message string) Status {
 	return Status{
 		ObservedGeneration: observedGeneration,
 		Phase:              PhaseDeleting,
 		Healthy:            false,
 		Message:            message,
-		Conditions: []Condition{
-			NewCondition(ConditionAssignmentReady, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
-			NewCondition(ConditionApplied, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
-			NewCondition(ConditionReady, ConditionFalse, ReasonDeletionRequested, message, observedGeneration, now),
-		},
 	}
-}
-
-func NewCondition(conditionType string, status string, reason string, message string, generation int64, observedAt time.Time) Condition {
-	return Condition{
-		Type:               conditionType,
-		Status:             status,
-		Reason:             reason,
-		Message:            message,
-		ObservedGeneration: generation,
-		LastTransitionAt:   observedAt,
-	}
-}
-
-func CloneConditions(input []Condition) []Condition {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make([]Condition, len(input))
-	copy(out, input)
-	return out
 }
 
 func copyStringMap(input map[string]string) map[string]string {

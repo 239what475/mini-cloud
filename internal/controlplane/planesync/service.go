@@ -287,7 +287,6 @@ func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, e
 			Phase:              status.Phase,
 			Healthy:            status.Healthy,
 			Message:            status.Message,
-			Conditions:         status.Conditions,
 			LastReconciledAt:   status.LastReconciledAt,
 			Run:                &status.Run,
 			RemoteStatus:       &status.RemoteStatus,
@@ -319,8 +318,6 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 	message := executionSnapshotMessage(item)
 	phase := controlservice.PhaseProgressing
 	healthy := false
-	readyCondition := controlservice.ConditionFalse
-	readyReason := controlservice.ReasonPlaneServiceNotHealthy
 	runPhase := controlservice.RunPhaseDispatching
 
 	switch strings.TrimSpace(item.Status) {
@@ -330,8 +327,6 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 	case "running":
 		phase = controlservice.PhaseReady
 		healthy = true
-		readyCondition = controlservice.ConditionTrue
-		readyReason = controlservice.ReasonPlaneServiceReady
 		runPhase = controlservice.RunPhaseRunning
 	case "superseded":
 		runPhase = controlservice.RunPhaseSuperseded
@@ -353,12 +348,7 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 			Message:            message,
 			RemoteStatus:       strings.TrimSpace(item.Status),
 			RemoteMessage:      message,
-			Conditions: []controlservice.Condition{
-				controlservice.NewCondition(controlservice.ConditionAssignmentReady, controlservice.ConditionTrue, controlservice.ReasonApplied, "service assignment accepted by cloud-plane", item.ServiceGeneration, now),
-				controlservice.NewCondition(controlservice.ConditionApplied, controlservice.ConditionTrue, controlservice.ReasonApplied, "execution plan accepted by cloud-plane", item.ServiceGeneration, now),
-				controlservice.NewCondition(controlservice.ConditionReady, readyCondition, readyReason, message, item.ServiceGeneration, now),
-			},
-			LastReconciledAt: &now,
+			LastReconciledAt:   &now,
 		},
 		Run: runStatus,
 	}

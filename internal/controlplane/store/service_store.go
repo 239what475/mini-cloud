@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"mini-cloud/internal/common/projectedfile"
 	controlservice "mini-cloud/internal/controlplane/service"
@@ -46,7 +45,6 @@ const serviceSelectColumns = `
 	status_phase,
 	status_healthy,
 	status_message,
-	status_conditions_json,
 	status_last_reconciled_at,
 	status_assigned_plane_id,
 	status_remote_status,
@@ -88,12 +86,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service projected files: %w", err)
 	}
-	now := time.Now().UTC()
-	initialStatus := controlservice.PendingStatus(0, now, controlservice.ReasonPendingCreate, "waiting for service reconcile")
-	statusConditionsJSON, err := marshalJSON(initialStatus.Conditions, []controlservice.Condition{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service initial conditions: %w", err)
-	}
+	initialStatus := controlservice.PendingStatus(0, "waiting for service reconcile")
 	initialRun := controlservice.RunStatus{Phase: controlservice.RunPhasePending}
 	runJSON, err := marshalJSON(initialRun, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
@@ -127,13 +120,12 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_phase,
 			status_healthy,
 			status_message,
-			status_conditions_json,
 			status_last_reconciled_at,
 			status_assigned_plane_id,
 			status_remote_status,
 			status_remote_message
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, $24, NULL, NULL, '', '')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, NULL, NULL, '', '')
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -160,7 +152,6 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		initialStatus.Phase,
 		initialStatus.Healthy,
 		initialStatus.Message,
-		statusConditionsJSON,
 	))
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -277,12 +268,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	now := time.Now().UTC()
-	pendingStatus := controlservice.PendingStatus(current.Status.Observed.ObservedGeneration, now, controlservice.ReasonSpecUpdated, "waiting for service reconcile")
-	statusConditionsJSON, err := marshalJSON(pendingStatus.Conditions, []controlservice.Condition{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service update conditions: %w", err)
-	}
+	pendingStatus := controlservice.PendingStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		UPDATE fleet_services
@@ -310,14 +296,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 			status_phase = $22,
 			status_healthy = $23,
 			status_message = $24,
-			status_conditions_json = $25,
 			status_last_reconciled_at = NULL,
 			status_assigned_plane_id = NULL,
 			status_remote_status = '',
 			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $26
+			AND generation = $25
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -344,7 +329,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		pendingStatus.Phase,
 		pendingStatus.Healthy,
 		pendingStatus.Message,
-		statusConditionsJSON,
 		current.Metadata.Generation,
 	))
 	if err != nil {
@@ -378,12 +362,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	now := time.Now().UTC()
-	deletingStatus := controlservice.DeletingStatus(current.Status.Observed.ObservedGeneration, now, "waiting for remote service teardown")
-	statusConditionsJSON, err := marshalJSON(deletingStatus.Conditions, []controlservice.Condition{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service delete conditions: %w", err)
-	}
+	deletingStatus := controlservice.DeletingStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
 	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
 	if err != nil {
 		return controlservice.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
@@ -398,14 +377,13 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 			status_phase = $5,
 			status_healthy = $6,
 			status_message = $7,
-			status_conditions_json = $8,
-			status_run_json = $9,
+			status_run_json = $8,
 			status_last_reconciled_at = NULL,
 			status_remote_status = 'deleting',
 			status_remote_message = 'waiting for remote service teardown',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $10
+			AND generation = $9
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -415,7 +393,6 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 		deletingStatus.Phase,
 		deletingStatus.Healthy,
 		deletingStatus.Message,
-		statusConditionsJSON,
 		currentRunJSON,
 		current.Metadata.Generation,
 	))
@@ -449,11 +426,6 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 		return controlservice.Service{}, ErrServiceGenerationConflict
 	}
 
-	mergedConditions := mergeServiceConditions(current.Status.Observed.Conditions, input.Conditions)
-	statusConditionsJSON, err := marshalJSON(mergedConditions, []controlservice.Condition{})
-	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service status conditions: %w", err)
-	}
 	nextRun := current.Status.Run
 	if input.Run != nil {
 		nextRun = controlservice.CloneRunStatus(*input.Run)
@@ -470,12 +442,11 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 			status_phase = $3,
 			status_healthy = $4,
 			status_message = $5,
-			status_conditions_json = $6,
-			status_last_reconciled_at = $7,
-			status_run_json = $8,
-			status_assigned_plane_id = COALESCE($9, status_assigned_plane_id),
-			status_remote_status = COALESCE($10, status_remote_status),
-			status_remote_message = COALESCE($11, status_remote_message),
+			status_last_reconciled_at = $6,
+			status_run_json = $7,
+			status_assigned_plane_id = COALESCE($8, status_assigned_plane_id),
+			status_remote_status = COALESCE($9, status_remote_status),
+			status_remote_message = COALESCE($10, status_remote_message),
 			updated_at = now()
 		WHERE id = $1
 	`
@@ -485,7 +456,6 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 		input.Phase,
 		input.Healthy,
 		input.Message,
-		statusConditionsJSON,
 		input.LastReconciledAt,
 		runJSON,
 		nullableOptionalString(input.AssignedPlaneID),
@@ -493,7 +463,7 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 		nullableOptionalString(input.RemoteMessage),
 	}
 	if expectedGeneration != nil {
-		query += ` AND generation = $12`
+		query += ` AND generation = $11`
 		args = append(args, *expectedGeneration)
 	}
 	query += ` RETURNING ` + serviceSelectColumns
@@ -539,29 +509,6 @@ func (s *Store) DeleteServiceForGeneration(ctx context.Context, serviceID string
 	return nil
 }
 
-func mergeServiceConditions(previous []controlservice.Condition, next []controlservice.Condition) []controlservice.Condition {
-	if len(next) == 0 {
-		return nil
-	}
-	previousByType := make(map[string]controlservice.Condition, len(previous))
-	for _, item := range previous {
-		previousByType[item.Type] = item
-	}
-
-	merged := make([]controlservice.Condition, 0, len(next))
-	for _, item := range next {
-		if oldItem, ok := previousByType[item.Type]; ok &&
-			oldItem.Status == item.Status &&
-			oldItem.Reason == item.Reason &&
-			oldItem.Message == item.Message &&
-			oldItem.ObservedGeneration == item.ObservedGeneration {
-			item.LastTransitionAt = oldItem.LastTransitionAt
-		}
-		merged = append(merged, item)
-	}
-	return merged
-}
-
 func classifyServiceGenerationConflict(ctx context.Context, stores *Store, serviceID string, expectedGeneration int64) error {
 	current, err := stores.GetService(ctx, serviceID)
 	if err != nil {
@@ -580,7 +527,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var envJSON []byte
 	var projectedFilesJSON []byte
 	var runJSON []byte
-	var conditionsJSON []byte
 	var pinnedPlaneID sql.NullString
 	var lastReconciledAt sql.NullTime
 	var assignedPlaneID sql.NullString
@@ -610,7 +556,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.Status.Observed.Phase,
 		&item.Status.Observed.Healthy,
 		&item.Status.Observed.Message,
-		&conditionsJSON,
 		&lastReconciledAt,
 		&assignedPlaneID,
 		&item.Status.Observed.RemoteStatus,
@@ -637,9 +582,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
 	item.Status.Run.Phase = controlservice.NormalizeRunPhase(item.Status.Run.Phase)
-	if err := unmarshalJSON(conditionsJSON, &item.Status.Observed.Conditions, []controlservice.Condition{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service status conditions: %w", err)
-	}
 	if pinnedPlaneID.Valid {
 		item.Spec.PinnedPlaneID = pinnedPlaneID.String
 	}

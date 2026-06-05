@@ -33,15 +33,6 @@ type serviceSpec struct {
 	ProjectedFiles       []projectedfile.Spec `json:"projectedFiles,omitempty"`
 }
 
-type serviceCondition struct {
-	Type               string `json:"type"`
-	Status             string `json:"status"`
-	Reason             string `json:"reason,omitempty"`
-	Message            string `json:"message,omitempty"`
-	ObservedGeneration int64  `json:"observedGeneration"`
-	LastTransitionAt   string `json:"lastTransitionAt"`
-}
-
 type serviceRunStatus struct {
 	CurrentRunID   string `json:"currentRunID,omitempty"`
 	LatestRunID    string `json:"latestRunID,omitempty"`
@@ -51,17 +42,16 @@ type serviceRunStatus struct {
 }
 
 type serviceStatus struct {
-	ObservedGeneration int64              `json:"observedGeneration"`
-	DesiredState       string             `json:"desiredState"`
-	Phase              string             `json:"phase"`
-	Healthy            bool               `json:"healthy"`
-	Message            string             `json:"message,omitempty"`
-	Conditions         []serviceCondition `json:"conditions,omitempty"`
-	LastReconciledAt   *time.Time         `json:"lastReconciledAt,omitempty"`
-	Run                serviceRunStatus   `json:"run"`
-	AssignedPlaneID    string             `json:"assignedPlaneID,omitempty"`
-	RemoteStatus       string             `json:"remoteStatus,omitempty"`
-	RemoteMessage      string             `json:"remoteMessage,omitempty"`
+	ObservedGeneration int64            `json:"observedGeneration"`
+	DesiredState       string           `json:"desiredState"`
+	Phase              string           `json:"phase"`
+	Healthy            bool             `json:"healthy"`
+	Message            string           `json:"message,omitempty"`
+	LastReconciledAt   *time.Time       `json:"lastReconciledAt,omitempty"`
+	Run                serviceRunStatus `json:"run"`
+	AssignedPlaneID    string           `json:"assignedPlaneID,omitempty"`
+	RemoteStatus       string           `json:"remoteStatus,omitempty"`
+	RemoteMessage      string           `json:"remoteMessage,omitempty"`
 }
 
 type serviceMetadata struct {
@@ -328,7 +318,6 @@ func buildServiceStatus(view servicecontroller.View) serviceStatus {
 		Phase:              serviceItem.Status.Observed.Phase,
 		Healthy:            serviceItem.Status.Observed.Healthy,
 		Message:            serviceItem.Status.Observed.Message,
-		Conditions:         buildServiceConditions(serviceItem.Status.Observed.Conditions),
 		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
 		Run:                buildServiceRun(serviceItem.Status.Run),
 		AssignedPlaneID:    serviceItem.Status.Observed.AssignedPlaneID,
@@ -347,24 +336,6 @@ func buildServiceRun(input controlservice.RunStatus) serviceRunStatus {
 	}
 	if input.LastObservedAt != nil {
 		out.LastObservedAt = input.LastObservedAt.UTC().Format(time.RFC3339)
-	}
-	return out
-}
-
-func buildServiceConditions(input []controlservice.Condition) []serviceCondition {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make([]serviceCondition, 0, len(input))
-	for _, item := range input {
-		out = append(out, serviceCondition{
-			Type:               item.Type,
-			Status:             string(item.Status),
-			Reason:             item.Reason,
-			Message:            item.Message,
-			ObservedGeneration: item.ObservedGeneration,
-			LastTransitionAt:   item.LastTransitionAt.UTC().Format(time.RFC3339),
-		})
 	}
 	return out
 }

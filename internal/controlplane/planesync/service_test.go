@@ -145,7 +145,6 @@ func TestSyncPlaneAppliesExecutionSnapshotToServiceStatus(t *testing.T) {
 		Phase:              serviceItem.Status.Observed.Phase,
 		Healthy:            serviceItem.Status.Observed.Healthy,
 		Message:            serviceItem.Status.Observed.Message,
-		Conditions:         serviceItem.Status.Observed.Conditions,
 		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
 		AssignedPlaneID:    &planeItem.ID,
 	}); err != nil {
@@ -667,7 +666,6 @@ func (f *fakeExecutionSnapshotStore) UpdateServiceStatusForGeneration(_ context.
 		Phase:              input.Phase,
 		Healthy:            input.Healthy,
 		Message:            input.Message,
-		Conditions:         controlservice.CloneConditions(input.Conditions),
 		LastReconciledAt:   input.LastReconciledAt,
 		AssignedPlaneID:    f.service.Status.Observed.AssignedPlaneID,
 	}
