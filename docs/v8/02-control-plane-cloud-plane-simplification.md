@@ -193,23 +193,25 @@ cloud-plane 可以继续发布本 plane 的 Caddy route。
 
 control-plane 负责汇总全局 front door / CDN 需要的 service-level view。
 
-## 需要废弃或替换的当前模块
+## 已废弃或替换的模块
 
 ### Cloud Plane
 
-需要保留并收缩：
+保留并收缩后的核心模块：
 
 - `internal/cloudplane/api/nodeagent`
 - `internal/cloudplane/domain/node`
 - `internal/cloudplane/domain/execution`
 - `internal/cloudplane/infra/store/node.go`
-- `internal/cloudplane/infra/store/execution.go`
+- `internal/cloudplane/infra/store/execution_intent.go`
 - provider runtime pool driver
 - ingress route sink, but its input should come from execution facts
 
+旧 `deployment` / `revision` / `desired` / `scheduler` / `usage` / `workload` 领域包以及旧 cloud-plane service/resource store 已删除。
+
 ### Control Plane
 
-需要改造：
+已改造为通过 execution plan 驱动 cloud-plane：
 
 - `internal/controlplane/servicecontroller`
 - `internal/controlplane/deploy`
@@ -217,13 +219,13 @@ control-plane 负责汇总全局 front door / CDN 需要的 service-level view�
 - `internal/controlplane/planeselector`
 - service status aggregation
 
-control-plane should no longer call cloud-plane `ApplyService`, `GetService`, `RollbackService`.
+control-plane 不再调用 cloud-plane `ApplyService`、`GetService`、`RollbackService`。
 
-It should dispatch execution intent and consume execution result.
+control-plane 会物化本次 execution 需要的 config / secret / registry credential，并通过 execution plan 下发给 cloud-plane。
 
 ### Proto
 
-需要替换 `ControlPlaneWorkloadService` 的 service-oriented API：
+旧 `ControlPlaneWorkloadService` 的 service-oriented API 已删除：
 
 ```text
 ApplyService
@@ -232,17 +234,15 @@ GetService
 RollbackService
 ```
 
-目标 API 应围绕 plane-local execution 和 inventory，例如：
+当前 cloud-plane southbound API 只保留：
 
 ```text
-PullPlaneExecutions
-AckPlaneExecution
-ReportPlaneExecution
-GetPlaneSnapshot
-DeletePlaneExecution
+ControlPlaneSnapshotService.GetSnapshot
+ControlPlaneExecutionService.ApplyExecutionPlan
+ControlPlaneExecutionService.DeleteExecutionPlan
 ```
 
-具体是 pull 还是 push 可以后续决定。为保持简单，优先考虑 pull 或 unary RPC，避免引入双向 stream。
+node-agent 侧仍使用 unary pull/report：`PollWork` 和 `ReportExecution`。
 
 ## 执行方式：按完整链路纵切
 
@@ -340,43 +340,41 @@ mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service
 
 运行态只表达单个 run / execution 的状态，例如 `pending`、`deploying`、`running`、`failed`、`superseded`。
 
-## 迁移策略
+## 当前落地状态
 
-不要一次性删除所有旧表和旧模块。
-
-建议分阶段：
+截至 v8 slice 5 后，迁移不再保留 cloud-plane 旧 service lifecycle 兼容层。
 
 ### 阶段 1：固化边界
 
-- 新增文档和测试目标。
-- 停止新增 cloud-plane service lifecycle 功能。
-- 删除 rollback 入口。
+- 已新增文档和测试目标。
+- 已停止新增 cloud-plane service lifecycle 功能。
+- 已删除 cloud-plane rollback 入口。
 
 ### 阶段 2：新增 execution-oriented southbound API
 
-- control-plane 创建 execution intents。
-- cloud-plane 拉取属于自己的 execution intents。
+- control-plane 创建 execution plan。
+- cloud-plane 接收 execution plan 并持久化 plane-local execution intent。
 - cloud-plane 分发给 node-agent。
-- cloud-plane 上报 execution result。
+- cloud-plane 接收 node-agent execution result。
 
-旧 southbound `ApplyService` / `GetService` / `ApplyResources` API 已删除；迁移期旧 Go 包和旧表可以暂时保留，但 cloud-plane 主进程不再启动 service desired reconciler，也不再暴露全量 resource 同步入口。
+旧 southbound `ApplyService` / `GetService` / `ApplyResources` API 已删除。旧 `service.proto` / `resources.proto` 以及对应生成代码也已删除，cloud-plane southbound 契约只保留 snapshot 和 execution plan。
 
 ### 阶段 3：control-plane status 改为 execution 聚合
 
 - service status 不再依赖 cloud-plane `GetService`。
-- deployment ready / running / failed 来自 execution reports。
+- deployment ready / running / failed 来自 plane execution reports。
 - Web 只读 control-plane 聚合状态。
 
 ### 阶段 4：切掉 cloud-plane service lifecycle
 
-- 停止写入 cloud-plane service desired / revision / deployment 表。
-- cloud-plane 只保留 node、execution、runtime node、ingress route、provider state。
-- 删除或废弃对应 Go 包和 proto 方法。
+- cloud-plane 不再写入 service desired / revision / deployment 表。
+- cloud-plane baseline schema 只保留 node、execution intent、runtime node、ingress route、provider-local state。
+- 旧 cloud-plane service lifecycle Go 包和 store 文件已删除。
 
 ### 阶段 5：清理 schema
 
-- 先保留旧表，避免迁移风险。
-- 等新链路稳定后，再新增 migration 删除废弃表或标记不再使用。
+- cloud-plane 初始 schema 已移除旧 `services`、`revisions`、`deployments`、`service_desired`、`placement_decisions`、`deployment_executions`、`config_sets`、`secret_sets`、`registry_credentials` 等旧表。
+- runtime node scale-in / node offline / ingress 均基于 execution intent 和 node/runtime-node state。
 
 ## 验收标准
 

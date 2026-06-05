@@ -960,126 +960,6 @@ func (x *PlaneSnapshot) GetExecutions() []*PlaneExecutionSnapshot {
 	return nil
 }
 
-type PlaneProjectedFileSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MountPath     string                 `protobuf:"bytes,1,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
-	SourceKind    string                 `protobuf:"bytes,2,opt,name=source_kind,json=sourceKind,proto3" json:"source_kind,omitempty"`
-	SourceId      string                 `protobuf:"bytes,3,opt,name=source_id,json=sourceID,proto3" json:"source_id,omitempty"`
-	SourceKey     string                 `protobuf:"bytes,4,opt,name=source_key,json=sourceKey,proto3" json:"source_key,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PlaneProjectedFileSpec) Reset() {
-	*x = PlaneProjectedFileSpec{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PlaneProjectedFileSpec) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PlaneProjectedFileSpec) ProtoMessage() {}
-
-func (x *PlaneProjectedFileSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PlaneProjectedFileSpec.ProtoReflect.Descriptor instead.
-func (*PlaneProjectedFileSpec) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *PlaneProjectedFileSpec) GetMountPath() string {
-	if x != nil {
-		return x.MountPath
-	}
-	return ""
-}
-
-func (x *PlaneProjectedFileSpec) GetSourceKind() string {
-	if x != nil {
-		return x.SourceKind
-	}
-	return ""
-}
-
-func (x *PlaneProjectedFileSpec) GetSourceId() string {
-	if x != nil {
-		return x.SourceId
-	}
-	return ""
-}
-
-func (x *PlaneProjectedFileSpec) GetSourceKey() string {
-	if x != nil {
-		return x.SourceKey
-	}
-	return ""
-}
-
-type PlanePersistentDirSpec struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	MountPath     string                 `protobuf:"bytes,2,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *PlanePersistentDirSpec) Reset() {
-	*x = PlanePersistentDirSpec{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PlanePersistentDirSpec) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PlanePersistentDirSpec) ProtoMessage() {}
-
-func (x *PlanePersistentDirSpec) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PlanePersistentDirSpec.ProtoReflect.Descriptor instead.
-func (*PlanePersistentDirSpec) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{11}
-}
-
-func (x *PlanePersistentDirSpec) GetName() string {
-	if x != nil {
-		return x.Name
-	}
-	return ""
-}
-
-func (x *PlanePersistentDirSpec) GetMountPath() string {
-	if x != nil {
-		return x.MountPath
-	}
-	return ""
-}
-
 type ExecutionProjectedFile struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	MountPath     string                 `protobuf:"bytes,1,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
@@ -1092,7 +972,7 @@ type ExecutionProjectedFile struct {
 
 func (x *ExecutionProjectedFile) Reset() {
 	*x = ExecutionProjectedFile{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1104,7 +984,7 @@ func (x *ExecutionProjectedFile) String() string {
 func (*ExecutionProjectedFile) ProtoMessage() {}
 
 func (x *ExecutionProjectedFile) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1117,7 +997,7 @@ func (x *ExecutionProjectedFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionProjectedFile.ProtoReflect.Descriptor instead.
 func (*ExecutionProjectedFile) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{12}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ExecutionProjectedFile) GetMountPath() string {
@@ -1159,7 +1039,7 @@ type ExecutionPersistentDir struct {
 
 func (x *ExecutionPersistentDir) Reset() {
 	*x = ExecutionPersistentDir{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1171,7 +1051,7 @@ func (x *ExecutionPersistentDir) String() string {
 func (*ExecutionPersistentDir) ProtoMessage() {}
 
 func (x *ExecutionPersistentDir) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1184,7 +1064,7 @@ func (x *ExecutionPersistentDir) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionPersistentDir.ProtoReflect.Descriptor instead.
 func (*ExecutionPersistentDir) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{13}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ExecutionPersistentDir) GetName() string {
@@ -1219,7 +1099,7 @@ type ExecutionImageCredential struct {
 
 func (x *ExecutionImageCredential) Reset() {
 	*x = ExecutionImageCredential{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1231,7 +1111,7 @@ func (x *ExecutionImageCredential) String() string {
 func (*ExecutionImageCredential) ProtoMessage() {}
 
 func (x *ExecutionImageCredential) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1244,7 +1124,7 @@ func (x *ExecutionImageCredential) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionImageCredential.ProtoReflect.Descriptor instead.
 func (*ExecutionImageCredential) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{14}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ExecutionImageCredential) GetServer() string {
@@ -1291,7 +1171,7 @@ type ApplyExecutionPlanRequest struct {
 
 func (x *ApplyExecutionPlanRequest) Reset() {
 	*x = ApplyExecutionPlanRequest{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[15]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1303,7 +1183,7 @@ func (x *ApplyExecutionPlanRequest) String() string {
 func (*ApplyExecutionPlanRequest) ProtoMessage() {}
 
 func (x *ApplyExecutionPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[15]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1316,7 +1196,7 @@ func (x *ApplyExecutionPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyExecutionPlanRequest.ProtoReflect.Descriptor instead.
 func (*ApplyExecutionPlanRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{15}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ApplyExecutionPlanRequest) GetPlanId() string {
@@ -1434,7 +1314,7 @@ type ApplyExecutionPlanResponse struct {
 
 func (x *ApplyExecutionPlanResponse) Reset() {
 	*x = ApplyExecutionPlanResponse{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[16]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1446,7 +1326,7 @@ func (x *ApplyExecutionPlanResponse) String() string {
 func (*ApplyExecutionPlanResponse) ProtoMessage() {}
 
 func (x *ApplyExecutionPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[16]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1459,7 +1339,7 @@ func (x *ApplyExecutionPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyExecutionPlanResponse.ProtoReflect.Descriptor instead.
 func (*ApplyExecutionPlanResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{16}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ApplyExecutionPlanResponse) GetAction() string {
@@ -1487,7 +1367,7 @@ type DeleteExecutionPlanRequest struct {
 
 func (x *DeleteExecutionPlanRequest) Reset() {
 	*x = DeleteExecutionPlanRequest{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[17]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1499,7 +1379,7 @@ func (x *DeleteExecutionPlanRequest) String() string {
 func (*DeleteExecutionPlanRequest) ProtoMessage() {}
 
 func (x *DeleteExecutionPlanRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[17]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1512,7 +1392,7 @@ func (x *DeleteExecutionPlanRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteExecutionPlanRequest.ProtoReflect.Descriptor instead.
 func (*DeleteExecutionPlanRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{17}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DeleteExecutionPlanRequest) GetServiceId() string {
@@ -1546,7 +1426,7 @@ type DeleteExecutionPlanResponse struct {
 
 func (x *DeleteExecutionPlanResponse) Reset() {
 	*x = DeleteExecutionPlanResponse{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[18]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1558,7 +1438,7 @@ func (x *DeleteExecutionPlanResponse) String() string {
 func (*DeleteExecutionPlanResponse) ProtoMessage() {}
 
 func (x *DeleteExecutionPlanResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[18]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1571,7 +1451,7 @@ func (x *DeleteExecutionPlanResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteExecutionPlanResponse.ProtoReflect.Descriptor instead.
 func (*DeleteExecutionPlanResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{18}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DeleteExecutionPlanResponse) GetServiceId() string {
@@ -1592,7 +1472,7 @@ var File_minicloud_cloudplane_v1_control_plane_proto protoreflect.FileDescriptor
 
 const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\n" +
-	"+minicloud/cloudplane/v1/control_plane.proto\x12\x17minicloud.cloudplane.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a'minicloud/cloudplane/v1/resources.proto\x1a%minicloud/cloudplane/v1/service.proto\"v\n" +
+	"+minicloud/cloudplane/v1/control_plane.proto\x12\x17minicloud.cloudplane.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"v\n" +
 	"\fPlaneSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x16\n" +
@@ -1689,19 +1569,7 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x0eruntime_config\x18\b \x01(\v2+.minicloud.cloudplane.v1.PlaneRuntimeConfigR\rruntimeConfig\x12O\n" +
 	"\n" +
 	"executions\x18\t \x03(\v2/.minicloud.cloudplane.v1.PlaneExecutionSnapshotR\n" +
-	"executions\"\x94\x01\n" +
-	"\x16PlaneProjectedFileSpec\x12\x1d\n" +
-	"\n" +
-	"mount_path\x18\x01 \x01(\tR\tmountPath\x12\x1f\n" +
-	"\vsource_kind\x18\x02 \x01(\tR\n" +
-	"sourceKind\x12\x1b\n" +
-	"\tsource_id\x18\x03 \x01(\tR\bsourceID\x12\x1d\n" +
-	"\n" +
-	"source_key\x18\x04 \x01(\tR\tsourceKey\"K\n" +
-	"\x16PlanePersistentDirSpec\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
-	"\n" +
-	"mount_path\x18\x02 \x01(\tR\tmountPath\"\x83\x01\n" +
+	"executions\"\x83\x01\n" +
 	"\x16ExecutionProjectedFile\x12\x1d\n" +
 	"\n" +
 	"mount_path\x18\x01 \x01(\tR\tmountPath\x12\x18\n" +
@@ -1769,7 +1637,7 @@ func file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP() []byte {
 	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescData
 }
 
-var file_minicloud_cloudplane_v1_control_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
+var file_minicloud_cloudplane_v1_control_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_minicloud_cloudplane_v1_control_plane_proto_goTypes = []any{
 	(*PlaneSummary)(nil),                // 0: minicloud.cloudplane.v1.PlaneSummary
 	(*PlaneHealth)(nil),                 // 1: minicloud.cloudplane.v1.PlaneHealth
@@ -1781,28 +1649,26 @@ var file_minicloud_cloudplane_v1_control_plane_proto_goTypes = []any{
 	(*PlaneRuntimeConfig)(nil),          // 7: minicloud.cloudplane.v1.PlaneRuntimeConfig
 	(*PlaneExecutionSnapshot)(nil),      // 8: minicloud.cloudplane.v1.PlaneExecutionSnapshot
 	(*PlaneSnapshot)(nil),               // 9: minicloud.cloudplane.v1.PlaneSnapshot
-	(*PlaneProjectedFileSpec)(nil),      // 10: minicloud.cloudplane.v1.PlaneProjectedFileSpec
-	(*PlanePersistentDirSpec)(nil),      // 11: minicloud.cloudplane.v1.PlanePersistentDirSpec
-	(*ExecutionProjectedFile)(nil),      // 12: minicloud.cloudplane.v1.ExecutionProjectedFile
-	(*ExecutionPersistentDir)(nil),      // 13: minicloud.cloudplane.v1.ExecutionPersistentDir
-	(*ExecutionImageCredential)(nil),    // 14: minicloud.cloudplane.v1.ExecutionImageCredential
-	(*ApplyExecutionPlanRequest)(nil),   // 15: minicloud.cloudplane.v1.ApplyExecutionPlanRequest
-	(*ApplyExecutionPlanResponse)(nil),  // 16: minicloud.cloudplane.v1.ApplyExecutionPlanResponse
-	(*DeleteExecutionPlanRequest)(nil),  // 17: minicloud.cloudplane.v1.DeleteExecutionPlanRequest
-	(*DeleteExecutionPlanResponse)(nil), // 18: minicloud.cloudplane.v1.DeleteExecutionPlanResponse
-	nil,                                 // 19: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.EnvEntry
-	(*timestamppb.Timestamp)(nil),       // 20: google.protobuf.Timestamp
-	(*structpb.Struct)(nil),             // 21: google.protobuf.Struct
-	(*emptypb.Empty)(nil),               // 22: google.protobuf.Empty
+	(*ExecutionProjectedFile)(nil),      // 10: minicloud.cloudplane.v1.ExecutionProjectedFile
+	(*ExecutionPersistentDir)(nil),      // 11: minicloud.cloudplane.v1.ExecutionPersistentDir
+	(*ExecutionImageCredential)(nil),    // 12: minicloud.cloudplane.v1.ExecutionImageCredential
+	(*ApplyExecutionPlanRequest)(nil),   // 13: minicloud.cloudplane.v1.ApplyExecutionPlanRequest
+	(*ApplyExecutionPlanResponse)(nil),  // 14: minicloud.cloudplane.v1.ApplyExecutionPlanResponse
+	(*DeleteExecutionPlanRequest)(nil),  // 15: minicloud.cloudplane.v1.DeleteExecutionPlanRequest
+	(*DeleteExecutionPlanResponse)(nil), // 16: minicloud.cloudplane.v1.DeleteExecutionPlanResponse
+	nil,                                 // 17: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.EnvEntry
+	(*timestamppb.Timestamp)(nil),       // 18: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),             // 19: google.protobuf.Struct
+	(*emptypb.Empty)(nil),               // 20: google.protobuf.Empty
 }
 var file_minicloud_cloudplane_v1_control_plane_proto_depIdxs = []int32{
-	20, // 0: minicloud.cloudplane.v1.PlaneHealth.checked_at:type_name -> google.protobuf.Timestamp
-	20, // 1: minicloud.cloudplane.v1.PlaneRuntimeNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	20, // 2: minicloud.cloudplane.v1.PlaneRuntimeInventory.observed_at:type_name -> google.protobuf.Timestamp
+	18, // 0: minicloud.cloudplane.v1.PlaneHealth.checked_at:type_name -> google.protobuf.Timestamp
+	18, // 1: minicloud.cloudplane.v1.PlaneRuntimeNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	18, // 2: minicloud.cloudplane.v1.PlaneRuntimeInventory.observed_at:type_name -> google.protobuf.Timestamp
 	5,  // 3: minicloud.cloudplane.v1.PlaneRuntimeInventory.nodes:type_name -> minicloud.cloudplane.v1.PlaneRuntimeNode
-	20, // 4: minicloud.cloudplane.v1.PlaneRuntimeConfig.observed_at:type_name -> google.protobuf.Timestamp
-	21, // 5: minicloud.cloudplane.v1.PlaneRuntimeConfig.summary:type_name -> google.protobuf.Struct
-	20, // 6: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	18, // 4: minicloud.cloudplane.v1.PlaneRuntimeConfig.observed_at:type_name -> google.protobuf.Timestamp
+	19, // 5: minicloud.cloudplane.v1.PlaneRuntimeConfig.summary:type_name -> google.protobuf.Struct
+	18, // 6: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
 	0,  // 7: minicloud.cloudplane.v1.PlaneSnapshot.plane:type_name -> minicloud.cloudplane.v1.PlaneSummary
 	1,  // 8: minicloud.cloudplane.v1.PlaneSnapshot.health:type_name -> minicloud.cloudplane.v1.PlaneHealth
 	2,  // 9: minicloud.cloudplane.v1.PlaneSnapshot.overview:type_name -> minicloud.cloudplane.v1.PlaneOverview
@@ -1811,16 +1677,16 @@ var file_minicloud_cloudplane_v1_control_plane_proto_depIdxs = []int32{
 	6,  // 12: minicloud.cloudplane.v1.PlaneSnapshot.runtime_inventory:type_name -> minicloud.cloudplane.v1.PlaneRuntimeInventory
 	7,  // 13: minicloud.cloudplane.v1.PlaneSnapshot.runtime_config:type_name -> minicloud.cloudplane.v1.PlaneRuntimeConfig
 	8,  // 14: minicloud.cloudplane.v1.PlaneSnapshot.executions:type_name -> minicloud.cloudplane.v1.PlaneExecutionSnapshot
-	19, // 15: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.env:type_name -> minicloud.cloudplane.v1.ApplyExecutionPlanRequest.EnvEntry
-	12, // 16: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.projected_files:type_name -> minicloud.cloudplane.v1.ExecutionProjectedFile
-	13, // 17: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.persistent_dirs:type_name -> minicloud.cloudplane.v1.ExecutionPersistentDir
-	14, // 18: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.image_credential:type_name -> minicloud.cloudplane.v1.ExecutionImageCredential
-	22, // 19: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:input_type -> google.protobuf.Empty
-	15, // 20: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyExecutionPlan:input_type -> minicloud.cloudplane.v1.ApplyExecutionPlanRequest
-	17, // 21: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteExecutionPlan:input_type -> minicloud.cloudplane.v1.DeleteExecutionPlanRequest
+	17, // 15: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.env:type_name -> minicloud.cloudplane.v1.ApplyExecutionPlanRequest.EnvEntry
+	10, // 16: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.projected_files:type_name -> minicloud.cloudplane.v1.ExecutionProjectedFile
+	11, // 17: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.persistent_dirs:type_name -> minicloud.cloudplane.v1.ExecutionPersistentDir
+	12, // 18: minicloud.cloudplane.v1.ApplyExecutionPlanRequest.image_credential:type_name -> minicloud.cloudplane.v1.ExecutionImageCredential
+	20, // 19: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:input_type -> google.protobuf.Empty
+	13, // 20: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyExecutionPlan:input_type -> minicloud.cloudplane.v1.ApplyExecutionPlanRequest
+	15, // 21: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteExecutionPlan:input_type -> minicloud.cloudplane.v1.DeleteExecutionPlanRequest
 	9,  // 22: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.PlaneSnapshot
-	16, // 23: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyExecutionPlan:output_type -> minicloud.cloudplane.v1.ApplyExecutionPlanResponse
-	18, // 24: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteExecutionPlan:output_type -> minicloud.cloudplane.v1.DeleteExecutionPlanResponse
+	14, // 23: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyExecutionPlan:output_type -> minicloud.cloudplane.v1.ApplyExecutionPlanResponse
+	16, // 24: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteExecutionPlan:output_type -> minicloud.cloudplane.v1.DeleteExecutionPlanResponse
 	22, // [22:25] is the sub-list for method output_type
 	19, // [19:22] is the sub-list for method input_type
 	19, // [19:19] is the sub-list for extension type_name
@@ -1833,15 +1699,13 @@ func file_minicloud_cloudplane_v1_control_plane_proto_init() {
 	if File_minicloud_cloudplane_v1_control_plane_proto != nil {
 		return
 	}
-	file_minicloud_cloudplane_v1_resources_proto_init()
-	file_minicloud_cloudplane_v1_service_proto_init()
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_control_plane_proto_rawDesc), len(file_minicloud_cloudplane_v1_control_plane_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   20,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

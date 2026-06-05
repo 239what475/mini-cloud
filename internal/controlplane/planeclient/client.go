@@ -22,9 +22,8 @@ import (
 var ErrNotFound = errors.New("plane api object not found")
 
 type RPCError struct {
-	Code          string
-	Message       string
-	RejectReasons []cloudplaneapi.QuotaRejectReason
+	Code    string
+	Message string
 }
 
 func (e *RPCError) Error() string {
@@ -202,30 +201,7 @@ func classifyRPCError(err error) error {
 		Code:    st.Code().String(),
 		Message: st.Message(),
 	}
-	for _, detail := range st.Details() {
-		rejected, ok := detail.(*cloudplanev1.QuotaAdmissionRejected)
-		if !ok {
-			continue
-		}
-		apiErr.RejectReasons = quotaRejectReasonsFromProto(rejected.GetRejectReasons())
-		break
-	}
 	return apiErr
-}
-
-func quotaRejectReasonsFromProto(items []*cloudplanev1.QuotaRejectReason) []cloudplaneapi.QuotaRejectReason {
-	out := make([]cloudplaneapi.QuotaRejectReason, 0, len(items))
-	for _, item := range items {
-		out = append(out, cloudplaneapi.QuotaRejectReason{
-			Code:           item.GetCode(),
-			Message:        item.GetMessage(),
-			Current:        item.GetCurrent(),
-			RequestedDelta: item.GetRequestedDelta(),
-			Projected:      item.GetProjected(),
-			Limit:          item.GetLimit(),
-		})
-	}
-	return out
 }
 
 func snapshotFromProto(item *cloudplanev1.PlaneSnapshot) cloudplaneapi.SnapshotResponse {

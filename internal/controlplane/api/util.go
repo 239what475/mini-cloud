@@ -25,9 +25,6 @@ func writePlaneAPIError(w http.ResponseWriter, err error) bool {
 		"error": rpcErr.Message,
 		"code":  rpcErr.Code,
 	}
-	if len(rpcErr.RejectReasons) > 0 {
-		payload["rejectReasons"] = rpcErr.RejectReasons
-	}
 	writeJSON(w, http.StatusBadGateway, payload)
 	return true
 }

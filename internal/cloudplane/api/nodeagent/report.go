@@ -48,7 +48,7 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// 写入 execution 结果；该 store 事务边界方法会在同一事务内推进 execution/deployment/service/node allocation。
+	// 写入 execution 结果；该 store 事务边界方法会在同一事务内推进 execution intent 和 node allocation。
 	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, execution.ReportInput{
 		Status:                input.Status,
 		Reason:                input.Reason,

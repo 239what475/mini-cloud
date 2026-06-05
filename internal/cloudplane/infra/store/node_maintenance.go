@@ -95,7 +95,7 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		return node.HeartbeatReconcileResult{}, fmt.Errorf("close stale node rows: %w", err)
 	}
 
-	// 逐个处理 stale node，并收集其影响到的 deployment。
+	// 逐个处理 stale node，并收集其影响到的 execution plan。
 	for _, staleNode := range staleNodes {
 		// 节点状态更新为 offline，同时关闭调度。
 		updatedRow := tx.QueryRowContext(ctx, `
@@ -134,7 +134,7 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		}
 		result.NodesMarkedOffline = append(result.NodesMarkedOffline, updatedNode)
 
-		// 同一个 stale node 下受影响 deployment 使用统一原因。
+		// 同一个 stale node 下受影响 execution plan 使用统一原因。
 		reason := fmt.Sprintf(
 			"node %s marked offline because no heartbeat arrived after %s",
 			staleNode.Name,
@@ -161,7 +161,7 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		return node.HeartbeatReconcileResult{}, fmt.Errorf("commit reconcile stale heartbeats tx: %w", err)
 	}
 
-	// 返回本轮被标记 offline 的节点和被失败化的 deployment 摘要。
+	// 返回本轮被标记 offline 的节点和被失败化的 execution plan 摘要。
 	return result, nil
 }
 

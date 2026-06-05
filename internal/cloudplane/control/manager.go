@@ -113,7 +113,7 @@ func (m *Manager) reconcileNodeHealthOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// 只有本轮确实标记了 offline node 或影响 deployment 时才输出告警日志。
+	// 只有本轮确实标记了 offline node 或影响 execution plan 时才输出告警日志。
 	if len(result.NodesMarkedOffline) > 0 || len(result.ImpactedPlans) > 0 {
 		// 只有实际产生状态变化时才输出 warn，避免正常空轮询污染日志。
 		m.logger.Warn("cloud-plane reconciled stale node heartbeats", "nodes_offline", len(result.NodesMarkedOffline), "impacted_plans", len(result.ImpactedPlans))

@@ -7,8 +7,6 @@ option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloud
 import "google/protobuf/empty.proto";
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
-import "minicloud/cloudplane/v1/resources.proto";
-import "minicloud/cloudplane/v1/service.proto";
 
 message PlaneSummary {
   string name = 1;
@@ -110,18 +108,6 @@ message PlaneSnapshot {
   PlaneRuntimeInventory runtime_inventory = 7 [json_name = "runtimeInventory"];
   PlaneRuntimeConfig runtime_config = 8 [json_name = "runtimeConfig"];
   repeated PlaneExecutionSnapshot executions = 9;
-}
-
-message PlaneProjectedFileSpec {
-  string mount_path = 1 [json_name = "mountPath"];
-  string source_kind = 2 [json_name = "sourceKind"];
-  string source_id = 3 [json_name = "sourceID"];
-  string source_key = 4 [json_name = "sourceKey"];
-}
-
-message PlanePersistentDirSpec {
-  string name = 1;
-  string mount_path = 2 [json_name = "mountPath"];
 }
 
 message ExecutionProjectedFile {

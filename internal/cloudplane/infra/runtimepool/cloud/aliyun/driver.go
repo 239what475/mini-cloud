@@ -144,7 +144,7 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.ProviderRuntimeConfig) (RuntimeConf
 // 参数说明：ctx 当前阿里云实现不依赖 context；request 只包含创建云主机所需的名称、幂等 token 和资源需求。
 func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequest) (runtimepool.CreateResult, error) {
 	// 阿里云 runtime driver 只负责校验请求、生成 cloud-init user-data、调用 RunInstances。
-	// 本地 intent 创建、状态回写和等待 node-agent ready 由上层 deployment coordinator 负责。
+	// 本地 intent 创建、状态回写和等待 node-agent ready 由上层 runtime-node controller 负责。
 	// client token 用于支持同一请求重试幂等；ownership tags 由 driver 根据平台身份统一生成。
 	if p == nil || p.client == nil {
 		return runtimepool.CreateResult{}, fmt.Errorf("aliyun runtime driver is not initialized")
@@ -303,7 +303,7 @@ func (p *runtimeDriver) Delete(ctx context.Context, request runtimepool.DeleteRe
 	if p == nil || p.client == nil {
 		return fmt.Errorf("aliyun runtime driver is not initialized")
 	}
-	// Delete 只按云实例 ID 操作，不接收 service/deployment/replica 等业务归属。
+	// Delete 只按云实例 ID 操作，不接收 service/run 等业务归属。
 	instanceID := strings.TrimSpace(request.InstanceID)
 	if instanceID == "" {
 		return fmt.Errorf("runtime node instanceID is required")

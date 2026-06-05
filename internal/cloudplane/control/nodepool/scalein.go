@@ -18,7 +18,7 @@ import (
 type ScaleInService struct {
 	// logger 记录 runtime node 缩容过程中的单节点失败。
 	logger *slog.Logger
-	// store 提供 runtime node、deployment 和 execution 的持久化访问。
+	// store 提供 runtime node 和 execution intent 的持久化访问。
 	store *store.Store
 	// driver 调用云厂商 API 删除 runtime node 对应的云实例。
 	driver infraruntimepool.RuntimeDriver

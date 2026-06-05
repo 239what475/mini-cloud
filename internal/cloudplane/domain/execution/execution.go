@@ -145,7 +145,7 @@ type WorkItem struct {
 	Env map[string]string `json:"env"`
 	// ProjectedFiles 表示由 config/secret 渲染到容器内的文件列表。
 	ProjectedFiles []projectedfile.File `json:"projectedFiles,omitempty"`
-	// PersistentDirs 表示需要跨 revision 保持的持久目录列表。
+	// PersistentDirs 表示需要跨 service run 保持的持久目录列表。
 	PersistentDirs []persistentdir.Mount `json:"persistentDirs,omitempty"`
 	// ImageCredential 记录容器镜像或镜像凭据相关信息。
 	ImageCredential *ImageCredential `json:"imageCredential,omitempty"`
