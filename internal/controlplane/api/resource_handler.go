@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"mini-cloud/internal/common/operationhistory"
-	"mini-cloud/internal/controlplane/resource"
+	"mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -46,7 +46,7 @@ func (h resourceHandler) listRegistryCredentials(c *gin.Context) {
 }
 
 func (h resourceHandler) createRegistryCredential(c *gin.Context) {
-	var input resource.CreateRegistryCredentialInput
+	var input domain.CreateRegistryCredentialInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -74,7 +74,7 @@ func (h resourceHandler) createRegistryCredential(c *gin.Context) {
 	writeJSON(c, http.StatusCreated, toRegistryCredentialResource(created))
 }
 
-func toRegistryCredentialResource(item resource.RegistryCredential) registryCredentialResource {
+func toRegistryCredentialResource(item domain.RegistryCredential) registryCredentialResource {
 	return registryCredentialResource{
 		ID:                 item.ID,
 		Name:               item.Name,
@@ -87,9 +87,9 @@ func toRegistryCredentialResource(item resource.RegistryCredential) registryCred
 }
 
 func isResourceInputError(err error) bool {
-	return errors.Is(err, resource.ErrRegistryCredentialNameRequired) ||
-		errors.Is(err, resource.ErrRegistryCredentialNameInvalid) ||
-		errors.Is(err, resource.ErrRegistryCredentialServerRequired) ||
-		errors.Is(err, resource.ErrRegistryCredentialUsernameRequired) ||
-		errors.Is(err, resource.ErrRegistryCredentialPasswordRequired)
+	return errors.Is(err, domain.ErrRegistryCredentialNameRequired) ||
+		errors.Is(err, domain.ErrRegistryCredentialNameInvalid) ||
+		errors.Is(err, domain.ErrRegistryCredentialServerRequired) ||
+		errors.Is(err, domain.ErrRegistryCredentialUsernameRequired) ||
+		errors.Is(err, domain.ErrRegistryCredentialPasswordRequired)
 }

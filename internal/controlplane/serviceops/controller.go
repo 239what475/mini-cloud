@@ -1,4 +1,4 @@
-package controller
+package serviceops
 
 import (
 	"context"
@@ -7,9 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	"mini-cloud/internal/controlplane/deploy"
-	plane "mini-cloud/internal/controlplane/plane"
-	controlservice "mini-cloud/internal/controlplane/service"
+	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -21,26 +19,26 @@ const (
 var ErrPlaneNotReady = errors.New("plane is not ready")
 
 type View struct {
-	Service controlservice.Service `json:"service"`
-	Plane   *plane.Detail          `json:"plane,omitempty"`
+	Service domain.Service `json:"service"`
+	Plane   *domain.Detail `json:"plane,omitempty"`
 }
 
 type executionPlanManager interface {
-	ApplyService(context.Context, string, deploy.ApplyServiceInput) (deploy.ApplyResult, error)
-	DeleteService(context.Context, string, deploy.DeleteServiceInput) error
+	ApplyService(context.Context, string, ApplyServiceInput) (ApplyResult, error)
+	DeleteService(context.Context, string, DeleteServiceInput) error
 }
 
 type serviceStore interface {
-	CreateService(context.Context, controlservice.CreateInput) (controlservice.Service, error)
-	ListServices(context.Context) ([]controlservice.Service, error)
-	GetService(context.Context, string) (controlservice.Service, error)
-	UpdateService(context.Context, string, controlservice.UpdateInput) (controlservice.Service, error)
-	MarkServiceDeletionRequested(context.Context, string) (controlservice.Service, error)
-	UpdateServiceStatus(context.Context, string, controlservice.UpdateStatusInput) (controlservice.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
+	CreateService(context.Context, domain.ServiceCreateInput) (domain.Service, error)
+	ListServices(context.Context) ([]domain.Service, error)
+	GetService(context.Context, string) (domain.Service, error)
+	UpdateService(context.Context, string, domain.ServiceUpdateInput) (domain.Service, error)
+	MarkServiceDeletionRequested(context.Context, string) (domain.Service, error)
+	UpdateServiceStatus(context.Context, string, domain.ServiceUpdateStatusInput) (domain.Service, error)
+	UpdateServiceStatusForGeneration(context.Context, string, int64, domain.ServiceUpdateStatusInput) (domain.Service, error)
 	DeleteService(context.Context, string) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
-	GetPlane(context.Context, string) (plane.Detail, error)
+	GetPlane(context.Context, string) (domain.Detail, error)
 }
 
 type Controller struct {
@@ -73,7 +71,7 @@ func (c *Controller) SetReconcileTimeout(timeout int) {
 	c.timeout = time.Duration(timeout) * time.Second
 }
 
-func (c *Controller) Create(ctx context.Context, input controlservice.CreateInput) (View, error) {
+func (c *Controller) Create(ctx context.Context, input domain.ServiceCreateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
 	}
@@ -121,7 +119,7 @@ func (c *Controller) Get(ctx context.Context, serviceID string) (View, error) {
 	return c.buildView(ctx, item)
 }
 
-func (c *Controller) Update(ctx context.Context, serviceID string, input controlservice.UpdateInput) (View, error) {
+func (c *Controller) Update(ctx context.Context, serviceID string, input domain.ServiceUpdateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
 	}
@@ -223,7 +221,7 @@ func (c *Controller) validateConfigured() error {
 	return nil
 }
 
-func (c *Controller) buildView(ctx context.Context, item controlservice.Service) (View, error) {
+func (c *Controller) buildView(ctx context.Context, item domain.Service) (View, error) {
 	return View{
 		Service: item,
 	}, nil

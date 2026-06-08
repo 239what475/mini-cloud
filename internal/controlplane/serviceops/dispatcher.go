@@ -1,4 +1,4 @@
-package deploy
+package serviceops
 
 import (
 	"context"
@@ -12,8 +12,8 @@ import (
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
+	domain "mini-cloud/internal/controlplane/domain"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
-	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -112,7 +112,7 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 	if strings.TrimSpace(resolvedRegion) == "" {
 		return cloudplaneapi.ServiceSpec{}, ErrRegionRequired
 	}
-	if !controlservice.IsInstanceClass(in.Spec.InstanceClass) {
+	if !domain.IsInstanceClass(in.Spec.InstanceClass) {
 		return cloudplaneapi.ServiceSpec{}, ErrInvalidInstanceClass
 	}
 	resolvedExposure := strings.ToLower(strings.TrimSpace(in.Spec.Exposure))
@@ -272,7 +272,7 @@ func (s *Dispatcher) buildExecutionPlan(ctx context.Context, input ApplyServiceI
 			Password: local.Password,
 		}
 	}
-	env := cloneStringMap(spec.Env)
+	env := cloneEnvMap(spec.Env)
 	for key, value := range spec.SecretEnv {
 		env[key] = value
 	}
@@ -294,7 +294,7 @@ func (s *Dispatcher) buildExecutionPlan(ctx context.Context, input ApplyServiceI
 	}, nil
 }
 
-func cloneStringMap(input map[string]string) map[string]string {
+func cloneEnvMap(input map[string]string) map[string]string {
 	if len(input) == 0 {
 		return map[string]string{}
 	}

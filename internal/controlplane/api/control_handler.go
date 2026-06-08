@@ -8,8 +8,8 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/operationhistory"
+	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/inventory"
-	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planesync"
 	"mini-cloud/internal/controlplane/store"
 
@@ -32,7 +32,7 @@ func newControlHandler(logger *slog.Logger, stores *store.Store, syncer *planesy
 
 func (h controlHandler) createPlane(c *gin.Context) {
 	logger := requestScopedLogger(c, h.logger)
-	var input plane.CreateInput
+	var input domain.PlaneCreateInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -214,7 +214,7 @@ func (h controlHandler) updatePlaneOperation(c *gin.Context) {
 	withRequestLogFields(c, logctx.Fields{PlaneID: planeID})
 	logger := requestScopedLogger(c, h.logger)
 
-	var input plane.UpdateOperationInput
+	var input domain.PlaneUpdateOperationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -253,24 +253,24 @@ func (h controlHandler) updatePlaneOperation(c *gin.Context) {
 }
 
 func isPlaneInputError(err error) bool {
-	return errors.Is(err, plane.ErrPlaneNameRequired) ||
-		errors.Is(err, plane.ErrInvalidPlaneName) ||
-		errors.Is(err, plane.ErrPlaneDisplayNameRequired) ||
-		errors.Is(err, plane.ErrPlaneProviderRequired) ||
-		errors.Is(err, plane.ErrPlaneRegionRequired) ||
-		errors.Is(err, plane.ErrPlaneGRPCEndpointRequired) ||
-		errors.Is(err, plane.ErrPlaneSouthboundTokenRequired) ||
-		errors.Is(err, plane.ErrInvalidPlaneGRPCEndpoint) ||
-		errors.Is(err, plane.ErrInvalidPlaneStatus) ||
-		errors.Is(err, plane.ErrInvalidPlaneOperationState) ||
-		errors.Is(err, plane.ErrPlaneOperationReasonRequired) ||
-		errors.Is(err, plane.ErrInvalidNodesTotal) ||
-		errors.Is(err, plane.ErrInvalidNodesReady) ||
-		errors.Is(err, plane.ErrInvalidNodesReadyExceedsTotal) ||
-		errors.Is(err, plane.ErrInvalidCPUMilliCapacity) ||
-		errors.Is(err, plane.ErrInvalidCPUMilliAllocated) ||
-		errors.Is(err, plane.ErrInvalidCPUMilliAllocation) ||
-		errors.Is(err, plane.ErrInvalidMemoryMiCapacity) ||
-		errors.Is(err, plane.ErrInvalidMemoryMiAllocated) ||
-		errors.Is(err, plane.ErrInvalidMemoryMiAllocation)
+	return errors.Is(err, domain.ErrPlaneNameRequired) ||
+		errors.Is(err, domain.ErrInvalidPlaneName) ||
+		errors.Is(err, domain.ErrPlaneDisplayNameRequired) ||
+		errors.Is(err, domain.ErrPlaneProviderRequired) ||
+		errors.Is(err, domain.ErrPlaneRegionRequired) ||
+		errors.Is(err, domain.ErrPlaneGRPCEndpointRequired) ||
+		errors.Is(err, domain.ErrPlaneSouthboundTokenRequired) ||
+		errors.Is(err, domain.ErrInvalidPlaneGRPCEndpoint) ||
+		errors.Is(err, domain.ErrInvalidPlaneStatus) ||
+		errors.Is(err, domain.ErrInvalidPlaneOperationState) ||
+		errors.Is(err, domain.ErrPlaneOperationReasonRequired) ||
+		errors.Is(err, domain.ErrInvalidNodesTotal) ||
+		errors.Is(err, domain.ErrInvalidNodesReady) ||
+		errors.Is(err, domain.ErrInvalidNodesReadyExceedsTotal) ||
+		errors.Is(err, domain.ErrInvalidCPUMilliCapacity) ||
+		errors.Is(err, domain.ErrInvalidCPUMilliAllocated) ||
+		errors.Is(err, domain.ErrInvalidCPUMilliAllocation) ||
+		errors.Is(err, domain.ErrInvalidMemoryMiCapacity) ||
+		errors.Is(err, domain.ErrInvalidMemoryMiAllocated) ||
+		errors.Is(err, domain.ErrInvalidMemoryMiAllocation)
 }

@@ -211,8 +211,8 @@ control-plane 负责汇总全局 front door / CDN 需要的 service-level view�
 
 已改造为通过 execution plan 驱动 cloud-plane：
 
-- `internal/controlplane/controller`
-- `internal/controlplane/deploy`
+- `internal/controlplane/domain`
+- `internal/controlplane/serviceops`
 - `internal/controlplane/planeclient`
 - service status aggregation
 

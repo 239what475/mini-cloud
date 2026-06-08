@@ -7,8 +7,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/projectedfile"
-	plane "mini-cloud/internal/controlplane/plane"
-	controlservice "mini-cloud/internal/controlplane/service"
+	domain "mini-cloud/internal/controlplane/domain"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
 )
@@ -16,7 +15,7 @@ import (
 func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
-	createdPlane, err := db.Store.CreatePlane(context.Background(), plane.CreateInput{
+	createdPlane, err := db.Store.CreatePlane(context.Background(), domain.PlaneCreateInput{
 		Name:            "aliyun-bj-primary",
 		DisplayName:     "Aliyun Beijing Primary",
 		Provider:        "aliyun",
@@ -27,11 +26,11 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
-	if createdPlane.Status.Status != plane.StatusRegistering {
-		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, plane.StatusRegistering)
+	if createdPlane.Status.Status != domain.StatusRegistering {
+		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, domain.StatusRegistering)
 	}
-	if createdPlane.Operation.State != plane.OperationStateActive {
-		t.Fatalf("initial plane operation = %v, want %v", createdPlane.Operation.State, plane.OperationStateActive)
+	if createdPlane.Operation.State != domain.OperationStateActive {
+		t.Fatalf("initial plane operation = %v, want %v", createdPlane.Operation.State, domain.OperationStateActive)
 	}
 	if createdPlane.GRPCEndpoint != "plane-a.example.com:443" {
 		t.Fatalf("plane grpcEndpoint = %q", createdPlane.GRPCEndpoint)
@@ -58,24 +57,24 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("unexpected registered plane ids: %+v", registeredPlaneIDs)
 	}
 
-	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, plane.UpdateStatusInput{
-		Status:  plane.StatusReady,
+	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, domain.PlaneUpdateStatusInput{
+		Status:  domain.StatusReady,
 		Message: "heartbeat and snapshot are healthy",
 	})
 	if err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
-	if updatedStatus.Status != plane.StatusReady {
+	if updatedStatus.Status != domain.StatusReady {
 		t.Fatalf("updated status = %v, want ready", updatedStatus.Status)
 	}
-	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, plane.UpdateOperationInput{
-		State:  plane.OperationStateMaintenance,
+	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, domain.PlaneUpdateOperationInput{
+		State:  domain.OperationStateMaintenance,
 		Reason: "kernel upgrade",
 	}); err != nil {
 		t.Fatalf("UpdatePlaneOperation(maintenance) returned error: %v", err)
 	}
-	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, plane.UpdateOperationInput{
-		State: plane.OperationStateActive,
+	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, domain.PlaneUpdateOperationInput{
+		State: domain.OperationStateActive,
 	}); err != nil {
 		t.Fatalf("UpdatePlaneOperation(active) returned error: %v", err)
 	}
@@ -84,16 +83,16 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("GetPlane returned error: %v", err)
 	}
-	if gotPlane.Status.Status != plane.StatusReady {
+	if gotPlane.Status.Status != domain.StatusReady {
 		t.Fatalf("GetPlane status = %v, want ready", gotPlane.Status.Status)
 	}
-	if gotPlane.Operation.State != plane.OperationStateActive || !gotPlane.Operation.AcceptingNewRuns() {
+	if gotPlane.Operation.State != domain.OperationStateActive || !gotPlane.Operation.AcceptingNewRuns() {
 		t.Fatalf("expected plane operation to be active, got %+v", gotPlane.Operation)
 	}
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
 		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)
 	}
-	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, plane.RecordRuntimeInventoryInput{
+	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, domain.RecordRuntimeInventoryInput{
 		SyncVersion:       7,
 		ObservedAt:        time.Now().UTC(),
 		NodesTotal:        2,
@@ -102,7 +101,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		CPUMilliAllocated: 1500,
 		MemoryMiCapacity:  8192,
 		MemoryMiAllocated: 2048,
-		Nodes: []plane.RuntimeNode{
+		Nodes: []domain.RuntimeNode{
 			{
 				NodeID:            "node-a",
 				NodeEpoch:         1,
@@ -147,7 +146,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.LatestRuntimeInventory.SyncVersion != 7 {
 		t.Fatalf("latest runtime inventory syncVersion = %d, want 7", gotPlane.LatestRuntimeInventory.SyncVersion)
 	}
-	runtimeConfig, err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, plane.RecordRuntimeConfigInput{
+	runtimeConfig, err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, domain.RecordRuntimeConfigInput{
 		ObservedAt:  time.Now().UTC(),
 		Fingerprint: "fp-123",
 		Summary: map[string]any{
@@ -203,24 +202,24 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
-	planeItem, err := db.Store.CreatePlane(ctx, plane.CreateInput{
+	planeItem, err := db.Store.CreatePlane(ctx, domain.PlaneCreateInput{
 		Name:            "service-plane",
 		DisplayName:     "Service Plane",
 		Provider:        "aliyun",
 		Region:          "cn-beijing",
-		GRPCEndpoint:    "service-plane.example.com:443",
+		GRPCEndpoint:    "service-domain.example.com:443",
 		SouthboundToken: "service-plane-token",
 	})
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
 
-	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
+	serviceItem, err := db.Store.CreateService(ctx, domain.ServiceCreateInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
-		Spec: controlservice.Spec{
+		Spec: domain.Spec{
 			PlaneID:       planeItem.ID,
-			InstanceClass: controlservice.InstanceClassSmall,
+			InstanceClass: domain.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:v1",
 			DefaultPort:   8317,

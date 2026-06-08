@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"mini-cloud/internal/controlplane/resource"
+	"mini-cloud/internal/controlplane/domain"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -16,13 +16,13 @@ var (
 	ErrRegistryCredentialNameAlreadyExists = errors.New("registry credential name already exists")
 )
 
-func (s *Store) CreateRegistryCredential(ctx context.Context, input resource.CreateRegistryCredentialInput) (resource.RegistryCredential, error) {
+func (s *Store) CreateRegistryCredential(ctx context.Context, input domain.CreateRegistryCredentialInput) (domain.RegistryCredential, error) {
 	if err := input.Validate(); err != nil {
-		return resource.RegistryCredential{}, err
+		return domain.RegistryCredential{}, err
 	}
 	id, err := newID("reg")
 	if err != nil {
-		return resource.RegistryCredential{}, err
+		return domain.RegistryCredential{}, err
 	}
 	item, err := scanRegistryCredential(s.db.QueryRowContext(ctx, `
 		INSERT INTO registry_credentials (
@@ -43,12 +43,12 @@ func (s *Store) CreateRegistryCredential(ctx context.Context, input resource.Cre
 			updated_at
 	`, id, input.Name, input.Server, input.Username, input.Password))
 	if err != nil {
-		return resource.RegistryCredential{}, mapResourceWriteError(err, ErrRegistryCredentialNameAlreadyExists)
+		return domain.RegistryCredential{}, mapResourceWriteError(err, ErrRegistryCredentialNameAlreadyExists)
 	}
 	return item, nil
 }
 
-func (s *Store) ListRegistryCredentials(ctx context.Context) ([]resource.RegistryCredential, error) {
+func (s *Store) ListRegistryCredentials(ctx context.Context) ([]domain.RegistryCredential, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			id,
@@ -66,7 +66,7 @@ func (s *Store) ListRegistryCredentials(ctx context.Context) ([]resource.Registr
 	}
 	defer closeRows(rows)
 
-	items := make([]resource.RegistryCredential, 0)
+	items := make([]domain.RegistryCredential, 0)
 	for rows.Next() {
 		item, err := scanRegistryCredential(rows)
 		if err != nil {
@@ -80,7 +80,7 @@ func (s *Store) ListRegistryCredentials(ctx context.Context) ([]resource.Registr
 	return items, nil
 }
 
-func (s *Store) GetRegistryCredential(ctx context.Context, credentialID string) (resource.RegistryCredential, error) {
+func (s *Store) GetRegistryCredential(ctx context.Context, credentialID string) (domain.RegistryCredential, error) {
 	item, err := scanRegistryCredential(s.db.QueryRowContext(ctx, `
 		SELECT
 			id,
@@ -95,9 +95,9 @@ func (s *Store) GetRegistryCredential(ctx context.Context, credentialID string) 
 	`, credentialID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return resource.RegistryCredential{}, ErrRegistryCredentialNotFound
+			return domain.RegistryCredential{}, ErrRegistryCredentialNotFound
 		}
-		return resource.RegistryCredential{}, fmt.Errorf("query registry credential: %w", err)
+		return domain.RegistryCredential{}, fmt.Errorf("query registry credential: %w", err)
 	}
 	return item, nil
 }
@@ -113,8 +113,8 @@ func mapResourceWriteError(err error, duplicateErr error) error {
 	return fmt.Errorf("write resource: %w", err)
 }
 
-func scanRegistryCredential(scanner interface{ Scan(dest ...any) error }) (resource.RegistryCredential, error) {
-	var item resource.RegistryCredential
+func scanRegistryCredential(scanner interface{ Scan(dest ...any) error }) (domain.RegistryCredential, error) {
+	var item domain.RegistryCredential
 	if err := scanner.Scan(
 		&item.ID,
 		&item.Name,
@@ -124,7 +124,7 @@ func scanRegistryCredential(scanner interface{ Scan(dest ...any) error }) (resou
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
-		return resource.RegistryCredential{}, err
+		return domain.RegistryCredential{}, err
 	}
 	item.PasswordConfigured = item.Password != ""
 	return item, nil

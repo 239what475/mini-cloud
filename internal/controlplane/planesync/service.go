@@ -10,9 +10,8 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/cloudplaneapi"
-	plane "mini-cloud/internal/controlplane/plane"
+	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/planeclient"
-	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -32,7 +31,7 @@ type Syncer struct {
 }
 
 type Result struct {
-	Plane            plane.Detail                  `json:"plane"`
+	Plane            domain.Detail                 `json:"plane"`
 	ObservedProvider string                        `json:"observedProvider"`
 	ObservedRegion   string                        `json:"observedRegion"`
 	HealthCheckedAt  time.Time                     `json:"healthCheckedAt"`
@@ -170,7 +169,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	client, err := planeclient.New(grpcEndpoint, southboundToken)
 	if err != nil {
 		err = &syncError{
-			status:  plane.StatusOffline,
+			status:  domain.StatusOffline,
 			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
 		}
 	}
@@ -192,7 +191,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	snapshotResp, err := client.Snapshot(ctx)
 	if err != nil {
 		syncErr := &syncError{
-			status:  plane.StatusOffline,
+			status:  domain.StatusOffline,
 			message: fmt.Sprintf("load plane snapshot failed: %v", err),
 		}
 		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
@@ -216,7 +215,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	}
 	syncedAt := s.now()
 	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
-	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, plane.UpdateStatusInput{
+	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, domain.PlaneUpdateStatusInput{
 		Status:          status,
 		Message:         message,
 		LastHeartbeatAt: &snapshot.Health.CheckedAt,
@@ -269,7 +268,7 @@ func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, ex
 			continue
 		}
 		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
-		if serviceItem.Status.DesiredState == controlservice.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
+		if serviceItem.Status.DesiredState == domain.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
 			if err := s.store.DeleteServiceForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
 				!errors.Is(err, store.ErrServiceNotFound) &&
 				!errors.Is(err, store.ErrServiceGenerationConflict) {
@@ -277,7 +276,7 @@ func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, ex
 			}
 			continue
 		}
-		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, controlservice.UpdateStatusInput{
+		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, domain.ServiceUpdateStatusInput{
 			ObservedGeneration: status.ObservedGeneration,
 			Phase:              status.Phase,
 			Healthy:            status.Healthy,
@@ -301,34 +300,34 @@ func deleteExecutionPlanComplete(item cloudplaneapi.ExecutionSnapshot) bool {
 }
 
 type executionDerivedStatus struct {
-	controlservice.Status
-	Run controlservice.RunStatus
+	domain.Status
+	Run domain.RunStatus
 }
 
-func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
+func serviceStatusFromExecutionSnapshot(serviceItem domain.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
 	now := item.ObservedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	message := executionSnapshotMessage(item)
-	phase := controlservice.PhaseProgressing
+	phase := domain.PhaseProgressing
 	healthy := false
-	runPhase := controlservice.RunPhaseDispatching
+	runPhase := domain.RunPhaseDispatching
 
 	switch strings.TrimSpace(item.Status) {
 	case "failed":
-		phase = controlservice.PhaseDegraded
-		runPhase = controlservice.RunPhaseFailed
+		phase = domain.PhaseDegraded
+		runPhase = domain.RunPhaseFailed
 	case "running":
-		phase = controlservice.PhaseReady
+		phase = domain.PhaseReady
 		healthy = true
-		runPhase = controlservice.RunPhaseRunning
+		runPhase = domain.RunPhaseRunning
 	case "superseded":
-		runPhase = controlservice.RunPhaseSuperseded
+		runPhase = domain.RunPhaseSuperseded
 	}
-	runStatus := controlservice.CloneRunStatus(serviceItem.Status.Run)
+	runStatus := domain.CloneRunStatus(serviceItem.Status.Run)
 	runStatus.LatestRunID = item.PlanID
-	if runPhase == controlservice.RunPhaseRunning {
+	if runPhase == domain.RunPhaseRunning {
 		runStatus.CurrentRunID = item.PlanID
 	}
 	runStatus.Phase = runPhase
@@ -336,7 +335,7 @@ func serviceStatusFromExecutionSnapshot(serviceItem controlservice.Service, item
 	runStatus.LastObservedAt = &now
 
 	return executionDerivedStatus{
-		Status: controlservice.Status{
+		Status: domain.Status{
 			ObservedGeneration: item.ServiceGeneration,
 			Phase:              phase,
 			Healthy:            healthy,
@@ -367,7 +366,7 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 
 func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
-	_, err := s.store.UpdatePlaneStatus(ctx, planeID, plane.UpdateStatusInput{
+	_, err := s.store.UpdatePlaneStatus(ctx, planeID, domain.PlaneUpdateStatusInput{
 		Status:          syncErr.status,
 		Message:         syncErr.message,
 		LastHeartbeatAt: syncErr.lastHeartbeatAt,
@@ -376,7 +375,7 @@ func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, sy
 	return err
 }
 
-func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string, string, int) {
+func derivePlaneStatus(planeDetail domain.Detail, snapshot planeSnapshot) (string, string, int) {
 	alertsFiring := snapshot.Reliability.AlertsFiring
 
 	issues := make([]string, 0, 3)
@@ -405,7 +404,7 @@ func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string
 	}
 
 	if len(issues) == 0 {
-		return plane.StatusReady, fmt.Sprintf(
+		return domain.StatusReady, fmt.Sprintf(
 			"sync healthy: %d nodes, %d services, %d execution plans",
 			snapshot.Overview.NodesTotal,
 			snapshot.Overview.ServicesTotal,
@@ -413,11 +412,11 @@ func derivePlaneStatus(planeDetail plane.Detail, snapshot planeSnapshot) (string
 		), alertsFiring
 	}
 
-	return plane.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
+	return domain.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
 }
 
-func buildRuntimeInventory(snapshot planeSnapshot) plane.RecordRuntimeInventoryInput {
-	out := plane.RecordRuntimeInventoryInput{
+func buildRuntimeInventory(snapshot planeSnapshot) domain.RecordRuntimeInventoryInput {
+	out := domain.RecordRuntimeInventoryInput{
 		SyncVersion:       snapshot.Runtime.SyncVersion,
 		ObservedAt:        snapshot.Runtime.ObservedAt,
 		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
@@ -426,10 +425,10 @@ func buildRuntimeInventory(snapshot planeSnapshot) plane.RecordRuntimeInventoryI
 		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
 		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
 		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
-		Nodes:             make([]plane.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
+		Nodes:             make([]domain.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
 	}
 	for _, item := range snapshot.Runtime.Nodes {
-		out.Nodes = append(out.Nodes, plane.RuntimeNode{
+		out.Nodes = append(out.Nodes, domain.RuntimeNode{
 			NodeID:            item.NodeID,
 			NodeEpoch:         item.NodeEpoch,
 			Name:              item.Name,
@@ -449,8 +448,8 @@ func buildRuntimeInventory(snapshot planeSnapshot) plane.RecordRuntimeInventoryI
 	return out
 }
 
-func buildRuntimeConfig(snapshot planeSnapshot) plane.RecordRuntimeConfigInput {
-	return plane.RecordRuntimeConfigInput{
+func buildRuntimeConfig(snapshot planeSnapshot) domain.RecordRuntimeConfigInput {
+	return domain.RecordRuntimeConfigInput{
 		ObservedAt:  snapshot.RuntimeConfig.ObservedAt,
 		Fingerprint: snapshot.RuntimeConfig.Fingerprint,
 		Summary:     snapshot.RuntimeConfig.Summary,

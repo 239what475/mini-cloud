@@ -4,15 +4,15 @@ import (
 	"testing"
 	"time"
 
-	plane "mini-cloud/internal/controlplane/plane"
+	domain "mini-cloud/internal/controlplane/domain"
 )
 
 func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
-	view := Build([]plane.Detail{
+	view := Build([]domain.Detail{
 		{
-			Plane: plane.Plane{
+			Plane: domain.Plane{
 				ID:           "pln_a",
 				Name:         "aliyun-bj-primary",
 				DisplayName:  "Aliyun Beijing Primary",
@@ -20,20 +20,20 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				Region:       "cn-beijing",
 				GRPCEndpoint: "plane-a.example.com:443",
 			},
-			Status: plane.PlaneStatus{
-				Status:          plane.StatusReady,
+			Status: domain.PlaneStatus{
+				Status:          domain.StatusReady,
 				Message:         "healthy",
 				LastHeartbeatAt: &now,
 				LastSyncAt:      &now,
 			},
-			Registration: plane.Registration{
+			Registration: domain.Registration{
 				Registered: true,
 			},
-			Operation: plane.Operation{
-				State:     plane.OperationStateActive,
+			Operation: domain.Operation{
+				State:     domain.OperationStateActive,
 				UpdatedAt: now,
 			},
-			LatestRuntimeInventory: &plane.RuntimeInventorySnapshot{
+			LatestRuntimeInventory: &domain.RuntimeInventorySnapshot{
 				NodesTotal:        2,
 				NodesReady:        2,
 				CPUMilliCapacity:  4000,
@@ -44,7 +44,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 			},
 		},
 		{
-			Plane: plane.Plane{
+			Plane: domain.Plane{
 				ID:           "pln_b",
 				Name:         "tencent-bj-primary",
 				DisplayName:  "Tencent Beijing Primary",
@@ -52,21 +52,21 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				Region:       "ap-beijing",
 				GRPCEndpoint: "plane-b.example.com:443",
 			},
-			Status: plane.PlaneStatus{
-				Status:          plane.StatusDegraded,
+			Status: domain.PlaneStatus{
+				Status:          domain.StatusDegraded,
 				Message:         "one node offline",
 				LastHeartbeatAt: &now,
 				LastSyncAt:      &now,
 			},
-			Registration: plane.Registration{
+			Registration: domain.Registration{
 				Registered: true,
 			},
-			Operation: plane.Operation{
-				State:     plane.OperationStateDraining,
+			Operation: domain.Operation{
+				State:     domain.OperationStateDraining,
 				Reason:    "planned evacuation",
 				UpdatedAt: now,
 			},
-			LatestRuntimeInventory: &plane.RuntimeInventorySnapshot{
+			LatestRuntimeInventory: &domain.RuntimeInventorySnapshot{
 				NodesTotal:        1,
 				NodesReady:        0,
 				CPUMilliCapacity:  2000,
@@ -77,7 +77,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 			},
 		},
 		{
-			Plane: plane.Plane{
+			Plane: domain.Plane{
 				ID:           "pln_c",
 				Name:         "aliyun-hz-secondary",
 				DisplayName:  "Aliyun Hangzhou Secondary",
@@ -85,15 +85,15 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				Region:       "cn-hangzhou",
 				GRPCEndpoint: "plane-c.example.com:443",
 			},
-			Status: plane.PlaneStatus{
-				Status:  plane.StatusRegistering,
+			Status: domain.PlaneStatus{
+				Status:  domain.StatusRegistering,
 				Message: "awaiting registration handshake",
 			},
-			Registration: plane.Registration{
+			Registration: domain.Registration{
 				Registered: false,
 			},
-			Operation: plane.Operation{
-				State:     plane.OperationStateMaintenance,
+			Operation: domain.Operation{
+				State:     domain.OperationStateMaintenance,
 				Reason:    "bootstrap fixes",
 				UpdatedAt: now,
 			},

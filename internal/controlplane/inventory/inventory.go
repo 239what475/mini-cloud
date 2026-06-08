@@ -4,7 +4,7 @@ import (
 	"sort"
 	"time"
 
-	plane "mini-cloud/internal/controlplane/plane"
+	domain "mini-cloud/internal/controlplane/domain"
 )
 
 type Summary struct {
@@ -74,7 +74,7 @@ type View struct {
 	Planes    []Plane `json:"planes"`
 }
 
-func Build(items []plane.Detail) View {
+func Build(items []domain.Detail) View {
 	view := View{
 		Providers: make([]Group, 0),
 		Regions:   make([]Group, 0),
@@ -136,7 +136,7 @@ func Build(items []plane.Detail) View {
 	return view
 }
 
-func buildPlane(item plane.Detail) Plane {
+func buildPlane(item domain.Detail) Plane {
 	plane := Plane{
 		ID:               item.ID,
 		Name:             item.Name,
@@ -183,21 +183,21 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	}
 
 	switch planeView.Status {
-	case string(plane.StatusRegistering):
+	case string(domain.StatusRegistering):
 		summary.PlanesRegistering++
-	case string(plane.StatusReady):
+	case string(domain.StatusReady):
 		summary.PlanesReady++
-	case string(plane.StatusDegraded):
+	case string(domain.StatusDegraded):
 		summary.PlanesDegraded++
-	case string(plane.StatusOffline):
+	case string(domain.StatusOffline):
 		summary.PlanesOffline++
 	}
 	switch planeView.OperationState {
-	case string(plane.OperationStateActive):
+	case string(domain.OperationStateActive):
 		summary.PlanesActive++
-	case string(plane.OperationStateMaintenance):
+	case string(domain.OperationStateMaintenance):
 		summary.PlanesMaintenance++
-	case string(plane.OperationStateDraining):
+	case string(domain.OperationStateDraining):
 		summary.PlanesDraining++
 	}
 

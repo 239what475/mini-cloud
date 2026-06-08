@@ -1,4 +1,4 @@
-package service
+package domain
 
 import (
 	"errors"
@@ -88,7 +88,7 @@ type Status struct {
 	RemoteMessage      string     `json:"remoteMessage,omitempty"`
 }
 
-type UpdateStatusInput struct {
+type ServiceUpdateStatusInput struct {
 	ObservedGeneration int64
 	Phase              string
 	Healthy            bool
@@ -125,18 +125,18 @@ func CloneRunStatus(input RunStatus) RunStatus {
 	return out
 }
 
-type CreateInput struct {
+type ServiceCreateInput struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Spec        Spec   `json:"spec"`
 }
 
-type UpdateInput struct {
+type ServiceUpdateInput struct {
 	DisplayName string `json:"displayName"`
 	Spec        Spec   `json:"spec"`
 }
 
-func (in CreateInput) Validate() error {
+func (in ServiceCreateInput) Validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return ErrServiceNameRequired
 	}
@@ -149,7 +149,7 @@ func (in CreateInput) Validate() error {
 	return in.Spec.Validate()
 }
 
-func (in UpdateInput) Validate(serviceName string) error {
+func (in ServiceUpdateInput) Validate(serviceName string) error {
 	if strings.TrimSpace(serviceName) == "" {
 		return ErrServiceNameRequired
 	}
@@ -162,8 +162,8 @@ func (in UpdateInput) Validate(serviceName string) error {
 	return in.Spec.Validate()
 }
 
-func (s Service) UpdateInput() UpdateInput {
-	return UpdateInput{
+func (s Service) UpdateInput() ServiceUpdateInput {
+	return ServiceUpdateInput{
 		DisplayName: s.Metadata.DisplayName,
 		Spec:        CloneSpec(s.Spec),
 	}

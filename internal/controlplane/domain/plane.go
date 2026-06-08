@@ -1,4 +1,4 @@
-package plane
+package domain
 
 import (
 	"errors"
@@ -125,7 +125,7 @@ type Detail struct {
 	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }
 
-type CreateInput struct {
+type PlaneCreateInput struct {
 	Name            string `json:"name"`
 	DisplayName     string `json:"displayName"`
 	Provider        string `json:"provider"`
@@ -134,14 +134,14 @@ type CreateInput struct {
 	SouthboundToken string `json:"southboundToken"`
 }
 
-type UpdateStatusInput struct {
+type PlaneUpdateStatusInput struct {
 	Status          string     `json:"status"`
 	Message         string     `json:"message"`
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
 }
 
-type UpdateOperationInput struct {
+type PlaneUpdateOperationInput struct {
 	State  string `json:"state"`
 	Reason string `json:"reason"`
 }
@@ -164,7 +164,7 @@ type RecordRuntimeConfigInput struct {
 	Summary     map[string]any `json:"summary"`
 }
 
-func (in CreateInput) Validate() error {
+func (in PlaneCreateInput) Validate() error {
 	switch {
 	case strings.TrimSpace(in.Name) == "":
 		return ErrPlaneNameRequired
@@ -184,18 +184,18 @@ func (in CreateInput) Validate() error {
 	return err
 }
 
-func (in CreateInput) ResolvedGRPCEndpoint() (string, error) {
+func (in PlaneCreateInput) ResolvedGRPCEndpoint() (string, error) {
 	return normalizeGRPCEndpoint(in.GRPCEndpoint)
 }
 
-func (in UpdateStatusInput) Validate() error {
+func (in PlaneUpdateStatusInput) Validate() error {
 	if !IsStatus(in.Status) {
 		return ErrInvalidPlaneStatus
 	}
 	return nil
 }
 
-func (in UpdateOperationInput) Validate() error {
+func (in PlaneUpdateOperationInput) Validate() error {
 	if !IsOperationState(in.State) {
 		return ErrInvalidPlaneOperationState
 	}
@@ -205,7 +205,7 @@ func (in UpdateOperationInput) Validate() error {
 	return nil
 }
 
-func (in UpdateOperationInput) ResolvedReason() string {
+func (in PlaneUpdateOperationInput) ResolvedReason() string {
 	if in.State == OperationStateActive {
 		return ""
 	}

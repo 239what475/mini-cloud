@@ -1,4 +1,4 @@
-package controller
+package serviceops
 
 import (
 	"context"
@@ -7,9 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"mini-cloud/internal/controlplane/deploy"
-	plane "mini-cloud/internal/controlplane/plane"
-	controlservice "mini-cloud/internal/controlplane/service"
+	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/testutil"
 )
 
@@ -28,7 +26,7 @@ func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	if view.Service.Metadata.Generation != 1 {
 		t.Fatalf("generation = %d, want 1", view.Service.Metadata.Generation)
 	}
-	if view.Service.Status.Observed.Phase != controlservice.PhaseReady {
+	if view.Service.Status.Observed.Phase != domain.PhaseReady {
 		t.Fatalf("phase = %s, want ready", view.Service.Status.Observed.Phase)
 	}
 	if view.Service.Status.Observed.AssignedPlaneID != planeItem.ID {
@@ -114,7 +112,7 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetService after delete returned error: %v", err)
 	}
-	if reloaded.Status.DesiredState != controlservice.DesiredStateDeleted || reloaded.Status.Observed.Phase != controlservice.PhaseDeleting {
+	if reloaded.Status.DesiredState != domain.DesiredStateDeleted || reloaded.Status.Observed.Phase != domain.PhaseDeleting {
 		t.Fatalf("service status after delete = %+v, want deleting", reloaded.Status)
 	}
 	if len(deployer.deleteInputs) != 1 {
@@ -127,18 +125,18 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	}
 }
 
-func createInput(planeID string, name string, displayName string, image string) controlservice.CreateInput {
-	return controlservice.CreateInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func createInput(planeID string, name string, displayName string, image string) domain.ServiceCreateInput {
+	return domain.ServiceCreateInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func updateInput(planeID string, displayName string, image string) controlservice.UpdateInput {
-	return controlservice.UpdateInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func updateInput(planeID string, displayName string, image string) domain.ServiceUpdateInput {
+	return domain.ServiceUpdateInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func serviceSpec(planeID string, image string) controlservice.Spec {
-	return controlservice.Spec{
+func serviceSpec(planeID string, image string) domain.Spec {
+	return domain.Spec{
 		PlaneID:       planeID,
-		InstanceClass: controlservice.InstanceClassSmall,
+		InstanceClass: domain.InstanceClassSmall,
 		Exposure:      "public",
 		Image:         image,
 		DefaultPort:   80,
@@ -148,9 +146,9 @@ func serviceSpec(planeID string, image string) controlservice.Spec {
 
 type fakeDeploy struct {
 	applyPlaneIDs  []string
-	applyInputs    []deploy.ApplyServiceInput
+	applyInputs    []ApplyServiceInput
 	deletePlaneIDs []string
-	deleteInputs   []deploy.DeleteServiceInput
+	deleteInputs   []DeleteServiceInput
 	deleteCalls    int
 }
 
@@ -158,23 +156,23 @@ func newFakeDeploy() *fakeDeploy {
 	return &fakeDeploy{}
 }
 
-func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
+func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input ApplyServiceInput) (ApplyResult, error) {
 	f.applyPlaneIDs = append(f.applyPlaneIDs, planeID)
 	f.applyInputs = append(f.applyInputs, input)
-	return deploy.ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
+	return ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
 }
 
-func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input deploy.DeleteServiceInput) error {
+func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input DeleteServiceInput) error {
 	f.deleteCalls++
 	f.deletePlaneIDs = append(f.deletePlaneIDs, planeID)
 	f.deleteInputs = append(f.deleteInputs, input)
 	return nil
 }
 
-func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) plane.Detail {
+func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) domain.Detail {
 	t.Helper()
 	ctx := context.Background()
-	item, err := db.Store.CreatePlane(ctx, plane.CreateInput{
+	item, err := db.Store.CreatePlane(ctx, domain.PlaneCreateInput{
 		Name:            name,
 		DisplayName:     name,
 		Provider:        "aliyun",
@@ -185,7 +183,7 @@ func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, na
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
-	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, plane.UpdateStatusInput{Status: plane.StatusReady, Message: "ready"}); err != nil {
+	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, domain.PlaneUpdateStatusInput{Status: domain.StatusReady, Message: "ready"}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 	detail, err := db.Store.GetPlane(ctx, item.ID)

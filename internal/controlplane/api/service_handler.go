@@ -10,8 +10,8 @@ import (
 
 	"mini-cloud/internal/common/operationhistory"
 	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/controlplane/controller"
-	controlservice "mini-cloud/internal/controlplane/service"
+	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/serviceops"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -101,10 +101,10 @@ var errServiceSpecRequired = errors.New("spec is required")
 type serviceHandler struct {
 	logger   *slog.Logger
 	store    *store.Store
-	services *controller.Controller
+	services *serviceops.Controller
 }
 
-func newServiceHandler(logger *slog.Logger, stores *store.Store, services *controller.Controller) serviceHandler {
+func newServiceHandler(logger *slog.Logger, stores *store.Store, services *serviceops.Controller) serviceHandler {
 	return serviceHandler{
 		logger:   logger,
 		store:    stores,
@@ -278,7 +278,7 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 	})
 }
 
-func buildServiceResource(view controller.View) serviceResource {
+func buildServiceResource(view serviceops.View) serviceResource {
 	status := buildServiceStatus(view)
 	return serviceResource{
 		Metadata: serviceMetadata{
@@ -305,7 +305,7 @@ func buildServiceResource(view controller.View) serviceResource {
 	}
 }
 
-func buildServiceStatus(view controller.View) serviceStatus {
+func buildServiceStatus(view serviceops.View) serviceStatus {
 	serviceItem := view.Service
 	status := serviceStatus{
 		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
@@ -322,7 +322,7 @@ func buildServiceStatus(view controller.View) serviceStatus {
 	return status
 }
 
-func buildServiceRun(input controlservice.RunStatus) serviceRunStatus {
+func buildServiceRun(input domain.RunStatus) serviceRunStatus {
 	out := serviceRunStatus{
 		CurrentRunID: input.CurrentRunID,
 		LatestRunID:  input.LatestRunID,
@@ -347,15 +347,15 @@ func sortedKeys(values map[string]string) []string {
 	return keys
 }
 
-func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error) {
+func (r serviceCreateRequest) toCreateInput() (domain.ServiceCreateInput, error) {
 	if r.Spec == nil {
-		return controlservice.CreateInput{}, errServiceSpecRequired
+		return domain.ServiceCreateInput{}, errServiceSpecRequired
 	}
 	spec := *r.Spec
-	return controlservice.CreateInput{
+	return domain.ServiceCreateInput{
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec: controlservice.Spec{
+		Spec: domain.Spec{
 			PlaneID:              strings.TrimSpace(spec.PlaneID),
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
@@ -372,14 +372,14 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 	}, nil
 }
 
-func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error) {
+func (r serviceUpdateRequest) toUpdateInput() (domain.ServiceUpdateInput, error) {
 	if r.Spec == nil {
-		return controlservice.UpdateInput{}, errServiceSpecRequired
+		return domain.ServiceUpdateInput{}, errServiceSpecRequired
 	}
 	spec := *r.Spec
-	return controlservice.UpdateInput{
+	return domain.ServiceUpdateInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec: controlservice.Spec{
+		Spec: domain.Spec{
 			PlaneID:              strings.TrimSpace(spec.PlaneID),
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
@@ -398,16 +398,16 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 
 func isServiceInputError(err error) bool {
 	return errors.Is(err, errServiceSpecRequired) ||
-		errors.Is(err, controlservice.ErrServiceNameRequired) ||
-		errors.Is(err, controlservice.ErrInvalidServiceName) ||
-		errors.Is(err, controlservice.ErrDisplayNameRequired) ||
-		errors.Is(err, controlservice.ErrPlaneIDRequired) ||
-		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
-		errors.Is(err, controlservice.ErrInvalidExposure) ||
-		errors.Is(err, controlservice.ErrImageRequired) ||
-		errors.Is(err, controlservice.ErrInvalidDefaultPort) ||
-		errors.Is(err, controlservice.ErrInvalidReadinessPath) ||
-		errors.Is(err, controlservice.ErrInvalidEnvironmentKey) ||
+		errors.Is(err, domain.ErrServiceNameRequired) ||
+		errors.Is(err, domain.ErrInvalidServiceName) ||
+		errors.Is(err, domain.ErrDisplayNameRequired) ||
+		errors.Is(err, domain.ErrPlaneIDRequired) ||
+		errors.Is(err, domain.ErrInvalidInstanceClass) ||
+		errors.Is(err, domain.ErrInvalidExposure) ||
+		errors.Is(err, domain.ErrImageRequired) ||
+		errors.Is(err, domain.ErrInvalidDefaultPort) ||
+		errors.Is(err, domain.ErrInvalidReadinessPath) ||
+		errors.Is(err, domain.ErrInvalidEnvironmentKey) ||
 		errors.Is(err, projectedfile.ErrMountPathRequired) ||
 		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||
 		errors.Is(err, projectedfile.ErrMountPathInvalid) ||

@@ -8,10 +8,9 @@ import (
 
 	"mini-cloud/internal/common/logquery"
 	"mini-cloud/internal/common/util"
-	"mini-cloud/internal/controlplane/controller"
-	"mini-cloud/internal/controlplane/deploy"
-	plane "mini-cloud/internal/controlplane/plane"
+	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/planesync"
+	"mini-cloud/internal/controlplane/serviceops"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -22,8 +21,8 @@ type Options struct {
 	UIDir             string
 	LogQueryService   logquery.Backend
 	PlaneSyncer       *planesync.Syncer
-	Dispatcher        *deploy.Dispatcher
-	ServiceController *controller.Controller
+	Dispatcher        *serviceops.Dispatcher
+	ServiceController *serviceops.Controller
 }
 
 func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler {
@@ -34,10 +33,10 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	authz := newAuthController(opts.AdminToken, logger, stores)
 
 	if opts.Dispatcher == nil {
-		opts.Dispatcher = deploy.NewDispatcher(logger, stores)
+		opts.Dispatcher = serviceops.NewDispatcher(logger, stores)
 	}
 	if opts.ServiceController == nil {
-		opts.ServiceController = controller.New(logger, stores, opts.Dispatcher)
+		opts.ServiceController = serviceops.New(logger, stores, opts.Dispatcher)
 	}
 
 	serveRootJSONOrIndex(logger, opts.UIDir, router)
@@ -96,7 +95,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	return router
 }
 
-func renderControlMetrics(controlPlanes []plane.Detail, now time.Time) string {
+func renderControlMetrics(controlPlanes []domain.Detail, now time.Time) string {
 	var out strings.Builder
 	out.WriteString("# HELP minicloud_plane_count Current number of planes registered in the control-plane store.\n")
 	out.WriteString("# TYPE minicloud_plane_count gauge\n")

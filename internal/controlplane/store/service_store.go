@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"mini-cloud/internal/common/projectedfile"
-	controlservice "mini-cloud/internal/controlplane/service"
+	domain "mini-cloud/internal/controlplane/domain"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -50,48 +50,48 @@ const serviceSelectColumns = `
 	updated_at
 `
 
-func (s *Store) CreateService(ctx context.Context, input controlservice.CreateInput) (controlservice.Service, error) {
+func (s *Store) CreateService(ctx context.Context, input domain.ServiceCreateInput) (domain.Service, error) {
 	if err := input.Validate(); err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
-	planeID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	planeID, instanceClass, err := domain.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 
 	id, err := newID("svc")
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 
 	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service command: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service command: %w", err)
 	}
 	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service args: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service args: %w", err)
 	}
 	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service env: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service env: %w", err)
 	}
 	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service secret env: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service secret env: %w", err)
 	}
 	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service files: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service files: %w", err)
 	}
-	initialStatus := controlservice.PendingStatus(0, "waiting for service reconcile")
-	initialRun := controlservice.RunStatus{Phase: controlservice.RunPhasePending}
-	runJSON, err := marshalJSON(initialRun, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
+	initialStatus := domain.PendingStatus(0, "waiting for service reconcile")
+	initialRun := domain.RunStatus{Phase: domain.RunPhasePending}
+	runJSON, err := marshalJSON(initialRun, domain.RunStatus{Phase: domain.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service initial run: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
 
 	item, err := scanService(s.db.QueryRowContext(ctx, `
@@ -142,7 +142,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		input.Spec.RegistryCredentialID,
 		filesJSON,
 		runJSON,
-		controlservice.DesiredStateActive,
+		domain.DesiredStateActive,
 		initialStatus.ObservedGeneration,
 		initialStatus.Phase,
 		initialStatus.Healthy,
@@ -153,15 +153,15 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23505":
-				return controlservice.Service{}, ErrServiceNameAlreadyExists
+				return domain.Service{}, ErrServiceNameAlreadyExists
 			}
 		}
-		return controlservice.Service{}, fmt.Errorf("insert service: %w", err)
+		return domain.Service{}, fmt.Errorf("insert service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) ListServices(ctx context.Context) ([]controlservice.Service, error) {
+func (s *Store) ListServices(ctx context.Context) ([]domain.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -172,7 +172,7 @@ func (s *Store) ListServices(ctx context.Context) ([]controlservice.Service, err
 	}
 	defer closeRows(rows)
 
-	items := make([]controlservice.Service, 0)
+	items := make([]domain.Service, 0)
 	for rows.Next() {
 		item, err := scanService(rows)
 		if err != nil {
@@ -186,7 +186,7 @@ func (s *Store) ListServices(ctx context.Context) ([]controlservice.Service, err
 	return items, nil
 }
 
-func (s *Store) GetService(ctx context.Context, serviceID string) (controlservice.Service, error) {
+func (s *Store) GetService(ctx context.Context, serviceID string) (domain.Service, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -194,14 +194,14 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (controlservic
 	`, serviceID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlservice.Service{}, ErrServiceNotFound
+			return domain.Service{}, ErrServiceNotFound
 		}
-		return controlservice.Service{}, fmt.Errorf("query service: %w", err)
+		return domain.Service{}, fmt.Errorf("query service: %w", err)
 	}
 	return item, nil
 }
 
-func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (controlservice.Service, error) {
+func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (domain.Service, error) {
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -210,38 +210,38 @@ func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (c
 	`, serviceID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlservice.Service{}, ErrServiceNotFound
+			return domain.Service{}, ErrServiceNotFound
 		}
-		return controlservice.Service{}, fmt.Errorf("query service for update: %w", err)
+		return domain.Service{}, fmt.Errorf("query service for update: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) UpdateService(ctx context.Context, serviceID string, input controlservice.UpdateInput) (controlservice.Service, error) {
+func (s *Store) UpdateService(ctx context.Context, serviceID string, input domain.ServiceUpdateInput) (domain.Service, error) {
 	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service command for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service command for update: %w", err)
 	}
 	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service args for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service args for update: %w", err)
 	}
 	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service env for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service env for update: %w", err)
 	}
 	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
 	}
 	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service files for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service files for update: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("begin update service tx: %w", err)
+		return domain.Service{}, fmt.Errorf("begin update service tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -249,25 +249,25 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 	if err := input.Validate(current.Metadata.Name); err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
-	planeID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	planeID, instanceClass, err := domain.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
-	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
+	currentRunJSON, err := marshalJSON(current.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service run for update: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	pendingStatus := controlservice.PendingStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
+	pendingStatus := domain.PendingStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		UPDATE fleet_services
@@ -316,7 +316,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		filesJSON,
 		currentRunJSON,
 		nextGeneration,
-		controlservice.DesiredStateActive,
+		domain.DesiredStateActive,
 		pendingStatus.ObservedGeneration,
 		pendingStatus.Phase,
 		pendingStatus.Healthy,
@@ -325,21 +325,21 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlservice.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+			return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 		}
-		return controlservice.Service{}, fmt.Errorf("update service: %w", err)
+		return domain.Service{}, fmt.Errorf("update service: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return controlservice.Service{}, fmt.Errorf("commit update service: %w", err)
+		return domain.Service{}, fmt.Errorf("commit update service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID string) (controlservice.Service, error) {
+func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID string) (domain.Service, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("begin delete service tx: %w", err)
+		return domain.Service{}, fmt.Errorf("begin delete service tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -347,17 +347,17 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
-	if current.Status.DesiredState == controlservice.DesiredStateDeleted {
+	if current.Status.DesiredState == domain.DesiredStateDeleted {
 		return current, nil
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	deletingStatus := controlservice.DeletingStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
-	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
+	deletingStatus := domain.DeletingStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
+	currentRunJSON, err := marshalJSON(current.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
 	}
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
@@ -380,7 +380,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	`,
 		serviceID,
 		nextGeneration,
-		controlservice.DesiredStateDeleted,
+		domain.DesiredStateDeleted,
 		deletingStatus.ObservedGeneration,
 		deletingStatus.Phase,
 		deletingStatus.Healthy,
@@ -390,41 +390,41 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return controlservice.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+			return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 		}
-		return controlservice.Service{}, fmt.Errorf("mark service deletion requested: %w", err)
+		return domain.Service{}, fmt.Errorf("mark service deletion requested: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return controlservice.Service{}, fmt.Errorf("commit delete service: %w", err)
+		return domain.Service{}, fmt.Errorf("commit delete service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input controlservice.UpdateStatusInput) (controlservice.Service, error) {
+func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, nil, input)
 }
 
-func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input controlservice.UpdateStatusInput) (controlservice.Service, error) {
+func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, &expectedGeneration, input)
 }
 
-func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input controlservice.UpdateStatusInput) (controlservice.Service, error) {
+func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
 	current, err := s.GetService(ctx, serviceID)
 	if err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 	if expectedGeneration != nil && current.Metadata.Generation != *expectedGeneration {
-		return controlservice.Service{}, ErrServiceGenerationConflict
+		return domain.Service{}, ErrServiceGenerationConflict
 	}
 
 	nextRun := current.Status.Run
 	if input.Run != nil {
-		nextRun = controlservice.CloneRunStatus(*input.Run)
+		nextRun = domain.CloneRunStatus(*input.Run)
 	}
-	runJSON, err := marshalJSON(nextRun, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
+	runJSON, err := marshalJSON(nextRun, domain.RunStatus{Phase: domain.RunPhasePending})
 	if err != nil {
-		return controlservice.Service{}, fmt.Errorf("marshal service run status: %w", err)
+		return domain.Service{}, fmt.Errorf("marshal service run status: %w", err)
 	}
 
 	query := `
@@ -464,11 +464,11 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if expectedGeneration != nil {
-				return controlservice.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, *expectedGeneration)
+				return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, *expectedGeneration)
 			}
-			return controlservice.Service{}, ErrServiceNotFound
+			return domain.Service{}, ErrServiceNotFound
 		}
-		return controlservice.Service{}, fmt.Errorf("update service status: %w", err)
+		return domain.Service{}, fmt.Errorf("update service status: %w", err)
 	}
 	return item, nil
 }
@@ -512,8 +512,8 @@ func classifyServiceGenerationConflict(ctx context.Context, stores *Store, servi
 	return ErrServiceNotFound
 }
 
-func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.Service, error) {
-	var item controlservice.Service
+func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, error) {
+	var item domain.Service
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
@@ -552,28 +552,28 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
-		return controlservice.Service{}, err
+		return domain.Service{}, err
 	}
 	if err := unmarshalJSON(commandJSON, &item.Spec.Command, []string{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service command: %w", err)
+		return domain.Service{}, fmt.Errorf("decode service command: %w", err)
 	}
 	if err := unmarshalJSON(argsJSON, &item.Spec.Args, []string{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service args: %w", err)
+		return domain.Service{}, fmt.Errorf("decode service args: %w", err)
 	}
 	if err := unmarshalJSON(envJSON, &item.Spec.Env, map[string]string{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service env: %w", err)
+		return domain.Service{}, fmt.Errorf("decode service env: %w", err)
 	}
 	if err := unmarshalJSON(secretEnvJSON, &item.Spec.SecretEnv, map[string]string{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service secret env: %w", err)
+		return domain.Service{}, fmt.Errorf("decode service secret env: %w", err)
 	}
 	if err := unmarshalJSON(filesJSON, &item.Spec.Files, []projectedfile.File{}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service files: %w", err)
+		return domain.Service{}, fmt.Errorf("decode service files: %w", err)
 	}
 	item.Spec.Files = projectedfile.CloneFiles(item.Spec.Files)
-	if err := unmarshalJSON(runJSON, &item.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending}); err != nil {
-		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
+	if err := unmarshalJSON(runJSON, &item.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending}); err != nil {
+		return domain.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
-	item.Status.Run.Phase = controlservice.NormalizeRunPhase(item.Status.Run.Phase)
+	item.Status.Run.Phase = domain.NormalizeRunPhase(item.Status.Run.Phase)
 	if lastReconciledAt.Valid {
 		lastValue := lastReconciledAt.Time.UTC()
 		item.Status.Observed.LastReconciledAt = &lastValue

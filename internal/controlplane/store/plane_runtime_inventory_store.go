@@ -6,21 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	plane "mini-cloud/internal/controlplane/plane"
+	domain "mini-cloud/internal/controlplane/domain"
 )
 
-func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string, input plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error) {
+func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string, input domain.RecordRuntimeInventoryInput) (domain.RuntimeInventorySnapshot, []domain.RuntimeNode, error) {
 	observedAt := input.ResolvedObservedAt(time.Now().UTC())
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("begin replace plane runtime inventory tx: %w", err)
+		return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("begin replace plane runtime inventory tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
 
-	var state plane.RuntimeInventorySnapshot
+	var state domain.RuntimeInventorySnapshot
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO fleet_plane_runtime_inventory_states (
 			plane_id,
@@ -79,7 +79,7 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 		&state.UpdatedAt,
 	)
 	if err != nil {
-		return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("upsert plane runtime inventory state: %w", err)
+		return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("upsert plane runtime inventory state: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -89,17 +89,17 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 			updated_at = now()
 		WHERE plane_id = $1
 	`, planeID, input.SyncVersion); err != nil {
-		return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("update plane last inventory version: %w", err)
+		return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("update plane last inventory version: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `DELETE FROM fleet_plane_runtime_nodes WHERE plane_id = $1`, planeID); err != nil {
-		return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("delete previous plane runtime nodes: %w", err)
+		return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("delete previous plane runtime nodes: %w", err)
 	}
 
-	nodes := make([]plane.RuntimeNode, 0, len(input.Nodes))
+	nodes := make([]domain.RuntimeNode, 0, len(input.Nodes))
 	for _, item := range input.Nodes {
 		lastHeartbeatAt := nullTime(item.LastHeartbeatAt)
-		var stored plane.RuntimeNode
+		var stored domain.RuntimeNode
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO fleet_plane_runtime_nodes (
 				plane_id,
@@ -175,7 +175,7 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 			&stored.UpdatedAt,
 		)
 		if err != nil {
-			return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("insert plane runtime node: %w", err)
+			return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("insert plane runtime node: %w", err)
 		}
 		if lastHeartbeatAt.Valid {
 			value := lastHeartbeatAt.Time
@@ -185,13 +185,13 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 	}
 
 	if err := tx.Commit(); err != nil {
-		return plane.RuntimeInventorySnapshot{}, nil, fmt.Errorf("commit replace plane runtime inventory tx: %w", err)
+		return domain.RuntimeInventorySnapshot{}, nil, fmt.Errorf("commit replace plane runtime inventory tx: %w", err)
 	}
 
 	return state, nodes, nil
 }
 
-func (s *Store) GetPlaneRuntimeInventorySnapshot(ctx context.Context, planeID string) (*plane.RuntimeInventorySnapshot, error) {
+func (s *Store) GetPlaneRuntimeInventorySnapshot(ctx context.Context, planeID string) (*domain.RuntimeInventorySnapshot, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			plane_id,
@@ -217,7 +217,7 @@ func (s *Store) GetPlaneRuntimeInventorySnapshot(ctx context.Context, planeID st
 	return &item, nil
 }
 
-func (s *Store) ListPlaneRuntimeNodes(ctx context.Context) ([]plane.RuntimeNode, error) {
+func (s *Store) ListPlaneRuntimeNodes(ctx context.Context) ([]domain.RuntimeNode, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			plane_id,
@@ -245,7 +245,7 @@ func (s *Store) ListPlaneRuntimeNodes(ctx context.Context) ([]plane.RuntimeNode,
 	}
 	defer closeRows(rows)
 
-	items := make([]plane.RuntimeNode, 0)
+	items := make([]domain.RuntimeNode, 0)
 	for rows.Next() {
 		item, err := scanPlaneRuntimeNode(rows)
 		if err != nil {
@@ -259,7 +259,7 @@ func (s *Store) ListPlaneRuntimeNodes(ctx context.Context) ([]plane.RuntimeNode,
 	return items, nil
 }
 
-func (s *Store) ListPlaneRuntimeNodesByPlane(ctx context.Context, planeID string) ([]plane.RuntimeNode, error) {
+func (s *Store) ListPlaneRuntimeNodesByPlane(ctx context.Context, planeID string) ([]domain.RuntimeNode, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			plane_id,
@@ -288,7 +288,7 @@ func (s *Store) ListPlaneRuntimeNodesByPlane(ctx context.Context, planeID string
 	}
 	defer closeRows(rows)
 
-	items := make([]plane.RuntimeNode, 0)
+	items := make([]domain.RuntimeNode, 0)
 	for rows.Next() {
 		item, err := scanPlaneRuntimeNode(rows)
 		if err != nil {
@@ -302,8 +302,8 @@ func (s *Store) ListPlaneRuntimeNodesByPlane(ctx context.Context, planeID string
 	return items, nil
 }
 
-func scanPlaneRuntimeInventorySnapshot(scanner interface{ Scan(dest ...any) error }) (plane.RuntimeInventorySnapshot, error) {
-	var item plane.RuntimeInventorySnapshot
+func scanPlaneRuntimeInventorySnapshot(scanner interface{ Scan(dest ...any) error }) (domain.RuntimeInventorySnapshot, error) {
+	var item domain.RuntimeInventorySnapshot
 	if err := scanner.Scan(
 		&item.PlaneID,
 		&item.SyncVersion,
@@ -316,13 +316,13 @@ func scanPlaneRuntimeInventorySnapshot(scanner interface{ Scan(dest ...any) erro
 		&item.MemoryMiAllocated,
 		&item.UpdatedAt,
 	); err != nil {
-		return plane.RuntimeInventorySnapshot{}, err
+		return domain.RuntimeInventorySnapshot{}, err
 	}
 	return item, nil
 }
 
-func scanPlaneRuntimeNode(scanner interface{ Scan(dest ...any) error }) (plane.RuntimeNode, error) {
-	var item plane.RuntimeNode
+func scanPlaneRuntimeNode(scanner interface{ Scan(dest ...any) error }) (domain.RuntimeNode, error) {
+	var item domain.RuntimeNode
 	var lastHeartbeatAt sql.NullTime
 	if err := scanner.Scan(
 		&item.PlaneID,
@@ -343,7 +343,7 @@ func scanPlaneRuntimeNode(scanner interface{ Scan(dest ...any) error }) (plane.R
 		&item.ObservedAt,
 		&item.UpdatedAt,
 	); err != nil {
-		return plane.RuntimeNode{}, err
+		return domain.RuntimeNode{}, err
 	}
 	if lastHeartbeatAt.Valid {
 		value := lastHeartbeatAt.Time

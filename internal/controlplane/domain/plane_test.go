@@ -1,4 +1,4 @@
-package plane
+package domain
 
 import (
 	"errors"
@@ -6,7 +6,7 @@ import (
 )
 
 func TestUpdateOperationInputValidate(t *testing.T) {
-	input := UpdateOperationInput{
+	input := PlaneUpdateOperationInput{
 		State:  OperationStateMaintenance,
 		Reason: "kernel upgrade",
 	}
@@ -21,22 +21,22 @@ func TestUpdateOperationInputValidate(t *testing.T) {
 func TestUpdateOperationInputRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name  string
-		input UpdateOperationInput
+		input PlaneUpdateOperationInput
 		want  error
 	}{
 		{
 			name:  "invalid state",
-			input: UpdateOperationInput{State: "paused"},
+			input: PlaneUpdateOperationInput{State: "paused"},
 			want:  ErrInvalidPlaneOperationState,
 		},
 		{
 			name:  "missing reason when draining",
-			input: UpdateOperationInput{State: OperationStateDraining},
+			input: PlaneUpdateOperationInput{State: OperationStateDraining},
 			want:  ErrPlaneOperationReasonRequired,
 		},
 		{
 			name:  "missing reason when maintenance",
-			input: UpdateOperationInput{State: OperationStateMaintenance},
+			input: PlaneUpdateOperationInput{State: OperationStateMaintenance},
 			want:  ErrPlaneOperationReasonRequired,
 		},
 	}
