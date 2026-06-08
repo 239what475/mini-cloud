@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"mini-cloud/internal/common/httpx"
+	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/logquery"
 
 	"github.com/gin-gonic/gin"
@@ -24,21 +25,17 @@ func newLogQueryHandler(logger *slog.Logger, service logquery.Backend) logQueryH
 }
 
 func (h logQueryHandler) queryControlLogs(c *gin.Context) {
-	h.queryLogs(c, logquery.Filters{})
-}
-
-func (h logQueryHandler) queryLogs(c *gin.Context, forced logquery.Filters) {
-	logger := requestScopedLogger(c, h.logger)
+	logger := logctx.Logger(c.Request.Context(), h.logger)
 	if h.service == nil || !h.service.Configured() {
-		writeJSON(c, http.StatusServiceUnavailable, map[string]any{
+		c.JSON(http.StatusServiceUnavailable, map[string]any{
 			"error": "log query backend is not configured",
 		})
 		return
 	}
 
-	input, err := parseLogQueryInput(c, forced)
+	input, err := httpx.ParseLogQueryInput(c.Request)
 	if err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{
+		c.JSON(http.StatusBadRequest, map[string]any{
 			"error": err.Error(),
 		})
 		return
@@ -50,28 +47,28 @@ func (h logQueryHandler) queryLogs(c *gin.Context, forced logquery.Filters) {
 		var backendErr *logquery.BackendError
 		switch {
 		case errors.Is(err, logquery.ErrNotConfigured):
-			writeJSON(c, http.StatusServiceUnavailable, map[string]any{
+			c.JSON(http.StatusServiceUnavailable, map[string]any{
 				"error": err.Error(),
 			})
 		case errors.As(err, &inputErr):
-			writeJSON(c, http.StatusBadRequest, map[string]any{
+			c.JSON(http.StatusBadRequest, map[string]any{
 				"error": inputErr.Error(),
 			})
 		case errors.As(err, &backendErr):
 			logger.Error("query aggregated logs failed", "error", backendErr.Error(), "query", backendErr.Query, "status_code", backendErr.StatusCode)
-			writeJSON(c, http.StatusBadGateway, map[string]any{
+			c.JSON(http.StatusBadGateway, map[string]any{
 				"error": "query aggregated logs failed",
 			})
 		default:
 			logger.Error("query aggregated logs failed", "error", err, "query", result.Query)
-			writeJSON(c, http.StatusBadGateway, map[string]any{
+			c.JSON(http.StatusBadGateway, map[string]any{
 				"error": "query aggregated logs failed",
 			})
 		}
 		return
 	}
 
-	writeJSON(c, http.StatusOK, map[string]any{
+	c.JSON(http.StatusOK, map[string]any{
 		"backend":   "loki",
 		"query":     result.Query,
 		"start":     result.Start,
@@ -80,8 +77,4 @@ func (h logQueryHandler) queryLogs(c *gin.Context, forced logquery.Filters) {
 		"direction": result.Direction,
 		"items":     result.Items,
 	})
-}
-
-func parseLogQueryInput(c *gin.Context, forced logquery.Filters) (logquery.QueryInput, error) {
-	return httpx.ParseLogQueryInput(c.Request, forced)
 }

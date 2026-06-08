@@ -63,11 +63,11 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 - inventory
 - runtime node pools
 - planes
-- plane registration / sync / operation / capacity snapshots
+- plane registration / sync / capacity snapshots
 - direct control deploy
 - plane selection preview / apply
 - incidents
-- control operations
+- control events
 
 `OperatorService` 当前覆盖：
 
@@ -159,7 +159,7 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 - `health`
 - `auth`
 - `logs`
-- `operation`
+- `event`
 
 ### 运行资源
 
@@ -186,7 +186,6 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 ```bash
 minicloud status
 minicloud health
-minicloud auth whoami
 ```
 
 映射：
@@ -195,8 +194,6 @@ minicloud auth whoami
   - 汇总 health、overview、plane/service 关键计数。
 - `health`
   - `GET /api/healthz`
-- `auth whoami`
-  - `GET /api/v1/auth/whoami`
 
 ### Config Set
 
@@ -343,15 +340,15 @@ minicloud inventory get
 
 - `GET /api/v1/control/inventory`
 
-### Operation History
+### Event Log
 
 ```bash
-minicloud operation list
+minicloud event list
 ```
 
 映射：
 
-- `GET /api/v1/control/operations`
+- `GET /api/v1/control/events`
 
 ### Incident
 

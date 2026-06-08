@@ -148,21 +148,21 @@ type RecordRuntimeConfigInput struct {
 func (in PlaneCreateInput) Validate() error {
 	switch {
 	case strings.TrimSpace(in.Name) == "":
-		return ErrPlaneNameRequired
+		return InvalidInput(ErrPlaneNameRequired)
 	case !planeNamePattern.MatchString(strings.TrimSpace(in.Name)):
-		return ErrInvalidPlaneName
+		return InvalidInput(ErrInvalidPlaneName)
 	case strings.TrimSpace(in.DisplayName) == "":
-		return ErrPlaneDisplayNameRequired
+		return InvalidInput(ErrPlaneDisplayNameRequired)
 	case strings.TrimSpace(in.Provider) == "":
-		return ErrPlaneProviderRequired
+		return InvalidInput(ErrPlaneProviderRequired)
 	case strings.TrimSpace(in.Region) == "":
-		return ErrPlaneRegionRequired
+		return InvalidInput(ErrPlaneRegionRequired)
 	case strings.TrimSpace(in.SouthboundToken) == "":
-		return ErrPlaneSouthboundTokenRequired
+		return InvalidInput(ErrPlaneSouthboundTokenRequired)
 	}
 
 	_, err := normalizeGRPCEndpoint(in.GRPCEndpoint)
-	return err
+	return InvalidInput(err)
 }
 
 func (in PlaneCreateInput) ResolvedGRPCEndpoint() (string, error) {
@@ -171,7 +171,7 @@ func (in PlaneCreateInput) ResolvedGRPCEndpoint() (string, error) {
 
 func (in PlaneUpdateStatusInput) Validate() error {
 	if !IsStatus(in.Status) {
-		return ErrInvalidPlaneStatus
+		return InvalidInput(ErrInvalidPlaneStatus)
 	}
 	return nil
 }

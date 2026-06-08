@@ -1,19 +1,18 @@
 -- +goose Up
-CREATE TABLE IF NOT EXISTS operation_events (
+CREATE TABLE IF NOT EXISTS control_events (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
     target_type TEXT NOT NULL,
     target_id TEXT NOT NULL DEFAULT '',
     target_name TEXT NOT NULL DEFAULT '',
-    result TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_operation_events_created_at
-    ON operation_events (created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_control_events_created_at
+    ON control_events (created_at DESC, id DESC);
 
-CREATE INDEX IF NOT EXISTS idx_operation_events_action_created_at
-    ON operation_events (action, created_at DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_control_events_action_created_at
+    ON control_events (action, created_at DESC, id DESC);
 
 CREATE TABLE IF NOT EXISTS fleet_planes (
     id TEXT PRIMARY KEY,
@@ -149,6 +148,6 @@ DROP TABLE IF EXISTS registry_credentials;
 DROP TABLE IF EXISTS plane_southbound_tokens;
 DROP TABLE IF EXISTS fleet_plane_statuses;
 DROP TABLE IF EXISTS fleet_planes;
-DROP INDEX IF EXISTS idx_operation_events_action_created_at;
-DROP INDEX IF EXISTS idx_operation_events_created_at;
-DROP TABLE IF EXISTS operation_events;
+DROP INDEX IF EXISTS idx_control_events_action_created_at;
+DROP INDEX IF EXISTS idx_control_events_created_at;
+DROP TABLE IF EXISTS control_events;

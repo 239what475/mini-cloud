@@ -138,26 +138,26 @@ type ServiceUpdateInput struct {
 
 func (in ServiceCreateInput) Validate() error {
 	if strings.TrimSpace(in.Name) == "" {
-		return ErrServiceNameRequired
+		return InvalidInput(ErrServiceNameRequired)
 	}
 	if !serviceNamePattern.MatchString(strings.TrimSpace(in.Name)) {
-		return ErrInvalidServiceName
+		return InvalidInput(ErrInvalidServiceName)
 	}
 	if strings.TrimSpace(in.DisplayName) == "" {
-		return ErrDisplayNameRequired
+		return InvalidInput(ErrDisplayNameRequired)
 	}
 	return in.Spec.Validate()
 }
 
 func (in ServiceUpdateInput) Validate(serviceName string) error {
 	if strings.TrimSpace(serviceName) == "" {
-		return ErrServiceNameRequired
+		return InvalidInput(ErrServiceNameRequired)
 	}
 	if !serviceNamePattern.MatchString(strings.TrimSpace(serviceName)) {
-		return ErrInvalidServiceName
+		return InvalidInput(ErrInvalidServiceName)
 	}
 	if strings.TrimSpace(in.DisplayName) == "" {
-		return ErrDisplayNameRequired
+		return InvalidInput(ErrDisplayNameRequired)
 	}
 	return in.Spec.Validate()
 }
@@ -218,36 +218,36 @@ func CloneSpec(input Spec) Spec {
 func (spec Spec) Validate() error {
 	planeID, instanceClass, err := ResolveServicePlacementFields(spec.PlaneID, spec.InstanceClass)
 	if err != nil {
-		return err
+		return InvalidInput(err)
 	}
 	resolvedExposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
 	if resolvedExposure == "" {
 		resolvedExposure = "public"
 	}
 	if resolvedExposure != "public" && resolvedExposure != "private" {
-		return ErrInvalidExposure
+		return InvalidInput(ErrInvalidExposure)
 	}
 	if strings.TrimSpace(spec.Image) == "" {
-		return ErrImageRequired
+		return InvalidInput(ErrImageRequired)
 	}
 	if spec.DefaultPort <= 0 || spec.DefaultPort > 65535 {
-		return ErrInvalidDefaultPort
+		return InvalidInput(ErrInvalidDefaultPort)
 	}
 	if !strings.HasPrefix(strings.TrimSpace(spec.ReadinessPath), "/") {
-		return ErrInvalidReadinessPath
+		return InvalidInput(ErrInvalidReadinessPath)
 	}
 	for key := range spec.Env {
 		if strings.TrimSpace(key) == "" {
-			return ErrInvalidEnvironmentKey
+			return InvalidInput(ErrInvalidEnvironmentKey)
 		}
 	}
 	for key := range spec.SecretEnv {
 		if strings.TrimSpace(key) == "" {
-			return ErrInvalidEnvironmentKey
+			return InvalidInput(ErrInvalidEnvironmentKey)
 		}
 	}
 	if err := projectedfile.ValidateFiles(spec.Files); err != nil {
-		return err
+		return InvalidInput(err)
 	}
 	_ = planeID
 	_ = instanceClass

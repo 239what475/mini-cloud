@@ -36,19 +36,19 @@ type CreateRegistryCredentialInput struct {
 
 func (in CreateRegistryCredentialInput) Validate() error {
 	if strings.TrimSpace(in.Name) == "" {
-		return ErrRegistryCredentialNameRequired
+		return InvalidInput(ErrRegistryCredentialNameRequired)
 	}
 	if !namePattern.MatchString(strings.TrimSpace(in.Name)) {
-		return ErrRegistryCredentialNameInvalid
+		return InvalidInput(ErrRegistryCredentialNameInvalid)
 	}
 	if strings.TrimSpace(in.Server) == "" {
-		return ErrRegistryCredentialServerRequired
+		return InvalidInput(ErrRegistryCredentialServerRequired)
 	}
 	if strings.TrimSpace(in.Username) == "" {
-		return ErrRegistryCredentialUsernameRequired
+		return InvalidInput(ErrRegistryCredentialUsernameRequired)
 	}
 	if strings.TrimSpace(in.Password) == "" {
-		return ErrRegistryCredentialPasswordRequired
+		return InvalidInput(ErrRegistryCredentialPasswordRequired)
 	}
 	return nil
 }

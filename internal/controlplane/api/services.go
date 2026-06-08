@@ -8,9 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/operationhistory"
+	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/projectedfile"
 	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/eventlog"
 	"mini-cloud/internal/controlplane/serviceops"
 	"mini-cloud/internal/controlplane/store"
 
@@ -115,8 +116,8 @@ func newServiceHandler(logger *slog.Logger, stores *store.Store, services *servi
 func (h serviceHandler) listServices(c *gin.Context) {
 	items, err := h.services.List(c.Request.Context())
 	if err != nil {
-		requestScopedLogger(c, h.logger).Error("list services failed", "error", err)
-		writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+		logctx.Logger(c.Request.Context(), h.logger).Error("list services failed", "error", err)
+		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
 	out := make([]serviceEnvelope, 0, len(items))
@@ -125,51 +126,51 @@ func (h serviceHandler) listServices(c *gin.Context) {
 			Service: buildServiceResource(item),
 		})
 	}
-	writeJSON(c, http.StatusOK, map[string]any{"items": out})
+	c.JSON(http.StatusOK, map[string]any{"items": out})
 }
 
 func (h serviceHandler) createService(c *gin.Context) {
 	var request serviceCreateRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 	input, err := request.toCreateInput()
 	if err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := requestScopedLogger(c, h.logger)
+	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	view, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case isServiceInputError(err):
-			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		case domain.IsInvalidInput(err):
+			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
-			writeJSON(c, http.StatusConflict, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
 			logger.Error("create service failed", "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
 		Action:     "control.service.create",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
 
-	writeJSON(c, http.StatusCreated, serviceEnvelope{
+	c.JSON(http.StatusCreated, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
@@ -177,21 +178,21 @@ func (h serviceHandler) createService(c *gin.Context) {
 func (h serviceHandler) getService(c *gin.Context) {
 	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
 	view, err := h.services.Get(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			requestScopedLogger(c, h.logger).Error("get service failed", "service_id", serviceID, "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			logctx.Logger(c.Request.Context(), h.logger).Error("get service failed", "service_id", serviceID, "error", err)
+			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	writeJSON(c, http.StatusOK, serviceEnvelope{
+	c.JSON(http.StatusOK, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
@@ -199,50 +200,50 @@ func (h serviceHandler) getService(c *gin.Context) {
 func (h serviceHandler) updateService(c *gin.Context) {
 	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
 	var request serviceUpdateRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 	input, err := request.toUpdateInput()
 	if err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := requestScopedLogger(c, h.logger)
+	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	view, err := h.services.Update(c.Request.Context(), serviceID, input)
 	if err != nil {
 		switch {
-		case isServiceInputError(err):
-			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		case domain.IsInvalidInput(err):
+			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
 			logger.Error("update service failed", "service_id", serviceID, "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
 		Action:     "control.service.update",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
 
-	writeJSON(c, http.StatusOK, serviceEnvelope{
+	c.JSON(http.StatusOK, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
@@ -250,29 +251,29 @@ func (h serviceHandler) updateService(c *gin.Context) {
 func (h serviceHandler) deleteService(c *gin.Context) {
 	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	logger := requestScopedLogger(c, h.logger)
+	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	view, err := h.services.Delete(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
 			logger.Error("delete service failed", "service_id", serviceID, "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
 		Action:     "control.service.delete",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
-	writeJSON(c, http.StatusOK, map[string]any{
+	c.JSON(http.StatusOK, map[string]any{
 		"deleted":   true,
 		"serviceID": serviceID,
 	})
@@ -296,7 +297,7 @@ func buildServiceResource(view serviceops.View) serviceResource {
 			Args:                 append([]string(nil), view.Service.Spec.Args...),
 			DefaultPort:          view.Service.Spec.DefaultPort,
 			ReadinessPath:        view.Service.Spec.ReadinessPath,
-			Env:                  cloneStringMap(view.Service.Spec.Env),
+			Env:                  view.Service.Spec.Env,
 			SecretEnvKeys:        sortedKeys(view.Service.Spec.SecretEnv),
 			RegistryCredentialID: view.Service.Spec.RegistryCredentialID,
 			Files:                projectedfile.CloneFiles(view.Service.Spec.Files),
@@ -349,69 +350,38 @@ func sortedKeys(values map[string]string) []string {
 
 func (r serviceCreateRequest) toCreateInput() (domain.ServiceCreateInput, error) {
 	if r.Spec == nil {
-		return domain.ServiceCreateInput{}, errServiceSpecRequired
+		return domain.ServiceCreateInput{}, domain.InvalidInput(errServiceSpecRequired)
 	}
-	spec := *r.Spec
 	return domain.ServiceCreateInput{
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec: domain.Spec{
-			PlaneID:              strings.TrimSpace(spec.PlaneID),
-			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
-			Exposure:             strings.TrimSpace(spec.Exposure),
-			Image:                strings.TrimSpace(spec.Image),
-			Command:              append([]string(nil), spec.Command...),
-			Args:                 append([]string(nil), spec.Args...),
-			DefaultPort:          spec.DefaultPort,
-			ReadinessPath:        strings.TrimSpace(spec.ReadinessPath),
-			Env:                  cloneStringMap(spec.Env),
-			SecretEnv:            cloneStringMap(spec.SecretEnv),
-			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
-			Files:                projectedfile.CloneFiles(spec.Files),
-		},
+		Spec:        r.Spec.toDomainSpec(),
 	}, nil
 }
 
 func (r serviceUpdateRequest) toUpdateInput() (domain.ServiceUpdateInput, error) {
 	if r.Spec == nil {
-		return domain.ServiceUpdateInput{}, errServiceSpecRequired
+		return domain.ServiceUpdateInput{}, domain.InvalidInput(errServiceSpecRequired)
 	}
-	spec := *r.Spec
 	return domain.ServiceUpdateInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec: domain.Spec{
-			PlaneID:              strings.TrimSpace(spec.PlaneID),
-			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
-			Exposure:             strings.TrimSpace(spec.Exposure),
-			Image:                strings.TrimSpace(spec.Image),
-			Command:              append([]string(nil), spec.Command...),
-			Args:                 append([]string(nil), spec.Args...),
-			DefaultPort:          spec.DefaultPort,
-			ReadinessPath:        strings.TrimSpace(spec.ReadinessPath),
-			Env:                  cloneStringMap(spec.Env),
-			SecretEnv:            cloneStringMap(spec.SecretEnv),
-			RegistryCredentialID: strings.TrimSpace(spec.RegistryCredentialID),
-			Files:                projectedfile.CloneFiles(spec.Files),
-		},
+		Spec:        r.Spec.toDomainSpec(),
 	}, nil
 }
 
-func isServiceInputError(err error) bool {
-	return errors.Is(err, errServiceSpecRequired) ||
-		errors.Is(err, domain.ErrServiceNameRequired) ||
-		errors.Is(err, domain.ErrInvalidServiceName) ||
-		errors.Is(err, domain.ErrDisplayNameRequired) ||
-		errors.Is(err, domain.ErrPlaneIDRequired) ||
-		errors.Is(err, domain.ErrInvalidInstanceClass) ||
-		errors.Is(err, domain.ErrInvalidExposure) ||
-		errors.Is(err, domain.ErrImageRequired) ||
-		errors.Is(err, domain.ErrInvalidDefaultPort) ||
-		errors.Is(err, domain.ErrInvalidReadinessPath) ||
-		errors.Is(err, domain.ErrInvalidEnvironmentKey) ||
-		errors.Is(err, projectedfile.ErrMountPathRequired) ||
-		errors.Is(err, projectedfile.ErrMountPathAbsolute) ||
-		errors.Is(err, projectedfile.ErrMountPathInvalid) ||
-		errors.Is(err, projectedfile.ErrContentRequired) ||
-		errors.Is(err, projectedfile.ErrFileModeInvalid) ||
-		errors.Is(err, projectedfile.ErrDuplicateMountPath)
+func (s serviceSpecInput) toDomainSpec() domain.Spec {
+	return domain.Spec{
+		PlaneID:              strings.TrimSpace(s.PlaneID),
+		InstanceClass:        strings.TrimSpace(s.InstanceClass),
+		Exposure:             strings.TrimSpace(s.Exposure),
+		Image:                strings.TrimSpace(s.Image),
+		Command:              append([]string(nil), s.Command...),
+		Args:                 append([]string(nil), s.Args...),
+		DefaultPort:          s.DefaultPort,
+		ReadinessPath:        strings.TrimSpace(s.ReadinessPath),
+		Env:                  s.Env,
+		SecretEnv:            s.SecretEnv,
+		RegistryCredentialID: strings.TrimSpace(s.RegistryCredentialID),
+		Files:                projectedfile.CloneFiles(s.Files),
+	}
 }

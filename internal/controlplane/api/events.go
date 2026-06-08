@@ -1,0 +1,52 @@
+package api
+
+import (
+	"context"
+	"log/slog"
+	"net/http"
+	"time"
+
+	"mini-cloud/internal/common/logctx"
+	"mini-cloud/internal/controlplane/eventlog"
+	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
+)
+
+type eventHandler struct {
+	logger *slog.Logger
+	store  *store.Store
+}
+
+func newEventHandler(logger *slog.Logger, stores *store.Store) eventHandler {
+	return eventHandler{
+		logger: logger,
+		store:  stores,
+	}
+}
+
+func recordControlEvent(logger *slog.Logger, stores *store.Store, requestCtx context.Context, input eventlog.CreateInput) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), 2*time.Second)
+	defer cancel()
+
+	if _, err := stores.CreateControlEvent(ctx, input); err != nil {
+		logger.Error("record control event failed", "error", err, "action", input.Action, "target_type", input.TargetType, "target_id", input.TargetID)
+	}
+}
+
+func (h eventHandler) listControlEvents(c *gin.Context) {
+	logger := logctx.Logger(c.Request.Context(), h.logger)
+
+	items, err := h.store.ListRecentControlEvents(c.Request.Context())
+	if err != nil {
+		logger.Error("list control events failed", "error", err)
+		c.JSON(http.StatusInternalServerError, map[string]any{
+			"error": "internal server error",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, map[string]any{
+		"items": items,
+	})
+}

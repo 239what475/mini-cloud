@@ -10,7 +10,7 @@ import (
 	"mini-cloud/internal/common/logquery"
 )
 
-func ParseLogQueryInput(r *http.Request, forced logquery.Filters) (logquery.QueryInput, error) {
+func ParseLogQueryInput(r *http.Request) (logquery.QueryInput, error) {
 	query := r.URL.Query()
 	end, err := parseOptionalTime(query.Get("end"))
 	if err != nil {
@@ -55,17 +55,17 @@ func ParseLogQueryInput(r *http.Request, forced logquery.Filters) (logquery.Quer
 	}
 
 	filters := logquery.Filters{
-		Component:     firstNonEmpty(forced.Component, query.Get("component")),
-		PlatformName:  firstNonEmpty(forced.PlatformName, query.Get("platformName")),
-		PlaneID:       firstNonEmpty(forced.PlaneID, query.Get("planeID")),
-		ServiceID:     firstNonEmpty(forced.ServiceID, query.Get("serviceID")),
-		DeploymentID:  firstNonEmpty(forced.DeploymentID, query.Get("deploymentID")),
-		NodeID:        firstNonEmpty(forced.NodeID, query.Get("nodeID")),
-		RuntimeNodeID: firstNonEmpty(forced.RuntimeNodeID, query.Get("runtimeNodeID")),
-		ExecutionID:   firstNonEmpty(forced.ExecutionID, query.Get("executionID")),
-		RequestID:     firstNonEmpty(forced.RequestID, query.Get("requestID")),
-		Level:         firstNonEmpty(forced.Level, query.Get("level")),
-		Contains:      firstNonEmpty(forced.Contains, query.Get("contains")),
+		Component:     strings.TrimSpace(query.Get("component")),
+		PlatformName:  strings.TrimSpace(query.Get("platformName")),
+		PlaneID:       strings.TrimSpace(query.Get("planeID")),
+		ServiceID:     strings.TrimSpace(query.Get("serviceID")),
+		DeploymentID:  strings.TrimSpace(query.Get("deploymentID")),
+		NodeID:        strings.TrimSpace(query.Get("nodeID")),
+		RuntimeNodeID: strings.TrimSpace(query.Get("runtimeNodeID")),
+		ExecutionID:   strings.TrimSpace(query.Get("executionID")),
+		RequestID:     strings.TrimSpace(query.Get("requestID")),
+		Level:         strings.TrimSpace(query.Get("level")),
+		Contains:      strings.TrimSpace(query.Get("contains")),
 	}
 
 	return logquery.QueryInput{
@@ -99,11 +99,4 @@ func parseSinceDuration(value string) (time.Duration, error) {
 		return 0, errors.New("since must be a positive duration such as 15m or 1h")
 	}
 	return duration, nil
-}
-
-func firstNonEmpty(primary string, fallback string) string {
-	if value := strings.TrimSpace(primary); value != "" {
-		return value
-	}
-	return strings.TrimSpace(fallback)
 }
