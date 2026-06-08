@@ -17,8 +17,6 @@ type Summary struct {
 	NodesTotal            int     `json:"nodesTotal"`
 	NodesReady            int     `json:"nodesReady"`
 	NodesUnavailable      int     `json:"nodesUnavailable"`
-	ServicesTotal         int     `json:"servicesTotal"`
-	RunsTotal             int     `json:"runsTotal"`
 	CPUMilliCapacity      int     `json:"cpuMilliCapacity"`
 	CPUMilliAllocated     int     `json:"cpuMilliAllocated"`
 	CPUMilliFree          int     `json:"cpuMilliFree"`
@@ -50,8 +48,6 @@ type Plane struct {
 	NodesTotal         int        `json:"nodesTotal"`
 	NodesReady         int        `json:"nodesReady"`
 	NodesUnavailable   int        `json:"nodesUnavailable"`
-	ServicesTotal      int        `json:"servicesTotal"`
-	RunsTotal          int        `json:"runsTotal"`
 	CPUMilliCapacity   int        `json:"cpuMilliCapacity"`
 	CPUMilliAllocated  int        `json:"cpuMilliAllocated"`
 	CPUMilliFree       int        `json:"cpuMilliFree"`
@@ -181,8 +177,6 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	summary.NodesTotal += planeView.NodesTotal
 	summary.NodesReady += planeView.NodesReady
 	summary.NodesUnavailable += planeView.NodesUnavailable
-	summary.ServicesTotal += planeView.ServicesTotal
-	summary.RunsTotal += planeView.RunsTotal
 	summary.CPUMilliCapacity += planeView.CPUMilliCapacity
 	summary.CPUMilliAllocated += planeView.CPUMilliAllocated
 	summary.MemoryMiCapacity += planeView.MemoryMiCapacity

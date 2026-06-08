@@ -91,6 +91,23 @@ type UpdateServiceStatusInput struct {
 	RemoteMessage      *string
 }
 
+type serviceSpecColumns struct {
+	PlaneID                  string
+	InstanceClass            string
+	Exposure                 string
+	Image                    string
+	CommandJSON              []byte
+	ArgsJSON                 []byte
+	DefaultPort              int
+	ReadinessPath            string
+	EnvJSON                  []byte
+	SecretEnvJSON            []byte
+	RegistryCredentialServer string
+	RegistryCredentialUser   string
+	RegistryCredentialPass   string
+	FilesJSON                []byte
+}
+
 func (in CreateServiceInput) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return invalidInput(errServiceNameRequired)
@@ -121,40 +138,19 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	if err := input.validate(); err != nil {
 		return model.Service{}, err
 	}
-	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	specColumns, err := buildServiceSpecColumns(input.Spec)
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
-	registryCredential := model.CloneServiceRegistryCredential(input.Spec.RegistryCredential)
 
 	id, err := newID("svc")
 	if err != nil {
 		return model.Service{}, err
 	}
 
-	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service command: %w", err)
-	}
-	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service args: %w", err)
-	}
-	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service env: %w", err)
-	}
-	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service secret env: %w", err)
-	}
-	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service files: %w", err)
-	}
 	initialStatus := model.PendingServiceStatus(0, "waiting for service reconcile")
 	initialRun := model.RunStatus{Phase: model.RunPhasePending}
 	runJSON, err := marshalJSON(initialRun, model.RunStatus{Phase: model.RunPhasePending})
@@ -199,20 +195,20 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		id,
 		input.Name,
 		input.DisplayName,
-		planeID,
-		instanceClass,
-		input.Spec.Exposure,
-		input.Spec.Image,
-		commandJSON,
-		argsJSON,
-		input.Spec.DefaultPort,
-		input.Spec.ReadinessPath,
-		envJSON,
-		secretEnvJSON,
-		registryServer(registryCredential),
-		registryUsername(registryCredential),
-		registryPassword(registryCredential),
-		filesJSON,
+		specColumns.PlaneID,
+		specColumns.InstanceClass,
+		specColumns.Exposure,
+		specColumns.Image,
+		specColumns.CommandJSON,
+		specColumns.ArgsJSON,
+		specColumns.DefaultPort,
+		specColumns.ReadinessPath,
+		specColumns.EnvJSON,
+		specColumns.SecretEnvJSON,
+		specColumns.RegistryCredentialServer,
+		specColumns.RegistryCredentialUser,
+		specColumns.RegistryCredentialPass,
+		specColumns.FilesJSON,
 		runJSON,
 		model.DesiredStateActive,
 		initialStatus.ObservedGeneration,
@@ -290,27 +286,6 @@ func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (m
 }
 
 func (s *Store) UpdateService(ctx context.Context, serviceID string, input UpdateServiceInput) (model.Service, error) {
-	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service command for update: %w", err)
-	}
-	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service args for update: %w", err)
-	}
-	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service env for update: %w", err)
-	}
-	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
-	}
-	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
-	if err != nil {
-		return model.Service{}, fmt.Errorf("marshal service files for update: %w", err)
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return model.Service{}, fmt.Errorf("begin update service tx: %w", err)
@@ -326,14 +301,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if err := input.validate(current.Metadata.Name); err != nil {
 		return model.Service{}, err
 	}
-	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	specColumns, err := buildServiceSpecColumns(input.Spec)
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
-	registryCredential := model.CloneServiceRegistryCredential(input.Spec.RegistryCredential)
 	currentRunJSON, err := marshalJSON(current.Status.Run, model.RunStatus{Phase: model.RunPhasePending})
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
@@ -377,20 +351,20 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	`,
 		serviceID,
 		input.DisplayName,
-		planeID,
-		instanceClass,
-		input.Spec.Exposure,
-		input.Spec.Image,
-		commandJSON,
-		argsJSON,
-		input.Spec.DefaultPort,
-		input.Spec.ReadinessPath,
-		envJSON,
-		secretEnvJSON,
-		registryServer(registryCredential),
-		registryUsername(registryCredential),
-		registryPassword(registryCredential),
-		filesJSON,
+		specColumns.PlaneID,
+		specColumns.InstanceClass,
+		specColumns.Exposure,
+		specColumns.Image,
+		specColumns.CommandJSON,
+		specColumns.ArgsJSON,
+		specColumns.DefaultPort,
+		specColumns.ReadinessPath,
+		specColumns.EnvJSON,
+		specColumns.SecretEnvJSON,
+		specColumns.RegistryCredentialServer,
+		specColumns.RegistryCredentialUser,
+		specColumns.RegistryCredentialPass,
+		specColumns.FilesJSON,
 		currentRunJSON,
 		nextGeneration,
 		model.DesiredStateActive,
@@ -670,27 +644,6 @@ func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID str
 	return nil
 }
 
-func registryServer(input *model.ServiceRegistryCredential) string {
-	if input == nil {
-		return ""
-	}
-	return input.Server
-}
-
-func registryUsername(input *model.ServiceRegistryCredential) string {
-	if input == nil {
-		return ""
-	}
-	return input.Username
-}
-
-func registryPassword(input *model.ServiceRegistryCredential) string {
-	if input == nil {
-		return ""
-	}
-	return input.Password
-}
-
 func registryCredentialFromColumns(server string, username string, password string) *model.ServiceRegistryCredential {
 	if strings.TrimSpace(server) == "" && strings.TrimSpace(username) == "" && password == "" {
 		return nil
@@ -755,6 +708,53 @@ func validateRegistryCredential(input *model.ServiceRegistryCredential) error {
 		return errRegistryPasswordRequired
 	}
 	return nil
+}
+
+func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error) {
+	planeID, instanceClass, err := resolveServicePlacementFields(spec.PlaneID, spec.InstanceClass)
+	if err != nil {
+		return serviceSpecColumns{}, err
+	}
+	commandJSON, err := marshalJSON(spec.Command, []string{})
+	if err != nil {
+		return serviceSpecColumns{}, fmt.Errorf("marshal service command: %w", err)
+	}
+	argsJSON, err := marshalJSON(spec.Args, []string{})
+	if err != nil {
+		return serviceSpecColumns{}, fmt.Errorf("marshal service args: %w", err)
+	}
+	envJSON, err := marshalJSON(spec.Env, map[string]string{})
+	if err != nil {
+		return serviceSpecColumns{}, fmt.Errorf("marshal service env: %w", err)
+	}
+	secretEnvJSON, err := marshalJSON(spec.SecretEnv, map[string]string{})
+	if err != nil {
+		return serviceSpecColumns{}, fmt.Errorf("marshal service secret env: %w", err)
+	}
+	filesJSON, err := marshalJSON(projectedfile.CloneFiles(spec.Files), []projectedfile.File{})
+	if err != nil {
+		return serviceSpecColumns{}, fmt.Errorf("marshal service files: %w", err)
+	}
+
+	out := serviceSpecColumns{
+		PlaneID:       planeID,
+		InstanceClass: instanceClass,
+		Exposure:      spec.Exposure,
+		Image:         spec.Image,
+		CommandJSON:   commandJSON,
+		ArgsJSON:      argsJSON,
+		DefaultPort:   spec.DefaultPort,
+		ReadinessPath: spec.ReadinessPath,
+		EnvJSON:       envJSON,
+		SecretEnvJSON: secretEnvJSON,
+		FilesJSON:     filesJSON,
+	}
+	if spec.RegistryCredential != nil {
+		out.RegistryCredentialServer = spec.RegistryCredential.Server
+		out.RegistryCredentialUser = spec.RegistryCredential.Username
+		out.RegistryCredentialPass = spec.RegistryCredential.Password
+	}
+	return out, nil
 }
 
 func resolveServicePlacementFields(planeID string, instanceClass string) (string, string, error) {

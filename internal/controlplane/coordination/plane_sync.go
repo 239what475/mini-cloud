@@ -65,11 +65,6 @@ func (e *syncError) Error() string {
 	return e.message
 }
 
-func isSyncFailure(err error) bool {
-	var target *syncError
-	return errors.As(err, &target)
-}
-
 func NewPlaneSyncer(logger *slog.Logger, stores *store.Store) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
@@ -91,71 +86,6 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 		}
 		return planeSyncResult{}, err
 	}
-	return s.syncWithToken(ctx, planeID, token)
-}
-
-func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]planeSyncOutcome, error) {
-	planeIDs, err := s.store.ListRegisteredPlaneIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	outcomes := make([]planeSyncOutcome, 0, len(planeIDs))
-	for _, planeID := range planeIDs {
-		planeCtx := ctx
-		cancel := func() {}
-		if perPlaneTimeout > 0 {
-			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
-		}
-		result, err := s.syncPlane(planeCtx, planeID)
-		cancel()
-		outcome := planeSyncOutcome{PlaneID: planeID}
-		if err != nil {
-			outcome.Error = err.Error()
-		} else {
-			outcome.planeSyncResult = &result
-		}
-		outcomes = append(outcomes, outcome)
-		if ctx.Err() != nil {
-			return outcomes, ctx.Err()
-		}
-	}
-	return outcomes, nil
-}
-
-func StartPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneSyncer, interval int) {
-	if syncer == nil || interval <= 0 {
-		return
-	}
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	go func() {
-		ticker := time.NewTicker(time.Duration(interval) * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				outcomes, err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
-				if err != nil {
-					logger.Error("plane background sync failed", "error", err)
-					continue
-				}
-				for _, outcome := range outcomes {
-					if outcome.Error != "" {
-						logger.Warn("plane sync failed", "plane_id", outcome.PlaneID, "error", outcome.Error)
-					}
-				}
-			}
-		}
-	}()
-}
-
-func (s *PlaneSyncer) syncWithToken(ctx context.Context, planeID string, southboundToken string) (planeSyncResult, error) {
 	ctx = logctx.WithFields(ctx, logctx.Fields{PlaneID: planeID})
 	logger := logctx.Logger(ctx, s.logger)
 	planeDetail, err := s.store.GetPlane(ctx, planeID)
@@ -164,7 +94,7 @@ func (s *PlaneSyncer) syncWithToken(ctx context.Context, planeID string, southbo
 	}
 
 	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
-	client, err := newPlaneClient(grpcEndpoint, southboundToken)
+	client, err := newPlaneClient(grpcEndpoint, token)
 	if err != nil {
 		err = &syncError{
 			status:  model.StatusOffline,
@@ -245,6 +175,67 @@ func (s *PlaneSyncer) syncWithToken(ctx context.Context, planeID string, southbo
 		Overview:         snapshot.Overview,
 		AlertsFiring:     alertsFiring,
 	}, nil
+}
+
+func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]planeSyncOutcome, error) {
+	planeIDs, err := s.store.ListRegisteredPlaneIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	outcomes := make([]planeSyncOutcome, 0, len(planeIDs))
+	for _, planeID := range planeIDs {
+		planeCtx := ctx
+		cancel := func() {}
+		if perPlaneTimeout > 0 {
+			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
+		}
+		result, err := s.syncPlane(planeCtx, planeID)
+		cancel()
+		outcome := planeSyncOutcome{PlaneID: planeID}
+		if err != nil {
+			outcome.Error = err.Error()
+		} else {
+			outcome.planeSyncResult = &result
+		}
+		outcomes = append(outcomes, outcome)
+		if ctx.Err() != nil {
+			return outcomes, ctx.Err()
+		}
+	}
+	return outcomes, nil
+}
+
+func StartPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneSyncer, interval int) {
+	if syncer == nil || interval <= 0 {
+		return
+	}
+	if logger == nil {
+		logger = slog.Default()
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Duration(interval) * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				outcomes, err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
+				if err != nil {
+					logger.Error("plane background sync failed", "error", err)
+					continue
+				}
+				for _, outcome := range outcomes {
+					if outcome.Error != "" {
+						logger.Warn("plane sync failed", "plane_id", outcome.PlaneID, "error", outcome.Error)
+					}
+				}
+			}
+		}
+	}()
 }
 
 func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []cloudplaneapi.ExecutionSnapshot) error {

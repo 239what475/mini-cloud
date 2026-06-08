@@ -18,43 +18,23 @@ const (
 
 var errPlaneNotReady = errors.New("plane is not ready")
 
-type executionPlanManager interface {
-	ApplyService(context.Context, string, model.Service) (applyResult, error)
-	DeleteService(context.Context, string, deleteServiceInput) error
-}
-
-type serviceStore interface {
-	CreateService(context.Context, store.CreateServiceInput) (model.Service, error)
-	ListServices(context.Context) ([]model.Service, error)
-	GetService(context.Context, string) (model.Service, error)
-	UpdateService(context.Context, string, store.UpdateServiceInput) (model.Service, error)
-	MarkServiceDeletionRequested(context.Context, string) (model.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, store.UpdateServiceStatusInput) error
-	DeleteServiceForGeneration(context.Context, string, int64) error
-	GetPlane(context.Context, string) (model.PlaneDetail, error)
-}
-
 type ServiceController struct {
 	logger   *slog.Logger
-	store    serviceStore
-	deploy   executionPlanManager
+	store    *store.Store
+	deploy   *serviceApplier
 	interval time.Duration
 	timeout  time.Duration
 	trigger  chan struct{}
 }
 
 func NewServiceController(logger *slog.Logger, stores *store.Store) *ServiceController {
-	return newServiceController(logger, stores, newServiceApplier(logger, stores))
-}
-
-func newServiceController(logger *slog.Logger, stores serviceStore, deploySvc executionPlanManager) *ServiceController {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServiceController{
 		logger:   logger,
 		store:    stores,
-		deploy:   deploySvc,
+		deploy:   newServiceApplier(logger, stores),
 		interval: defaultReconcileInterval,
 		timeout:  defaultReconcileTimeout,
 		trigger:  make(chan struct{}, 1),

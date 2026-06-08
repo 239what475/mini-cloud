@@ -41,10 +41,6 @@ type planeClient struct {
 }
 
 func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, error) {
-	return newPlaneClientWithDialOptions(grpcEndpoint, bearerToken)
-}
-
-func newPlaneClientWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...grpc.DialOption) (*planeClient, error) {
 	target, transportCredentials, err := resolveTarget(grpcEndpoint)
 	if err != nil {
 		return nil, err
@@ -53,8 +49,7 @@ func newPlaneClientWithDialOptions(grpcEndpoint string, bearerToken string, dial
 		return nil, fmt.Errorf("bearerToken is required")
 	}
 
-	opts := append([]grpc.DialOption{grpc.WithTransportCredentials(transportCredentials)}, dialOptions...)
-	conn, err := grpc.NewClient(target, opts...)
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(transportCredentials))
 	if err != nil {
 		return nil, fmt.Errorf("dial plane service: %w", err)
 	}

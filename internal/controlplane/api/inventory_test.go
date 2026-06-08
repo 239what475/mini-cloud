@@ -98,9 +98,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Summary.NodesTotal != 3 || view.Summary.NodesReady != 2 || view.Summary.NodesUnavailable != 1 {
 		t.Fatalf("unexpected node summary: %+v", view.Summary)
 	}
-	if view.Summary.ServicesTotal != 0 || view.Summary.RunsTotal != 0 {
-		t.Fatalf("unexpected service/run summary: %+v", view.Summary)
-	}
 	if view.Summary.CPUMilliCapacity != 6000 || view.Summary.CPUMilliAllocated != 2000 || view.Summary.CPUMilliFree != 4000 {
 		t.Fatalf("unexpected cpu summary: %+v", view.Summary)
 	}
