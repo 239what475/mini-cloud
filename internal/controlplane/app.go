@@ -66,7 +66,6 @@ func Build(logger *slog.Logger) (App, error) {
 		AdminToken:        cfg.AdminToken,
 		UIDir:             cfg.UIDir,
 		LogQueryService:   logQueryService,
-		PlaneSyncer:       syncer,
 		Dispatcher:        dispatcher,
 		ServiceController: serviceController,
 	}, logger, stores)

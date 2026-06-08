@@ -303,8 +303,6 @@ minicloud logs plane <plane> --since 30m
 minicloud plane list
 minicloud plane get <plane>
 minicloud plane apply -f plane.yaml
-minicloud plane sync <plane>
-minicloud plane operation apply -f plane-operation.yaml
 minicloud plane delete <plane>
 minicloud plane capacity-snapshot list <plane>
 ```
@@ -315,19 +313,9 @@ minicloud plane capacity-snapshot list <plane>
 - `POST /api/v1/control/planes`
 - `GET /api/v1/control/planes/{planeID}`
 - `DELETE /api/v1/control/planes/{planeID}`
-- `POST /api/v1/control/planes/{planeID}/actions/sync`
-- `PUT /api/v1/control/planes/{planeID}/operation`
 - `GET /api/v1/control/planes/{planeID}/capacity-snapshots`
 
-`plane apply` 创建或更新 plane 连接配置，`plane.yaml` 必须包含 `southboundToken`；`plane sync` 使用已保存 token 刷新 plane 状态和 runtime inventory。
-
-`drain` 可以作为语义化别名：
-
-```bash
-minicloud plane drain <plane> --reason "maintenance"
-```
-
-它映射到 operation state `draining`。
+`plane apply` 创建或更新 plane 连接配置，`plane.yaml` 必须包含 `southboundToken`。plane 状态和 runtime inventory 由 control-plane 后台同步循环刷新，不提供手动 sync / operation API。
 
 ### Runtime Node Pool
 
@@ -423,18 +411,17 @@ minicloud logs query
 实现：
 
 ```bash
-minicloud config-set apply -f config-set.yaml
-minicloud secret-set apply -f secret-set.yaml
 minicloud registry-credential apply -f registry-credential.yaml
 minicloud service apply -f service.yaml
 minicloud service delete
-minicloud plane sync
+minicloud plane apply -f plane.yaml
+minicloud plane delete
 ```
 
 验收标准：
 
 - 覆盖 Web 的创建 / 更新操作。
-- plane sync 和 service create 走当前服务端 API，不再依赖 TUI。
+- service / plane / registry credential 写操作走当前服务端 API，不再依赖 TUI。
 - 危险操作具备确认和 `--yes`。
 
 ### 阶段 3：运维写操作
@@ -442,17 +429,14 @@ minicloud plane sync
 实现：
 
 ```bash
-minicloud plane drain
-minicloud plane operation apply -f plane-operation.yaml
-minicloud runtime-node-pool apply -f runtime-node-pool.yaml
-minicloud incident apply -f incident.yaml
-minicloud incident resolve
+minicloud service delete
+minicloud plane delete
 ```
 
 验收标准：
 
-- 能完成常见运维操作。
-- 对尚未有服务端 API 的语义先补 API，再实现 CLI。
+- 能完成当前 demo 保留的破坏性运维操作。
+- 不为 CLI 单独补已删除的 runtime-node-pool / incident / plane operation API。
 
 ### 阶段 4：CLI 完善和文档收敛
 
@@ -479,6 +463,6 @@ minicloud incident resolve
 
 - `service retry` 是否应该保留；当前 router 没有 `/actions/retry`。
 - `service rollback` 不进入 v8 核心能力；需要恢复旧版本时重新 apply 旧 spec。
-- `node drain` 是否指 runtime node、plane operation，还是 node-agent 侧节点维护；当前 router 明确支持 plane operation，但没有独立 node drain 命令。
+- `node drain` 不进入当前 control-plane API；runtime node 维护由 cloud-plane 内部能力处理，不提供 control-plane plane operation API。
 
 这些缺口不阻塞 v8 文档，但会影响 CLI 写操作实现顺序。

@@ -18,7 +18,6 @@ var (
 	ErrPlaneNameAlreadyExists       = errors.New("plane name already exists")
 	ErrPlaneSouthboundTokenNotFound = errors.New("plane southbound token not found")
 	defaultPlaneStatusMessage       = "awaiting registration handshake"
-	defaultPlaneOperationReason     = ""
 )
 
 func (s *Store) CreatePlane(ctx context.Context, input domain.PlaneCreateInput) (domain.Detail, error) {
@@ -109,29 +108,6 @@ func (s *Store) CreatePlane(ctx context.Context, input domain.PlaneCreateInput) 
 	status.Status = domain.StatusRegistering
 	status.Message = defaultPlaneStatusMessage
 
-	var operation domain.Operation
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO fleet_plane_operations (
-			plane_id,
-			state,
-			reason
-		)
-		VALUES ($1, $2, $3)
-		RETURNING
-			plane_id,
-			state,
-			reason,
-			updated_at
-	`, created.ID, domain.OperationStateActive, defaultPlaneOperationReason).Scan(
-		&operation.PlaneID,
-		&operation.State,
-		&operation.Reason,
-		&operation.UpdatedAt,
-	)
-	if err != nil {
-		return domain.Detail{}, fmt.Errorf("insert plane operation: %w", err)
-	}
-
 	registration, err := scanPlaneRegistration(tx.QueryRowContext(ctx, `
 		INSERT INTO plane_southbound_tokens (
 			plane_id,
@@ -155,7 +131,6 @@ func (s *Store) CreatePlane(ctx context.Context, input domain.PlaneCreateInput) 
 		Plane:        created,
 		Status:       status,
 		Registration: registration,
-		Operation:    operation,
 	}, nil
 }
 
@@ -332,35 +307,6 @@ func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input dom
 	return status, nil
 }
 
-func (s *Store) UpdatePlaneOperation(ctx context.Context, planeID string, input domain.PlaneUpdateOperationInput) (domain.Operation, error) {
-	if err := input.Validate(); err != nil {
-		return domain.Operation{}, err
-	}
-
-	row := s.db.QueryRowContext(ctx, `
-		UPDATE fleet_plane_operations
-		SET
-			state = $2,
-			reason = $3,
-			updated_at = now()
-		WHERE plane_id = $1
-		RETURNING
-			plane_id,
-			state,
-			reason,
-			updated_at
-	`, planeID, input.State, input.ResolvedReason())
-
-	operation, err := scanPlaneOperation(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Operation{}, ErrPlaneNotFound
-		}
-		return domain.Operation{}, fmt.Errorf("update plane operation: %w", err)
-	}
-	return operation, nil
-}
-
 func planeDetailBaseQuery(suffix string) string {
 	return `
 		SELECT
@@ -379,10 +325,6 @@ func planeDetailBaseQuery(suffix string) string {
 			s.updated_at,
 			bt.last_verified_at,
 			bt.updated_at,
-			o.plane_id,
-			o.state,
-			o.reason,
-			o.updated_at,
 			ris.plane_id,
 			ris.sync_version,
 			ris.observed_at,
@@ -403,8 +345,6 @@ func planeDetailBaseQuery(suffix string) string {
 			ON s.plane_id = p.id
 		LEFT JOIN plane_southbound_tokens bt
 			ON bt.plane_id = p.id
-		JOIN fleet_plane_operations o
-			ON o.plane_id = p.id
 		LEFT JOIN fleet_plane_runtime_inventory_states ris
 			ON ris.plane_id = p.id
 		LEFT JOIN fleet_plane_runtime_config_states rcs
@@ -418,7 +358,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 	var syncAt sql.NullTime
 	var registrationLastVerifiedAt sql.NullTime
 	var registrationUpdatedAt sql.NullTime
-	var operationUpdatedAt time.Time
 	var runtimePlaneID sql.NullString
 	var runtimeSyncVersion sql.NullInt64
 	var runtimeObservedAt sql.NullTime
@@ -451,10 +390,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		&item.Status.UpdatedAt,
 		&registrationLastVerifiedAt,
 		&registrationUpdatedAt,
-		&item.Operation.PlaneID,
-		&item.Operation.State,
-		&item.Operation.Reason,
-		&operationUpdatedAt,
 		&runtimePlaneID,
 		&runtimeSyncVersion,
 		&runtimeObservedAt,
@@ -490,7 +425,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		value := registrationUpdatedAt.Time
 		item.Registration.TokenUpdatedAt = &value
 	}
-	item.Operation.UpdatedAt = operationUpdatedAt
 	if runtimePlaneID.Valid {
 		item.LatestRuntimeInventory = &domain.RuntimeInventorySnapshot{
 			PlaneID:           runtimePlaneID.String,
@@ -515,19 +449,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		if err := unmarshalJSON(runtimeConfigSummary, &item.LatestRuntimeConfig.Summary, map[string]any{}); err != nil {
 			return domain.Detail{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
 		}
-	}
-	return item, nil
-}
-
-func scanPlaneOperation(scanner interface{ Scan(dest ...any) error }) (domain.Operation, error) {
-	var item domain.Operation
-	if err := scanner.Scan(
-		&item.PlaneID,
-		&item.State,
-		&item.Reason,
-		&item.UpdatedAt,
-	); err != nil {
-		return domain.Operation{}, err
 	}
 	return item, nil
 }

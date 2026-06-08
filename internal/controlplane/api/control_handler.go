@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,7 +9,6 @@ import (
 	"mini-cloud/internal/common/operationhistory"
 	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/inventory"
-	"mini-cloud/internal/controlplane/planesync"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -19,14 +17,12 @@ import (
 type controlHandler struct {
 	logger *slog.Logger
 	store  *store.Store
-	syncer *planesync.Syncer
 }
 
-func newControlHandler(logger *slog.Logger, stores *store.Store, syncer *planesync.Syncer) controlHandler {
+func newControlHandler(logger *slog.Logger, stores *store.Store) controlHandler {
 	return controlHandler{
 		logger: logger,
 		store:  stores,
-		syncer: syncer,
 	}
 }
 
@@ -159,99 +155,6 @@ func (h controlHandler) deletePlane(c *gin.Context) {
 	})
 }
 
-func (h controlHandler) syncPlane(c *gin.Context) {
-	if h.syncer == nil {
-		writeJSON(c, http.StatusServiceUnavailable, map[string]any{"error": "plane sync service is not configured"})
-		return
-	}
-
-	planeID := c.Param("planeID")
-	if planeID == "" {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	withRequestLogFields(c, logctx.Fields{PlaneID: planeID})
-	logger := requestScopedLogger(c, h.logger)
-
-	requestCtx, cancel := context.WithTimeout(c.Request.Context(), planesync.ManualPlaneSyncTimeout)
-	defer cancel()
-
-	result, err := h.syncer.SyncPlane(requestCtx, planeID)
-	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, planesync.ErrPlaneNotRegistered):
-			writeJSON(c, http.StatusConflict, map[string]any{"error": err.Error()})
-			return
-		case planesync.IsSyncFailure(err):
-			writeJSON(c, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("sync plane failed", "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
-		Action:     "control.plane.sync",
-		TargetType: "plane",
-		TargetID:   result.Plane.ID,
-		TargetName: result.Plane.Name,
-	})
-
-	writeJSON(c, http.StatusOK, result)
-}
-
-func (h controlHandler) updatePlaneOperation(c *gin.Context) {
-	planeID := c.Param("planeID")
-	if planeID == "" {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	withRequestLogFields(c, logctx.Fields{PlaneID: planeID})
-	logger := requestScopedLogger(c, h.logger)
-
-	var input domain.PlaneUpdateOperationInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
-		return
-	}
-
-	if _, err := h.store.UpdatePlaneOperation(c.Request.Context(), planeID, input); err != nil {
-		switch {
-		case isPlaneInputError(err):
-			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("update plane operation failed", "error", err)
-			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	planeDetail, err := h.store.GetPlane(c.Request.Context(), planeID)
-	if err != nil {
-		logger.Error("reload plane after operation update failed", "error", err)
-		writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-		return
-	}
-
-	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
-		Action:     "control.plane.operation.update",
-		TargetType: "plane",
-		TargetID:   planeID,
-		TargetName: planeDetail.Name,
-	})
-
-	writeJSON(c, http.StatusOK, planeDetail)
-}
-
 func isPlaneInputError(err error) bool {
 	return errors.Is(err, domain.ErrPlaneNameRequired) ||
 		errors.Is(err, domain.ErrInvalidPlaneName) ||
@@ -262,8 +165,6 @@ func isPlaneInputError(err error) bool {
 		errors.Is(err, domain.ErrPlaneSouthboundTokenRequired) ||
 		errors.Is(err, domain.ErrInvalidPlaneGRPCEndpoint) ||
 		errors.Is(err, domain.ErrInvalidPlaneStatus) ||
-		errors.Is(err, domain.ErrInvalidPlaneOperationState) ||
-		errors.Is(err, domain.ErrPlaneOperationReasonRequired) ||
 		errors.Is(err, domain.ErrInvalidNodesTotal) ||
 		errors.Is(err, domain.ErrInvalidNodesReady) ||
 		errors.Is(err, domain.ErrInvalidNodesReadyExceedsTotal) ||

@@ -12,10 +12,6 @@ const (
 	StatusReady       = "ready"
 	StatusDegraded    = "degraded"
 	StatusOffline     = "offline"
-
-	OperationStateActive      = "active"
-	OperationStateMaintenance = "maintenance"
-	OperationStateDraining    = "draining"
 )
 
 var (
@@ -28,8 +24,6 @@ var (
 	ErrPlaneSouthboundTokenRequired  = errors.New("southboundToken is required")
 	ErrInvalidPlaneGRPCEndpoint      = errors.New("grpcEndpoint must be a gRPC target such as host:port, grpc://host:port, grpcs://host:port, dns:///name:port, or unix:///path")
 	ErrInvalidPlaneStatus            = errors.New("status must be one of registering, ready, degraded, offline")
-	ErrInvalidPlaneOperationState    = errors.New("operation state must be one of active, maintenance, draining")
-	ErrPlaneOperationReasonRequired  = errors.New("reason is required when operation state is maintenance or draining")
 	ErrInvalidNodesTotal             = errors.New("nodesTotal must be greater than or equal to 0")
 	ErrInvalidNodesReady             = errors.New("nodesReady must be greater than or equal to 0")
 	ErrInvalidNodesReadyExceedsTotal = errors.New("nodesReady must be less than or equal to nodesTotal")
@@ -66,13 +60,6 @@ type Registration struct {
 	Registered     bool       `json:"registered"`
 	LastVerifiedAt *time.Time `json:"lastVerifiedAt,omitempty"`
 	TokenUpdatedAt *time.Time `json:"tokenUpdatedAt,omitempty"`
-}
-
-type Operation struct {
-	PlaneID   string    `json:"planeID"`
-	State     string    `json:"state"`
-	Reason    string    `json:"reason"`
-	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 type RuntimeInventorySnapshot struct {
@@ -120,7 +107,6 @@ type Detail struct {
 	Plane
 	Status                 PlaneStatus               `json:"status"`
 	Registration           Registration              `json:"registration"`
-	Operation              Operation                 `json:"operation"`
 	LatestRuntimeInventory *RuntimeInventorySnapshot `json:"latestRuntimeInventory,omitempty"`
 	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }
@@ -139,11 +125,6 @@ type PlaneUpdateStatusInput struct {
 	Message         string     `json:"message"`
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
-}
-
-type PlaneUpdateOperationInput struct {
-	State  string `json:"state"`
-	Reason string `json:"reason"`
 }
 
 type RecordRuntimeInventoryInput struct {
@@ -195,23 +176,6 @@ func (in PlaneUpdateStatusInput) Validate() error {
 	return nil
 }
 
-func (in PlaneUpdateOperationInput) Validate() error {
-	if !IsOperationState(in.State) {
-		return ErrInvalidPlaneOperationState
-	}
-	if in.State != OperationStateActive && strings.TrimSpace(in.Reason) == "" {
-		return ErrPlaneOperationReasonRequired
-	}
-	return nil
-}
-
-func (in PlaneUpdateOperationInput) ResolvedReason() string {
-	if in.State == OperationStateActive {
-		return ""
-	}
-	return strings.TrimSpace(in.Reason)
-}
-
 func (in RecordRuntimeInventoryInput) ResolvedObservedAt(now time.Time) time.Time {
 	if in.ObservedAt.IsZero() {
 		return now.UTC()
@@ -233,30 +197,6 @@ func IsStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func IsOperationState(state string) bool {
-	switch state {
-	case OperationStateActive, OperationStateMaintenance, OperationStateDraining:
-		return true
-	default:
-		return false
-	}
-}
-
-func OperationStateAcceptingNewRuns(state string) bool {
-	return state == OperationStateActive
-}
-
-func (o Operation) ResolvedState() string {
-	if IsOperationState(o.State) {
-		return o.State
-	}
-	return OperationStateActive
-}
-
-func (o Operation) AcceptingNewRuns() bool {
-	return OperationStateAcceptingNewRuns(o.ResolvedState())
 }
 
 func normalizeGRPCEndpoint(raw string) (string, error) {

@@ -144,9 +144,6 @@ func (c *Controller) targetPlaneID(ctx context.Context, serviceItem domain.Servi
 	if planeDetail.Status.Status != domain.StatusReady {
 		return "", fmt.Errorf("%w: current status is %s", ErrPlaneNotReady, planeDetail.Status.Status)
 	}
-	if !planeDetail.Operation.AcceptingNewRuns() {
-		return "", fmt.Errorf("%w: plane operation state is %s", ErrPlaneNotAcceptingNewRuns, planeDetail.Operation.ResolvedState())
-	}
 	return planeID, nil
 }
 

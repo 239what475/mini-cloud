@@ -29,9 +29,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if createdPlane.Status.Status != domain.StatusRegistering {
 		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, domain.StatusRegistering)
 	}
-	if createdPlane.Operation.State != domain.OperationStateActive {
-		t.Fatalf("initial plane operation = %v, want %v", createdPlane.Operation.State, domain.OperationStateActive)
-	}
 	if createdPlane.GRPCEndpoint != "plane-a.example.com:443" {
 		t.Fatalf("plane grpcEndpoint = %q", createdPlane.GRPCEndpoint)
 	}
@@ -67,27 +64,12 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if updatedStatus.Status != domain.StatusReady {
 		t.Fatalf("updated status = %v, want ready", updatedStatus.Status)
 	}
-	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, domain.PlaneUpdateOperationInput{
-		State:  domain.OperationStateMaintenance,
-		Reason: "kernel upgrade",
-	}); err != nil {
-		t.Fatalf("UpdatePlaneOperation(maintenance) returned error: %v", err)
-	}
-	if _, err := db.Store.UpdatePlaneOperation(context.Background(), createdPlane.ID, domain.PlaneUpdateOperationInput{
-		State: domain.OperationStateActive,
-	}); err != nil {
-		t.Fatalf("UpdatePlaneOperation(active) returned error: %v", err)
-	}
-
 	gotPlane, err := db.Store.GetPlane(context.Background(), createdPlane.ID)
 	if err != nil {
 		t.Fatalf("GetPlane returned error: %v", err)
 	}
 	if gotPlane.Status.Status != domain.StatusReady {
 		t.Fatalf("GetPlane status = %v, want ready", gotPlane.Status.Status)
-	}
-	if gotPlane.Operation.State != domain.OperationStateActive || !gotPlane.Operation.AcceptingNewRuns() {
-		t.Fatalf("expected plane operation to be active, got %+v", gotPlane.Operation)
 	}
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
 		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)

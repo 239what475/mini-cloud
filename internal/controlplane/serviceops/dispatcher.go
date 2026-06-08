@@ -18,21 +18,20 @@ import (
 )
 
 var (
-	ErrPlaneIDRequired          = errors.New("planeID is required")
-	ErrServiceIDRequired        = errors.New("serviceID is required")
-	ErrServiceNameRequired      = errors.New("name is required")
-	ErrInvalidServiceName       = errors.New("name must use lowercase letters, digits, and hyphens")
-	ErrDisplayNameRequired      = errors.New("displayName is required")
-	ErrRegionRequired           = errors.New("region is required")
-	ErrInvalidInstanceClass     = errors.New("instanceClass must be one of small, medium, large")
-	ErrInvalidExposure          = errors.New("exposure must be one of public, private")
-	ErrImageRequired            = errors.New("image is required")
-	ErrInvalidDefaultPort       = errors.New("defaultPort must be between 1 and 65535")
-	ErrInvalidReadinessPath     = errors.New("readinessPath must start with /")
-	ErrInvalidEnvironmentKey    = errors.New("env keys must not be empty")
-	ErrPlaneNotRegistered       = errors.New("plane southbound registration must complete before service apply actions can run")
-	ErrPlaneNotAcceptingNewRuns = errors.New("plane is not accepting new runs")
-	serviceNamePattern          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	ErrPlaneIDRequired       = errors.New("planeID is required")
+	ErrServiceIDRequired     = errors.New("serviceID is required")
+	ErrServiceNameRequired   = errors.New("name is required")
+	ErrInvalidServiceName    = errors.New("name must use lowercase letters, digits, and hyphens")
+	ErrDisplayNameRequired   = errors.New("displayName is required")
+	ErrRegionRequired        = errors.New("region is required")
+	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
+	ErrInvalidExposure       = errors.New("exposure must be one of public, private")
+	ErrImageRequired         = errors.New("image is required")
+	ErrInvalidDefaultPort    = errors.New("defaultPort must be between 1 and 65535")
+	ErrInvalidReadinessPath  = errors.New("readinessPath must start with /")
+	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
+	ErrPlaneNotRegistered    = errors.New("plane southbound registration must complete before service apply actions can run")
+	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 const (
@@ -174,9 +173,6 @@ func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input App
 	}
 	if !plane.Registration.Registered {
 		return ApplyResult{}, ErrPlaneNotRegistered
-	}
-	if !plane.Operation.AcceptingNewRuns() {
-		return ApplyResult{}, fmt.Errorf("%w: plane operation state is %s", ErrPlaneNotAcceptingNewRuns, plane.Operation.ResolvedState())
 	}
 	spec, err := input.ResolvedSpec(plane.Region)
 	if err != nil {

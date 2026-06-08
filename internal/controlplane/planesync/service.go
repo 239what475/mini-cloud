@@ -21,7 +21,6 @@ var (
 
 const (
 	backgroundPlaneSyncPerPlaneTimeout = 30 * time.Second
-	ManualPlaneSyncTimeout             = 2 * time.Minute
 )
 
 type Syncer struct {

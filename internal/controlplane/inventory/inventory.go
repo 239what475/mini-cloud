@@ -14,9 +14,6 @@ type Summary struct {
 	PlanesReady           int     `json:"planesReady"`
 	PlanesDegraded        int     `json:"planesDegraded"`
 	PlanesOffline         int     `json:"planesOffline"`
-	PlanesActive          int     `json:"planesActive"`
-	PlanesMaintenance     int     `json:"planesMaintenance"`
-	PlanesDraining        int     `json:"planesDraining"`
 	NodesTotal            int     `json:"nodesTotal"`
 	NodesReady            int     `json:"nodesReady"`
 	NodesUnavailable      int     `json:"nodesUnavailable"`
@@ -47,10 +44,6 @@ type Plane struct {
 	Registered         bool       `json:"registered"`
 	Status             string     `json:"status"`
 	StatusMessage      string     `json:"statusMessage"`
-	OperationState     string     `json:"operationState"`
-	OperationReason    string     `json:"operationReason"`
-	OperationUpdatedAt *time.Time `json:"operationUpdatedAt,omitempty"`
-	AcceptingNewRuns   bool       `json:"acceptingNewRuns"`
 	LastHeartbeatAt    *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt         *time.Time `json:"lastSyncAt,omitempty"`
 	CapacityCapturedAt *time.Time `json:"capacityCapturedAt,omitempty"`
@@ -138,24 +131,17 @@ func Build(items []domain.Detail) View {
 
 func buildPlane(item domain.Detail) Plane {
 	plane := Plane{
-		ID:               item.ID,
-		Name:             item.Name,
-		DisplayName:      item.DisplayName,
-		Provider:         item.Provider,
-		Region:           item.Region,
-		GRPCEndpoint:     item.GRPCEndpoint,
-		Registered:       item.Registration.Registered,
-		Status:           string(item.Status.Status),
-		StatusMessage:    item.Status.Message,
-		OperationState:   string(item.Operation.ResolvedState()),
-		OperationReason:  item.Operation.Reason,
-		AcceptingNewRuns: item.Operation.AcceptingNewRuns(),
-		LastHeartbeatAt:  item.Status.LastHeartbeatAt,
-		LastSyncAt:       item.Status.LastSyncAt,
-	}
-	if !item.Operation.UpdatedAt.IsZero() {
-		updatedAt := item.Operation.UpdatedAt
-		plane.OperationUpdatedAt = &updatedAt
+		ID:              item.ID,
+		Name:            item.Name,
+		DisplayName:     item.DisplayName,
+		Provider:        item.Provider,
+		Region:          item.Region,
+		GRPCEndpoint:    item.GRPCEndpoint,
+		Registered:      item.Registration.Registered,
+		Status:          string(item.Status.Status),
+		StatusMessage:   item.Status.Message,
+		LastHeartbeatAt: item.Status.LastHeartbeatAt,
+		LastSyncAt:      item.Status.LastSyncAt,
 	}
 
 	if item.LatestRuntimeInventory != nil {
@@ -192,15 +178,6 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	case string(domain.StatusOffline):
 		summary.PlanesOffline++
 	}
-	switch planeView.OperationState {
-	case string(domain.OperationStateActive):
-		summary.PlanesActive++
-	case string(domain.OperationStateMaintenance):
-		summary.PlanesMaintenance++
-	case string(domain.OperationStateDraining):
-		summary.PlanesDraining++
-	}
-
 	summary.NodesTotal += planeView.NodesTotal
 	summary.NodesReady += planeView.NodesReady
 	summary.NodesUnavailable += planeView.NodesUnavailable

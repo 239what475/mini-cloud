@@ -29,10 +29,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 			Registration: domain.Registration{
 				Registered: true,
 			},
-			Operation: domain.Operation{
-				State:     domain.OperationStateActive,
-				UpdatedAt: now,
-			},
 			LatestRuntimeInventory: &domain.RuntimeInventorySnapshot{
 				NodesTotal:        2,
 				NodesReady:        2,
@@ -61,11 +57,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 			Registration: domain.Registration{
 				Registered: true,
 			},
-			Operation: domain.Operation{
-				State:     domain.OperationStateDraining,
-				Reason:    "planned evacuation",
-				UpdatedAt: now,
-			},
 			LatestRuntimeInventory: &domain.RuntimeInventorySnapshot{
 				NodesTotal:        1,
 				NodesReady:        0,
@@ -92,11 +83,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 			Registration: domain.Registration{
 				Registered: false,
 			},
-			Operation: domain.Operation{
-				State:     domain.OperationStateMaintenance,
-				Reason:    "bootstrap fixes",
-				UpdatedAt: now,
-			},
 		},
 	})
 
@@ -108,9 +94,6 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	}
 	if view.Summary.PlanesReady != 1 || view.Summary.PlanesDegraded != 1 || view.Summary.PlanesRegistering != 1 {
 		t.Fatalf("unexpected plane status summary: %+v", view.Summary)
-	}
-	if view.Summary.PlanesActive != 1 || view.Summary.PlanesMaintenance != 1 || view.Summary.PlanesDraining != 1 {
-		t.Fatalf("unexpected plane operation summary: %+v", view.Summary)
 	}
 	if view.Summary.NodesTotal != 3 || view.Summary.NodesReady != 2 || view.Summary.NodesUnavailable != 1 {
 		t.Fatalf("unexpected node summary: %+v", view.Summary)
@@ -149,8 +132,5 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	}
 	if view.Planes[0].CPUMilliFree != 2500 || view.Planes[2].NodesUnavailable != 1 {
 		t.Fatalf("unexpected plane rows: %+v", view.Planes)
-	}
-	if !view.Planes[0].AcceptingNewRuns || view.Planes[1].AcceptingNewRuns || view.Planes[2].AcceptingNewRuns {
-		t.Fatalf("unexpected acceptingNewRuns flags: %+v", view.Planes)
 	}
 }
