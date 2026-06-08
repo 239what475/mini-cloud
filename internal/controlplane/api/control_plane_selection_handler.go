@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -10,6 +9,8 @@ import (
 	"mini-cloud/internal/controlplane/deploy"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 type controlPlaneSelectionHandler struct {
@@ -26,41 +27,41 @@ func newControlPlaneSelectionHandler(logger *slog.Logger, stores *store.Store, s
 	}
 }
 
-func (h controlPlaneSelectionHandler) previewSelection(w http.ResponseWriter, r *http.Request) {
+func (h controlPlaneSelectionHandler) previewSelection(c *gin.Context) {
 	if h.svc == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "plane selector is not configured"})
+		writeJSON(c, http.StatusServiceUnavailable, map[string]any{"error": "plane selector is not configured"})
 		return
 	}
 
-	logger := requestScopedLogger(r, h.logger)
+	logger := requestScopedLogger(c, h.logger)
 
 	var input planeselector.SelectionInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 
-	result, err := h.svc.PreviewSelection(r.Context(), input)
+	result, err := h.svc.PreviewSelection(c.Request.Context(), input)
 	if err != nil {
 		switch {
 		case errors.Is(err, planeselector.ErrProviderRequired),
 			errors.Is(err, planeselector.ErrRegionRequired),
 			errors.Is(err, deploy.ErrInvalidInstanceClass):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		default:
 			logger.Error("preview selection failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
 
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
+	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
 		Action:     "control.planeselector.preview",
 		TargetType: "plane_selection",
 		TargetID:   input.Provider + ":" + input.Region,
 		TargetName: input.Provider + "/" + input.Region,
 	})
 
-	writeJSON(w, http.StatusOK, result)
+	writeJSON(c, http.StatusOK, result)
 }

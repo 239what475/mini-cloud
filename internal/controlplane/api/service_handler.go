@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -11,9 +10,11 @@ import (
 
 	"mini-cloud/internal/common/operationhistory"
 	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/controlplane/controller"
 	controlservice "mini-cloud/internal/controlplane/service"
-	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 type serviceSpec struct {
@@ -104,10 +105,10 @@ var errServiceSpecRequired = errors.New("spec is required")
 type serviceHandler struct {
 	logger   *slog.Logger
 	store    *store.Store
-	services *servicecontroller.Controller
+	services *controller.Controller
 }
 
-func newServiceHandler(logger *slog.Logger, stores *store.Store, services *servicecontroller.Controller) serviceHandler {
+func newServiceHandler(logger *slog.Logger, stores *store.Store, services *controller.Controller) serviceHandler {
 	return serviceHandler{
 		logger:   logger,
 		store:    stores,
@@ -115,11 +116,11 @@ func newServiceHandler(logger *slog.Logger, stores *store.Store, services *servi
 	}
 }
 
-func (h serviceHandler) listServices(w http.ResponseWriter, r *http.Request) {
-	items, err := h.services.List(r.Context())
+func (h serviceHandler) listServices(c *gin.Context) {
+	items, err := h.services.List(c.Request.Context())
 	if err != nil {
-		requestScopedLogger(r, h.logger).Error("list services failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+		requestScopedLogger(c, h.logger).Error("list services failed", "error", err)
+		writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
 	out := make([]serviceEnvelope, 0, len(items))
@@ -128,154 +129,154 @@ func (h serviceHandler) listServices(w http.ResponseWriter, r *http.Request) {
 			Service: buildServiceResource(item),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+	writeJSON(c, http.StatusOK, map[string]any{"items": out})
 }
 
-func (h serviceHandler) createService(w http.ResponseWriter, r *http.Request) {
+func (h serviceHandler) createService(c *gin.Context) {
 	var request serviceCreateRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 	input, err := request.toCreateInput()
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := requestScopedLogger(r, h.logger)
+	logger := requestScopedLogger(c, h.logger)
 
-	view, err := h.services.Create(r.Context(), input)
+	view, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
 		case isServiceInputError(err):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
 			logger.Error("create service failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
+	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
 		Action:     "control.service.create",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
 
-	writeJSON(w, http.StatusCreated, serviceEnvelope{
+	writeJSON(c, http.StatusCreated, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) getService(w http.ResponseWriter, r *http.Request) {
-	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
+func (h serviceHandler) getService(c *gin.Context) {
+	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	view, err := h.services.Get(r.Context(), serviceID)
+	view, err := h.services.Get(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			requestScopedLogger(r, h.logger).Error("get service failed", "service_id", serviceID, "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			requestScopedLogger(c, h.logger).Error("get service failed", "service_id", serviceID, "error", err)
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	writeJSON(w, http.StatusOK, serviceEnvelope{
+	writeJSON(c, http.StatusOK, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) updateService(w http.ResponseWriter, r *http.Request) {
-	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
+func (h serviceHandler) updateService(c *gin.Context) {
+	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
 	var request serviceUpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+	if err := c.ShouldBindJSON(&request); err != nil {
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 	input, err := request.toUpdateInput()
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := requestScopedLogger(r, h.logger)
+	logger := requestScopedLogger(c, h.logger)
 
-	view, err := h.services.Update(r.Context(), serviceID, input)
+	view, err := h.services.Update(c.Request.Context(), serviceID, input)
 	if err != nil {
 		switch {
 		case isServiceInputError(err):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
 			logger.Error("update service failed", "service_id", serviceID, "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
+	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
 		Action:     "control.service.update",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
 
-	writeJSON(w, http.StatusOK, serviceEnvelope{
+	writeJSON(c, http.StatusOK, serviceEnvelope{
 		Service: buildServiceResource(view),
 	})
 }
 
-func (h serviceHandler) deleteService(w http.ResponseWriter, r *http.Request) {
-	serviceID := strings.TrimSpace(r.PathValue("serviceID"))
+func (h serviceHandler) deleteService(c *gin.Context) {
+	serviceID := strings.TrimSpace(c.Param("serviceID"))
 	if serviceID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	logger := requestScopedLogger(r, h.logger)
+	logger := requestScopedLogger(c, h.logger)
 
-	view, err := h.services.Delete(r.Context(), serviceID)
+	view, err := h.services.Delete(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
 			logger.Error("delete service failed", "service_id", serviceID, "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
+	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
 		Action:     "control.service.delete",
 		TargetType: "service",
 		TargetID:   view.Service.Metadata.ID,
 		TargetName: view.Service.Metadata.Name,
 	})
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(c, http.StatusOK, map[string]any{
 		"deleted":   true,
 		"serviceID": serviceID,
 	})
 }
 
-func buildServiceResource(view servicecontroller.View) serviceResource {
+func buildServiceResource(view controller.View) serviceResource {
 	status := buildServiceStatus(view)
 	return serviceResource{
 		Metadata: serviceMetadata{
@@ -304,7 +305,7 @@ func buildServiceResource(view servicecontroller.View) serviceResource {
 	}
 }
 
-func buildServiceStatus(view servicecontroller.View) serviceStatus {
+func buildServiceStatus(view controller.View) serviceStatus {
 	serviceItem := view.Service
 	status := serviceStatus{
 		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,

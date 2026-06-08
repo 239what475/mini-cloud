@@ -2,16 +2,16 @@ package api
 
 import (
 	"log/slog"
-	"net/http"
 
-	"mini-cloud/internal/common/httpx"
 	"mini-cloud/internal/common/logctx"
+
+	"github.com/gin-gonic/gin"
 )
 
-func withRequestLogFields(r *http.Request, fields logctx.Fields) *http.Request {
-	return httpx.WithRequestLogFields(r, fields)
+func withRequestLogFields(c *gin.Context, fields logctx.Fields) {
+	c.Request = c.Request.WithContext(logctx.WithFields(c.Request.Context(), fields))
 }
 
-func requestScopedLogger(r *http.Request, logger *slog.Logger) *slog.Logger {
-	return httpx.RequestScopedLogger(r, logger)
+func requestScopedLogger(c *gin.Context, logger *slog.Logger) *slog.Logger {
+	return logctx.Logger(c.Request.Context(), logger)
 }

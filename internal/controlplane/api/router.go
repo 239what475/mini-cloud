@@ -8,12 +8,14 @@ import (
 
 	"mini-cloud/internal/common/logquery"
 	"mini-cloud/internal/common/util"
+	"mini-cloud/internal/controlplane/controller"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/planesync"
-	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 type Options struct {
@@ -23,11 +25,14 @@ type Options struct {
 	PlaneSyncer       *planesync.Syncer
 	Dispatcher        *deploy.Dispatcher
 	PlaneSelector     *planeselector.Selector
-	ServiceController *servicecontroller.Controller
+	ServiceController *controller.Controller
 }
 
 func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler {
-	mux := http.NewServeMux()
+	gin.SetMode(gin.ReleaseMode)
+	router := gin.New()
+	router.Use(ginRecoverPanics(logger), ginRequestLogger(logger))
+
 	authz := newAuthController(opts.AdminToken, logger, stores)
 
 	if opts.Dispatcher == nil {
@@ -37,56 +42,65 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 		opts.PlaneSelector = planeselector.NewSelector(logger, stores)
 	}
 	if opts.ServiceController == nil {
-		opts.ServiceController = servicecontroller.New(logger, stores, opts.PlaneSelector, opts.Dispatcher)
+		opts.ServiceController = controller.New(logger, stores, opts.PlaneSelector, opts.Dispatcher)
 	}
 
-	serveRootJSONOrIndex(logger, opts.UIDir, mux)
+	serveRootJSONOrIndex(logger, opts.UIDir, router)
 
-	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]any{
+	router.GET("/api/healthz", func(c *gin.Context) {
+		writeJSON(c, http.StatusOK, map[string]any{
 			"service": "mini-cloud-control-plane",
 			"status":  "ok",
 			"time":    time.Now().UTC().Format(time.RFC3339),
 		})
 	})
-	mux.HandleFunc("GET /api/v1/auth/whoami", authz.whoAmI)
-	mux.HandleFunc("GET /metrics/control", authz.adminOnly(func(w http.ResponseWriter, r *http.Request) {
-		items, err := stores.ListPlanes(r.Context())
+
+	admin := router.Group("/")
+	admin.Use(authz.adminOnly())
+	admin.GET("/metrics/control", func(c *gin.Context) {
+		items, err := stores.ListPlanes(c.Request.Context())
 		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		util.Fprint(w, renderControlMetrics(items, time.Now().UTC()))
-	}))
+		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		util.Fprint(c.Writer, renderControlMetrics(items, time.Now().UTC()))
+	})
 
 	resourceHandler := newResourceHandler(logger, stores)
 	serviceHandler := newServiceHandler(logger, stores, opts.ServiceController)
 	operationHistoryHandler := newOperationHistoryHandler(logger, stores)
-	mux.HandleFunc("GET /api/v1/registry-credentials", authz.adminOnly(resourceHandler.listRegistryCredentials))
-	mux.HandleFunc("POST /api/v1/registry-credentials", authz.adminOnly(resourceHandler.createRegistryCredential))
-	mux.HandleFunc("GET /api/v1/services", authz.adminOnly(serviceHandler.listServices))
-	mux.HandleFunc("POST /api/v1/services", authz.adminOnly(serviceHandler.createService))
-	mux.HandleFunc("GET /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.getService))
-	mux.HandleFunc("PUT /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.updateService))
-	mux.HandleFunc("DELETE /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.deleteService))
+	api := admin.Group("/api/v1")
+	api.GET("/auth/whoami", authz.whoAmI)
+
+	resources := api.Group("/registry-credentials")
+	resources.GET("", resourceHandler.listRegistryCredentials)
+	resources.POST("", resourceHandler.createRegistryCredential)
+
+	services := api.Group("/services")
+	services.GET("", serviceHandler.listServices)
+	services.POST("", serviceHandler.createService)
+	services.GET("/:serviceID", serviceHandler.getService)
+	services.PUT("/:serviceID", serviceHandler.updateService)
+	services.DELETE("/:serviceID", serviceHandler.deleteService)
 
 	logQueryHandler := newLogQueryHandler(logger, opts.LogQueryService)
-	mux.HandleFunc("GET /api/v1/control/logs", authz.adminOnly(logQueryHandler.queryControlLogs))
 
 	controlHandler := newControlHandler(logger, stores, opts.PlaneSyncer)
 	controlPlaneSelectionHandler := newControlPlaneSelectionHandler(logger, stores, opts.PlaneSelector)
-	mux.HandleFunc("GET /api/v1/control/inventory", authz.adminOnly(controlHandler.inventory))
-	mux.HandleFunc("GET /api/v1/control/planes", authz.adminOnly(controlHandler.listPlanes))
-	mux.HandleFunc("POST /api/v1/control/planes", authz.adminOnly(controlHandler.createPlane))
-	mux.HandleFunc("GET /api/v1/control/planes/{planeID}", authz.adminOnly(controlHandler.getPlane))
-	mux.HandleFunc("DELETE /api/v1/control/planes/{planeID}", authz.adminOnly(controlHandler.deletePlane))
-	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/sync", authz.adminOnly(controlHandler.syncPlane))
-	mux.HandleFunc("PUT /api/v1/control/planes/{planeID}/operation", authz.adminOnly(controlHandler.updatePlaneOperation))
-	mux.HandleFunc("POST /api/v1/control/plane-selection/preview-service", authz.adminOnly(controlPlaneSelectionHandler.previewSelection))
-	mux.HandleFunc("GET /api/v1/control/operations", authz.adminOnly(operationHistoryHandler.listControlOperations))
+	control := api.Group("/control")
+	control.GET("/logs", logQueryHandler.queryControlLogs)
+	control.GET("/inventory", controlHandler.inventory)
+	control.GET("/planes", controlHandler.listPlanes)
+	control.POST("/planes", controlHandler.createPlane)
+	control.GET("/planes/:planeID", controlHandler.getPlane)
+	control.DELETE("/planes/:planeID", controlHandler.deletePlane)
+	control.POST("/planes/:planeID/actions/sync", controlHandler.syncPlane)
+	control.PUT("/planes/:planeID/operation", controlHandler.updatePlaneOperation)
+	control.POST("/plane-selection/preview-service", controlPlaneSelectionHandler.previewSelection)
+	control.GET("/operations", operationHistoryHandler.listControlOperations)
 
-	return requestLogger(logger, recoverPanics(logger, authz.wrap(mux)))
+	return router
 }
 
 func renderControlMetrics(controlPlanes []plane.Detail, now time.Time) string {

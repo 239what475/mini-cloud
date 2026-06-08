@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
@@ -9,18 +8,13 @@ import (
 
 	"mini-cloud/internal/common/httpx"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 const (
 	authPrincipalKindAdmin = "admin"
 )
-
-type authContextKey struct{}
-
-type authState struct {
-	Principal authPrincipal
-	Failure   *authFailure
-}
 
 type authFailure struct {
 	StatusCode int
@@ -53,98 +47,62 @@ func newAuthController(adminToken string, logger *slog.Logger, stores *store.Sto
 	}
 }
 
-func (a authController) wrap(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		state := a.resolveRequest(r)
-		ctx := context.WithValue(r.Context(), authContextKey{}, state)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-func (a authController) resolveRequest(r *http.Request) authState {
-	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
+func (a authController) resolveRequest(c *gin.Context) (authPrincipal, *authFailure) {
+	authorization := strings.TrimSpace(c.GetHeader("Authorization"))
 	if authorization == "" {
-		return authState{
-			Failure: &authFailure{
-				StatusCode: http.StatusUnauthorized,
-				Message:    "bearer token required",
-			},
+		return authPrincipal{}, &authFailure{
+			StatusCode: http.StatusUnauthorized,
+			Message:    "bearer token required",
 		}
 	}
 
 	secret, err := httpx.ParseBearerSecret(authorization)
 	if err != nil {
-		return authState{
-			Failure: &authFailure{
-				StatusCode: http.StatusUnauthorized,
-				Message:    "invalid Authorization header; use Bearer <token>",
-			},
+		return authPrincipal{}, &authFailure{
+			StatusCode: http.StatusUnauthorized,
+			Message:    "invalid Authorization header; use Bearer <token>",
 		}
 	}
 	if subtle.ConstantTimeCompare([]byte(secret), []byte(a.adminToken)) == 1 {
-		return authState{Principal: authPrincipal{Kind: authPrincipalKindAdmin}}
+		return authPrincipal{Kind: authPrincipalKindAdmin}, nil
 	}
-	return authState{
-		Failure: &authFailure{
-			StatusCode: http.StatusUnauthorized,
-			Message:    "invalid bearer token",
-		},
+	return authPrincipal{}, &authFailure{
+		StatusCode: http.StatusUnauthorized,
+		Message:    "invalid bearer token",
 	}
 }
 
-func (a authController) adminOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		authRequest, ok := a.authorize(w, r)
-		if !ok {
+func (a authController) adminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		principal, failure := a.resolveRequest(c)
+		if failure != nil {
+			writeJSON(c, failure.StatusCode, map[string]any{"error": failure.Message})
+			c.Abort()
 			return
 		}
-		next(w, authRequest)
+		if principal.Kind != authPrincipalKindAdmin {
+			writeJSON(c, http.StatusForbidden, map[string]any{"error": "admin token required"})
+			c.Abort()
+			return
+		}
+		c.Set("principal", principal)
+		c.Next()
 	}
 }
 
-func (a authController) whoAmI(w http.ResponseWriter, r *http.Request) {
-	principal, ok := a.requireAuthenticated(w, r)
+func (a authController) whoAmI(c *gin.Context) {
+	principal, ok := c.Get("principal")
 	if !ok {
+		writeJSON(c, http.StatusUnauthorized, map[string]any{"error": "bearer token required"})
+		return
+	}
+	authPrincipal, ok := principal.(authPrincipal)
+	if !ok || authPrincipal.Kind == "" {
+		writeJSON(c, http.StatusUnauthorized, map[string]any{"error": "bearer token required"})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, authWhoAmIResponse{
-		Principal: authPrincipalResponse{Kind: principal.Kind},
+	writeJSON(c, http.StatusOK, authWhoAmIResponse{
+		Principal: authPrincipalResponse{Kind: authPrincipal.Kind},
 	})
-}
-
-func (a authController) authorize(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
-	principal, ok := a.requireAuthenticated(w, r)
-	if !ok {
-		return nil, false
-	}
-	if principal.Kind != authPrincipalKindAdmin {
-		writeJSON(w, http.StatusForbidden, map[string]any{"error": "admin token required"})
-		return nil, false
-	}
-	return r, true
-}
-
-func (a authController) requireAuthenticated(w http.ResponseWriter, r *http.Request) (authPrincipal, bool) {
-	state := authStateFromRequest(r)
-	if state.Failure != nil {
-		writeJSON(w, state.Failure.StatusCode, map[string]any{"error": state.Failure.Message})
-		return authPrincipal{}, false
-	}
-	if state.Principal.Kind == "" {
-		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "bearer token required"})
-		return authPrincipal{}, false
-	}
-	return state.Principal, true
-}
-
-func authStateFromRequest(r *http.Request) authState {
-	if r == nil {
-		return authState{}
-	}
-	state, ok := r.Context().Value(authContextKey{}).(authState)
-	if !ok {
-		return authState{}
-	}
-	return state
 }

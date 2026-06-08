@@ -126,7 +126,7 @@ func (s *Syncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.
 	return outcomes, nil
 }
 
-func StartLoop(ctx context.Context, logger *slog.Logger, syncer *Syncer, interval time.Duration) {
+func StartLoop(ctx context.Context, logger *slog.Logger, syncer *Syncer, interval int) {
 	if syncer == nil || interval <= 0 {
 		return
 	}
@@ -135,7 +135,7 @@ func StartLoop(ctx context.Context, logger *slog.Logger, syncer *Syncer, interva
 	}
 
 	go func() {
-		ticker := time.NewTicker(interval)
+		ticker := time.NewTicker(time.Duration(interval) * time.Second)
 		defer ticker.Stop()
 
 		for {

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -9,6 +8,8 @@ import (
 	"mini-cloud/internal/common/operationhistory"
 	"mini-cloud/internal/controlplane/resource"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 type registryCredentialResource struct {
@@ -30,47 +31,47 @@ func newResourceHandler(logger *slog.Logger, stores *store.Store) resourceHandle
 	return resourceHandler{logger: logger, store: stores}
 }
 
-func (h resourceHandler) listRegistryCredentials(w http.ResponseWriter, r *http.Request) {
-	items, err := h.store.ListRegistryCredentials(r.Context())
+func (h resourceHandler) listRegistryCredentials(c *gin.Context) {
+	items, err := h.store.ListRegistryCredentials(c.Request.Context())
 	if err != nil {
-		requestScopedLogger(r, h.logger).Error("list registry credentials failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+		requestScopedLogger(c, h.logger).Error("list registry credentials failed", "error", err)
+		writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
 	out := make([]registryCredentialResource, 0, len(items))
 	for _, item := range items {
 		out = append(out, toRegistryCredentialResource(item))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+	writeJSON(c, http.StatusOK, map[string]any{"items": out})
 }
 
-func (h resourceHandler) createRegistryCredential(w http.ResponseWriter, r *http.Request) {
+func (h resourceHandler) createRegistryCredential(c *gin.Context) {
 	var input resource.CreateRegistryCredentialInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
+	if err := c.ShouldBindJSON(&input); err != nil {
+		writeJSON(c, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	logger := requestScopedLogger(r, h.logger)
-	created, err := h.store.CreateRegistryCredential(r.Context(), input)
+	logger := requestScopedLogger(c, h.logger)
+	created, err := h.store.CreateRegistryCredential(c.Request.Context(), input)
 	if err != nil {
 		switch {
 		case isResourceInputError(err):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusBadRequest, map[string]any{"error": err.Error()})
 		case errors.Is(err, store.ErrRegistryCredentialNameAlreadyExists):
-			writeJSON(w, http.StatusConflict, map[string]any{"error": err.Error()})
+			writeJSON(c, http.StatusConflict, map[string]any{"error": err.Error()})
 		default:
 			logger.Error("create registry credential failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
+			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
+	recordOperationEvent(logger, h.store, c, operationhistory.CreateInput{
 		Action:     "registry_credential.create",
 		TargetType: "registry_credential",
 		TargetID:   created.ID,
 		TargetName: created.Name,
 	})
-	writeJSON(w, http.StatusCreated, toRegistryCredentialResource(created))
+	writeJSON(c, http.StatusCreated, toRegistryCredentialResource(created))
 }
 
 func toRegistryCredentialResource(item resource.RegistryCredential) registryCredentialResource {

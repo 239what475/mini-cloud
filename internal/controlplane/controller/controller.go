@@ -1,4 +1,4 @@
-package servicecontroller
+package controller
 
 import (
 	"context"
@@ -73,11 +73,11 @@ func New(logger *slog.Logger, stores serviceStore, planner planeSelector, deploy
 	}
 }
 
-func (c *Controller) SetReconcileTimeout(timeout time.Duration) {
+func (c *Controller) SetReconcileTimeout(timeout int) {
 	if c == nil || timeout <= 0 {
 		return
 	}
-	c.timeout = timeout
+	c.timeout = time.Duration(timeout) * time.Second
 }
 
 func (c *Controller) Create(ctx context.Context, input controlservice.CreateInput) (View, error) {

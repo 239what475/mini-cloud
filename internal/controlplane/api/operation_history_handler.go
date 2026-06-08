@@ -6,6 +6,8 @@ import (
 
 	"mini-cloud/internal/common/httpx"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
 type operationHistoryHandler struct {
@@ -20,31 +22,31 @@ func newOperationHistoryHandler(logger *slog.Logger, stores *store.Store) operat
 	}
 }
 
-func (h operationHistoryHandler) listControlOperations(w http.ResponseWriter, r *http.Request) {
-	logger := requestScopedLogger(r, h.logger)
-	limit, ok := parseOperationHistoryLimit(w, r)
+func (h operationHistoryHandler) listControlOperations(c *gin.Context) {
+	logger := requestScopedLogger(c, h.logger)
+	limit, ok := parseOperationHistoryLimit(c)
 	if !ok {
 		return
 	}
 
-	items, err := h.store.ListControlOperationEvents(r.Context(), limit)
+	items, err := h.store.ListControlOperationEvents(c.Request.Context(), limit)
 	if err != nil {
 		logger.Error("list control operation events failed", "error", err)
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
+		writeJSON(c, http.StatusInternalServerError, map[string]any{
 			"error": "internal server error",
 		})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	writeJSON(c, http.StatusOK, map[string]any{
 		"items": items,
 	})
 }
 
-func parseOperationHistoryLimit(w http.ResponseWriter, r *http.Request) (int, bool) {
-	limit, err := httpx.ParseBoundedPositiveIntQuery(r, "limit", 40, 200)
+func parseOperationHistoryLimit(c *gin.Context) (int, bool) {
+	limit, err := httpx.ParseBoundedPositiveIntQuery(c.Request, "limit", 40, 200)
 	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
+		writeJSON(c, http.StatusBadRequest, map[string]any{
 			"error": err.Error(),
 		})
 		return 0, false

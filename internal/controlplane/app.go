@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logquery"
-	controlplaneapi "mini-cloud/internal/controlplane/api"
+	"mini-cloud/internal/controlplane/api"
 	"mini-cloud/internal/controlplane/config"
+	"mini-cloud/internal/controlplane/controller"
 	"mini-cloud/internal/controlplane/deploy"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/planesync"
-	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
 	"mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/controlplane/store/migrations"
 )
@@ -45,16 +45,19 @@ func Build(logger *slog.Logger) (App, error) {
 		return App{}, fmt.Errorf("run migrations: %w", err)
 	}
 
+	backgroundCtx, cancel := context.WithCancel(context.Background())
+
 	stores := store.New(db)
-	planeSyncer := planesync.NewSyncer(logger, stores)
-	dispatcher := deploy.NewDispatcher(logger, stores)
+
+	syncer := planesync.NewSyncer(logger, stores)
+	planesync.StartLoop(backgroundCtx, logger, syncer, cfg.PlaneSyncIntervalSeconds)
+
 	selector := planeselector.NewSelector(logger, stores)
+	dispatcher := deploy.NewDispatcher(logger, stores)
 
-	serviceController := servicecontroller.New(logger, stores, selector, dispatcher)
-	serviceController.SetReconcileTimeout(time.Duration(cfg.ServiceReconcileTimeoutSeconds) * time.Second)
+	serviceController := controller.New(logger, stores, selector, dispatcher)
+	serviceController.SetReconcileTimeout(cfg.ServiceReconcileTimeoutSeconds)
 
-	backgroundCtx, backgroundCancel := context.WithCancel(context.Background())
-	planesync.StartLoop(backgroundCtx, logger, planeSyncer, time.Duration(cfg.PlaneSyncIntervalSeconds)*time.Second)
 	go serviceController.Run(backgroundCtx)
 
 	logQueryService := logquery.NewService(
@@ -62,11 +65,11 @@ func Build(logger *slog.Logger) (App, error) {
 		cfg.LokiTenantID,
 		time.Duration(cfg.LokiQueryTimeoutSeconds)*time.Second,
 	)
-	httpAPI := controlplaneapi.NewMux(controlplaneapi.Options{
+	handler := api.NewMux(api.Options{
 		AdminToken:        cfg.AdminToken,
 		UIDir:             cfg.UIDir,
 		LogQueryService:   logQueryService,
-		PlaneSyncer:       planeSyncer,
+		PlaneSyncer:       syncer,
 		Dispatcher:        dispatcher,
 		PlaneSelector:     selector,
 		ServiceController: serviceController,
@@ -74,9 +77,9 @@ func Build(logger *slog.Logger) (App, error) {
 
 	return App{
 		Config:  cfg,
-		Handler: httpAPI,
+		Handler: handler,
 		db:      db,
-		cancel:  backgroundCancel,
+		cancel:  cancel,
 	}, nil
 }
 

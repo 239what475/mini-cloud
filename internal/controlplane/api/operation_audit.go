@@ -3,15 +3,16 @@ package api
 import (
 	"context"
 	"log/slog"
-	"net/http"
 	"time"
 
 	"mini-cloud/internal/common/operationhistory"
 	"mini-cloud/internal/controlplane/store"
+
+	"github.com/gin-gonic/gin"
 )
 
-func recordOperationEvent(logger *slog.Logger, stores *store.Store, r *http.Request, input operationhistory.CreateInput) {
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 2*time.Second)
+func recordOperationEvent(logger *slog.Logger, stores *store.Store, c *gin.Context, input operationhistory.CreateInput) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 2*time.Second)
 	defer cancel()
 
 	if input.Result == "" {
