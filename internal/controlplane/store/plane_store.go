@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -20,30 +20,30 @@ var (
 	defaultPlaneStatusMessage       = "awaiting registration handshake"
 )
 
-func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain.Detail, error) {
+func (s *Store) CreatePlane(ctx context.Context, input CreatePlaneInput) (model.PlaneDetail, error) {
 	if err := input.validate(); err != nil {
-		return domain.Detail{}, err
+		return model.PlaneDetail{}, err
 	}
 
 	id, err := newID("pln")
 	if err != nil {
-		return domain.Detail{}, err
+		return model.PlaneDetail{}, err
 	}
 
 	grpcEndpoint, err := normalizeGRPCEndpoint(input.GRPCEndpoint)
 	if err != nil {
-		return domain.Detail{}, err
+		return model.PlaneDetail{}, err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.Detail{}, fmt.Errorf("begin create plane tx: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("begin create plane tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
 
-	var created domain.Plane
+	var created model.Plane
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO fleet_planes (
 			id,
@@ -74,12 +74,12 @@ func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return domain.Detail{}, ErrPlaneNameAlreadyExists
+			return model.PlaneDetail{}, ErrPlaneNameAlreadyExists
 		}
-		return domain.Detail{}, fmt.Errorf("insert plane: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("insert plane: %w", err)
 	}
 
-	var status domain.PlaneStatus
+	var status model.PlaneStatus
 	err = tx.QueryRowContext(ctx, `
 		INSERT INTO fleet_plane_statuses (
 			plane_id,
@@ -94,7 +94,7 @@ func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain
 			last_heartbeat_at,
 			last_sync_at,
 			updated_at
-	`, created.ID, domain.StatusRegistering, defaultPlaneStatusMessage).Scan(
+	`, created.ID, model.StatusRegistering, defaultPlaneStatusMessage).Scan(
 		&status.PlaneID,
 		&status.Status,
 		&status.Message,
@@ -103,9 +103,9 @@ func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain
 		&status.UpdatedAt,
 	)
 	if err != nil {
-		return domain.Detail{}, fmt.Errorf("insert plane status: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("insert plane status: %w", err)
 	}
-	status.Status = domain.StatusRegistering
+	status.Status = model.StatusRegistering
 	status.Message = defaultPlaneStatusMessage
 
 	registration, err := scanPlaneRegistration(tx.QueryRowContext(ctx, `
@@ -119,22 +119,22 @@ func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain
 			updated_at
 	`, created.ID, strings.TrimSpace(input.SouthboundToken)))
 	if err != nil {
-		return domain.Detail{}, fmt.Errorf("insert plane southbound token: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("insert plane southbound token: %w", err)
 	}
 	registration.Registered = true
 
 	if err := tx.Commit(); err != nil {
-		return domain.Detail{}, fmt.Errorf("commit create plane: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("commit create plane: %w", err)
 	}
 
-	return domain.Detail{
+	return model.PlaneDetail{
 		Plane:        created,
 		Status:       status,
 		Registration: registration,
 	}, nil
 }
 
-func (s *Store) ListPlanes(ctx context.Context) ([]domain.Detail, error) {
+func (s *Store) ListPlanes(ctx context.Context) ([]model.PlaneDetail, error) {
 	rows, err := s.db.QueryContext(ctx, planeDetailBaseQuery(`
 		ORDER BY p.created_at ASC, p.id ASC
 	`))
@@ -143,7 +143,7 @@ func (s *Store) ListPlanes(ctx context.Context) ([]domain.Detail, error) {
 	}
 	defer closeRows(rows)
 
-	items := make([]domain.Detail, 0)
+	items := make([]model.PlaneDetail, 0)
 	for rows.Next() {
 		item, err := scanPlaneDetail(rows)
 		if err != nil {
@@ -157,7 +157,7 @@ func (s *Store) ListPlanes(ctx context.Context) ([]domain.Detail, error) {
 	return items, nil
 }
 
-func (s *Store) GetPlane(ctx context.Context, planeID string) (domain.Detail, error) {
+func (s *Store) GetPlane(ctx context.Context, planeID string) (model.PlaneDetail, error) {
 	row := s.db.QueryRowContext(ctx, planeDetailBaseQuery(`
 		WHERE p.id = $1
 	`), planeID)
@@ -165,9 +165,9 @@ func (s *Store) GetPlane(ctx context.Context, planeID string) (domain.Detail, er
 	item, err := scanPlaneDetail(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Detail{}, ErrPlaneNotFound
+			return model.PlaneDetail{}, ErrPlaneNotFound
 		}
-		return domain.Detail{}, fmt.Errorf("query plane: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("query plane: %w", err)
 	}
 	return item, nil
 }
@@ -183,7 +183,7 @@ func (s *Store) DeletePlane(ctx context.Context, planeID string) error {
 	return nil
 }
 
-func (s *Store) SetPlaneSouthboundToken(ctx context.Context, planeID string, southboundToken string) (domain.Registration, error) {
+func (s *Store) SetPlaneSouthboundToken(ctx context.Context, planeID string, southboundToken string) (model.PlaneRegistration, error) {
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO plane_southbound_tokens (
 			plane_id,
@@ -203,15 +203,15 @@ func (s *Store) SetPlaneSouthboundToken(ctx context.Context, planeID string, sou
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return domain.Registration{}, ErrPlaneNotFound
+			return model.PlaneRegistration{}, ErrPlaneNotFound
 		}
-		return domain.Registration{}, fmt.Errorf("set plane southbound token: %w", err)
+		return model.PlaneRegistration{}, fmt.Errorf("set plane southbound token: %w", err)
 	}
 	registration.Registered = true
 	return registration, nil
 }
 
-func (s *Store) MarkPlaneSouthboundTokenVerified(ctx context.Context, planeID string, verifiedAt time.Time) (domain.Registration, error) {
+func (s *Store) MarkPlaneSouthboundTokenVerified(ctx context.Context, planeID string, verifiedAt time.Time) (model.PlaneRegistration, error) {
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE plane_southbound_tokens
 		SET
@@ -225,9 +225,9 @@ func (s *Store) MarkPlaneSouthboundTokenVerified(ctx context.Context, planeID st
 	registration, err := scanPlaneRegistration(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Registration{}, ErrPlaneSouthboundTokenNotFound
+			return model.PlaneRegistration{}, ErrPlaneSouthboundTokenNotFound
 		}
-		return domain.Registration{}, fmt.Errorf("mark plane southbound token verified: %w", err)
+		return model.PlaneRegistration{}, fmt.Errorf("mark plane southbound token verified: %w", err)
 	}
 	registration.Registered = true
 	return registration, nil
@@ -274,9 +274,9 @@ func (s *Store) ListRegisteredPlaneIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input PlaneUpdateStatusInput) (domain.PlaneStatus, error) {
+func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input UpdatePlaneStatusInput) (model.PlaneStatus, error) {
 	if err := input.validate(); err != nil {
-		return domain.PlaneStatus{}, err
+		return model.PlaneStatus{}, err
 	}
 
 	row := s.db.QueryRowContext(ctx, `
@@ -300,9 +300,9 @@ func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input Pla
 	status, err := scanPlaneStatus(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.PlaneStatus{}, ErrPlaneNotFound
+			return model.PlaneStatus{}, ErrPlaneNotFound
 		}
-		return domain.PlaneStatus{}, fmt.Errorf("update plane status: %w", err)
+		return model.PlaneStatus{}, fmt.Errorf("update plane status: %w", err)
 	}
 	return status, nil
 }
@@ -352,8 +352,8 @@ func planeDetailBaseQuery(suffix string) string {
 	` + suffix
 }
 
-func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detail, error) {
-	var item domain.Detail
+func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneDetail, error) {
+	var item model.PlaneDetail
 	var heartbeat sql.NullTime
 	var syncAt sql.NullTime
 	var registrationLastVerifiedAt sql.NullTime
@@ -406,7 +406,7 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		&runtimeConfigSummary,
 		&runtimeConfigUpdatedAt,
 	); err != nil {
-		return domain.Detail{}, err
+		return model.PlaneDetail{}, err
 	}
 	if heartbeat.Valid {
 		value := heartbeat.Time
@@ -426,7 +426,7 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		item.Registration.TokenUpdatedAt = &value
 	}
 	if runtimePlaneID.Valid {
-		item.LatestRuntimeInventory = &domain.RuntimeInventorySnapshot{
+		item.LatestRuntimeInventory = &model.RuntimeInventorySnapshot{
 			PlaneID:           runtimePlaneID.String,
 			SyncVersion:       runtimeSyncVersion.Int64,
 			ObservedAt:        runtimeObservedAt.Time,
@@ -440,25 +440,25 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (domain.Detai
 		}
 	}
 	if runtimeConfigPlaneID.Valid {
-		item.LatestRuntimeConfig = &domain.RuntimeConfigSnapshot{
+		item.LatestRuntimeConfig = &model.RuntimeConfigSnapshot{
 			PlaneID:     runtimeConfigPlaneID.String,
 			ObservedAt:  runtimeConfigObservedAt.Time,
 			Fingerprint: runtimeConfigFingerprint.String,
 			UpdatedAt:   runtimeConfigUpdatedAt.Time,
 		}
 		if err := unmarshalJSON(runtimeConfigSummary, &item.LatestRuntimeConfig.Summary, map[string]any{}); err != nil {
-			return domain.Detail{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
+			return model.PlaneDetail{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
 		}
 	}
 	return item, nil
 }
 
-func scanPlaneRegistration(scanner interface{ Scan(dest ...any) error }) (domain.Registration, error) {
-	var item domain.Registration
+func scanPlaneRegistration(scanner interface{ Scan(dest ...any) error }) (model.PlaneRegistration, error) {
+	var item model.PlaneRegistration
 	var lastVerifiedAt sql.NullTime
 	var updatedAt sql.NullTime
 	if err := scanner.Scan(&lastVerifiedAt, &updatedAt); err != nil {
-		return domain.Registration{}, err
+		return model.PlaneRegistration{}, err
 	}
 	item.Registered = true
 	if lastVerifiedAt.Valid {
@@ -472,8 +472,8 @@ func scanPlaneRegistration(scanner interface{ Scan(dest ...any) error }) (domain
 	return item, nil
 }
 
-func scanPlaneStatus(scanner interface{ Scan(dest ...any) error }) (domain.PlaneStatus, error) {
-	var item domain.PlaneStatus
+func scanPlaneStatus(scanner interface{ Scan(dest ...any) error }) (model.PlaneStatus, error) {
+	var item model.PlaneStatus
 	var heartbeat sql.NullTime
 	var syncAt sql.NullTime
 	if err := scanner.Scan(
@@ -484,7 +484,7 @@ func scanPlaneStatus(scanner interface{ Scan(dest ...any) error }) (domain.Plane
 		&syncAt,
 		&item.UpdatedAt,
 	); err != nil {
-		return domain.PlaneStatus{}, err
+		return model.PlaneStatus{}, err
 	}
 	if heartbeat.Valid {
 		value := heartbeat.Time

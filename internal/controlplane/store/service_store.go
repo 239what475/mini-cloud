@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"mini-cloud/internal/common/projectedfile"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -52,49 +52,49 @@ const serviceSelectColumns = `
 	updated_at
 `
 
-func (s *Store) CreateService(ctx context.Context, input ServiceCreateInput) (domain.Service, error) {
+func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (model.Service, error) {
 	if err := input.validate(); err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
-	registryCredential := domain.CloneRegistryCredential(input.Spec.RegistryCredential)
+	registryCredential := model.CloneServiceRegistryCredential(input.Spec.RegistryCredential)
 
 	id, err := newID("svc")
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 
 	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service command: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service command: %w", err)
 	}
 	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service args: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service args: %w", err)
 	}
 	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service env: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service env: %w", err)
 	}
 	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service secret env: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service secret env: %w", err)
 	}
 	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service files: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service files: %w", err)
 	}
-	initialStatus := domain.PendingStatus(0, "waiting for service reconcile")
-	initialRun := domain.RunStatus{Phase: domain.RunPhasePending}
-	runJSON, err := marshalJSON(initialRun, domain.RunStatus{Phase: domain.RunPhasePending})
+	initialStatus := model.PendingServiceStatus(0, "waiting for service reconcile")
+	initialRun := model.RunStatus{Phase: model.RunPhasePending}
+	runJSON, err := marshalJSON(initialRun, model.RunStatus{Phase: model.RunPhasePending})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service initial run: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
 
 	item, err := scanService(s.db.QueryRowContext(ctx, `
@@ -149,7 +149,7 @@ func (s *Store) CreateService(ctx context.Context, input ServiceCreateInput) (do
 		registryPassword(registryCredential),
 		filesJSON,
 		runJSON,
-		domain.DesiredStateActive,
+		model.DesiredStateActive,
 		initialStatus.ObservedGeneration,
 		initialStatus.Phase,
 		initialStatus.Healthy,
@@ -160,15 +160,15 @@ func (s *Store) CreateService(ctx context.Context, input ServiceCreateInput) (do
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23505":
-				return domain.Service{}, ErrServiceNameAlreadyExists
+				return model.Service{}, ErrServiceNameAlreadyExists
 			}
 		}
-		return domain.Service{}, fmt.Errorf("insert service: %w", err)
+		return model.Service{}, fmt.Errorf("insert service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) ListServices(ctx context.Context) ([]domain.Service, error) {
+func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -179,7 +179,7 @@ func (s *Store) ListServices(ctx context.Context) ([]domain.Service, error) {
 	}
 	defer closeRows(rows)
 
-	items := make([]domain.Service, 0)
+	items := make([]model.Service, 0)
 	for rows.Next() {
 		item, err := scanService(rows)
 		if err != nil {
@@ -193,7 +193,7 @@ func (s *Store) ListServices(ctx context.Context) ([]domain.Service, error) {
 	return items, nil
 }
 
-func (s *Store) GetService(ctx context.Context, serviceID string) (domain.Service, error) {
+func (s *Store) GetService(ctx context.Context, serviceID string) (model.Service, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -201,14 +201,14 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (domain.Servic
 	`, serviceID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Service{}, ErrServiceNotFound
+			return model.Service{}, ErrServiceNotFound
 		}
-		return domain.Service{}, fmt.Errorf("query service: %w", err)
+		return model.Service{}, fmt.Errorf("query service: %w", err)
 	}
 	return item, nil
 }
 
-func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (domain.Service, error) {
+func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (model.Service, error) {
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM fleet_services
@@ -217,38 +217,38 @@ func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (d
 	`, serviceID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Service{}, ErrServiceNotFound
+			return model.Service{}, ErrServiceNotFound
 		}
-		return domain.Service{}, fmt.Errorf("query service for update: %w", err)
+		return model.Service{}, fmt.Errorf("query service for update: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) UpdateService(ctx context.Context, serviceID string, input ServiceUpdateInput) (domain.Service, error) {
+func (s *Store) UpdateService(ctx context.Context, serviceID string, input UpdateServiceInput) (model.Service, error) {
 	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service command for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service command for update: %w", err)
 	}
 	argsJSON, err := marshalJSON(input.Spec.Args, []string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service args for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service args for update: %w", err)
 	}
 	envJSON, err := marshalJSON(input.Spec.Env, map[string]string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service env for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service env for update: %w", err)
 	}
 	secretEnvJSON, err := marshalJSON(input.Spec.SecretEnv, map[string]string{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service secret env for update: %w", err)
 	}
 	filesJSON, err := marshalJSON(projectedfile.CloneFiles(input.Spec.Files), []projectedfile.File{})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service files for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service files for update: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("begin update service tx: %w", err)
+		return model.Service{}, fmt.Errorf("begin update service tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -256,26 +256,26 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Servi
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	if err := input.validate(current.Metadata.Name); err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
-	registryCredential := domain.CloneRegistryCredential(input.Spec.RegistryCredential)
-	currentRunJSON, err := marshalJSON(current.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending})
+	registryCredential := model.CloneServiceRegistryCredential(input.Spec.RegistryCredential)
+	currentRunJSON, err := marshalJSON(current.Status.Run, model.RunStatus{Phase: model.RunPhasePending})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service run for update: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	pendingStatus := domain.PendingStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
+	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		UPDATE fleet_services
@@ -328,7 +328,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Servi
 		filesJSON,
 		currentRunJSON,
 		nextGeneration,
-		domain.DesiredStateActive,
+		model.DesiredStateActive,
 		pendingStatus.ObservedGeneration,
 		pendingStatus.Phase,
 		pendingStatus.Healthy,
@@ -337,21 +337,21 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Servi
 	))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+			return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 		}
-		return domain.Service{}, fmt.Errorf("update service: %w", err)
+		return model.Service{}, fmt.Errorf("update service: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.Service{}, fmt.Errorf("commit update service: %w", err)
+		return model.Service{}, fmt.Errorf("commit update service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID string) (domain.Service, error) {
+func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID string) (model.Service, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("begin delete service tx: %w", err)
+		return model.Service{}, fmt.Errorf("begin delete service tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -359,17 +359,17 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
-	if current.Status.DesiredState == domain.DesiredStateDeleted {
+	if current.Status.DesiredState == model.DesiredStateDeleted {
 		return current, nil
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	deletingStatus := domain.DeletingStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
-	currentRunJSON, err := marshalJSON(current.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending})
+	deletingStatus := model.DeletingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
+	currentRunJSON, err := marshalJSON(current.Status.Run, model.RunStatus{Phase: model.RunPhasePending})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
 	}
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
@@ -392,7 +392,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	`,
 		serviceID,
 		nextGeneration,
-		domain.DesiredStateDeleted,
+		model.DesiredStateDeleted,
 		deletingStatus.ObservedGeneration,
 		deletingStatus.Phase,
 		deletingStatus.Healthy,
@@ -402,41 +402,41 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+			return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 		}
-		return domain.Service{}, fmt.Errorf("mark service deletion requested: %w", err)
+		return model.Service{}, fmt.Errorf("mark service deletion requested: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.Service{}, fmt.Errorf("commit delete service: %w", err)
+		return model.Service{}, fmt.Errorf("commit delete service: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input UpdateServiceStatusInput) (model.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, nil, input)
 }
 
-func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input UpdateServiceStatusInput) (model.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, &expectedGeneration, input)
 }
 
-func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input UpdateServiceStatusInput) (model.Service, error) {
 	current, err := s.GetService(ctx, serviceID)
 	if err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	if expectedGeneration != nil && current.Metadata.Generation != *expectedGeneration {
-		return domain.Service{}, ErrServiceGenerationConflict
+		return model.Service{}, ErrServiceGenerationConflict
 	}
 
 	nextRun := current.Status.Run
 	if input.Run != nil {
-		nextRun = domain.CloneRunStatus(*input.Run)
+		nextRun = model.CloneRunStatus(*input.Run)
 	}
-	runJSON, err := marshalJSON(nextRun, domain.RunStatus{Phase: domain.RunPhasePending})
+	runJSON, err := marshalJSON(nextRun, model.RunStatus{Phase: model.RunPhasePending})
 	if err != nil {
-		return domain.Service{}, fmt.Errorf("marshal service run status: %w", err)
+		return model.Service{}, fmt.Errorf("marshal service run status: %w", err)
 	}
 
 	query := `
@@ -476,11 +476,11 @@ func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expec
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			if expectedGeneration != nil {
-				return domain.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, *expectedGeneration)
+				return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, *expectedGeneration)
 			}
-			return domain.Service{}, ErrServiceNotFound
+			return model.Service{}, ErrServiceNotFound
 		}
-		return domain.Service{}, fmt.Errorf("update service status: %w", err)
+		return model.Service{}, fmt.Errorf("update service status: %w", err)
 	}
 	return item, nil
 }
@@ -524,8 +524,8 @@ func classifyServiceGenerationConflict(ctx context.Context, stores *Store, servi
 	return ErrServiceNotFound
 }
 
-func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, error) {
-	var item domain.Service
+func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, error) {
+	var item model.Service
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
@@ -569,27 +569,27 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, 
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
-		return domain.Service{}, err
+		return model.Service{}, err
 	}
 	if err := unmarshalJSON(commandJSON, &item.Spec.Command, []string{}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service command: %w", err)
+		return model.Service{}, fmt.Errorf("decode service command: %w", err)
 	}
 	if err := unmarshalJSON(argsJSON, &item.Spec.Args, []string{}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service args: %w", err)
+		return model.Service{}, fmt.Errorf("decode service args: %w", err)
 	}
 	if err := unmarshalJSON(envJSON, &item.Spec.Env, map[string]string{}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service env: %w", err)
+		return model.Service{}, fmt.Errorf("decode service env: %w", err)
 	}
 	if err := unmarshalJSON(secretEnvJSON, &item.Spec.SecretEnv, map[string]string{}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service secret env: %w", err)
+		return model.Service{}, fmt.Errorf("decode service secret env: %w", err)
 	}
 	if err := unmarshalJSON(filesJSON, &item.Spec.Files, []projectedfile.File{}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service files: %w", err)
+		return model.Service{}, fmt.Errorf("decode service files: %w", err)
 	}
 	item.Spec.Files = projectedfile.CloneFiles(item.Spec.Files)
 	item.Spec.RegistryCredential = registryCredentialFromColumns(registryServerValue, registryUsernameValue, registryPasswordValue)
-	if err := unmarshalJSON(runJSON, &item.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending}); err != nil {
-		return domain.Service{}, fmt.Errorf("decode service run status: %w", err)
+	if err := unmarshalJSON(runJSON, &item.Status.Run, model.RunStatus{Phase: model.RunPhasePending}); err != nil {
+		return model.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
 	item.Status.Run.Phase = normalizeRunPhase(item.Status.Run.Phase)
 	if lastReconciledAt.Valid {
@@ -612,7 +612,7 @@ func nullableString(value string) any {
 func normalizeRunPhase(phase string) string {
 	value := strings.ToLower(strings.TrimSpace(phase))
 	if value == "" {
-		return domain.RunPhasePending
+		return model.RunPhasePending
 	}
 	return value
 }
@@ -631,32 +631,32 @@ func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID str
 	return nil
 }
 
-func registryServer(input *domain.RegistryCredential) string {
+func registryServer(input *model.ServiceRegistryCredential) string {
 	if input == nil {
 		return ""
 	}
 	return input.Server
 }
 
-func registryUsername(input *domain.RegistryCredential) string {
+func registryUsername(input *model.ServiceRegistryCredential) string {
 	if input == nil {
 		return ""
 	}
 	return input.Username
 }
 
-func registryPassword(input *domain.RegistryCredential) string {
+func registryPassword(input *model.ServiceRegistryCredential) string {
 	if input == nil {
 		return ""
 	}
 	return input.Password
 }
 
-func registryCredentialFromColumns(server string, username string, password string) *domain.RegistryCredential {
+func registryCredentialFromColumns(server string, username string, password string) *model.ServiceRegistryCredential {
 	if strings.TrimSpace(server) == "" && strings.TrimSpace(username) == "" && password == "" {
 		return nil
 	}
-	return &domain.RegistryCredential{
+	return &model.ServiceRegistryCredential{
 		Server:   server,
 		Username: username,
 		Password: password,

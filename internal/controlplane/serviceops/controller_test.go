@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"testing"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
 )
@@ -20,27 +20,27 @@ func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	deployer := newFakeDeploy()
 	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
 
-	view, err := controller.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
+	service, err := controller.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	if view.Service.Metadata.Generation != 1 {
-		t.Fatalf("generation = %d, want 1", view.Service.Metadata.Generation)
+	if service.Metadata.Generation != 1 {
+		t.Fatalf("generation = %d, want 1", service.Metadata.Generation)
 	}
-	if view.Service.Status.Observed.Phase != domain.PhaseReady {
-		t.Fatalf("phase = %s, want ready", view.Service.Status.Observed.Phase)
+	if service.Status.Observed.Phase != model.PhaseReady {
+		t.Fatalf("phase = %s, want ready", service.Status.Observed.Phase)
 	}
-	if view.Service.Status.Observed.AssignedPlaneID != planeItem.ID {
-		t.Fatalf("assigned plane = %q, want %s", view.Service.Status.Observed.AssignedPlaneID, planeItem.ID)
+	if service.Status.Observed.AssignedPlaneID != planeItem.ID {
+		t.Fatalf("assigned plane = %q, want %s", service.Status.Observed.AssignedPlaneID, planeItem.ID)
 	}
-	if len(deployer.applyInputs) != 1 || deployer.applyInputs[0].Metadata.Name != "web" {
-		t.Fatalf("unexpected apply inputs: %+v", deployer.applyInputs)
+	if len(deployer.applyServices) != 1 || deployer.applyServices[0].Metadata.Name != "web" {
+		t.Fatalf("unexpected apply services: %+v", deployer.applyServices)
 	}
-	if deployer.applyInputs[0].Spec.RegistryCredential == nil ||
-		deployer.applyInputs[0].Spec.RegistryCredential.Server != "registry.example.com" ||
-		deployer.applyInputs[0].Spec.RegistryCredential.Username != "svc-user" ||
-		deployer.applyInputs[0].Spec.RegistryCredential.Password != "svc-password" {
-		t.Fatalf("unexpected registry credential: %+v", deployer.applyInputs[0].Spec.RegistryCredential)
+	if deployer.applyServices[0].Spec.RegistryCredential == nil ||
+		deployer.applyServices[0].Spec.RegistryCredential.Server != "registry.example.com" ||
+		deployer.applyServices[0].Spec.RegistryCredential.Username != "svc-user" ||
+		deployer.applyServices[0].Spec.RegistryCredential.Password != "svc-password" {
+		t.Fatalf("unexpected registry credential: %+v", deployer.applyServices[0].Spec.RegistryCredential)
 	}
 }
 
@@ -56,18 +56,18 @@ func TestUpdateReusesCurrentAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	updated, err := controller.Update(ctx, created.Service.Metadata.ID, updateInput(planeItem.ID, "API v2", "nginx:1.28-alpine"))
+	updated, err := controller.Update(ctx, created.Metadata.ID, updateInput(planeItem.ID, "API v2", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
-	if updated.Service.Status.Observed.AssignedPlaneID != planeItem.ID {
-		t.Fatalf("assigned plane = %q, want %s", updated.Service.Status.Observed.AssignedPlaneID, planeItem.ID)
+	if updated.Status.Observed.AssignedPlaneID != planeItem.ID {
+		t.Fatalf("assigned plane = %q, want %s", updated.Status.Observed.AssignedPlaneID, planeItem.ID)
 	}
-	if len(deployer.applyInputs) != 2 {
-		t.Fatalf("applyInputs = %d, want 2", len(deployer.applyInputs))
+	if len(deployer.applyServices) != 2 {
+		t.Fatalf("applyServices = %d, want 2", len(deployer.applyServices))
 	}
-	if deployer.applyInputs[1].Spec.Image != "nginx:1.28-alpine" {
-		t.Fatalf("updated image = %s, want nginx:1.28-alpine", deployer.applyInputs[1].Spec.Image)
+	if deployer.applyServices[1].Spec.Image != "nginx:1.28-alpine" {
+		t.Fatalf("updated image = %s, want nginx:1.28-alpine", deployer.applyServices[1].Spec.Image)
 	}
 }
 
@@ -84,12 +84,12 @@ func TestUpdateMovesAssignmentWhenPlaneIDChanges(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	updated, err := controller.Update(ctx, created.Service.Metadata.ID, updateInput(planeB.ID, "Move", "nginx:1.28-alpine"))
+	updated, err := controller.Update(ctx, created.Metadata.ID, updateInput(planeB.ID, "Move", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
-	if updated.Service.Status.Observed.AssignedPlaneID != planeB.ID {
-		t.Fatalf("assigned plane = %q, want %s", updated.Service.Status.Observed.AssignedPlaneID, planeB.ID)
+	if updated.Status.Observed.AssignedPlaneID != planeB.ID {
+		t.Fatalf("assigned plane = %q, want %s", updated.Status.Observed.AssignedPlaneID, planeB.ID)
 	}
 	if len(deployer.applyPlaneIDs) != 2 || deployer.applyPlaneIDs[0] != planeA.ID || deployer.applyPlaneIDs[1] != planeB.ID {
 		t.Fatalf("apply plane ids = %+v, want [%s %s]", deployer.applyPlaneIDs, planeA.ID, planeB.ID)
@@ -111,7 +111,7 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	serviceID := created.Service.Metadata.ID
+	serviceID := created.Metadata.ID
 	if _, err := controller.Delete(ctx, serviceID); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetService after delete returned error: %v", err)
 	}
-	if reloaded.Status.DesiredState != domain.DesiredStateDeleted || reloaded.Status.Observed.Phase != domain.PhaseDeleting {
+	if reloaded.Status.DesiredState != model.DesiredStateDeleted || reloaded.Status.Observed.Phase != model.PhaseDeleting {
 		t.Fatalf("service status after delete = %+v, want deleting", reloaded.Status)
 	}
 	if len(deployer.deleteInputs) != 1 {
@@ -132,23 +132,23 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	}
 }
 
-func createInput(planeID string, name string, displayName string, image string) controlplanestore.ServiceCreateInput {
-	return controlplanestore.ServiceCreateInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func createInput(planeID string, name string, displayName string, image string) controlplanestore.CreateServiceInput {
+	return controlplanestore.CreateServiceInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func updateInput(planeID string, displayName string, image string) controlplanestore.ServiceUpdateInput {
-	return controlplanestore.ServiceUpdateInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func updateInput(planeID string, displayName string, image string) controlplanestore.UpdateServiceInput {
+	return controlplanestore.UpdateServiceInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func serviceSpec(planeID string, image string) domain.Spec {
-	return domain.Spec{
+func serviceSpec(planeID string, image string) model.ServiceSpec {
+	return model.ServiceSpec{
 		PlaneID:       planeID,
-		InstanceClass: domain.InstanceClassSmall,
+		InstanceClass: model.InstanceClassSmall,
 		Exposure:      "public",
 		Image:         image,
 		DefaultPort:   80,
 		ReadinessPath: "/",
-		RegistryCredential: &domain.RegistryCredential{
+		RegistryCredential: &model.ServiceRegistryCredential{
 			Server:   "registry.example.com",
 			Username: "svc-user",
 			Password: "svc-password",
@@ -158,7 +158,7 @@ func serviceSpec(planeID string, image string) domain.Spec {
 
 type fakeDeploy struct {
 	applyPlaneIDs  []string
-	applyInputs    []ApplyServiceInput
+	applyServices  []model.Service
 	deletePlaneIDs []string
 	deleteInputs   []DeleteServiceInput
 	deleteCalls    int
@@ -168,10 +168,10 @@ func newFakeDeploy() *fakeDeploy {
 	return &fakeDeploy{}
 }
 
-func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input ApplyServiceInput) (ApplyResult, error) {
+func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, service model.Service) (ApplyResult, error) {
 	f.applyPlaneIDs = append(f.applyPlaneIDs, planeID)
-	f.applyInputs = append(f.applyInputs, input)
-	return ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
+	f.applyServices = append(f.applyServices, service)
+	return ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation)}, nil
 }
 
 func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input DeleteServiceInput) error {
@@ -181,10 +181,10 @@ func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input Dele
 	return nil
 }
 
-func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) domain.Detail {
+func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) model.PlaneDetail {
 	t.Helper()
 	ctx := context.Background()
-	item, err := db.Store.CreatePlane(ctx, controlplanestore.PlaneCreateInput{
+	item, err := db.Store.CreatePlane(ctx, controlplanestore.CreatePlaneInput{
 		Name:            name,
 		DisplayName:     name,
 		Provider:        "aliyun",
@@ -195,7 +195,7 @@ func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, na
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
-	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, controlplanestore.PlaneUpdateStatusInput{Status: domain.StatusReady, Message: "ready"}); err != nil {
+	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusReady, Message: "ready"}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 	detail, err := db.Store.GetPlane(ctx, item.ID)

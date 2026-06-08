@@ -1,4 +1,4 @@
-package domain
+package model
 
 import (
 	"time"
@@ -24,48 +24,48 @@ const (
 )
 
 type Service struct {
-	Metadata  Metadata      `json:"metadata"`
-	Spec      Spec          `json:"spec"`
-	Status    ServiceStatus `json:"status"`
-	CreatedAt time.Time     `json:"createdAt"`
-	UpdatedAt time.Time     `json:"updatedAt"`
+	Metadata  ServiceMetadata `json:"metadata"`
+	Spec      ServiceSpec     `json:"spec"`
+	Status    ServiceStatus   `json:"status"`
+	CreatedAt time.Time       `json:"createdAt"`
+	UpdatedAt time.Time       `json:"updatedAt"`
 }
 
-type Metadata struct {
+type ServiceMetadata struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Generation  int64  `json:"generation"`
 }
 
-type Spec struct {
-	PlaneID            string               `json:"planeID"`
-	InstanceClass      string               `json:"instanceClass"`
-	Exposure           string               `json:"exposure"`
-	Image              string               `json:"image"`
-	Command            []string             `json:"command"`
-	Args               []string             `json:"args"`
-	DefaultPort        int                  `json:"defaultPort"`
-	ReadinessPath      string               `json:"readinessPath"`
-	Env                map[string]string    `json:"env"`
-	SecretEnv          map[string]string    `json:"secretEnv,omitempty"`
-	RegistryCredential *RegistryCredential  `json:"registryCredential,omitempty"`
-	Files              []projectedfile.File `json:"files,omitempty"`
+type ServiceSpec struct {
+	PlaneID            string                     `json:"planeID"`
+	InstanceClass      string                     `json:"instanceClass"`
+	Exposure           string                     `json:"exposure"`
+	Image              string                     `json:"image"`
+	Command            []string                   `json:"command"`
+	Args               []string                   `json:"args"`
+	DefaultPort        int                        `json:"defaultPort"`
+	ReadinessPath      string                     `json:"readinessPath"`
+	Env                map[string]string          `json:"env"`
+	SecretEnv          map[string]string          `json:"secretEnv,omitempty"`
+	RegistryCredential *ServiceRegistryCredential `json:"registryCredential,omitempty"`
+	Files              []projectedfile.File       `json:"files,omitempty"`
 }
 
-type RegistryCredential struct {
+type ServiceRegistryCredential struct {
 	Server   string `json:"server"`
 	Username string `json:"username"`
 	Password string `json:"password,omitempty"`
 }
 
 type ServiceStatus struct {
-	DesiredState string    `json:"desiredState"`
-	Observed     Status    `json:"observed"`
-	Run          RunStatus `json:"run"`
+	DesiredState string                `json:"desiredState"`
+	Observed     ServiceObservedStatus `json:"observed"`
+	Run          RunStatus             `json:"run"`
 }
 
-type Status struct {
+type ServiceObservedStatus struct {
 	ObservedGeneration int64      `json:"observedGeneration"`
 	Phase              string     `json:"phase"`
 	Healthy            bool       `json:"healthy"`
@@ -101,8 +101,8 @@ func CloneRunStatus(input RunStatus) RunStatus {
 	return out
 }
 
-func PendingStatus(observedGeneration int64, message string) Status {
-	return Status{
+func PendingServiceStatus(observedGeneration int64, message string) ServiceObservedStatus {
+	return ServiceObservedStatus{
 		ObservedGeneration: observedGeneration,
 		Phase:              PhasePending,
 		Healthy:            false,
@@ -110,8 +110,8 @@ func PendingStatus(observedGeneration int64, message string) Status {
 	}
 }
 
-func DeletingStatus(observedGeneration int64, message string) Status {
-	return Status{
+func DeletingServiceStatus(observedGeneration int64, message string) ServiceObservedStatus {
+	return ServiceObservedStatus{
 		ObservedGeneration: observedGeneration,
 		Phase:              PhaseDeleting,
 		Healthy:            false,
@@ -130,8 +130,8 @@ func copyStringMap(input map[string]string) map[string]string {
 	return out
 }
 
-func CloneSpec(input Spec) Spec {
-	return Spec{
+func CloneServiceSpec(input ServiceSpec) ServiceSpec {
+	return ServiceSpec{
 		PlaneID:            input.PlaneID,
 		InstanceClass:      input.InstanceClass,
 		Exposure:           input.Exposure,
@@ -142,12 +142,12 @@ func CloneSpec(input Spec) Spec {
 		ReadinessPath:      input.ReadinessPath,
 		Env:                copyStringMap(input.Env),
 		SecretEnv:          copyStringMap(input.SecretEnv),
-		RegistryCredential: CloneRegistryCredential(input.RegistryCredential),
+		RegistryCredential: CloneServiceRegistryCredential(input.RegistryCredential),
 		Files:              projectedfile.CloneFiles(input.Files),
 	}
 }
 
-func CloneRegistryCredential(input *RegistryCredential) *RegistryCredential {
+func CloneServiceRegistryCredential(input *ServiceRegistryCredential) *ServiceRegistryCredential {
 	if input == nil {
 		return nil
 	}

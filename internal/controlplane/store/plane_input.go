@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 	planeNamePattern                = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
-type PlaneCreateInput struct {
+type CreatePlaneInput struct {
 	Name            string `json:"name"`
 	DisplayName     string `json:"displayName"`
 	Provider        string `json:"provider"`
@@ -31,14 +31,14 @@ type PlaneCreateInput struct {
 	SouthboundToken string `json:"southboundToken"`
 }
 
-type PlaneUpdateStatusInput struct {
+type UpdatePlaneStatusInput struct {
 	Status          string     `json:"status"`
 	Message         string     `json:"message"`
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
 }
 
-func (in PlaneCreateInput) validate() error {
+func (in CreatePlaneInput) validate() error {
 	switch {
 	case strings.TrimSpace(in.Name) == "":
 		return invalidInput(errPlaneNameRequired)
@@ -57,8 +57,8 @@ func (in PlaneCreateInput) validate() error {
 	return invalidInput(err)
 }
 
-func (in PlaneUpdateStatusInput) validate() error {
-	if !domain.IsStatus(in.Status) {
+func (in UpdatePlaneStatusInput) validate() error {
+	if !model.IsStatus(in.Status) {
 		return invalidInput(errInvalidPlaneStatus)
 	}
 	return nil

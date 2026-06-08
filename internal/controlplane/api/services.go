@@ -10,8 +10,7 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/projectedfile"
-	domain "mini-cloud/internal/controlplane/domain"
-	"mini-cloud/internal/controlplane/eventlog"
+	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/serviceops"
 	"mini-cloud/internal/controlplane/store"
 
@@ -154,7 +153,7 @@ func (h serviceHandler) createService(c *gin.Context) {
 	}
 	logger := logctx.Logger(c.Request.Context(), h.logger)
 
-	view, err := h.services.Create(c.Request.Context(), input)
+	service, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrInvalidInput):
@@ -172,15 +171,15 @@ func (h serviceHandler) createService(c *gin.Context) {
 			return
 		}
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:     "control.service.create",
 		TargetType: "service",
-		TargetID:   view.Service.Metadata.ID,
-		TargetName: view.Service.Metadata.Name,
+		TargetID:   service.Metadata.ID,
+		TargetName: service.Metadata.Name,
 	})
 
 	c.JSON(http.StatusCreated, serviceEnvelope{
-		Service: buildServiceResource(view),
+		Service: buildServiceResource(service),
 	})
 }
 
@@ -190,7 +189,7 @@ func (h serviceHandler) getService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	view, err := h.services.Get(c.Request.Context(), serviceID)
+	service, err := h.services.Get(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
@@ -202,7 +201,7 @@ func (h serviceHandler) getService(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, serviceEnvelope{
-		Service: buildServiceResource(view),
+		Service: buildServiceResource(service),
 	})
 }
 
@@ -224,7 +223,7 @@ func (h serviceHandler) updateService(c *gin.Context) {
 	}
 	logger := logctx.Logger(c.Request.Context(), h.logger)
 
-	view, err := h.services.Update(c.Request.Context(), serviceID, input)
+	service, err := h.services.Update(c.Request.Context(), serviceID, input)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrInvalidInput):
@@ -242,15 +241,15 @@ func (h serviceHandler) updateService(c *gin.Context) {
 			return
 		}
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:     "control.service.update",
 		TargetType: "service",
-		TargetID:   view.Service.Metadata.ID,
-		TargetName: view.Service.Metadata.Name,
+		TargetID:   service.Metadata.ID,
+		TargetName: service.Metadata.Name,
 	})
 
 	c.JSON(http.StatusOK, serviceEnvelope{
-		Service: buildServiceResource(view),
+		Service: buildServiceResource(service),
 	})
 }
 
@@ -262,7 +261,7 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 	}
 	logger := logctx.Logger(c.Request.Context(), h.logger)
 
-	view, err := h.services.Delete(c.Request.Context(), serviceID)
+	service, err := h.services.Delete(c.Request.Context(), serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
@@ -273,11 +272,11 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		}
 		return
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:     "control.service.delete",
 		TargetType: "service",
-		TargetID:   view.Service.Metadata.ID,
-		TargetName: view.Service.Metadata.Name,
+		TargetID:   service.Metadata.ID,
+		TargetName: service.Metadata.Name,
 	})
 	c.JSON(http.StatusOK, map[string]any{
 		"deleted":   true,
@@ -285,35 +284,35 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 	})
 }
 
-func buildServiceResource(view serviceops.View) serviceResource {
-	status := buildServiceStatus(view)
+func buildServiceResource(service model.Service) serviceResource {
+	status := buildServiceStatus(service)
 	return serviceResource{
 		Metadata: serviceMetadata{
-			ID:          view.Service.Metadata.ID,
-			Name:        view.Service.Metadata.Name,
-			DisplayName: view.Service.Metadata.DisplayName,
-			Generation:  view.Service.Metadata.Generation,
+			ID:          service.Metadata.ID,
+			Name:        service.Metadata.Name,
+			DisplayName: service.Metadata.DisplayName,
+			Generation:  service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
-			PlaneID:            view.Service.Spec.PlaneID,
-			InstanceClass:      view.Service.Spec.InstanceClass,
-			Exposure:           view.Service.Spec.Exposure,
-			Image:              view.Service.Spec.Image,
-			Command:            append([]string(nil), view.Service.Spec.Command...),
-			Args:               append([]string(nil), view.Service.Spec.Args...),
-			DefaultPort:        view.Service.Spec.DefaultPort,
-			ReadinessPath:      view.Service.Spec.ReadinessPath,
-			Env:                view.Service.Spec.Env,
-			SecretEnvKeys:      sortedKeys(view.Service.Spec.SecretEnv),
-			RegistryCredential: buildRegistryCredentialSummary(view.Service.Spec.RegistryCredential),
-			Files:              projectedfile.CloneFiles(view.Service.Spec.Files),
+			PlaneID:            service.Spec.PlaneID,
+			InstanceClass:      service.Spec.InstanceClass,
+			Exposure:           service.Spec.Exposure,
+			Image:              service.Spec.Image,
+			Command:            append([]string(nil), service.Spec.Command...),
+			Args:               append([]string(nil), service.Spec.Args...),
+			DefaultPort:        service.Spec.DefaultPort,
+			ReadinessPath:      service.Spec.ReadinessPath,
+			Env:                service.Spec.Env,
+			SecretEnvKeys:      sortedKeys(service.Spec.SecretEnv),
+			RegistryCredential: buildRegistryCredentialSummary(service.Spec.RegistryCredential),
+			Files:              projectedfile.CloneFiles(service.Spec.Files),
 		},
 		Status: status,
 	}
 }
 
-func buildServiceStatus(view serviceops.View) serviceStatus {
-	serviceItem := view.Service
+func buildServiceStatus(service model.Service) serviceStatus {
+	serviceItem := service
 	status := serviceStatus{
 		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
 		DesiredState:       string(serviceItem.Status.DesiredState),
@@ -329,7 +328,7 @@ func buildServiceStatus(view serviceops.View) serviceStatus {
 	return status
 }
 
-func buildServiceRun(input domain.RunStatus) serviceRunStatus {
+func buildServiceRun(input model.RunStatus) serviceRunStatus {
 	out := serviceRunStatus{
 		CurrentRunID: input.CurrentRunID,
 		LatestRunID:  input.LatestRunID,
@@ -354,7 +353,7 @@ func sortedKeys(values map[string]string) []string {
 	return keys
 }
 
-func buildRegistryCredentialSummary(input *domain.RegistryCredential) *registryCredentialSummary {
+func buildRegistryCredentialSummary(input *model.ServiceRegistryCredential) *registryCredentialSummary {
 	if input == nil {
 		return nil
 	}
@@ -365,29 +364,29 @@ func buildRegistryCredentialSummary(input *domain.RegistryCredential) *registryC
 	}
 }
 
-func (r serviceCreateRequest) toCreateInput() (store.ServiceCreateInput, error) {
+func (r serviceCreateRequest) toCreateInput() (store.CreateServiceInput, error) {
 	if r.Spec == nil {
-		return store.ServiceCreateInput{}, errServiceSpecRequired
+		return store.CreateServiceInput{}, errServiceSpecRequired
 	}
-	return store.ServiceCreateInput{
+	return store.CreateServiceInput{
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec:        r.Spec.toDomainSpec(),
+		Spec:        r.Spec.toServiceSpec(),
 	}, nil
 }
 
-func (r serviceUpdateRequest) toUpdateInput() (store.ServiceUpdateInput, error) {
+func (r serviceUpdateRequest) toUpdateInput() (store.UpdateServiceInput, error) {
 	if r.Spec == nil {
-		return store.ServiceUpdateInput{}, errServiceSpecRequired
+		return store.UpdateServiceInput{}, errServiceSpecRequired
 	}
-	return store.ServiceUpdateInput{
+	return store.UpdateServiceInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec:        r.Spec.toDomainSpec(),
+		Spec:        r.Spec.toServiceSpec(),
 	}, nil
 }
 
-func (s serviceSpecInput) toDomainSpec() domain.Spec {
-	return domain.Spec{
+func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
+	return model.ServiceSpec{
 		PlaneID:            strings.TrimSpace(s.PlaneID),
 		InstanceClass:      strings.TrimSpace(s.InstanceClass),
 		Exposure:           strings.TrimSpace(s.Exposure),
@@ -398,16 +397,16 @@ func (s serviceSpecInput) toDomainSpec() domain.Spec {
 		ReadinessPath:      strings.TrimSpace(s.ReadinessPath),
 		Env:                s.Env,
 		SecretEnv:          s.SecretEnv,
-		RegistryCredential: s.RegistryCredential.toDomainCredential(),
+		RegistryCredential: s.RegistryCredential.toRegistryCredential(),
 		Files:              projectedfile.CloneFiles(s.Files),
 	}
 }
 
-func (r *registryCredentialRequest) toDomainCredential() *domain.RegistryCredential {
+func (r *registryCredentialRequest) toRegistryCredential() *model.ServiceRegistryCredential {
 	if r == nil {
 		return nil
 	}
-	return &domain.RegistryCredential{
+	return &model.ServiceRegistryCredential{
 		Server:   strings.TrimSpace(r.Server),
 		Username: strings.TrimSpace(r.Username),
 		Password: r.Password,

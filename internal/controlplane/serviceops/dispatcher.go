@@ -5,66 +5,28 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"regexp"
 	"strings"
 	"time"
 
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/store"
 )
 
 var (
-	ErrPlaneIDRequired       = errors.New("planeID is required")
-	ErrServiceIDRequired     = errors.New("serviceID is required")
-	ErrServiceNameRequired   = errors.New("name is required")
-	ErrInvalidServiceName    = errors.New("name must use lowercase letters, digits, and hyphens")
-	ErrDisplayNameRequired   = errors.New("displayName is required")
-	ErrRegionRequired        = errors.New("region is required")
-	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
-	ErrInvalidExposure       = errors.New("exposure must be one of public, private")
-	ErrImageRequired         = errors.New("image is required")
-	ErrInvalidDefaultPort    = errors.New("defaultPort must be between 1 and 65535")
-	ErrInvalidReadinessPath  = errors.New("readinessPath must start with /")
-	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
-	ErrPlaneNotRegistered    = errors.New("plane southbound registration must complete before service apply actions can run")
-	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+	ErrPlaneIDRequired    = errors.New("planeID is required")
+	ErrServiceIDRequired  = errors.New("serviceID is required")
+	ErrRegionRequired     = errors.New("region is required")
+	ErrPlaneNotRegistered = errors.New("plane southbound registration must complete before service apply actions can run")
 )
 
 const (
 	defaultApplyServiceTimeout  = 20 * time.Minute
 	defaultDeleteServiceTimeout = 2 * time.Minute
 )
-
-type ApplyServiceInput struct {
-	Metadata ServiceMetadata `json:"metadata"`
-	Spec     ServiceSpec     `json:"spec"`
-}
-
-type ServiceMetadata struct {
-	ID          string `json:"serviceID"`
-	Name        string `json:"name"`
-	DisplayName string `json:"displayName"`
-	Generation  int64  `json:"generation"`
-}
-
-type ServiceSpec struct {
-	Region             string                                  `json:"region"`
-	InstanceClass      string                                  `json:"instanceClass"`
-	Exposure           string                                  `json:"exposure"`
-	Image              string                                  `json:"image"`
-	Command            []string                                `json:"command"`
-	Args               []string                                `json:"args"`
-	DefaultPort        int                                     `json:"defaultPort"`
-	ReadinessPath      string                                  `json:"readinessPath"`
-	Env                map[string]string                       `json:"env"`
-	SecretEnv          map[string]string                       `json:"secretEnv,omitempty"`
-	RegistryCredential *cloudplaneapi.ExecutionImageCredential `json:"registryCredential,omitempty"`
-	Files              []projectedfile.File                    `json:"files,omitempty"`
-}
 
 type ApplyResult struct {
 	PlaneID string `json:"planeID"`
@@ -90,76 +52,7 @@ func NewDispatcher(logger *slog.Logger, stores *store.Store) *Dispatcher {
 	}
 }
 
-func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.ServiceSpec, error) {
-	resolvedRegion := strings.TrimSpace(in.Spec.Region)
-	if resolvedRegion == "" {
-		resolvedRegion = strings.TrimSpace(defaultRegion)
-	}
-
-	if strings.TrimSpace(in.Metadata.ID) == "" {
-		return cloudplaneapi.ServiceSpec{}, ErrServiceIDRequired
-	}
-	if strings.TrimSpace(in.Metadata.Name) == "" {
-		return cloudplaneapi.ServiceSpec{}, ErrServiceNameRequired
-	}
-	if !serviceNamePattern.MatchString(strings.TrimSpace(in.Metadata.Name)) {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidServiceName
-	}
-	if strings.TrimSpace(in.Metadata.DisplayName) == "" {
-		return cloudplaneapi.ServiceSpec{}, ErrDisplayNameRequired
-	}
-	if strings.TrimSpace(resolvedRegion) == "" {
-		return cloudplaneapi.ServiceSpec{}, ErrRegionRequired
-	}
-	if !domain.IsInstanceClass(in.Spec.InstanceClass) {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidInstanceClass
-	}
-	resolvedExposure := strings.ToLower(strings.TrimSpace(in.Spec.Exposure))
-	if resolvedExposure == "" {
-		resolvedExposure = "public"
-	}
-	if resolvedExposure != "public" && resolvedExposure != "private" {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidExposure
-	}
-	if strings.TrimSpace(in.Spec.Image) == "" {
-		return cloudplaneapi.ServiceSpec{}, ErrImageRequired
-	}
-	if in.Spec.DefaultPort <= 0 || in.Spec.DefaultPort > 65535 {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidDefaultPort
-	}
-	if !strings.HasPrefix(strings.TrimSpace(in.Spec.ReadinessPath), "/") {
-		return cloudplaneapi.ServiceSpec{}, ErrInvalidReadinessPath
-	}
-	for key := range in.Spec.Env {
-		if strings.TrimSpace(key) == "" {
-			return cloudplaneapi.ServiceSpec{}, ErrInvalidEnvironmentKey
-		}
-	}
-	for key := range in.Spec.SecretEnv {
-		if strings.TrimSpace(key) == "" {
-			return cloudplaneapi.ServiceSpec{}, ErrInvalidEnvironmentKey
-		}
-	}
-	if err := projectedfile.ValidateFiles(in.Spec.Files); err != nil {
-		return cloudplaneapi.ServiceSpec{}, err
-	}
-	return cloudplaneapi.ServiceSpec{
-		Region:             resolvedRegion,
-		InstanceClass:      in.Spec.InstanceClass,
-		Exposure:           resolvedExposure,
-		Image:              in.Spec.Image,
-		Command:            append([]string(nil), in.Spec.Command...),
-		Args:               append([]string(nil), in.Spec.Args...),
-		DefaultPort:        in.Spec.DefaultPort,
-		ReadinessPath:      strings.TrimSpace(in.Spec.ReadinessPath),
-		Env:                in.Spec.Env,
-		SecretEnv:          in.Spec.SecretEnv,
-		RegistryCredential: cloneExecutionImageCredential(in.Spec.RegistryCredential),
-		Files:              projectedfile.CloneFiles(in.Spec.Files),
-	}, nil
-}
-
-func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input ApplyServiceInput) (ApplyResult, error) {
+func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, service model.Service) (ApplyResult, error) {
 	if s == nil || s.store == nil {
 		return ApplyResult{}, fmt.Errorf("deploy service is not configured")
 	}
@@ -174,10 +67,6 @@ func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input App
 	if !plane.Registration.Registered {
 		return ApplyResult{}, ErrPlaneNotRegistered
 	}
-	spec, err := input.ResolvedSpec(plane.Region)
-	if err != nil {
-		return ApplyResult{}, err
-	}
 	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
 	if err != nil {
 		return ApplyResult{}, err
@@ -191,7 +80,7 @@ func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input App
 	requestCtx, cancel := context.WithTimeout(ctx, defaultApplyServiceTimeout)
 	defer cancel()
 
-	plan, err := s.buildExecutionPlan(input, spec)
+	plan, err := executionPlanRequest(service, plane.Region)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -255,35 +144,45 @@ func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input De
 	return nil
 }
 
-func (s *Dispatcher) buildExecutionPlan(input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
-	env := cloneEnvMap(spec.Env)
-	for key, value := range spec.SecretEnv {
+func executionPlanRequest(service model.Service, defaultRegion string) (cloudplaneapi.ExecutionPlanRequest, error) {
+	if strings.TrimSpace(service.Metadata.ID) == "" {
+		return cloudplaneapi.ExecutionPlanRequest{}, ErrServiceIDRequired
+	}
+	if strings.TrimSpace(defaultRegion) == "" {
+		return cloudplaneapi.ExecutionPlanRequest{}, ErrRegionRequired
+	}
+
+	env := cloneEnvMap(service.Spec.Env)
+	for key, value := range service.Spec.SecretEnv {
 		env[key] = value
 	}
 	return cloudplaneapi.ExecutionPlanRequest{
-		PlanID:            fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation),
-		ServiceID:         input.Metadata.ID,
-		ServiceName:       input.Metadata.Name,
-		ServiceGeneration: input.Metadata.Generation,
-		Image:             spec.Image,
-		Command:           append([]string(nil), spec.Command...),
-		Args:              append([]string(nil), spec.Args...),
+		PlanID:            fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation),
+		ServiceID:         service.Metadata.ID,
+		ServiceName:       service.Metadata.Name,
+		ServiceGeneration: service.Metadata.Generation,
+		Image:             service.Spec.Image,
+		Command:           append([]string(nil), service.Spec.Command...),
+		Args:              append([]string(nil), service.Spec.Args...),
 		Env:               env,
-		ProjectedFiles:    executionProjectedFiles(spec.Files),
-		ImageCredential:   cloneExecutionImageCredential(spec.RegistryCredential),
-		ContainerPort:     spec.DefaultPort,
-		ReadinessPath:     spec.ReadinessPath,
-		InstanceClass:     spec.InstanceClass,
-		Exposure:          spec.Exposure,
+		ProjectedFiles:    executionProjectedFiles(service.Spec.Files),
+		ImageCredential:   executionImageCredential(service.Spec.RegistryCredential),
+		ContainerPort:     service.Spec.DefaultPort,
+		ReadinessPath:     service.Spec.ReadinessPath,
+		InstanceClass:     service.Spec.InstanceClass,
+		Exposure:          service.Spec.Exposure,
 	}, nil
 }
 
-func cloneExecutionImageCredential(input *cloudplaneapi.ExecutionImageCredential) *cloudplaneapi.ExecutionImageCredential {
+func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplaneapi.ExecutionImageCredential {
 	if input == nil {
 		return nil
 	}
-	out := *input
-	return &out
+	return &cloudplaneapi.ExecutionImageCredential{
+		Server:   input.Server,
+		Username: input.Username,
+		Password: input.Password,
+	}
 }
 
 func cloneEnvMap(input map[string]string) map[string]string {

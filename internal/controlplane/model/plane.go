@@ -1,4 +1,4 @@
-package domain
+package model
 
 import "time"
 
@@ -29,7 +29,7 @@ type PlaneStatus struct {
 	UpdatedAt            time.Time  `json:"updatedAt"`
 }
 
-type Registration struct {
+type PlaneRegistration struct {
 	Registered     bool       `json:"registered"`
 	LastVerifiedAt *time.Time `json:"lastVerifiedAt,omitempty"`
 	TokenUpdatedAt *time.Time `json:"tokenUpdatedAt,omitempty"`
@@ -76,10 +76,10 @@ type RuntimeNode struct {
 	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
-type Detail struct {
+type PlaneDetail struct {
 	Plane
 	Status                 PlaneStatus               `json:"status"`
-	Registration           Registration              `json:"registration"`
+	Registration           PlaneRegistration         `json:"registration"`
 	LatestRuntimeInventory *RuntimeInventorySnapshot `json:"latestRuntimeInventory,omitempty"`
 	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }

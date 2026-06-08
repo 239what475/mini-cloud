@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 )
 
 type RecordRuntimeConfigInput struct {
@@ -22,11 +22,11 @@ func (in RecordRuntimeConfigInput) resolvedObservedAt(now time.Time) time.Time {
 	return in.ObservedAt.UTC()
 }
 
-func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, input RecordRuntimeConfigInput) (domain.RuntimeConfigSnapshot, error) {
+func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, input RecordRuntimeConfigInput) (model.RuntimeConfigSnapshot, error) {
 	observedAt := input.resolvedObservedAt(time.Now().UTC())
 	summaryJSON, err := marshalJSON(input.Summary, map[string]any{})
 	if err != nil {
-		return domain.RuntimeConfigSnapshot{}, fmt.Errorf("marshal plane runtime config summary: %w", err)
+		return model.RuntimeConfigSnapshot{}, fmt.Errorf("marshal plane runtime config summary: %w", err)
 	}
 
 	row := s.db.QueryRowContext(ctx, `
@@ -54,14 +54,14 @@ func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, in
 	item, err := scanPlaneRuntimeConfigSnapshot(row)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return domain.RuntimeConfigSnapshot{}, ErrPlaneNotFound
+			return model.RuntimeConfigSnapshot{}, ErrPlaneNotFound
 		}
-		return domain.RuntimeConfigSnapshot{}, fmt.Errorf("upsert plane runtime config state: %w", err)
+		return model.RuntimeConfigSnapshot{}, fmt.Errorf("upsert plane runtime config state: %w", err)
 	}
 	return item, nil
 }
 
-func (s *Store) GetPlaneRuntimeConfigSnapshot(ctx context.Context, planeID string) (*domain.RuntimeConfigSnapshot, error) {
+func (s *Store) GetPlaneRuntimeConfigSnapshot(ctx context.Context, planeID string) (*model.RuntimeConfigSnapshot, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT
 			plane_id,
@@ -83,8 +83,8 @@ func (s *Store) GetPlaneRuntimeConfigSnapshot(ctx context.Context, planeID strin
 	return &item, nil
 }
 
-func scanPlaneRuntimeConfigSnapshot(scanner interface{ Scan(dest ...any) error }) (domain.RuntimeConfigSnapshot, error) {
-	var item domain.RuntimeConfigSnapshot
+func scanPlaneRuntimeConfigSnapshot(scanner interface{ Scan(dest ...any) error }) (model.RuntimeConfigSnapshot, error) {
+	var item model.RuntimeConfigSnapshot
 	var summaryJSON []byte
 	if err := scanner.Scan(
 		&item.PlaneID,
@@ -93,10 +93,10 @@ func scanPlaneRuntimeConfigSnapshot(scanner interface{ Scan(dest ...any) error }
 		&summaryJSON,
 		&item.UpdatedAt,
 	); err != nil {
-		return domain.RuntimeConfigSnapshot{}, err
+		return model.RuntimeConfigSnapshot{}, err
 	}
 	if err := unmarshalJSON(summaryJSON, &item.Summary, map[string]any{}); err != nil {
-		return domain.RuntimeConfigSnapshot{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
+		return model.RuntimeConfigSnapshot{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
 	}
 	return item, nil
 }

@@ -3,19 +3,34 @@ package store
 import (
 	"context"
 	"fmt"
-
-	"mini-cloud/internal/controlplane/eventlog"
+	"time"
 )
 
 const recentControlEventsLimit = 40
 
-func (s *Store) CreateControlEvent(ctx context.Context, input eventlog.CreateInput) (eventlog.Record, error) {
+type ControlEvent struct {
+	ID         string    `json:"id"`
+	Action     string    `json:"action"`
+	TargetType string    `json:"targetType"`
+	TargetID   string    `json:"targetID"`
+	TargetName string    `json:"targetName"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+type CreateControlEventInput struct {
+	Action     string
+	TargetType string
+	TargetID   string
+	TargetName string
+}
+
+func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEventInput) (ControlEvent, error) {
 	id, err := newID("evt")
 	if err != nil {
-		return eventlog.Record{}, err
+		return ControlEvent{}, err
 	}
 
-	var created eventlog.Record
+	var created ControlEvent
 	err = s.db.QueryRowContext(ctx, `
 		INSERT INTO control_events (
 			id,
@@ -47,12 +62,12 @@ func (s *Store) CreateControlEvent(ctx context.Context, input eventlog.CreateInp
 		&created.CreatedAt,
 	)
 	if err != nil {
-		return eventlog.Record{}, fmt.Errorf("insert control event: %w", err)
+		return ControlEvent{}, fmt.Errorf("insert control event: %w", err)
 	}
 	return created, nil
 }
 
-func (s *Store) ListRecentControlEvents(ctx context.Context) ([]eventlog.Record, error) {
+func (s *Store) ListRecentControlEvents(ctx context.Context) ([]ControlEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT
 			id,
@@ -70,7 +85,7 @@ func (s *Store) ListRecentControlEvents(ctx context.Context) ([]eventlog.Record,
 	}
 	defer closeRows(rows)
 
-	items := make([]eventlog.Record, 0)
+	items := make([]ControlEvent, 0)
 	for rows.Next() {
 		item, err := scanControlEvent(rows)
 		if err != nil {
@@ -84,8 +99,8 @@ func (s *Store) ListRecentControlEvents(ctx context.Context) ([]eventlog.Record,
 	return items, nil
 }
 
-func scanControlEvent(scanner interface{ Scan(dest ...any) error }) (eventlog.Record, error) {
-	var item eventlog.Record
+func scanControlEvent(scanner interface{ Scan(dest ...any) error }) (ControlEvent, error) {
+	var item ControlEvent
 	if err := scanner.Scan(
 		&item.ID,
 		&item.Action,
@@ -94,7 +109,7 @@ func scanControlEvent(scanner interface{ Scan(dest ...any) error }) (eventlog.Re
 		&item.TargetName,
 		&item.CreatedAt,
 	); err != nil {
-		return eventlog.Record{}, fmt.Errorf("scan control event: %w", err)
+		return ControlEvent{}, fmt.Errorf("scan control event: %w", err)
 	}
 	return item, nil
 }

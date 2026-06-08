@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/projectedfile"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
 )
@@ -15,7 +15,7 @@ import (
 func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
-	createdPlane, err := db.Store.CreatePlane(context.Background(), controlplanestore.PlaneCreateInput{
+	createdPlane, err := db.Store.CreatePlane(context.Background(), controlplanestore.CreatePlaneInput{
 		Name:            "aliyun-bj-primary",
 		DisplayName:     "Aliyun Beijing Primary",
 		Provider:        "aliyun",
@@ -26,8 +26,8 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
-	if createdPlane.Status.Status != domain.StatusRegistering {
-		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, domain.StatusRegistering)
+	if createdPlane.Status.Status != model.StatusRegistering {
+		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, model.StatusRegistering)
 	}
 	if createdPlane.GRPCEndpoint != "plane-a.example.com:443" {
 		t.Fatalf("plane grpcEndpoint = %q", createdPlane.GRPCEndpoint)
@@ -54,21 +54,21 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("unexpected registered plane ids: %+v", registeredPlaneIDs)
 	}
 
-	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.PlaneUpdateStatusInput{
-		Status:  domain.StatusReady,
+	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.UpdatePlaneStatusInput{
+		Status:  model.StatusReady,
 		Message: "heartbeat and snapshot are healthy",
 	})
 	if err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
-	if updatedStatus.Status != domain.StatusReady {
+	if updatedStatus.Status != model.StatusReady {
 		t.Fatalf("updated status = %v, want ready", updatedStatus.Status)
 	}
 	gotPlane, err := db.Store.GetPlane(context.Background(), createdPlane.ID)
 	if err != nil {
 		t.Fatalf("GetPlane returned error: %v", err)
 	}
-	if gotPlane.Status.Status != domain.StatusReady {
+	if gotPlane.Status.Status != model.StatusReady {
 		t.Fatalf("GetPlane status = %v, want ready", gotPlane.Status.Status)
 	}
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
@@ -83,7 +83,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		CPUMilliAllocated: 1500,
 		MemoryMiCapacity:  8192,
 		MemoryMiAllocated: 2048,
-		Nodes: []domain.RuntimeNode{
+		Nodes: []model.RuntimeNode{
 			{
 				NodeID:            "node-a",
 				NodeEpoch:         1,
@@ -184,24 +184,24 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
-	planeItem, err := db.Store.CreatePlane(ctx, controlplanestore.PlaneCreateInput{
+	planeItem, err := db.Store.CreatePlane(ctx, controlplanestore.CreatePlaneInput{
 		Name:            "service-plane",
 		DisplayName:     "Service Plane",
 		Provider:        "aliyun",
 		Region:          "cn-beijing",
-		GRPCEndpoint:    "service-domain.example.com:443",
+		GRPCEndpoint:    "service-model.example.com:443",
 		SouthboundToken: "service-plane-token",
 	})
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
 
-	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.ServiceCreateInput{
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
-		Spec: domain.Spec{
+		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
-			InstanceClass: domain.InstanceClassSmall,
+			InstanceClass: model.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:v1",
 			DefaultPort:   8317,
@@ -209,7 +209,7 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 			SecretEnv: map[string]string{
 				"CLIPROXY_TOKEN": "token-v1",
 			},
-			RegistryCredential: &domain.RegistryCredential{
+			RegistryCredential: &model.ServiceRegistryCredential{
 				Server:   "ghcr.io",
 				Username: "cliproxy",
 				Password: "registry-token",

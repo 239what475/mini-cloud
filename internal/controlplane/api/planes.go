@@ -6,8 +6,6 @@ import (
 	"net/http"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/controlplane/eventlog"
-	"mini-cloud/internal/controlplane/inventory"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -27,7 +25,7 @@ func newPlaneHandler(logger *slog.Logger, stores *store.Store) planeHandler {
 
 func (h planeHandler) createPlane(c *gin.Context) {
 	logger := logctx.Logger(c.Request.Context(), h.logger)
-	var input store.PlaneCreateInput
+	var input store.CreatePlaneInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -49,7 +47,7 @@ func (h planeHandler) createPlane(c *gin.Context) {
 		}
 	}
 
-	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:     "control.plane.create",
 		TargetType: "plane",
 		TargetID:   created.ID,
@@ -79,7 +77,7 @@ func (h planeHandler) inventory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
-	c.JSON(http.StatusOK, inventory.Build(items))
+	c.JSON(http.StatusOK, buildInventoryView(items))
 }
 
 func (h planeHandler) getPlane(c *gin.Context) {
@@ -139,7 +137,7 @@ func (h planeHandler) deletePlane(c *gin.Context) {
 		}
 	}
 
-	recordControlEvent(logger, h.store, c.Request.Context(), eventlog.CreateInput{
+	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:     "control.plane.delete",
 		TargetType: "plane",
 		TargetID:   planeID,

@@ -10,7 +10,7 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/cloudplaneapi"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -30,7 +30,7 @@ type Syncer struct {
 }
 
 type Result struct {
-	Plane            domain.Detail                 `json:"plane"`
+	Plane            model.PlaneDetail             `json:"plane"`
 	ObservedProvider string                        `json:"observedProvider"`
 	ObservedRegion   string                        `json:"observedRegion"`
 	HealthCheckedAt  time.Time                     `json:"healthCheckedAt"`
@@ -168,7 +168,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	client, err := planeclient.New(grpcEndpoint, southboundToken)
 	if err != nil {
 		err = &syncError{
-			status:  domain.StatusOffline,
+			status:  model.StatusOffline,
 			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
 		}
 	}
@@ -190,7 +190,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	snapshotResp, err := client.Snapshot(ctx)
 	if err != nil {
 		syncErr := &syncError{
-			status:  domain.StatusOffline,
+			status:  model.StatusOffline,
 			message: fmt.Sprintf("load plane snapshot failed: %v", err),
 		}
 		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
@@ -214,7 +214,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	}
 	syncedAt := s.now()
 	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
-	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, store.PlaneUpdateStatusInput{
+	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          status,
 		Message:         message,
 		LastHeartbeatAt: &snapshot.Health.CheckedAt,
@@ -267,7 +267,7 @@ func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, ex
 			continue
 		}
 		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
-		if serviceItem.Status.DesiredState == domain.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
+		if serviceItem.Status.DesiredState == model.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
 			if err := s.store.DeleteServiceForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
 				!errors.Is(err, store.ErrServiceNotFound) &&
 				!errors.Is(err, store.ErrServiceGenerationConflict) {
@@ -275,15 +275,15 @@ func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, ex
 			}
 			continue
 		}
-		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.ServiceUpdateStatusInput{
-			ObservedGeneration: status.ObservedGeneration,
-			Phase:              status.Phase,
-			Healthy:            status.Healthy,
-			Message:            status.Message,
-			LastReconciledAt:   status.LastReconciledAt,
+		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.UpdateServiceStatusInput{
+			ObservedGeneration: status.Observed.ObservedGeneration,
+			Phase:              status.Observed.Phase,
+			Healthy:            status.Observed.Healthy,
+			Message:            status.Observed.Message,
+			LastReconciledAt:   status.Observed.LastReconciledAt,
 			Run:                &status.Run,
-			RemoteStatus:       &status.RemoteStatus,
-			RemoteMessage:      &status.RemoteMessage,
+			RemoteStatus:       &status.Observed.RemoteStatus,
+			RemoteMessage:      &status.Observed.RemoteMessage,
 		}); err != nil {
 			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 				continue
@@ -299,34 +299,34 @@ func deleteExecutionPlanComplete(item cloudplaneapi.ExecutionSnapshot) bool {
 }
 
 type executionDerivedStatus struct {
-	domain.Status
-	Run domain.RunStatus
+	Observed model.ServiceObservedStatus
+	Run      model.RunStatus
 }
 
-func serviceStatusFromExecutionSnapshot(serviceItem domain.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
+func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
 	now := item.ObservedAt.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
 	message := executionSnapshotMessage(item)
-	phase := domain.PhaseProgressing
+	phase := model.PhaseProgressing
 	healthy := false
-	runPhase := domain.RunPhaseDispatching
+	runPhase := model.RunPhaseDispatching
 
 	switch strings.TrimSpace(item.Status) {
 	case "failed":
-		phase = domain.PhaseDegraded
-		runPhase = domain.RunPhaseFailed
+		phase = model.PhaseDegraded
+		runPhase = model.RunPhaseFailed
 	case "running":
-		phase = domain.PhaseReady
+		phase = model.PhaseReady
 		healthy = true
-		runPhase = domain.RunPhaseRunning
+		runPhase = model.RunPhaseRunning
 	case "superseded":
-		runPhase = domain.RunPhaseSuperseded
+		runPhase = model.RunPhaseSuperseded
 	}
-	runStatus := domain.CloneRunStatus(serviceItem.Status.Run)
+	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
 	runStatus.LatestRunID = item.PlanID
-	if runPhase == domain.RunPhaseRunning {
+	if runPhase == model.RunPhaseRunning {
 		runStatus.CurrentRunID = item.PlanID
 	}
 	runStatus.Phase = runPhase
@@ -334,7 +334,7 @@ func serviceStatusFromExecutionSnapshot(serviceItem domain.Service, item cloudpl
 	runStatus.LastObservedAt = &now
 
 	return executionDerivedStatus{
-		Status: domain.Status{
+		Observed: model.ServiceObservedStatus{
 			ObservedGeneration: item.ServiceGeneration,
 			Phase:              phase,
 			Healthy:            healthy,
@@ -365,7 +365,7 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 
 func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
-	_, err := s.store.UpdatePlaneStatus(ctx, planeID, store.PlaneUpdateStatusInput{
+	_, err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          syncErr.status,
 		Message:         syncErr.message,
 		LastHeartbeatAt: syncErr.lastHeartbeatAt,
@@ -374,7 +374,7 @@ func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, sy
 	return err
 }
 
-func derivePlaneStatus(planeDetail domain.Detail, snapshot planeSnapshot) (string, string, int) {
+func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot planeSnapshot) (string, string, int) {
 	alertsFiring := snapshot.Reliability.AlertsFiring
 
 	issues := make([]string, 0, 3)
@@ -403,7 +403,7 @@ func derivePlaneStatus(planeDetail domain.Detail, snapshot planeSnapshot) (strin
 	}
 
 	if len(issues) == 0 {
-		return domain.StatusReady, fmt.Sprintf(
+		return model.StatusReady, fmt.Sprintf(
 			"sync healthy: %d nodes, %d services, %d execution plans",
 			snapshot.Overview.NodesTotal,
 			snapshot.Overview.ServicesTotal,
@@ -411,7 +411,7 @@ func derivePlaneStatus(planeDetail domain.Detail, snapshot planeSnapshot) (strin
 		), alertsFiring
 	}
 
-	return domain.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
+	return model.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
 }
 
 func buildRuntimeInventory(snapshot planeSnapshot) store.RecordRuntimeInventoryInput {
@@ -424,10 +424,10 @@ func buildRuntimeInventory(snapshot planeSnapshot) store.RecordRuntimeInventoryI
 		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
 		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
 		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
-		Nodes:             make([]domain.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
+		Nodes:             make([]model.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
 	}
 	for _, item := range snapshot.Runtime.Nodes {
-		out.Nodes = append(out.Nodes, domain.RuntimeNode{
+		out.Nodes = append(out.Nodes, model.RuntimeNode{
 			NodeID:            item.NodeID,
 			NodeEpoch:         item.NodeEpoch,
 			Name:              item.Name,

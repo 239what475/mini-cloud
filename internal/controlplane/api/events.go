@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/controlplane/eventlog"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -25,7 +24,7 @@ func newEventHandler(logger *slog.Logger, stores *store.Store) eventHandler {
 	}
 }
 
-func recordControlEvent(logger *slog.Logger, stores *store.Store, requestCtx context.Context, input eventlog.CreateInput) {
+func recordControlEvent(logger *slog.Logger, stores *store.Store, requestCtx context.Context, input store.CreateControlEventInput) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), 2*time.Second)
 	defer cancel()
 

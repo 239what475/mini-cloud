@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +24,7 @@ func metricsHandler(stores *store.Store) gin.HandlerFunc {
 	}
 }
 
-func renderControlMetrics(controlPlanes []domain.Detail, now time.Time) string {
+func renderControlMetrics(controlPlanes []model.PlaneDetail, now time.Time) string {
 	var out strings.Builder
 	out.WriteString("# HELP minicloud_plane_count Current number of planes registered in the control-plane store.\n")
 	out.WriteString("# TYPE minicloud_plane_count gauge\n")

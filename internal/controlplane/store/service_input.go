@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/projectedfile"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 )
 
 var (
@@ -27,30 +27,30 @@ var (
 	serviceNamePattern          = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
-type ServiceCreateInput struct {
+type CreateServiceInput struct {
 	Name        string
 	DisplayName string
-	Spec        domain.Spec
+	Spec        model.ServiceSpec
 }
 
-type ServiceUpdateInput struct {
+type UpdateServiceInput struct {
 	DisplayName string
-	Spec        domain.Spec
+	Spec        model.ServiceSpec
 }
 
-type ServiceUpdateStatusInput struct {
+type UpdateServiceStatusInput struct {
 	ObservedGeneration int64
 	Phase              string
 	Healthy            bool
 	Message            string
 	LastReconciledAt   *time.Time
-	Run                *domain.RunStatus
+	Run                *model.RunStatus
 	AssignedPlaneID    *string
 	RemoteStatus       *string
 	RemoteMessage      *string
 }
 
-func (in ServiceCreateInput) validate() error {
+func (in CreateServiceInput) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return invalidInput(errServiceNameRequired)
 	}
@@ -63,7 +63,7 @@ func (in ServiceCreateInput) validate() error {
 	return validateServiceSpec(in.Spec)
 }
 
-func (in ServiceUpdateInput) validate(serviceName string) error {
+func (in UpdateServiceInput) validate(serviceName string) error {
 	if strings.TrimSpace(serviceName) == "" {
 		return invalidInput(errServiceNameRequired)
 	}
@@ -76,7 +76,7 @@ func (in ServiceUpdateInput) validate(serviceName string) error {
 	return validateServiceSpec(in.Spec)
 }
 
-func validateServiceSpec(spec domain.Spec) error {
+func validateServiceSpec(spec model.ServiceSpec) error {
 	if _, _, err := resolveServicePlacementFields(spec.PlaneID, spec.InstanceClass); err != nil {
 		return invalidInput(err)
 	}
@@ -115,7 +115,7 @@ func validateServiceSpec(spec domain.Spec) error {
 	return nil
 }
 
-func validateRegistryCredential(input *domain.RegistryCredential) error {
+func validateRegistryCredential(input *model.ServiceRegistryCredential) error {
 	if input == nil {
 		return nil
 	}
@@ -135,7 +135,7 @@ func resolveServicePlacementFields(planeID string, instanceClass string) (string
 	if strings.TrimSpace(planeID) == "" {
 		return "", "", errPlaneIDRequired
 	}
-	if !domain.IsInstanceClass(instanceClass) {
+	if !model.IsInstanceClass(instanceClass) {
 		return "", "", errInvalidInstanceClass
 	}
 	return strings.TrimSpace(planeID), instanceClass, nil

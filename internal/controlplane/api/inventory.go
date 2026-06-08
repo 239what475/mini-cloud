@@ -1,10 +1,10 @@
-package inventory
+package api
 
 import (
 	"sort"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 )
 
 type Summary struct {
@@ -67,7 +67,7 @@ type View struct {
 	Planes    []Plane `json:"planes"`
 }
 
-func Build(items []domain.Detail) View {
+func buildInventoryView(items []model.PlaneDetail) View {
 	view := View{
 		Providers: make([]Group, 0),
 		Regions:   make([]Group, 0),
@@ -129,7 +129,7 @@ func Build(items []domain.Detail) View {
 	return view
 }
 
-func buildPlane(item domain.Detail) Plane {
+func buildPlane(item model.PlaneDetail) Plane {
 	plane := Plane{
 		ID:              item.ID,
 		Name:            item.Name,
@@ -169,13 +169,13 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	}
 
 	switch planeView.Status {
-	case string(domain.StatusRegistering):
+	case string(model.StatusRegistering):
 		summary.PlanesRegistering++
-	case string(domain.StatusReady):
+	case string(model.StatusReady):
 		summary.PlanesReady++
-	case string(domain.StatusDegraded):
+	case string(model.StatusDegraded):
 		summary.PlanesDegraded++
-	case string(domain.StatusOffline):
+	case string(model.StatusOffline):
 		summary.PlanesOffline++
 	}
 	summary.NodesTotal += planeView.NodesTotal

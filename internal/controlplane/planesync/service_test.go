@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"mini-cloud/internal/contract/cloudplaneapi"
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 )
 
 func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
-	planeDetail := domain.Detail{
-		Plane: domain.Plane{
+	planeDetail := model.PlaneDetail{
+		Plane: model.Plane{
 			Provider: "aliyun",
 			Region:   "cn-beijing",
 		},
@@ -33,7 +33,7 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			NodesDraining:       0,
 		},
 	})
-	if readyStatus != domain.StatusReady {
+	if readyStatus != model.StatusReady {
 		t.Fatalf("ready status = %v, want ready", readyStatus)
 	}
 	if readyAlerts != 0 {
@@ -62,7 +62,7 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			AlertsFiring: 1,
 		},
 	})
-	if degradedStatus != domain.StatusDegraded {
+	if degradedStatus != model.StatusDegraded {
 		t.Fatalf("degraded status = %v, want degraded", degradedStatus)
 	}
 	if degradedAlerts != 1 {
@@ -101,12 +101,12 @@ func TestBuildRuntimeConfigUsesObservedSnapshot(t *testing.T) {
 
 func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := domain.Service{
-		Status: domain.ServiceStatus{
-			Run: domain.RunStatus{
+	serviceItem := model.Service{
+		Status: model.ServiceStatus{
+			Run: model.RunStatus{
 				CurrentRunID: "svc-api-g1",
 				LatestRunID:  "svc-api-g2",
-				Phase:        domain.RunPhaseDispatching,
+				Phase:        model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -119,25 +119,25 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 		ObservedAt:        observedAt,
 	})
 
-	if status.Phase != domain.PhaseReady || !status.Healthy {
-		t.Fatalf("status = %+v, want ready healthy", status.Status)
+	if status.Observed.Phase != model.PhaseReady || !status.Observed.Healthy {
+		t.Fatalf("status = %+v, want ready healthy", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g2" || status.Run.LatestRunID != "svc-api-g2" {
 		t.Fatalf("run ids = %+v, want current/latest g2", status.Run)
 	}
-	if status.Run.Phase != domain.RunPhaseRunning {
+	if status.Run.Phase != model.RunPhaseRunning {
 		t.Fatalf("run = %+v, want running", status.Run)
 	}
 }
 
 func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := domain.Service{
-		Status: domain.ServiceStatus{
-			Run: domain.RunStatus{
+	serviceItem := model.Service{
+		Status: model.ServiceStatus{
+			Run: model.RunStatus{
 				CurrentRunID: "svc-api-g1",
 				LatestRunID:  "svc-api-g2",
-				Phase:        domain.RunPhaseDispatching,
+				Phase:        model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -150,25 +150,25 @@ func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *te
 		ObservedAt:        observedAt,
 	})
 
-	if status.Phase != domain.PhaseDegraded || status.Healthy {
-		t.Fatalf("status = %+v, want degraded unhealthy", status.Status)
+	if status.Observed.Phase != model.PhaseDegraded || status.Observed.Healthy {
+		t.Fatalf("status = %+v, want degraded unhealthy", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g1" {
 		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
 	}
-	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != domain.RunPhaseFailed {
+	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != model.RunPhaseFailed {
 		t.Fatalf("run = %+v, want latest failed g2", status.Run)
 	}
 }
 
 func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := domain.Service{
-		Status: domain.ServiceStatus{
-			Run: domain.RunStatus{
+	serviceItem := model.Service{
+		Status: model.ServiceStatus{
+			Run: model.RunStatus{
 				CurrentRunID: "svc-api-g1",
 				LatestRunID:  "svc-api-g2",
-				Phase:        domain.RunPhaseDispatching,
+				Phase:        model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -181,13 +181,13 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 		ObservedAt:        observedAt,
 	})
 
-	if status.Phase != domain.PhaseProgressing || status.Healthy {
-		t.Fatalf("status = %+v, want progressing unhealthy", status.Status)
+	if status.Observed.Phase != model.PhaseProgressing || status.Observed.Healthy {
+		t.Fatalf("status = %+v, want progressing unhealthy", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g1" {
 		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
 	}
-	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != domain.RunPhaseDispatching {
+	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != model.RunPhaseDispatching {
 		t.Fatalf("run = %+v, want latest g2 dispatching", status.Run)
 	}
 }

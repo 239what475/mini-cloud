@@ -1,10 +1,6 @@
 package cloudplaneapi
 
-import (
-	"time"
-
-	"mini-cloud/internal/common/projectedfile"
-)
+import "time"
 
 type SnapshotResponse struct {
 	Plane         PlaneSummary          `json:"plane"`
@@ -113,21 +109,6 @@ type ExecutionSnapshot struct {
 	Status            string    `json:"status"`
 	LastStatusReason  string    `json:"lastStatusReason"`
 	ObservedAt        time.Time `json:"observedAt"`
-}
-
-type ServiceSpec struct {
-	Region             string                    `json:"region"`
-	InstanceClass      string                    `json:"instanceClass"`
-	Exposure           string                    `json:"exposure"`
-	Image              string                    `json:"image"`
-	Command            []string                  `json:"command"`
-	Args               []string                  `json:"args"`
-	DefaultPort        int                       `json:"defaultPort"`
-	ReadinessPath      string                    `json:"readinessPath"`
-	Env                map[string]string         `json:"env"`
-	SecretEnv          map[string]string         `json:"secretEnv,omitempty"`
-	RegistryCredential *ExecutionImageCredential `json:"registryCredential,omitempty"`
-	Files              []projectedfile.File      `json:"files,omitempty"`
 }
 
 const (

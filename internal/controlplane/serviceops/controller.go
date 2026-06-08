@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"time"
 
-	domain "mini-cloud/internal/controlplane/domain"
+	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 )
 
@@ -18,27 +18,22 @@ const (
 
 var ErrPlaneNotReady = errors.New("plane is not ready")
 
-type View struct {
-	Service domain.Service `json:"service"`
-	Plane   *domain.Detail `json:"plane,omitempty"`
-}
-
 type executionPlanManager interface {
-	ApplyService(context.Context, string, ApplyServiceInput) (ApplyResult, error)
+	ApplyService(context.Context, string, model.Service) (ApplyResult, error)
 	DeleteService(context.Context, string, DeleteServiceInput) error
 }
 
 type serviceStore interface {
-	CreateService(context.Context, store.ServiceCreateInput) (domain.Service, error)
-	ListServices(context.Context) ([]domain.Service, error)
-	GetService(context.Context, string) (domain.Service, error)
-	UpdateService(context.Context, string, store.ServiceUpdateInput) (domain.Service, error)
-	MarkServiceDeletionRequested(context.Context, string) (domain.Service, error)
-	UpdateServiceStatus(context.Context, string, store.ServiceUpdateStatusInput) (domain.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, store.ServiceUpdateStatusInput) (domain.Service, error)
+	CreateService(context.Context, store.CreateServiceInput) (model.Service, error)
+	ListServices(context.Context) ([]model.Service, error)
+	GetService(context.Context, string) (model.Service, error)
+	UpdateService(context.Context, string, store.UpdateServiceInput) (model.Service, error)
+	MarkServiceDeletionRequested(context.Context, string) (model.Service, error)
+	UpdateServiceStatus(context.Context, string, store.UpdateServiceStatusInput) (model.Service, error)
+	UpdateServiceStatusForGeneration(context.Context, string, int64, store.UpdateServiceStatusInput) (model.Service, error)
 	DeleteService(context.Context, string) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
-	GetPlane(context.Context, string) (domain.Detail, error)
+	GetPlane(context.Context, string) (model.PlaneDetail, error)
 }
 
 type Controller struct {
@@ -71,82 +66,58 @@ func (c *Controller) SetReconcileTimeout(timeout int) {
 	c.timeout = time.Duration(timeout) * time.Second
 }
 
-func (c *Controller) Create(ctx context.Context, input store.ServiceCreateInput) (View, error) {
+func (c *Controller) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	created, err := c.store.CreateService(ctx, input)
 	if err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	if err := c.ReconcileOnce(ctx); err != nil {
 		c.Trigger()
 	}
-	reloaded, err := c.store.GetService(ctx, created.Metadata.ID)
-	if err != nil {
-		return View{}, err
-	}
-	return c.buildView(ctx, reloaded)
+	return c.store.GetService(ctx, created.Metadata.ID)
 }
 
-func (c *Controller) List(ctx context.Context) ([]View, error) {
+func (c *Controller) List(ctx context.Context) ([]model.Service, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("service controller is not configured")
 	}
-	items, err := c.store.ListServices(ctx)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]View, 0, len(items))
-	for _, item := range items {
-		view, buildErr := c.buildView(ctx, item)
-		if buildErr != nil {
-			return nil, buildErr
-		}
-		out = append(out, view)
-	}
-	return out, nil
+	return c.store.ListServices(ctx)
 }
 
-func (c *Controller) Get(ctx context.Context, serviceID string) (View, error) {
+func (c *Controller) Get(ctx context.Context, serviceID string) (model.Service, error) {
 	if c == nil || c.store == nil {
-		return View{}, fmt.Errorf("service controller is not configured")
+		return model.Service{}, fmt.Errorf("service controller is not configured")
 	}
-	item, err := c.store.GetService(ctx, serviceID)
-	if err != nil {
-		return View{}, err
-	}
-	return c.buildView(ctx, item)
+	return c.store.GetService(ctx, serviceID)
 }
 
-func (c *Controller) Update(ctx context.Context, serviceID string, input store.ServiceUpdateInput) (View, error) {
+func (c *Controller) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	updated, err := c.store.UpdateService(ctx, serviceID, input)
 	if err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	if err := c.ReconcileOnce(ctx); err != nil {
 		c.Trigger()
 	}
-	reloaded, err := c.store.GetService(ctx, updated.Metadata.ID)
-	if err != nil {
-		return View{}, err
-	}
-	return c.buildView(ctx, reloaded)
+	return c.store.GetService(ctx, updated.Metadata.ID)
 }
 
-func (c *Controller) Delete(ctx context.Context, serviceID string) (View, error) {
+func (c *Controller) Delete(ctx context.Context, serviceID string) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	if _, err := c.store.GetService(ctx, serviceID); err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	deleting, err := c.store.MarkServiceDeletionRequested(ctx, serviceID)
 	if err != nil {
-		return View{}, err
+		return model.Service{}, err
 	}
 	if err := c.ReconcileOnce(ctx); err != nil {
 		c.Trigger()
@@ -154,11 +125,11 @@ func (c *Controller) Delete(ctx context.Context, serviceID string) (View, error)
 	reloaded, err := c.store.GetService(ctx, deleting.Metadata.ID)
 	if err != nil {
 		if errors.Is(err, store.ErrServiceNotFound) {
-			return View{Service: deleting}, nil
+			return deleting, nil
 		}
-		return View{}, err
+		return model.Service{}, err
 	}
-	return c.buildView(ctx, reloaded)
+	return reloaded, nil
 }
 
 func (c *Controller) Trigger() {
@@ -219,12 +190,6 @@ func (c *Controller) validateConfigured() error {
 		return fmt.Errorf("service controller is not configured")
 	}
 	return nil
-}
-
-func (c *Controller) buildView(ctx context.Context, item domain.Service) (View, error) {
-	return View{
-		Service: item,
-	}, nil
 }
 
 func (c *Controller) runOnce(ctx context.Context, reason string) {
