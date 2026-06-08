@@ -161,7 +161,7 @@ func newFakeDeploy() *fakeDeploy {
 func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, input deploy.ApplyServiceInput) (deploy.ApplyResult, error) {
 	f.applyPlaneIDs = append(f.applyPlaneIDs, planeID)
 	f.applyInputs = append(f.applyInputs, input)
-	return deploy.ApplyResult{PlaneID: planeID, Action: deploy.ApplyActionUpdated, PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
+	return deploy.ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", input.Metadata.ID, input.Metadata.Generation)}, nil
 }
 
 func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input deploy.DeleteServiceInput) error {
