@@ -1,9 +1,13 @@
-package processconfig
+package config
 
 import (
+	"errors"
 	"os"
 	"strconv"
+	"strings"
 )
+
+var ErrAdminTokenRequired = errors.New("MINICLOUD_ADMIN_TOKEN is required")
 
 type Config struct {
 	HTTPAddr                       string
@@ -28,6 +32,9 @@ func Load() (Config, error) {
 		LokiURL:                        getenv("MINICLOUD_LOKI_URL", ""),
 		LokiTenantID:                   getenv("MINICLOUD_LOKI_TENANT_ID", ""),
 		LokiQueryTimeoutSeconds:        getenvInt("MINICLOUD_LOKI_QUERY_TIMEOUT_SECONDS", 5),
+	}
+	if strings.TrimSpace(cfg.AdminToken) == "" {
+		return Config{}, ErrAdminTokenRequired
 	}
 	return cfg, nil
 }

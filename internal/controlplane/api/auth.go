@@ -12,24 +12,12 @@ import (
 )
 
 const (
-	authPrincipalKindAnonymous = "anonymous"
-	authPrincipalKindAdmin     = "admin"
-)
-
-const (
-	authPermissionControlRead    = "control.read"
-	authPermissionControlWrite   = "control.write"
-	authPermissionResourceRead   = "resource.read"
-	authPermissionResourceWrite  = "resource.write"
-	authPermissionServiceDeploy  = "service.deploy.write"
-	authPermissionSelfRead       = "auth.self.read"
-	authPermissionOperationsRead = "operations.read"
+	authPrincipalKindAdmin = "admin"
 )
 
 type authContextKey struct{}
 
 type authState struct {
-	Enabled   bool
 	Principal authPrincipal
 	Failure   *authFailure
 }
@@ -50,9 +38,7 @@ type authController struct {
 }
 
 type authWhoAmIResponse struct {
-	AuthenticationEnabled bool                  `json:"authenticationEnabled"`
-	Principal             authPrincipalResponse `json:"principal"`
-	Permissions           []string              `json:"permissions"`
+	Principal authPrincipalResponse `json:"principal"`
 }
 
 type authPrincipalResponse struct {
@@ -67,10 +53,6 @@ func newAuthController(adminToken string, logger *slog.Logger, stores *store.Sto
 	}
 }
 
-func (a authController) enabled() bool {
-	return a.adminToken != ""
-}
-
 func (a authController) wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state := a.resolveRequest(r)
@@ -80,19 +62,19 @@ func (a authController) wrap(next http.Handler) http.Handler {
 }
 
 func (a authController) resolveRequest(r *http.Request) authState {
-	if !a.enabled() {
-		return authState{Enabled: false, Principal: authPrincipal{Kind: authPrincipalKindAnonymous}}
-	}
-
 	authorization := strings.TrimSpace(r.Header.Get("Authorization"))
 	if authorization == "" {
-		return authState{Enabled: true, Principal: authPrincipal{Kind: authPrincipalKindAnonymous}}
+		return authState{
+			Failure: &authFailure{
+				StatusCode: http.StatusUnauthorized,
+				Message:    "bearer token required",
+			},
+		}
 	}
 
 	secret, err := httpx.ParseBearerSecret(authorization)
 	if err != nil {
 		return authState{
-			Enabled: true,
 			Failure: &authFailure{
 				StatusCode: http.StatusUnauthorized,
 				Message:    "invalid Authorization header; use Bearer <token>",
@@ -100,10 +82,9 @@ func (a authController) resolveRequest(r *http.Request) authState {
 		}
 	}
 	if subtle.ConstantTimeCompare([]byte(secret), []byte(a.adminToken)) == 1 {
-		return authState{Enabled: true, Principal: authPrincipal{Kind: authPrincipalKindAdmin}}
+		return authState{Principal: authPrincipal{Kind: authPrincipalKindAdmin}}
 	}
 	return authState{
-		Enabled: true,
 		Failure: &authFailure{
 			StatusCode: http.StatusUnauthorized,
 			Message:    "invalid bearer token",
@@ -111,7 +92,7 @@ func (a authController) resolveRequest(r *http.Request) authState {
 	}
 }
 
-func (a authController) platformAccessFunc(_ string, next http.HandlerFunc) http.HandlerFunc {
+func (a authController) adminOnly(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authRequest, ok := a.authorize(w, r)
 		if !ok {
@@ -122,33 +103,17 @@ func (a authController) platformAccessFunc(_ string, next http.HandlerFunc) http
 }
 
 func (a authController) whoAmI(w http.ResponseWriter, r *http.Request) {
-	state := authStateFromRequest(r)
-	if !state.Enabled {
-		writeJSON(w, http.StatusOK, authWhoAmIResponse{
-			AuthenticationEnabled: false,
-			Principal:             authPrincipalResponse{Kind: authPrincipalKindAnonymous},
-			Permissions:           []string{},
-		})
-		return
-	}
-
 	principal, ok := a.requireAuthenticated(w, r)
 	if !ok {
 		return
 	}
 
 	writeJSON(w, http.StatusOK, authWhoAmIResponse{
-		AuthenticationEnabled: true,
-		Principal:             authPrincipalResponse{Kind: principal.Kind},
-		Permissions:           permissionsForPrincipal(principal),
+		Principal: authPrincipalResponse{Kind: principal.Kind},
 	})
 }
 
 func (a authController) authorize(w http.ResponseWriter, r *http.Request) (*http.Request, bool) {
-	state := authStateFromRequest(r)
-	if !state.Enabled {
-		return r, true
-	}
 	principal, ok := a.requireAuthenticated(w, r)
 	if !ok {
 		return nil, false
@@ -162,14 +127,11 @@ func (a authController) authorize(w http.ResponseWriter, r *http.Request) (*http
 
 func (a authController) requireAuthenticated(w http.ResponseWriter, r *http.Request) (authPrincipal, bool) {
 	state := authStateFromRequest(r)
-	if !state.Enabled {
-		return state.Principal, true
-	}
 	if state.Failure != nil {
 		writeJSON(w, state.Failure.StatusCode, map[string]any{"error": state.Failure.Message})
 		return authPrincipal{}, false
 	}
-	if state.Principal.Kind == authPrincipalKindAnonymous {
+	if state.Principal.Kind == "" {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "bearer token required"})
 		return authPrincipal{}, false
 	}
@@ -178,26 +140,11 @@ func (a authController) requireAuthenticated(w http.ResponseWriter, r *http.Requ
 
 func authStateFromRequest(r *http.Request) authState {
 	if r == nil {
-		return authState{Enabled: false, Principal: authPrincipal{Kind: authPrincipalKindAnonymous}}
+		return authState{}
 	}
 	state, ok := r.Context().Value(authContextKey{}).(authState)
 	if !ok {
-		return authState{Enabled: false, Principal: authPrincipal{Kind: authPrincipalKindAnonymous}}
+		return authState{}
 	}
 	return state
-}
-
-func permissionsForPrincipal(principal authPrincipal) []string {
-	if principal.Kind != authPrincipalKindAdmin {
-		return []string{}
-	}
-	return []string{
-		authPermissionSelfRead,
-		authPermissionControlRead,
-		authPermissionControlWrite,
-		authPermissionResourceRead,
-		authPermissionResourceWrite,
-		authPermissionServiceDeploy,
-		authPermissionOperationsRead,
-	}
 }

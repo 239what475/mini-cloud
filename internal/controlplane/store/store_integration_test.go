@@ -17,11 +17,12 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
 	createdPlane, err := db.Store.CreatePlane(context.Background(), plane.CreateInput{
-		Name:         "aliyun-bj-primary",
-		DisplayName:  "Aliyun Beijing Primary",
-		Provider:     "aliyun",
-		Region:       "cn-beijing",
-		GRPCEndpoint: "plane-a.example.com:443",
+		Name:            "aliyun-bj-primary",
+		DisplayName:     "Aliyun Beijing Primary",
+		Provider:        "aliyun",
+		Region:          "cn-beijing",
+		GRPCEndpoint:    "plane-a.example.com:443",
+		SouthboundToken: "plane-southbound-secret",
 	})
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
@@ -35,12 +36,8 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if createdPlane.GRPCEndpoint != "plane-a.example.com:443" {
 		t.Fatalf("plane grpcEndpoint = %q", createdPlane.GRPCEndpoint)
 	}
-	if createdPlane.Registration.Registered {
-		t.Fatalf("expected new plane to have no southbound token yet")
-	}
-
-	if _, err := db.Store.SetPlaneSouthboundToken(context.Background(), createdPlane.ID, "plane-southbound-secret"); err != nil {
-		t.Fatalf("SetPlaneSouthboundToken returned error: %v", err)
+	if !createdPlane.Registration.Registered {
+		t.Fatalf("expected created plane to have southbound token registration")
 	}
 	verifiedAt := time.Now().UTC().Truncate(time.Second)
 	if _, err := db.Store.MarkPlaneSouthboundTokenVerified(context.Background(), createdPlane.ID, verifiedAt); err != nil {

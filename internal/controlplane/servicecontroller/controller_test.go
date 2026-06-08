@@ -171,12 +171,16 @@ func (f *fakeDeploy) DeleteService(_ context.Context, _ string, input deploy.Del
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) plane.Detail {
 	t.Helper()
 	ctx := context.Background()
-	item, err := db.Store.CreatePlane(ctx, plane.CreateInput{Name: name, DisplayName: name, Provider: "aliyun", Region: "cn-beijing", GRPCEndpoint: name + ".example.test:443"})
+	item, err := db.Store.CreatePlane(ctx, plane.CreateInput{
+		Name:            name,
+		DisplayName:     name,
+		Provider:        "aliyun",
+		Region:          "cn-beijing",
+		GRPCEndpoint:    name + ".example.test:443",
+		SouthboundToken: "southbound-" + name,
+	})
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
-	}
-	if _, err := db.Store.SetPlaneSouthboundToken(ctx, item.ID, "southbound-"+name); err != nil {
-		t.Fatalf("SetPlaneSouthboundToken returned error: %v", err)
 	}
 	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, plane.UpdateStatusInput{Status: plane.StatusReady, Message: "ready"}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)

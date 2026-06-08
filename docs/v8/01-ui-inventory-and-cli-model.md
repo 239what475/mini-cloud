@@ -119,7 +119,7 @@ minicloud --token "$MINICLOUD_ADMIN_TOKEN" service list
   - 默认读取 `MINICLOUD_CONTROL_PLANE_URL`
   - fallback：`http://127.0.0.1:8080`
 - `--token`
-  - 默认读取 `MINICLOUD_ADMIN_TOKEN`
+  - 默认读取必需的 `MINICLOUD_ADMIN_TOKEN`
 - `-o, --output`
   - `table`、`json`、`yaml`
   - 默认 `table`
@@ -303,7 +303,6 @@ minicloud logs plane <plane> --since 30m
 minicloud plane list
 minicloud plane get <plane>
 minicloud plane apply -f plane.yaml
-minicloud plane register <plane>
 minicloud plane sync <plane>
 minicloud plane operation apply -f plane-operation.yaml
 minicloud plane delete <plane>
@@ -316,10 +315,11 @@ minicloud plane capacity-snapshot list <plane>
 - `POST /api/v1/control/planes`
 - `GET /api/v1/control/planes/{planeID}`
 - `DELETE /api/v1/control/planes/{planeID}`
-- `POST /api/v1/control/planes/{planeID}/actions/register`
 - `POST /api/v1/control/planes/{planeID}/actions/sync`
 - `PUT /api/v1/control/planes/{planeID}/operation`
 - `GET /api/v1/control/planes/{planeID}/capacity-snapshots`
+
+`plane apply` 创建或更新 plane 连接配置，`plane.yaml` 必须包含 `southboundToken`；`plane sync` 使用已保存 token 刷新 plane 状态和 runtime inventory。
 
 `drain` 可以作为语义化别名：
 

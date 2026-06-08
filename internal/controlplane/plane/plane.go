@@ -126,11 +126,12 @@ type Detail struct {
 }
 
 type CreateInput struct {
-	Name         string `json:"name"`
-	DisplayName  string `json:"displayName"`
-	Provider     string `json:"provider"`
-	Region       string `json:"region"`
-	GRPCEndpoint string `json:"grpcEndpoint"`
+	Name            string `json:"name"`
+	DisplayName     string `json:"displayName"`
+	Provider        string `json:"provider"`
+	Region          string `json:"region"`
+	GRPCEndpoint    string `json:"grpcEndpoint"`
+	SouthboundToken string `json:"southboundToken"`
 }
 
 type UpdateStatusInput struct {
@@ -138,10 +139,6 @@ type UpdateStatusInput struct {
 	Message         string     `json:"message"`
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
-}
-
-type RegisterInput struct {
-	SouthboundToken string `json:"southboundToken"`
 }
 
 type UpdateOperationInput struct {
@@ -179,6 +176,8 @@ func (in CreateInput) Validate() error {
 		return ErrPlaneProviderRequired
 	case strings.TrimSpace(in.Region) == "":
 		return ErrPlaneRegionRequired
+	case strings.TrimSpace(in.SouthboundToken) == "":
+		return ErrPlaneSouthboundTokenRequired
 	}
 
 	_, err := normalizeGRPCEndpoint(in.GRPCEndpoint)
@@ -192,13 +191,6 @@ func (in CreateInput) ResolvedGRPCEndpoint() (string, error) {
 func (in UpdateStatusInput) Validate() error {
 	if !IsStatus(in.Status) {
 		return ErrInvalidPlaneStatus
-	}
-	return nil
-}
-
-func (in RegisterInput) Validate() error {
-	if strings.TrimSpace(in.SouthboundToken) == "" {
-		return ErrPlaneSouthboundTokenRequired
 	}
 	return nil
 }

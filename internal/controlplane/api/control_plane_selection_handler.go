@@ -15,10 +15,10 @@ import (
 type controlPlaneSelectionHandler struct {
 	logger *slog.Logger
 	store  *store.Store
-	svc    *planeselector.Service
+	svc    *planeselector.Selector
 }
 
-func newControlPlaneSelectionHandler(logger *slog.Logger, stores *store.Store, svc *planeselector.Service) controlPlaneSelectionHandler {
+func newControlPlaneSelectionHandler(logger *slog.Logger, stores *store.Store, svc *planeselector.Selector) controlPlaneSelectionHandler {
 	return controlPlaneSelectionHandler{
 		logger: logger,
 		store:  stores,

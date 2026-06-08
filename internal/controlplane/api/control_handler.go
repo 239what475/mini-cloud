@@ -16,16 +16,16 @@ import (
 )
 
 type controlHandler struct {
-	logger      *slog.Logger
-	store       *store.Store
-	syncService *planesync.Service
+	logger *slog.Logger
+	store  *store.Store
+	syncer *planesync.Syncer
 }
 
-func newControlHandler(logger *slog.Logger, stores *store.Store, syncService *planesync.Service) controlHandler {
+func newControlHandler(logger *slog.Logger, stores *store.Store, syncer *planesync.Syncer) controlHandler {
 	return controlHandler{
-		logger:      logger,
-		store:       stores,
-		syncService: syncService,
+		logger: logger,
+		store:  stores,
+		syncer: syncer,
 	}
 }
 
@@ -158,60 +158,8 @@ func (h controlHandler) deletePlane(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h controlHandler) registerPlane(w http.ResponseWriter, r *http.Request) {
-	if h.syncService == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "plane sync service is not configured"})
-		return
-	}
-
-	planeID := r.PathValue("planeID")
-	if planeID == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	r = withRequestLogFields(r, logctx.Fields{PlaneID: planeID})
-	logger := requestScopedLogger(r, h.logger)
-
-	var input plane.RegisterInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json body"})
-		return
-	}
-
-	requestCtx, cancel := context.WithTimeout(r.Context(), planesync.ManualPlaneSyncTimeout)
-	defer cancel()
-
-	result, err := h.syncService.RegisterPlane(requestCtx, planeID, input)
-	if err != nil {
-		switch {
-		case isPlaneInputError(err):
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrPlaneNotFound):
-			writeJSON(w, http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case planesync.IsSyncFailure(err):
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("register plane failed", "error", err)
-			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	recordOperationEvent(logger, h.store, r, operationhistory.CreateInput{
-		Action:     "control.plane.register",
-		TargetType: "plane",
-		TargetID:   result.Plane.ID,
-		TargetName: result.Plane.Name,
-	})
-
-	writeJSON(w, http.StatusOK, result)
-}
-
 func (h controlHandler) syncPlane(w http.ResponseWriter, r *http.Request) {
-	if h.syncService == nil {
+	if h.syncer == nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "plane sync service is not configured"})
 		return
 	}
@@ -227,7 +175,7 @@ func (h controlHandler) syncPlane(w http.ResponseWriter, r *http.Request) {
 	requestCtx, cancel := context.WithTimeout(r.Context(), planesync.ManualPlaneSyncTimeout)
 	defer cancel()
 
-	result, err := h.syncService.SyncPlane(requestCtx, planeID)
+	result, err := h.syncer.SyncPlane(requestCtx, planeID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrPlaneNotFound):

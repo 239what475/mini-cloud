@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	plane "mini-cloud/internal/controlplane/plane"
@@ -131,14 +132,30 @@ func (s *Store) CreatePlane(ctx context.Context, input plane.CreateInput) (plane
 		return plane.Detail{}, fmt.Errorf("insert plane operation: %w", err)
 	}
 
+	registration, err := scanPlaneRegistration(tx.QueryRowContext(ctx, `
+		INSERT INTO plane_southbound_tokens (
+			plane_id,
+			southbound_token
+		)
+		VALUES ($1, $2)
+		RETURNING
+			last_verified_at,
+			updated_at
+	`, created.ID, strings.TrimSpace(input.SouthboundToken)))
+	if err != nil {
+		return plane.Detail{}, fmt.Errorf("insert plane southbound token: %w", err)
+	}
+	registration.Registered = true
+
 	if err := tx.Commit(); err != nil {
 		return plane.Detail{}, fmt.Errorf("commit create plane: %w", err)
 	}
 
 	return plane.Detail{
-		Plane:     created,
-		Status:    status,
-		Operation: operation,
+		Plane:        created,
+		Status:       status,
+		Registration: registration,
+		Operation:    operation,
 	}, nil
 }
 

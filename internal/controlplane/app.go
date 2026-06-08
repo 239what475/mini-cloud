@@ -11,34 +11,34 @@ import (
 
 	"mini-cloud/internal/common/logquery"
 	controlplaneapi "mini-cloud/internal/controlplane/api"
+	"mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/deploy"
 	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/planesync"
-	controlplaneprocessconfig "mini-cloud/internal/controlplane/processconfig"
 	servicecontroller "mini-cloud/internal/controlplane/servicecontroller"
 	"mini-cloud/internal/controlplane/store"
-	controlplanemigrations "mini-cloud/internal/controlplane/store/migrations"
+	"mini-cloud/internal/controlplane/store/migrations"
 )
 
 type App struct {
-	ProcessConfig controlplaneprocessconfig.Config
-	Handler       http.Handler
+	Config  config.Config
+	Handler http.Handler
 
-	db             *sql.DB
-	stopBackground context.CancelFunc
+	db     *sql.DB
+	cancel context.CancelFunc
 }
 
 func Build(logger *slog.Logger) (App, error) {
-	processCfg, err := controlplaneprocessconfig.Load()
+	cfg, err := config.Load()
 	if err != nil {
 		return App{}, fmt.Errorf("load process config: %w", err)
 	}
 
-	db, err := store.Open(processCfg.DatabaseURL)
+	db, err := store.Open(cfg.DatabaseURL)
 	if err != nil {
 		return App{}, fmt.Errorf("open database: %w", err)
 	}
-	if err := controlplanemigrations.Up(db); err != nil {
+	if err := migrations.Up(db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return App{}, errors.Join(fmt.Errorf("run migrations: %w", err), fmt.Errorf("close database after migration failure: %w", closeErr))
 		}
@@ -46,41 +46,43 @@ func Build(logger *slog.Logger) (App, error) {
 	}
 
 	stores := store.New(db)
-	planeSyncService := planesync.NewService(logger, stores)
-	deployService := deploy.NewService(logger, stores)
-	planeSelector := planeselector.NewService(logger, stores)
-	serviceController := servicecontroller.New(logger, stores, planeSelector, deployService)
-	serviceController.SetReconcileTimeout(time.Duration(processCfg.ServiceReconcileTimeoutSeconds) * time.Second)
+	planeSyncer := planesync.NewSyncer(logger, stores)
+	dispatcher := deploy.NewDispatcher(logger, stores)
+	selector := planeselector.NewSelector(logger, stores)
+
+	serviceController := servicecontroller.New(logger, stores, selector, dispatcher)
+	serviceController.SetReconcileTimeout(time.Duration(cfg.ServiceReconcileTimeoutSeconds) * time.Second)
+
 	backgroundCtx, backgroundCancel := context.WithCancel(context.Background())
-	planesync.StartLoop(backgroundCtx, logger, planeSyncService, time.Duration(processCfg.PlaneSyncIntervalSeconds)*time.Second)
+	planesync.StartLoop(backgroundCtx, logger, planeSyncer, time.Duration(cfg.PlaneSyncIntervalSeconds)*time.Second)
 	go serviceController.Run(backgroundCtx)
 
 	logQueryService := logquery.NewService(
-		processCfg.LokiURL,
-		processCfg.LokiTenantID,
-		time.Duration(processCfg.LokiQueryTimeoutSeconds)*time.Second,
+		cfg.LokiURL,
+		cfg.LokiTenantID,
+		time.Duration(cfg.LokiQueryTimeoutSeconds)*time.Second,
 	)
 	httpAPI := controlplaneapi.NewMux(controlplaneapi.Options{
-		AdminToken:        processCfg.AdminToken,
-		UIDir:             processCfg.UIDir,
+		AdminToken:        cfg.AdminToken,
+		UIDir:             cfg.UIDir,
 		LogQueryService:   logQueryService,
-		PlaneSyncService:  planeSyncService,
-		DeployService:     deployService,
-		PlaneSelector:     planeSelector,
+		PlaneSyncer:       planeSyncer,
+		Dispatcher:        dispatcher,
+		PlaneSelector:     selector,
 		ServiceController: serviceController,
 	}, logger, stores)
 
 	return App{
-		ProcessConfig:  processCfg,
-		Handler:        httpAPI,
-		db:             db,
-		stopBackground: backgroundCancel,
+		Config:  cfg,
+		Handler: httpAPI,
+		db:      db,
+		cancel:  backgroundCancel,
 	}, nil
 }
 
 func (a App) Close() error {
-	if a.stopBackground != nil {
-		a.stopBackground()
+	if a.cancel != nil {
+		a.cancel()
 	}
 	if a.db == nil {
 		return nil

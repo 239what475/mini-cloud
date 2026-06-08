@@ -25,11 +25,11 @@ func main() {
 	}()
 
 	logger.Info("starting mini-cloud control-plane",
-		"http_addr", plane.ProcessConfig.HTTPAddr,
-		"ui_dir", plane.ProcessConfig.UIDir,
+		"http_addr", plane.Config.HTTPAddr,
+		"ui_dir", plane.Config.UIDir,
 	)
 
-	if err := http.ListenAndServe(plane.ProcessConfig.HTTPAddr, plane.Handler); err != nil {
+	if err := http.ListenAndServe(plane.Config.HTTPAddr, plane.Handler); err != nil {
 		logger.Error("control-plane exited", "error", err)
 		os.Exit(1)
 	}

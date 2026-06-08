@@ -24,14 +24,14 @@ const (
 	defaultDeleteServiceTimeout = 2 * time.Minute
 )
 
-type Service struct {
+type Dispatcher struct {
 	logger             *slog.Logger
 	store              *store.Store
 	applyClientFactory clientFactory
 }
 
-func NewService(logger *slog.Logger, stores *store.Store) *Service {
-	return &Service{
+func NewDispatcher(logger *slog.Logger, stores *store.Store) *Dispatcher {
+	return &Dispatcher{
 		logger:             logger,
 		store:              stores,
 		applyClientFactory: newClientFactory(),
@@ -44,7 +44,7 @@ func newClientFactory() clientFactory {
 	}
 }
 
-func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyServiceInput) (ApplyResult, error) {
+func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input ApplyServiceInput) (ApplyResult, error) {
 	if s == nil || s.store == nil {
 		return ApplyResult{}, fmt.Errorf("deploy service is not configured")
 	}
@@ -95,7 +95,7 @@ func (s *Service) ApplyService(ctx context.Context, planeID string, input ApplyS
 	}, nil
 }
 
-func (s *Service) DeleteService(ctx context.Context, planeID string, input DeleteServiceInput) error {
+func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input DeleteServiceInput) error {
 	if s == nil || s.store == nil {
 		return fmt.Errorf("deploy service is not configured")
 	}
@@ -143,7 +143,7 @@ func (s *Service) DeleteService(ctx context.Context, planeID string, input Delet
 	return nil
 }
 
-func (s *Service) buildExecutionPlan(ctx context.Context, input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
+func (s *Dispatcher) buildExecutionPlan(ctx context.Context, input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
 	var imageCredential *cloudplaneapi.ExecutionImageCredential
 	if spec.RegistryCredentialID != "" {
 		local, err := s.store.GetRegistryCredential(ctx, spec.RegistryCredentialID)

@@ -11,6 +11,7 @@ import (
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	plane "mini-cloud/internal/controlplane/plane"
+	"mini-cloud/internal/controlplane/planeclient"
 	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -24,11 +25,10 @@ const (
 	ManualPlaneSyncTimeout             = 2 * time.Minute
 )
 
-type Service struct {
-	logger  *slog.Logger
-	store   serviceStore
-	fetcher planeSnapshotFetcher
-	now     func() time.Time
+type Syncer struct {
+	logger *slog.Logger
+	store  *store.Store
+	now    func() time.Time
 }
 
 type Result struct {
@@ -47,20 +47,6 @@ type PlaneSyncOutcome struct {
 	Error   string  `json:"error,omitempty"`
 }
 
-type serviceStore interface {
-	GetPlane(context.Context, string) (plane.Detail, error)
-	SetPlaneSouthboundToken(context.Context, string, string) (plane.Registration, error)
-	MarkPlaneSouthboundTokenVerified(context.Context, string, time.Time) (plane.Registration, error)
-	GetPlaneSouthboundToken(context.Context, string) (string, error)
-	ListRegisteredPlaneIDs(context.Context) ([]string, error)
-	UpdatePlaneStatus(context.Context, string, plane.UpdateStatusInput) (plane.PlaneStatus, error)
-	ReplacePlaneRuntimeInventory(context.Context, string, plane.RecordRuntimeInventoryInput) (plane.RuntimeInventorySnapshot, []plane.RuntimeNode, error)
-	RecordPlaneRuntimeConfig(context.Context, string, plane.RecordRuntimeConfigInput) (plane.RuntimeConfigSnapshot, error)
-	GetService(context.Context, string) (controlservice.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, controlservice.UpdateStatusInput) (controlservice.Service, error)
-	DeleteServiceForGeneration(context.Context, string, int64) error
-}
-
 type planeSnapshot struct {
 	Plane         cloudplaneapi.PlaneSummary
 	Health        cloudplaneapi.HealthSummary
@@ -70,10 +56,6 @@ type planeSnapshot struct {
 	Runtime       cloudplaneapi.RuntimeInventory
 	RuntimeConfig cloudplaneapi.RuntimeConfigSnapshot
 	Executions    []cloudplaneapi.ExecutionSnapshot
-}
-
-type planeSnapshotFetcher interface {
-	Fetch(context.Context, string, string) (planeSnapshot, error)
 }
 
 type syncError struct {
@@ -91,32 +73,20 @@ func IsSyncFailure(err error) bool {
 	return errors.As(err, &target)
 }
 
-func NewService(logger *slog.Logger, stores *store.Store) *Service {
-	return NewServiceWithFetcher(logger, stores, newGRPCPlaneSnapshotFetcher())
-}
-
-func NewServiceWithFetcher(logger *slog.Logger, stores serviceStore, fetcher planeSnapshotFetcher) *Service {
+func NewSyncer(logger *slog.Logger, stores *store.Store) *Syncer {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{
-		logger:  logger,
-		store:   stores,
-		fetcher: fetcher,
+	return &Syncer{
+		logger: logger,
+		store:  stores,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
 	}
 }
 
-func (s *Service) RegisterPlane(ctx context.Context, planeID string, input plane.RegisterInput) (Result, error) {
-	if err := input.Validate(); err != nil {
-		return Result{}, err
-	}
-	return s.syncWithToken(ctx, planeID, strings.TrimSpace(input.SouthboundToken), true)
-}
-
-func (s *Service) SyncPlane(ctx context.Context, planeID string) (Result, error) {
+func (s *Syncer) SyncPlane(ctx context.Context, planeID string) (Result, error) {
 	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
 	if err != nil {
 		if errors.Is(err, store.ErrPlaneSouthboundTokenNotFound) {
@@ -124,14 +94,10 @@ func (s *Service) SyncPlane(ctx context.Context, planeID string) (Result, error)
 		}
 		return Result{}, err
 	}
-	return s.syncWithToken(ctx, planeID, token, false)
+	return s.syncWithToken(ctx, planeID, token)
 }
 
-func (s *Service) SyncRegisteredPlanes(ctx context.Context) ([]PlaneSyncOutcome, error) {
-	return s.syncRegisteredPlanes(ctx, 0)
-}
-
-func (s *Service) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSyncOutcome, error) {
+func (s *Syncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSyncOutcome, error) {
 	planeIDs, err := s.store.ListRegisteredPlaneIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -160,8 +126,8 @@ func (s *Service) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time
 	return outcomes, nil
 }
 
-func StartLoop(ctx context.Context, logger *slog.Logger, service *Service, interval time.Duration) {
-	if service == nil || interval <= 0 {
+func StartLoop(ctx context.Context, logger *slog.Logger, syncer *Syncer, interval time.Duration) {
+	if syncer == nil || interval <= 0 {
 		return
 	}
 	if logger == nil {
@@ -177,7 +143,7 @@ func StartLoop(ctx context.Context, logger *slog.Logger, service *Service, inter
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				outcomes, err := service.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
+				outcomes, err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
 				if err != nil {
 					logger.Error("plane background sync failed", "error", err)
 					continue
@@ -192,7 +158,7 @@ func StartLoop(ctx context.Context, logger *slog.Logger, service *Service, inter
 	}()
 }
 
-func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundToken string, persistToken bool) (Result, error) {
+func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundToken string) (Result, error) {
 	ctx = logctx.WithFields(ctx, logctx.Fields{PlaneID: planeID})
 	logger := logctx.Logger(ctx, s.logger)
 	planeDetail, err := s.store.GetPlane(ctx, planeID)
@@ -200,7 +166,14 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 		return Result{}, err
 	}
 
-	snapshot, err := s.fetcher.Fetch(ctx, planeDetail.GRPCEndpoint, southboundToken)
+	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
+	client, err := planeclient.New(grpcEndpoint, southboundToken)
+	if err != nil {
+		err = &syncError{
+			status:  plane.StatusOffline,
+			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
+		}
+	}
 	if err != nil {
 		var syncErr *syncError
 		if errors.As(err, &syncErr) {
@@ -210,12 +183,34 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 		}
 		return Result{}, err
 	}
-
-	if persistToken {
-		if _, err := s.store.SetPlaneSouthboundToken(ctx, planeID, southboundToken); err != nil {
-			return Result{}, err
+	defer func() {
+		if closeErr := client.Close(); closeErr != nil {
+			logger.Warn("close plane southbound client failed", "error", closeErr)
 		}
+	}()
+
+	snapshotResp, err := client.Snapshot(ctx)
+	if err != nil {
+		syncErr := &syncError{
+			status:  plane.StatusOffline,
+			message: fmt.Sprintf("load plane snapshot failed: %v", err),
+		}
+		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
+			logger.Error("update failed plane status failed", "error", updateErr)
+		}
+		return Result{}, syncErr
 	}
+	snapshot := planeSnapshot{
+		Plane:         snapshotResp.Plane,
+		Health:        snapshotResp.Health,
+		Overview:      snapshotResp.Overview,
+		Capacity:      snapshotResp.Capacity,
+		Reliability:   snapshotResp.Reliability,
+		Runtime:       snapshotResp.Runtime,
+		RuntimeConfig: snapshotResp.RuntimeConfig,
+		Executions:    snapshotResp.Executions,
+	}
+
 	if _, err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, snapshot.Health.CheckedAt); err != nil {
 		return Result{}, err
 	}
@@ -255,7 +250,7 @@ func (s *Service) syncWithToken(ctx context.Context, planeID string, southboundT
 	}, nil
 }
 
-func (s *Service) applyExecutionSnapshots(ctx context.Context, planeID string, executions []cloudplaneapi.ExecutionSnapshot) error {
+func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []cloudplaneapi.ExecutionSnapshot) error {
 	for _, item := range executions {
 		if strings.TrimSpace(item.ServiceID) == "" || item.ServiceGeneration <= 0 {
 			continue
@@ -370,7 +365,7 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 	}
 }
 
-func (s *Service) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
+func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
 	_, err := s.store.UpdatePlaneStatus(ctx, planeID, plane.UpdateStatusInput{
 		Status:          syncErr.status,

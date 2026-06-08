@@ -20,9 +20,9 @@ type Options struct {
 	AdminToken        string
 	UIDir             string
 	LogQueryService   logquery.Backend
-	PlaneSyncService  *planesync.Service
-	DeployService     *deploy.Service
-	PlaneSelector     *planeselector.Service
+	PlaneSyncer       *planesync.Syncer
+	Dispatcher        *deploy.Dispatcher
+	PlaneSelector     *planeselector.Selector
 	ServiceController *servicecontroller.Controller
 }
 
@@ -30,14 +30,14 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	mux := http.NewServeMux()
 	authz := newAuthController(opts.AdminToken, logger, stores)
 
-	if opts.DeployService == nil {
-		opts.DeployService = deploy.NewService(logger, stores)
+	if opts.Dispatcher == nil {
+		opts.Dispatcher = deploy.NewDispatcher(logger, stores)
 	}
 	if opts.PlaneSelector == nil {
-		opts.PlaneSelector = planeselector.NewService(logger, stores)
+		opts.PlaneSelector = planeselector.NewSelector(logger, stores)
 	}
 	if opts.ServiceController == nil {
-		opts.ServiceController = servicecontroller.New(logger, stores, opts.PlaneSelector, opts.DeployService)
+		opts.ServiceController = servicecontroller.New(logger, stores, opts.PlaneSelector, opts.Dispatcher)
 	}
 
 	serveRootJSONOrIndex(logger, opts.UIDir, mux)
@@ -50,7 +50,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 		})
 	})
 	mux.HandleFunc("GET /api/v1/auth/whoami", authz.whoAmI)
-	mux.HandleFunc("GET /metrics/control", authz.platformAccessFunc(authPermissionControlRead, func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /metrics/control", authz.adminOnly(func(w http.ResponseWriter, r *http.Request) {
 		items, err := stores.ListPlanes(r.Context())
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
@@ -63,29 +63,28 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	resourceHandler := newResourceHandler(logger, stores)
 	serviceHandler := newServiceHandler(logger, stores, opts.ServiceController)
 	operationHistoryHandler := newOperationHistoryHandler(logger, stores)
-	mux.HandleFunc("GET /api/v1/registry-credentials", authz.platformAccessFunc(authPermissionResourceRead, resourceHandler.listRegistryCredentials))
-	mux.HandleFunc("POST /api/v1/registry-credentials", authz.platformAccessFunc(authPermissionResourceWrite, resourceHandler.createRegistryCredential))
-	mux.HandleFunc("GET /api/v1/services", authz.platformAccessFunc(authPermissionResourceRead, serviceHandler.listServices))
-	mux.HandleFunc("POST /api/v1/services", authz.platformAccessFunc(authPermissionServiceDeploy, serviceHandler.createService))
-	mux.HandleFunc("GET /api/v1/services/{serviceID}", authz.platformAccessFunc(authPermissionResourceRead, serviceHandler.getService))
-	mux.HandleFunc("PUT /api/v1/services/{serviceID}", authz.platformAccessFunc(authPermissionServiceDeploy, serviceHandler.updateService))
-	mux.HandleFunc("DELETE /api/v1/services/{serviceID}", authz.platformAccessFunc(authPermissionServiceDeploy, serviceHandler.deleteService))
+	mux.HandleFunc("GET /api/v1/registry-credentials", authz.adminOnly(resourceHandler.listRegistryCredentials))
+	mux.HandleFunc("POST /api/v1/registry-credentials", authz.adminOnly(resourceHandler.createRegistryCredential))
+	mux.HandleFunc("GET /api/v1/services", authz.adminOnly(serviceHandler.listServices))
+	mux.HandleFunc("POST /api/v1/services", authz.adminOnly(serviceHandler.createService))
+	mux.HandleFunc("GET /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.getService))
+	mux.HandleFunc("PUT /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.updateService))
+	mux.HandleFunc("DELETE /api/v1/services/{serviceID}", authz.adminOnly(serviceHandler.deleteService))
 
 	logQueryHandler := newLogQueryHandler(logger, opts.LogQueryService)
-	mux.HandleFunc("GET /api/v1/control/logs", authz.platformAccessFunc(authPermissionControlRead, logQueryHandler.queryControlLogs))
+	mux.HandleFunc("GET /api/v1/control/logs", authz.adminOnly(logQueryHandler.queryControlLogs))
 
-	controlHandler := newControlHandler(logger, stores, opts.PlaneSyncService)
+	controlHandler := newControlHandler(logger, stores, opts.PlaneSyncer)
 	controlPlaneSelectionHandler := newControlPlaneSelectionHandler(logger, stores, opts.PlaneSelector)
-	mux.HandleFunc("GET /api/v1/control/inventory", authz.platformAccessFunc(authPermissionControlRead, controlHandler.inventory))
-	mux.HandleFunc("GET /api/v1/control/planes", authz.platformAccessFunc(authPermissionControlRead, controlHandler.listPlanes))
-	mux.HandleFunc("POST /api/v1/control/planes", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.createPlane))
-	mux.HandleFunc("GET /api/v1/control/planes/{planeID}", authz.platformAccessFunc(authPermissionControlRead, controlHandler.getPlane))
-	mux.HandleFunc("DELETE /api/v1/control/planes/{planeID}", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.deletePlane))
-	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/register", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.registerPlane))
-	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/sync", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.syncPlane))
-	mux.HandleFunc("PUT /api/v1/control/planes/{planeID}/operation", authz.platformAccessFunc(authPermissionControlWrite, controlHandler.updatePlaneOperation))
-	mux.HandleFunc("POST /api/v1/control/plane-selection/preview-service", authz.platformAccessFunc(authPermissionControlRead, controlPlaneSelectionHandler.previewSelection))
-	mux.HandleFunc("GET /api/v1/control/operations", authz.platformAccessFunc(authPermissionOperationsRead, operationHistoryHandler.listControlOperations))
+	mux.HandleFunc("GET /api/v1/control/inventory", authz.adminOnly(controlHandler.inventory))
+	mux.HandleFunc("GET /api/v1/control/planes", authz.adminOnly(controlHandler.listPlanes))
+	mux.HandleFunc("POST /api/v1/control/planes", authz.adminOnly(controlHandler.createPlane))
+	mux.HandleFunc("GET /api/v1/control/planes/{planeID}", authz.adminOnly(controlHandler.getPlane))
+	mux.HandleFunc("DELETE /api/v1/control/planes/{planeID}", authz.adminOnly(controlHandler.deletePlane))
+	mux.HandleFunc("POST /api/v1/control/planes/{planeID}/actions/sync", authz.adminOnly(controlHandler.syncPlane))
+	mux.HandleFunc("PUT /api/v1/control/planes/{planeID}/operation", authz.adminOnly(controlHandler.updatePlaneOperation))
+	mux.HandleFunc("POST /api/v1/control/plane-selection/preview-service", authz.adminOnly(controlPlaneSelectionHandler.previewSelection))
+	mux.HandleFunc("GET /api/v1/control/operations", authz.adminOnly(operationHistoryHandler.listControlOperations))
 
 	return requestLogger(logger, recoverPanics(logger, authz.wrap(mux)))
 }

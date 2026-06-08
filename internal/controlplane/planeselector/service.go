@@ -10,19 +10,19 @@ import (
 	"mini-cloud/internal/controlplane/store"
 )
 
-type Service struct {
+type Selector struct {
 	logger *slog.Logger
 	store  *store.Store
 }
 
-func NewService(logger *slog.Logger, stores *store.Store) *Service {
-	return &Service{
+func NewSelector(logger *slog.Logger, stores *store.Store) *Selector {
+	return &Selector{
 		logger: logger,
 		store:  stores,
 	}
 }
 
-func (s *Service) PreviewSelection(ctx context.Context, input SelectionInput) (SelectionResult, error) {
+func (s *Selector) PreviewSelection(ctx context.Context, input SelectionInput) (SelectionResult, error) {
 	if s == nil || s.store == nil {
 		return SelectionResult{}, fmt.Errorf("plane selector is not configured")
 	}
