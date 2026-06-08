@@ -36,7 +36,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("expected created plane to have southbound token registration")
 	}
 	verifiedAt := time.Now().UTC().Truncate(time.Second)
-	if _, err := db.Store.MarkPlaneSouthboundTokenVerified(context.Background(), createdPlane.ID, verifiedAt); err != nil {
+	if err := db.Store.MarkPlaneSouthboundTokenVerified(context.Background(), createdPlane.ID, verifiedAt); err != nil {
 		t.Fatalf("MarkPlaneSouthboundTokenVerified returned error: %v", err)
 	}
 	token, err := db.Store.GetPlaneSouthboundToken(context.Background(), createdPlane.ID)
@@ -54,15 +54,11 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("unexpected registered plane ids: %+v", registeredPlaneIDs)
 	}
 
-	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.UpdatePlaneStatusInput{
+	if err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.UpdatePlaneStatusInput{
 		Status:  model.StatusReady,
 		Message: "heartbeat and snapshot are healthy",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-	if updatedStatus.Status != model.StatusReady {
-		t.Fatalf("updated status = %v, want ready", updatedStatus.Status)
 	}
 	gotPlane, err := db.Store.GetPlane(context.Background(), createdPlane.ID)
 	if err != nil {
@@ -74,7 +70,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
 		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)
 	}
-	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeInventoryInput{
+	if err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeInventoryInput{
 		SyncVersion:       7,
 		ObservedAt:        time.Now().UTC(),
 		NodesTotal:        2,
@@ -128,7 +124,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.LatestRuntimeInventory.SyncVersion != 7 {
 		t.Fatalf("latest runtime inventory syncVersion = %d, want 7", gotPlane.LatestRuntimeInventory.SyncVersion)
 	}
-	runtimeConfig, err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeConfigInput{
+	if err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeConfigInput{
 		ObservedAt:  time.Now().UTC(),
 		Fingerprint: "fp-123",
 		Summary: map[string]any{
@@ -140,8 +136,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 				"bootstrapTokenConfigured": true,
 			},
 		},
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("RecordPlaneRuntimeConfig returned error: %v", err)
 	}
 	gotPlane, err = db.Store.GetPlane(context.Background(), createdPlane.ID)
@@ -151,8 +146,8 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.LatestRuntimeConfig == nil {
 		t.Fatalf("expected latest runtime config to be populated")
 	}
-	if gotPlane.LatestRuntimeConfig.Fingerprint != runtimeConfig.Fingerprint {
-		t.Fatalf("latest runtime config fingerprint = %q, want %q", gotPlane.LatestRuntimeConfig.Fingerprint, runtimeConfig.Fingerprint)
+	if gotPlane.LatestRuntimeConfig.Fingerprint != "fp-123" {
+		t.Fatalf("latest runtime config fingerprint = %q, want fp-123", gotPlane.LatestRuntimeConfig.Fingerprint)
 	}
 	providerSummary, ok := gotPlane.LatestRuntimeConfig.Summary["provider"].(map[string]any)
 	if !ok || providerSummary["name"] != "aliyun" {

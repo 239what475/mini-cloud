@@ -29,9 +29,7 @@ type serviceStore interface {
 	GetService(context.Context, string) (model.Service, error)
 	UpdateService(context.Context, string, store.UpdateServiceInput) (model.Service, error)
 	MarkServiceDeletionRequested(context.Context, string) (model.Service, error)
-	UpdateServiceStatus(context.Context, string, store.UpdateServiceStatusInput) (model.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, store.UpdateServiceStatusInput) (model.Service, error)
-	DeleteService(context.Context, string) error
+	UpdateServiceStatusForGeneration(context.Context, string, int64, store.UpdateServiceStatusInput) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
 	GetPlane(context.Context, string) (model.PlaneDetail, error)
 }

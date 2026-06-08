@@ -24,14 +24,13 @@ type CreateControlEventInput struct {
 	TargetName string
 }
 
-func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEventInput) (ControlEvent, error) {
+func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEventInput) error {
 	id, err := newID("evt")
 	if err != nil {
-		return ControlEvent{}, err
+		return err
 	}
 
-	var created ControlEvent
-	err = s.db.QueryRowContext(ctx, `
+	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO control_events (
 			id,
 			action,
@@ -40,31 +39,16 @@ func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEvent
 			target_name
 		)
 		VALUES ($1, $2, $3, $4, $5)
-		RETURNING
-			id,
-			action,
-			target_type,
-			target_id,
-			target_name,
-			created_at
 	`,
 		id,
 		input.Action,
 		input.TargetType,
 		input.TargetID,
 		input.TargetName,
-	).Scan(
-		&created.ID,
-		&created.Action,
-		&created.TargetType,
-		&created.TargetID,
-		&created.TargetName,
-		&created.CreatedAt,
-	)
-	if err != nil {
-		return ControlEvent{}, fmt.Errorf("insert control event: %w", err)
+	); err != nil {
+		return fmt.Errorf("insert control event: %w", err)
 	}
-	return created, nil
+	return nil
 }
 
 func (s *Store) ListRecentControlEvents(ctx context.Context) ([]ControlEvent, error) {

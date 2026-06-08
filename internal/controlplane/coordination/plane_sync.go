@@ -208,12 +208,12 @@ func (s *PlaneSyncer) syncWithToken(ctx context.Context, planeID string, southbo
 		Executions:    snapshotResp.Executions,
 	}
 
-	if _, err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, snapshot.Health.CheckedAt); err != nil {
+	if err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, snapshot.Health.CheckedAt); err != nil {
 		return planeSyncResult{}, err
 	}
 	syncedAt := s.now()
 	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
-	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
+	if err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          status,
 		Message:         message,
 		LastHeartbeatAt: &snapshot.Health.CheckedAt,
@@ -221,10 +221,10 @@ func (s *PlaneSyncer) syncWithToken(ctx context.Context, planeID string, southbo
 	}); err != nil {
 		return planeSyncResult{}, err
 	}
-	if _, _, err := s.store.ReplacePlaneRuntimeInventory(ctx, planeID, buildRuntimeInventory(snapshot)); err != nil {
+	if err := s.store.ReplacePlaneRuntimeInventory(ctx, planeID, buildRuntimeInventory(snapshot)); err != nil {
 		return planeSyncResult{}, err
 	}
-	if _, err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
+	if err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
 		return planeSyncResult{}, err
 	}
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.Executions); err != nil {
@@ -274,7 +274,7 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 			}
 			continue
 		}
-		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.UpdateServiceStatusInput{
+		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.UpdateServiceStatusInput{
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
 			Healthy:            status.Observed.Healthy,
@@ -364,7 +364,7 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 
 func (s *PlaneSyncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
-	_, err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
+	err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          syncErr.status,
 		Message:         syncErr.message,
 		LastHeartbeatAt: syncErr.lastHeartbeatAt,

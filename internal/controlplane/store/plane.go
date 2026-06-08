@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +19,59 @@ var (
 	ErrPlaneNameAlreadyExists       = errors.New("plane name already exists")
 	ErrPlaneSouthboundTokenNotFound = errors.New("plane southbound token not found")
 	defaultPlaneStatusMessage       = "awaiting registration handshake"
+	errPlaneNameRequired            = errors.New("name is required")
+	errInvalidPlaneName             = errors.New("name must use lowercase letters, digits, and hyphens")
+	errPlaneDisplayNameRequired     = errors.New("displayName is required")
+	errPlaneProviderRequired        = errors.New("provider is required")
+	errPlaneRegionRequired          = errors.New("region is required")
+	errPlaneGRPCEndpointRequired    = errors.New("grpcEndpoint is required")
+	errPlaneSouthboundTokenRequired = errors.New("southboundToken is required")
+	errInvalidPlaneGRPCEndpoint     = errors.New("grpcEndpoint must be a gRPC target such as host:port, grpc://host:port, grpcs://host:port, dns:///name:port, or unix:///path")
+	errInvalidPlaneStatus           = errors.New("status must be one of registering, ready, degraded, offline")
+	planeNamePattern                = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
+
+type CreatePlaneInput struct {
+	Name            string `json:"name"`
+	DisplayName     string `json:"displayName"`
+	Provider        string `json:"provider"`
+	Region          string `json:"region"`
+	GRPCEndpoint    string `json:"grpcEndpoint"`
+	SouthboundToken string `json:"southboundToken"`
+}
+
+type UpdatePlaneStatusInput struct {
+	Status          string     `json:"status"`
+	Message         string     `json:"message"`
+	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
+	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
+}
+
+func (in CreatePlaneInput) validate() error {
+	switch {
+	case strings.TrimSpace(in.Name) == "":
+		return invalidInput(errPlaneNameRequired)
+	case !planeNamePattern.MatchString(strings.TrimSpace(in.Name)):
+		return invalidInput(errInvalidPlaneName)
+	case strings.TrimSpace(in.DisplayName) == "":
+		return invalidInput(errPlaneDisplayNameRequired)
+	case strings.TrimSpace(in.Provider) == "":
+		return invalidInput(errPlaneProviderRequired)
+	case strings.TrimSpace(in.Region) == "":
+		return invalidInput(errPlaneRegionRequired)
+	case strings.TrimSpace(in.SouthboundToken) == "":
+		return invalidInput(errPlaneSouthboundTokenRequired)
+	}
+	_, err := normalizeGRPCEndpoint(in.GRPCEndpoint)
+	return invalidInput(err)
+}
+
+func (in UpdatePlaneStatusInput) validate() error {
+	if !model.IsStatus(in.Status) {
+		return invalidInput(errInvalidPlaneStatus)
+	}
+	return nil
+}
 
 func (s *Store) CreatePlane(ctx context.Context, input CreatePlaneInput) (model.PlaneDetail, error) {
 	if err := input.validate(); err != nil {
@@ -183,54 +236,20 @@ func (s *Store) DeletePlane(ctx context.Context, planeID string) error {
 	return nil
 }
 
-func (s *Store) SetPlaneSouthboundToken(ctx context.Context, planeID string, southboundToken string) (model.PlaneRegistration, error) {
-	row := s.db.QueryRowContext(ctx, `
-		INSERT INTO plane_southbound_tokens (
-			plane_id,
-			southbound_token
-		)
-		VALUES ($1, $2)
-		ON CONFLICT (plane_id)
-		DO UPDATE SET
-			southbound_token = EXCLUDED.southbound_token,
-			updated_at = now()
-		RETURNING
-			last_verified_at,
-			updated_at
-	`, planeID, southboundToken)
-
-	registration, err := scanPlaneRegistration(row)
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return model.PlaneRegistration{}, ErrPlaneNotFound
-		}
-		return model.PlaneRegistration{}, fmt.Errorf("set plane southbound token: %w", err)
-	}
-	registration.Registered = true
-	return registration, nil
-}
-
-func (s *Store) MarkPlaneSouthboundTokenVerified(ctx context.Context, planeID string, verifiedAt time.Time) (model.PlaneRegistration, error) {
-	row := s.db.QueryRowContext(ctx, `
+func (s *Store) MarkPlaneSouthboundTokenVerified(ctx context.Context, planeID string, verifiedAt time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
 		UPDATE plane_southbound_tokens
 		SET
 			last_verified_at = $2
 		WHERE plane_id = $1
-		RETURNING
-			last_verified_at,
-			updated_at
 	`, planeID, verifiedAt.UTC())
-
-	registration, err := scanPlaneRegistration(row)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.PlaneRegistration{}, ErrPlaneSouthboundTokenNotFound
-		}
-		return model.PlaneRegistration{}, fmt.Errorf("mark plane southbound token verified: %w", err)
+		return fmt.Errorf("mark plane southbound token verified: %w", err)
 	}
-	registration.Registered = true
-	return registration, nil
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrPlaneSouthboundTokenNotFound
+	}
+	return nil
 }
 
 func (s *Store) GetPlaneSouthboundToken(ctx context.Context, planeID string) (string, error) {
@@ -274,12 +293,12 @@ func (s *Store) ListRegisteredPlaneIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input UpdatePlaneStatusInput) (model.PlaneStatus, error) {
+func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input UpdatePlaneStatusInput) error {
 	if err := input.validate(); err != nil {
-		return model.PlaneStatus{}, err
+		return err
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	result, err := s.db.ExecContext(ctx, `
 		UPDATE fleet_plane_statuses
 		SET
 			status = $2,
@@ -288,23 +307,14 @@ func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input Upd
 			last_sync_at = $5,
 			updated_at = now()
 		WHERE plane_id = $1
-		RETURNING
-			plane_id,
-			status,
-			message,
-			last_heartbeat_at,
-			last_sync_at,
-			updated_at
 	`, planeID, input.Status, input.Message, nullableTime(input.LastHeartbeatAt), nullableTime(input.LastSyncAt))
-
-	status, err := scanPlaneStatus(row)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.PlaneStatus{}, ErrPlaneNotFound
-		}
-		return model.PlaneStatus{}, fmt.Errorf("update plane status: %w", err)
+		return fmt.Errorf("update plane status: %w", err)
 	}
-	return status, nil
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrPlaneNotFound
+	}
+	return nil
 }
 
 func planeDetailBaseQuery(suffix string) string {
@@ -472,27 +482,27 @@ func scanPlaneRegistration(scanner interface{ Scan(dest ...any) error }) (model.
 	return item, nil
 }
 
-func scanPlaneStatus(scanner interface{ Scan(dest ...any) error }) (model.PlaneStatus, error) {
-	var item model.PlaneStatus
-	var heartbeat sql.NullTime
-	var syncAt sql.NullTime
-	if err := scanner.Scan(
-		&item.PlaneID,
-		&item.Status,
-		&item.Message,
-		&heartbeat,
-		&syncAt,
-		&item.UpdatedAt,
-	); err != nil {
-		return model.PlaneStatus{}, err
+func normalizeGRPCEndpoint(raw string) (string, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", errPlaneGRPCEndpointRequired
 	}
-	if heartbeat.Valid {
-		value := heartbeat.Time
-		item.LastHeartbeatAt = &value
+	if strings.ContainsAny(value, " \t\r\n") {
+		return "", errInvalidPlaneGRPCEndpoint
 	}
-	if syncAt.Valid {
-		value := syncAt.Time
-		item.LastSyncAt = &value
+	lower := strings.ToLower(value)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return "", errInvalidPlaneGRPCEndpoint
 	}
-	return item, nil
+	if strings.HasPrefix(lower, "grpc://") {
+		target := strings.TrimSpace(value[len("grpc://"):])
+		if target == "" || strings.Contains(target, "/") {
+			return "", errInvalidPlaneGRPCEndpoint
+		}
+		return target, nil
+	}
+	if strings.HasPrefix(lower, "grpcs://") || strings.HasPrefix(lower, "dns:///") || strings.HasPrefix(lower, "unix:///") {
+		return value, nil
+	}
+	return value, nil
 }

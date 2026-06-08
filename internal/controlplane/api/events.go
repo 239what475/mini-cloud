@@ -28,7 +28,7 @@ func recordControlEvent(logger *slog.Logger, stores *store.Store, requestCtx con
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(requestCtx), 2*time.Second)
 	defer cancel()
 
-	if _, err := stores.CreateControlEvent(ctx, input); err != nil {
+	if err := stores.CreateControlEvent(ctx, input); err != nil {
 		logger.Error("record control event failed", "error", err, "action", input.Action, "target_type", input.TargetType, "target_id", input.TargetID)
 	}
 }

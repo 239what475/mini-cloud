@@ -1,7 +1,9 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
+	"log/slog"
 	"time"
 )
 
@@ -28,4 +30,13 @@ func unmarshalJSON[T any](raw []byte, target *T, fallback T) error {
 		return err
 	}
 	return nil
+}
+
+func closeRows(rows *sql.Rows) {
+	if rows == nil {
+		return
+	}
+	if err := rows.Close(); err != nil {
+		slog.Default().Warn("close database rows failed", "error", err)
+	}
 }

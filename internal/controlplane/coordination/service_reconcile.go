@@ -183,7 +183,7 @@ func (c *ServiceController) updateServiceStatus(ctx context.Context, serviceID s
 	if strings.TrimSpace(status.RemoteMessage) != "" {
 		input.RemoteMessage = &status.RemoteMessage
 	}
-	_, err := c.store.UpdateServiceStatusForGeneration(ctx, serviceID, expectedGeneration, input)
+	err := c.store.UpdateServiceStatusForGeneration(ctx, serviceID, expectedGeneration, input)
 	if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 		return nil
 	}
