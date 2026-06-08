@@ -19,18 +19,24 @@ import (
 )
 
 type serviceSpec struct {
-	PlaneID              string               `json:"planeID"`
-	InstanceClass        string               `json:"instanceClass"`
-	Exposure             string               `json:"exposure"`
-	Image                string               `json:"image"`
-	Command              []string             `json:"command,omitempty"`
-	Args                 []string             `json:"args,omitempty"`
-	DefaultPort          int                  `json:"defaultPort"`
-	ReadinessPath        string               `json:"readinessPath"`
-	Env                  map[string]string    `json:"env,omitempty"`
-	SecretEnvKeys        []string             `json:"secretEnvKeys,omitempty"`
-	RegistryCredentialID string               `json:"registryCredentialID,omitempty"`
-	Files                []projectedfile.File `json:"files,omitempty"`
+	PlaneID            string                     `json:"planeID"`
+	InstanceClass      string                     `json:"instanceClass"`
+	Exposure           string                     `json:"exposure"`
+	Image              string                     `json:"image"`
+	Command            []string                   `json:"command,omitempty"`
+	Args               []string                   `json:"args,omitempty"`
+	DefaultPort        int                        `json:"defaultPort"`
+	ReadinessPath      string                     `json:"readinessPath"`
+	Env                map[string]string          `json:"env,omitempty"`
+	SecretEnvKeys      []string                   `json:"secretEnvKeys,omitempty"`
+	RegistryCredential *registryCredentialSummary `json:"registryCredential,omitempty"`
+	Files              []projectedfile.File       `json:"files,omitempty"`
+}
+
+type registryCredentialSummary struct {
+	Server             string `json:"server"`
+	Username           string `json:"username"`
+	PasswordConfigured bool   `json:"passwordConfigured"`
 }
 
 type serviceRunStatus struct {
@@ -72,18 +78,24 @@ type serviceEnvelope struct {
 }
 
 type serviceSpecInput struct {
-	PlaneID              string               `json:"planeID"`
-	InstanceClass        string               `json:"instanceClass"`
-	Exposure             string               `json:"exposure"`
-	Image                string               `json:"image"`
-	Command              []string             `json:"command"`
-	Args                 []string             `json:"args"`
-	DefaultPort          int                  `json:"defaultPort"`
-	ReadinessPath        string               `json:"readinessPath"`
-	Env                  map[string]string    `json:"env"`
-	SecretEnv            map[string]string    `json:"secretEnv"`
-	RegistryCredentialID string               `json:"registryCredentialID"`
-	Files                []projectedfile.File `json:"files"`
+	PlaneID            string                     `json:"planeID"`
+	InstanceClass      string                     `json:"instanceClass"`
+	Exposure           string                     `json:"exposure"`
+	Image              string                     `json:"image"`
+	Command            []string                   `json:"command"`
+	Args               []string                   `json:"args"`
+	DefaultPort        int                        `json:"defaultPort"`
+	ReadinessPath      string                     `json:"readinessPath"`
+	Env                map[string]string          `json:"env"`
+	SecretEnv          map[string]string          `json:"secretEnv"`
+	RegistryCredential *registryCredentialRequest `json:"registryCredential"`
+	Files              []projectedfile.File       `json:"files"`
+}
+
+type registryCredentialRequest struct {
+	Server   string `json:"server"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type serviceCreateRequest struct {
@@ -145,11 +157,8 @@ func (h serviceHandler) createService(c *gin.Context) {
 	view, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case domain.IsInvalidInput(err):
+		case errors.Is(err, store.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrRegistryCredentialNotFound):
-			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
@@ -218,13 +227,10 @@ func (h serviceHandler) updateService(c *gin.Context) {
 	view, err := h.services.Update(c.Request.Context(), serviceID, input)
 	if err != nil {
 		switch {
-		case domain.IsInvalidInput(err):
+		case errors.Is(err, store.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNotFound):
-			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrRegistryCredentialNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
@@ -289,18 +295,18 @@ func buildServiceResource(view serviceops.View) serviceResource {
 			Generation:  view.Service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
-			PlaneID:              view.Service.Spec.PlaneID,
-			InstanceClass:        view.Service.Spec.InstanceClass,
-			Exposure:             view.Service.Spec.Exposure,
-			Image:                view.Service.Spec.Image,
-			Command:              append([]string(nil), view.Service.Spec.Command...),
-			Args:                 append([]string(nil), view.Service.Spec.Args...),
-			DefaultPort:          view.Service.Spec.DefaultPort,
-			ReadinessPath:        view.Service.Spec.ReadinessPath,
-			Env:                  view.Service.Spec.Env,
-			SecretEnvKeys:        sortedKeys(view.Service.Spec.SecretEnv),
-			RegistryCredentialID: view.Service.Spec.RegistryCredentialID,
-			Files:                projectedfile.CloneFiles(view.Service.Spec.Files),
+			PlaneID:            view.Service.Spec.PlaneID,
+			InstanceClass:      view.Service.Spec.InstanceClass,
+			Exposure:           view.Service.Spec.Exposure,
+			Image:              view.Service.Spec.Image,
+			Command:            append([]string(nil), view.Service.Spec.Command...),
+			Args:               append([]string(nil), view.Service.Spec.Args...),
+			DefaultPort:        view.Service.Spec.DefaultPort,
+			ReadinessPath:      view.Service.Spec.ReadinessPath,
+			Env:                view.Service.Spec.Env,
+			SecretEnvKeys:      sortedKeys(view.Service.Spec.SecretEnv),
+			RegistryCredential: buildRegistryCredentialSummary(view.Service.Spec.RegistryCredential),
+			Files:              projectedfile.CloneFiles(view.Service.Spec.Files),
 		},
 		Status: status,
 	}
@@ -348,22 +354,33 @@ func sortedKeys(values map[string]string) []string {
 	return keys
 }
 
-func (r serviceCreateRequest) toCreateInput() (domain.ServiceCreateInput, error) {
-	if r.Spec == nil {
-		return domain.ServiceCreateInput{}, domain.InvalidInput(errServiceSpecRequired)
+func buildRegistryCredentialSummary(input *domain.RegistryCredential) *registryCredentialSummary {
+	if input == nil {
+		return nil
 	}
-	return domain.ServiceCreateInput{
+	return &registryCredentialSummary{
+		Server:             input.Server,
+		Username:           input.Username,
+		PasswordConfigured: input.Password != "",
+	}
+}
+
+func (r serviceCreateRequest) toCreateInput() (store.ServiceCreateInput, error) {
+	if r.Spec == nil {
+		return store.ServiceCreateInput{}, errServiceSpecRequired
+	}
+	return store.ServiceCreateInput{
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec:        r.Spec.toDomainSpec(),
 	}, nil
 }
 
-func (r serviceUpdateRequest) toUpdateInput() (domain.ServiceUpdateInput, error) {
+func (r serviceUpdateRequest) toUpdateInput() (store.ServiceUpdateInput, error) {
 	if r.Spec == nil {
-		return domain.ServiceUpdateInput{}, domain.InvalidInput(errServiceSpecRequired)
+		return store.ServiceUpdateInput{}, errServiceSpecRequired
 	}
-	return domain.ServiceUpdateInput{
+	return store.ServiceUpdateInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec:        r.Spec.toDomainSpec(),
 	}, nil
@@ -371,17 +388,28 @@ func (r serviceUpdateRequest) toUpdateInput() (domain.ServiceUpdateInput, error)
 
 func (s serviceSpecInput) toDomainSpec() domain.Spec {
 	return domain.Spec{
-		PlaneID:              strings.TrimSpace(s.PlaneID),
-		InstanceClass:        strings.TrimSpace(s.InstanceClass),
-		Exposure:             strings.TrimSpace(s.Exposure),
-		Image:                strings.TrimSpace(s.Image),
-		Command:              append([]string(nil), s.Command...),
-		Args:                 append([]string(nil), s.Args...),
-		DefaultPort:          s.DefaultPort,
-		ReadinessPath:        strings.TrimSpace(s.ReadinessPath),
-		Env:                  s.Env,
-		SecretEnv:            s.SecretEnv,
-		RegistryCredentialID: strings.TrimSpace(s.RegistryCredentialID),
-		Files:                projectedfile.CloneFiles(s.Files),
+		PlaneID:            strings.TrimSpace(s.PlaneID),
+		InstanceClass:      strings.TrimSpace(s.InstanceClass),
+		Exposure:           strings.TrimSpace(s.Exposure),
+		Image:              strings.TrimSpace(s.Image),
+		Command:            append([]string(nil), s.Command...),
+		Args:               append([]string(nil), s.Args...),
+		DefaultPort:        s.DefaultPort,
+		ReadinessPath:      strings.TrimSpace(s.ReadinessPath),
+		Env:                s.Env,
+		SecretEnv:          s.SecretEnv,
+		RegistryCredential: s.RegistryCredential.toDomainCredential(),
+		Files:              projectedfile.CloneFiles(s.Files),
+	}
+}
+
+func (r *registryCredentialRequest) toDomainCredential() *domain.RegistryCredential {
+	if r == nil {
+		return nil
+	}
+	return &domain.RegistryCredential{
+		Server:   strings.TrimSpace(r.Server),
+		Username: strings.TrimSpace(r.Username),
+		Password: r.Password,
 	}
 }

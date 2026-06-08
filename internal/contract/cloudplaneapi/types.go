@@ -116,18 +116,18 @@ type ExecutionSnapshot struct {
 }
 
 type ServiceSpec struct {
-	Region               string               `json:"region"`
-	InstanceClass        string               `json:"instanceClass"`
-	Exposure             string               `json:"exposure"`
-	Image                string               `json:"image"`
-	Command              []string             `json:"command"`
-	Args                 []string             `json:"args"`
-	DefaultPort          int                  `json:"defaultPort"`
-	ReadinessPath        string               `json:"readinessPath"`
-	Env                  map[string]string    `json:"env"`
-	SecretEnv            map[string]string    `json:"secretEnv,omitempty"`
-	RegistryCredentialID string               `json:"registryCredentialID"`
-	Files                []projectedfile.File `json:"files,omitempty"`
+	Region             string                    `json:"region"`
+	InstanceClass      string                    `json:"instanceClass"`
+	Exposure           string                    `json:"exposure"`
+	Image              string                    `json:"image"`
+	Command            []string                  `json:"command"`
+	Args               []string                  `json:"args"`
+	DefaultPort        int                       `json:"defaultPort"`
+	ReadinessPath      string                    `json:"readinessPath"`
+	Env                map[string]string         `json:"env"`
+	SecretEnv          map[string]string         `json:"secretEnv,omitempty"`
+	RegistryCredential *ExecutionImageCredential `json:"registryCredential,omitempty"`
+	Files              []projectedfile.File      `json:"files,omitempty"`
 }
 
 const (

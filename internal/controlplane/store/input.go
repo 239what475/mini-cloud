@@ -1,4 +1,4 @@
-package domain
+package store
 
 import (
 	"errors"
@@ -7,13 +7,9 @@ import (
 
 var ErrInvalidInput = errors.New("invalid input")
 
-func InvalidInput(err error) error {
+func invalidInput(err error) error {
 	if err == nil {
 		return nil
 	}
 	return fmt.Errorf("%w: %w", ErrInvalidInput, err)
-}
-
-func IsInvalidInput(err error) bool {
-	return errors.Is(err, ErrInvalidInput)
 }

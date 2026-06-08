@@ -33,7 +33,9 @@ const serviceSelectColumns = `
 	spec_readiness_path,
 	spec_env_json,
 	spec_secret_env_json,
-	spec_registry_credential_id,
+	spec_registry_server,
+	spec_registry_username,
+	spec_registry_password,
 	spec_files_json,
 	status_run_json,
 	generation,
@@ -50,17 +52,18 @@ const serviceSelectColumns = `
 	updated_at
 `
 
-func (s *Store) CreateService(ctx context.Context, input domain.ServiceCreateInput) (domain.Service, error) {
-	if err := input.Validate(); err != nil {
+func (s *Store) CreateService(ctx context.Context, input ServiceCreateInput) (domain.Service, error) {
+	if err := input.validate(); err != nil {
 		return domain.Service{}, err
 	}
-	planeID, instanceClass, err := domain.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return domain.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
 		return domain.Service{}, err
 	}
+	registryCredential := domain.CloneRegistryCredential(input.Spec.RegistryCredential)
 
 	id, err := newID("svc")
 	if err != nil {
@@ -109,7 +112,9 @@ func (s *Store) CreateService(ctx context.Context, input domain.ServiceCreateInp
 			spec_readiness_path,
 			spec_env_json,
 			spec_secret_env_json,
-			spec_registry_credential_id,
+			spec_registry_server,
+			spec_registry_username,
+			spec_registry_password,
 			spec_files_json,
 			status_run_json,
 			generation,
@@ -123,7 +128,7 @@ func (s *Store) CreateService(ctx context.Context, input domain.ServiceCreateInp
 			status_remote_status,
 			status_remote_message
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $17, $18, $19, $20, $21, NULL, NULL, '', '')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, NULL, NULL, '', '')
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -139,7 +144,9 @@ func (s *Store) CreateService(ctx context.Context, input domain.ServiceCreateInp
 		input.Spec.ReadinessPath,
 		envJSON,
 		secretEnvJSON,
-		input.Spec.RegistryCredentialID,
+		registryServer(registryCredential),
+		registryUsername(registryCredential),
+		registryPassword(registryCredential),
 		filesJSON,
 		runJSON,
 		domain.DesiredStateActive,
@@ -217,7 +224,7 @@ func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (d
 	return item, nil
 }
 
-func (s *Store) UpdateService(ctx context.Context, serviceID string, input domain.ServiceUpdateInput) (domain.Service, error) {
+func (s *Store) UpdateService(ctx context.Context, serviceID string, input ServiceUpdateInput) (domain.Service, error) {
 	commandJSON, err := marshalJSON(input.Spec.Command, []string{})
 	if err != nil {
 		return domain.Service{}, fmt.Errorf("marshal service command for update: %w", err)
@@ -251,16 +258,17 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input domai
 	if err != nil {
 		return domain.Service{}, err
 	}
-	if err := input.Validate(current.Metadata.Name); err != nil {
+	if err := input.validate(current.Metadata.Name); err != nil {
 		return domain.Service{}, err
 	}
-	planeID, instanceClass, err := domain.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	planeID, instanceClass, err := resolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
 	if err != nil {
 		return domain.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, planeID); err != nil {
 		return domain.Service{}, err
 	}
+	registryCredential := domain.CloneRegistryCredential(input.Spec.RegistryCredential)
 	currentRunJSON, err := marshalJSON(current.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending})
 	if err != nil {
 		return domain.Service{}, fmt.Errorf("marshal service run for update: %w", err)
@@ -283,21 +291,23 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input domai
 			spec_readiness_path = $10,
 			spec_env_json = $11,
 			spec_secret_env_json = $12,
-			spec_registry_credential_id = $13,
-			spec_files_json = $14,
-			status_run_json = $15,
-			generation = $16,
-			status_desired_state = $17,
-			status_observed_generation = $18,
-			status_phase = $19,
-			status_healthy = $20,
-			status_message = $21,
+			spec_registry_server = $13,
+			spec_registry_username = $14,
+			spec_registry_password = $15,
+			spec_files_json = $16,
+			status_run_json = $17,
+			generation = $18,
+			status_desired_state = $19,
+			status_observed_generation = $20,
+			status_phase = $21,
+			status_healthy = $22,
+			status_message = $23,
 			status_last_reconciled_at = NULL,
 			status_remote_status = '',
 			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $22
+			AND generation = $24
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -312,7 +322,9 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input domai
 		input.Spec.ReadinessPath,
 		envJSON,
 		secretEnvJSON,
-		input.Spec.RegistryCredentialID,
+		registryServer(registryCredential),
+		registryUsername(registryCredential),
+		registryPassword(registryCredential),
 		filesJSON,
 		currentRunJSON,
 		nextGeneration,
@@ -401,15 +413,15 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	return item, nil
 }
 
-func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) UpdateServiceStatus(ctx context.Context, serviceID string, input ServiceUpdateStatusInput) (domain.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, nil, input)
 }
 
-func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input ServiceUpdateStatusInput) (domain.Service, error) {
 	return s.updateServiceStatus(ctx, serviceID, &expectedGeneration, input)
 }
 
-func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input domain.ServiceUpdateStatusInput) (domain.Service, error) {
+func (s *Store) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration *int64, input ServiceUpdateStatusInput) (domain.Service, error) {
 	current, err := s.GetService(ctx, serviceID)
 	if err != nil {
 		return domain.Service{}, err
@@ -518,6 +530,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, 
 	var argsJSON []byte
 	var envJSON []byte
 	var secretEnvJSON []byte
+	var registryServerValue string
+	var registryUsernameValue string
+	var registryPasswordValue string
 	var filesJSON []byte
 	var runJSON []byte
 	var lastReconciledAt sql.NullTime
@@ -536,7 +551,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, 
 		&item.Spec.ReadinessPath,
 		&envJSON,
 		&secretEnvJSON,
-		&item.Spec.RegistryCredentialID,
+		&registryServerValue,
+		&registryUsernameValue,
+		&registryPasswordValue,
 		&filesJSON,
 		&runJSON,
 		&item.Metadata.Generation,
@@ -570,10 +587,11 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (domain.Service, 
 		return domain.Service{}, fmt.Errorf("decode service files: %w", err)
 	}
 	item.Spec.Files = projectedfile.CloneFiles(item.Spec.Files)
+	item.Spec.RegistryCredential = registryCredentialFromColumns(registryServerValue, registryUsernameValue, registryPasswordValue)
 	if err := unmarshalJSON(runJSON, &item.Status.Run, domain.RunStatus{Phase: domain.RunPhasePending}); err != nil {
 		return domain.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
-	item.Status.Run.Phase = domain.NormalizeRunPhase(item.Status.Run.Phase)
+	item.Status.Run.Phase = normalizeRunPhase(item.Status.Run.Phase)
 	if lastReconciledAt.Valid {
 		lastValue := lastReconciledAt.Time.UTC()
 		item.Status.Observed.LastReconciledAt = &lastValue
@@ -591,6 +609,14 @@ func nullableString(value string) any {
 	return strings.TrimSpace(value)
 }
 
+func normalizeRunPhase(phase string) string {
+	value := strings.ToLower(strings.TrimSpace(phase))
+	if value == "" {
+		return domain.RunPhasePending
+	}
+	return value
+}
+
 func nullableOptionalString(value *string) any {
 	if value == nil {
 		return nil
@@ -598,14 +624,41 @@ func nullableOptionalString(value *string) any {
 	return strings.TrimSpace(*value)
 }
 
-func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID string, registryCredentialID string) error {
+func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID string) error {
 	if _, err := s.GetPlane(ctx, planeID); err != nil {
 		return err
 	}
-	if registryCredentialID != "" {
-		if _, err := s.GetRegistryCredential(ctx, registryCredentialID); err != nil {
-			return err
-		}
-	}
 	return nil
+}
+
+func registryServer(input *domain.RegistryCredential) string {
+	if input == nil {
+		return ""
+	}
+	return input.Server
+}
+
+func registryUsername(input *domain.RegistryCredential) string {
+	if input == nil {
+		return ""
+	}
+	return input.Username
+}
+
+func registryPassword(input *domain.RegistryCredential) string {
+	if input == nil {
+		return ""
+	}
+	return input.Password
+}
+
+func registryCredentialFromColumns(server string, username string, password string) *domain.RegistryCredential {
+	if strings.TrimSpace(server) == "" && strings.TrimSpace(username) == "" && password == "" {
+		return nil
+	}
+	return &domain.RegistryCredential{
+		Server:   server,
+		Username: username,
+		Password: password,
+	}
 }

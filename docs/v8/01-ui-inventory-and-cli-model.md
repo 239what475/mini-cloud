@@ -33,7 +33,6 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 | 平台概览 | `GET /api/v1/platform/overview` | service / node 计数 |
 | config set 列表 | `GET /api/v1/config-sets` | 名称、ID、key 数量 |
 | secret set 列表 | `GET /api/v1/secret-sets` | 名称、ID、key 数量 |
-| registry credential 列表 | `GET /api/v1/registry-credentials` | 名称、server、username、密码是否配置 |
 | 服务列表 | `GET /api/v1/services` | 服务 spec、状态、当前 run |
 | 服务详情 | `GET /api/v1/services/{serviceID}` | phase、health、image、runtime inputs、placement、run |
 
@@ -43,7 +42,6 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 | --- | --- | --- |
 | 创建 config set | `POST /api/v1/config-sets` | `name`、`values` |
 | 创建 secret set | `POST /api/v1/secret-sets` | `name`、`values` |
-| 创建 registry credential | `POST /api/v1/registry-credentials` | `name`、`server`、`username`、`password` |
 | 创建服务 | `POST /api/v1/services` | service spec |
 | 更新服务 | `PUT /api/v1/services/{serviceID}` | display name 和 service spec |
 
@@ -56,7 +54,6 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 - auth / health / metrics
 - global config sets
 - global secret sets
-- global registry credentials
 - services
 - platform service accounts
 - logs
@@ -137,7 +134,6 @@ minicloud --token "$MINICLOUD_ADMIN_TOKEN" service list
 ```bash
 minicloud config-set apply -f config-set.yaml
 minicloud secret-set apply -f secret-set.yaml
-minicloud registry-credential apply -f registry-credential.yaml
 minicloud service apply -f service.yaml
 minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 ```
@@ -165,7 +161,6 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 
 - `config-set`
 - `secret-set`
-- `registry-credential`
 
 ### 服务级
 
@@ -225,21 +220,6 @@ minicloud secret-set apply -f secret-set.yaml
 
 默认输出只展示 key 名，不展示 value。
 
-### Registry Credential
-
-```bash
-minicloud registry-credential list
-minicloud registry-credential get <credential>
-minicloud registry-credential apply -f registry-credential.yaml
-```
-
-映射：
-
-- `GET /api/v1/registry-credentials`
-- `POST /api/v1/registry-credentials`
-
-registry credential YAML 不应直接提交真实密码。实现时可以支持 `passwordFrom`，例如从环境变量、stdin 或本地文件读取，避免 shell history 和 Git 泄漏。
-
 ### Service
 
 ```bash
@@ -277,8 +257,13 @@ spec:
     PORT: "8080"
   configSetID: ""
   secretSetID: ""
-  registryCredentialID: ""
+  registryCredential:
+    server: registry.example.com
+    username: demo
+    password: ""
 ```
+
+service 内联 `registryCredential`，不再提供独立 registry credential 资源。CLI 实现时可以支持 `registryCredential.passwordFrom`，例如从环境变量、stdin 或本地文件读取，避免 shell history 和 Git 泄漏。
 
 ### Logs
 
@@ -408,7 +393,6 @@ minicloud logs query
 实现：
 
 ```bash
-minicloud registry-credential apply -f registry-credential.yaml
 minicloud service apply -f service.yaml
 minicloud service delete
 minicloud plane apply -f plane.yaml
@@ -418,7 +402,7 @@ minicloud plane delete
 验收标准：
 
 - 覆盖 Web 的创建 / 更新操作。
-- service / plane / registry credential 写操作走当前服务端 API，不再依赖 TUI。
+- service / plane 写操作走当前服务端 API，不再依赖 TUI。
 - 危险操作具备确认和 `--yes`。
 
 ### 阶段 3：运维写操作

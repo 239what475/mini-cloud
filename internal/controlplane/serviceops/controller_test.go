@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	domain "mini-cloud/internal/controlplane/domain"
+	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
 )
 
@@ -34,6 +35,12 @@ func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	}
 	if len(deployer.applyInputs) != 1 || deployer.applyInputs[0].Metadata.Name != "web" {
 		t.Fatalf("unexpected apply inputs: %+v", deployer.applyInputs)
+	}
+	if deployer.applyInputs[0].Spec.RegistryCredential == nil ||
+		deployer.applyInputs[0].Spec.RegistryCredential.Server != "registry.example.com" ||
+		deployer.applyInputs[0].Spec.RegistryCredential.Username != "svc-user" ||
+		deployer.applyInputs[0].Spec.RegistryCredential.Password != "svc-password" {
+		t.Fatalf("unexpected registry credential: %+v", deployer.applyInputs[0].Spec.RegistryCredential)
 	}
 }
 
@@ -125,12 +132,12 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	}
 }
 
-func createInput(planeID string, name string, displayName string, image string) domain.ServiceCreateInput {
-	return domain.ServiceCreateInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func createInput(planeID string, name string, displayName string, image string) controlplanestore.ServiceCreateInput {
+	return controlplanestore.ServiceCreateInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func updateInput(planeID string, displayName string, image string) domain.ServiceUpdateInput {
-	return domain.ServiceUpdateInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func updateInput(planeID string, displayName string, image string) controlplanestore.ServiceUpdateInput {
+	return controlplanestore.ServiceUpdateInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
 func serviceSpec(planeID string, image string) domain.Spec {
@@ -141,6 +148,11 @@ func serviceSpec(planeID string, image string) domain.Spec {
 		Image:         image,
 		DefaultPort:   80,
 		ReadinessPath: "/",
+		RegistryCredential: &domain.RegistryCredential{
+			Server:   "registry.example.com",
+			Username: "svc-user",
+			Password: "svc-password",
+		},
 	}
 }
 
@@ -172,7 +184,7 @@ func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input Dele
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string) domain.Detail {
 	t.Helper()
 	ctx := context.Background()
-	item, err := db.Store.CreatePlane(ctx, domain.PlaneCreateInput{
+	item, err := db.Store.CreatePlane(ctx, controlplanestore.PlaneCreateInput{
 		Name:            name,
 		DisplayName:     name,
 		Provider:        "aliyun",
@@ -183,7 +195,7 @@ func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, na
 	if err != nil {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
-	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, domain.PlaneUpdateStatusInput{Status: domain.StatusReady, Message: "ready"}); err != nil {
+	if _, err := db.Store.UpdatePlaneStatus(ctx, item.ID, controlplanestore.PlaneUpdateStatusInput{Status: domain.StatusReady, Message: "ready"}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 	detail, err := db.Store.GetPlane(ctx, item.ID)

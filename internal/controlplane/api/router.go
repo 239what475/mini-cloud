@@ -41,11 +41,6 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 
 	api := admin.Group("/api/v1")
 
-	registryHandler := newRegistryHandler(logger, stores)
-	resources := api.Group("/registry-credentials")
-	resources.GET("", registryHandler.listRegistryCredentials)
-	resources.POST("", registryHandler.createRegistryCredential)
-
 	serviceHandler := newServiceHandler(logger, stores, opts.ServiceController)
 
 	services := api.Group("/services")

@@ -214,7 +214,7 @@ func (s *Syncer) syncWithToken(ctx context.Context, planeID string, southboundTo
 	}
 	syncedAt := s.now()
 	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
-	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, domain.PlaneUpdateStatusInput{
+	if _, err := s.store.UpdatePlaneStatus(ctx, planeID, store.PlaneUpdateStatusInput{
 		Status:          status,
 		Message:         message,
 		LastHeartbeatAt: &snapshot.Health.CheckedAt,
@@ -275,7 +275,7 @@ func (s *Syncer) applyExecutionSnapshots(ctx context.Context, planeID string, ex
 			}
 			continue
 		}
-		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, domain.ServiceUpdateStatusInput{
+		if _, err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.ServiceUpdateStatusInput{
 			ObservedGeneration: status.ObservedGeneration,
 			Phase:              status.Phase,
 			Healthy:            status.Healthy,
@@ -365,7 +365,7 @@ func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
 
 func (s *Syncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
-	_, err := s.store.UpdatePlaneStatus(ctx, planeID, domain.PlaneUpdateStatusInput{
+	_, err := s.store.UpdatePlaneStatus(ctx, planeID, store.PlaneUpdateStatusInput{
 		Status:          syncErr.status,
 		Message:         syncErr.message,
 		LastHeartbeatAt: syncErr.lastHeartbeatAt,
@@ -414,8 +414,8 @@ func derivePlaneStatus(planeDetail domain.Detail, snapshot planeSnapshot) (strin
 	return domain.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
 }
 
-func buildRuntimeInventory(snapshot planeSnapshot) domain.RecordRuntimeInventoryInput {
-	out := domain.RecordRuntimeInventoryInput{
+func buildRuntimeInventory(snapshot planeSnapshot) store.RecordRuntimeInventoryInput {
+	out := store.RecordRuntimeInventoryInput{
 		SyncVersion:       snapshot.Runtime.SyncVersion,
 		ObservedAt:        snapshot.Runtime.ObservedAt,
 		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
@@ -447,8 +447,8 @@ func buildRuntimeInventory(snapshot planeSnapshot) domain.RecordRuntimeInventory
 	return out
 }
 
-func buildRuntimeConfig(snapshot planeSnapshot) domain.RecordRuntimeConfigInput {
-	return domain.RecordRuntimeConfigInput{
+func buildRuntimeConfig(snapshot planeSnapshot) store.RecordRuntimeConfigInput {
+	return store.RecordRuntimeConfigInput{
 		ObservedAt:  snapshot.RuntimeConfig.ObservedAt,
 		Fingerprint: snapshot.RuntimeConfig.Fingerprint,
 		Summary:     snapshot.RuntimeConfig.Summary,

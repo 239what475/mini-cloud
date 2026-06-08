@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"mini-cloud/internal/common/logctx"
-	domain "mini-cloud/internal/controlplane/domain"
 	"mini-cloud/internal/controlplane/eventlog"
 	"mini-cloud/internal/controlplane/inventory"
 	"mini-cloud/internal/controlplane/store"
@@ -28,7 +27,7 @@ func newPlaneHandler(logger *slog.Logger, stores *store.Store) planeHandler {
 
 func (h planeHandler) createPlane(c *gin.Context) {
 	logger := logctx.Logger(c.Request.Context(), h.logger)
-	var input domain.PlaneCreateInput
+	var input store.PlaneCreateInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
@@ -37,7 +36,7 @@ func (h planeHandler) createPlane(c *gin.Context) {
 	created, err := h.store.CreatePlane(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case domain.IsInvalidInput(err):
+		case errors.Is(err, store.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNameAlreadyExists):

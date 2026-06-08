@@ -20,8 +20,8 @@ var (
 	defaultPlaneStatusMessage       = "awaiting registration handshake"
 )
 
-func (s *Store) CreatePlane(ctx context.Context, input domain.PlaneCreateInput) (domain.Detail, error) {
-	if err := input.Validate(); err != nil {
+func (s *Store) CreatePlane(ctx context.Context, input PlaneCreateInput) (domain.Detail, error) {
+	if err := input.validate(); err != nil {
 		return domain.Detail{}, err
 	}
 
@@ -30,7 +30,7 @@ func (s *Store) CreatePlane(ctx context.Context, input domain.PlaneCreateInput) 
 		return domain.Detail{}, err
 	}
 
-	grpcEndpoint, err := input.ResolvedGRPCEndpoint()
+	grpcEndpoint, err := normalizeGRPCEndpoint(input.GRPCEndpoint)
 	if err != nil {
 		return domain.Detail{}, err
 	}
@@ -274,8 +274,8 @@ func (s *Store) ListRegisteredPlaneIDs(ctx context.Context) ([]string, error) {
 	return items, nil
 }
 
-func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input domain.PlaneUpdateStatusInput) (domain.PlaneStatus, error) {
-	if err := input.Validate(); err != nil {
+func (s *Store) UpdatePlaneStatus(ctx context.Context, planeID string, input PlaneUpdateStatusInput) (domain.PlaneStatus, error) {
+	if err := input.validate(); err != nil {
 		return domain.PlaneStatus{}, err
 	}
 

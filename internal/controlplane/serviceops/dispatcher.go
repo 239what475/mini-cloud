@@ -52,18 +52,18 @@ type ServiceMetadata struct {
 }
 
 type ServiceSpec struct {
-	Region               string               `json:"region"`
-	InstanceClass        string               `json:"instanceClass"`
-	Exposure             string               `json:"exposure"`
-	Image                string               `json:"image"`
-	Command              []string             `json:"command"`
-	Args                 []string             `json:"args"`
-	DefaultPort          int                  `json:"defaultPort"`
-	ReadinessPath        string               `json:"readinessPath"`
-	Env                  map[string]string    `json:"env"`
-	SecretEnv            map[string]string    `json:"secretEnv,omitempty"`
-	RegistryCredentialID string               `json:"registryCredentialID"`
-	Files                []projectedfile.File `json:"files,omitempty"`
+	Region             string                                  `json:"region"`
+	InstanceClass      string                                  `json:"instanceClass"`
+	Exposure           string                                  `json:"exposure"`
+	Image              string                                  `json:"image"`
+	Command            []string                                `json:"command"`
+	Args               []string                                `json:"args"`
+	DefaultPort        int                                     `json:"defaultPort"`
+	ReadinessPath      string                                  `json:"readinessPath"`
+	Env                map[string]string                       `json:"env"`
+	SecretEnv          map[string]string                       `json:"secretEnv,omitempty"`
+	RegistryCredential *cloudplaneapi.ExecutionImageCredential `json:"registryCredential,omitempty"`
+	Files              []projectedfile.File                    `json:"files,omitempty"`
 }
 
 type ApplyResult struct {
@@ -144,18 +144,18 @@ func (in ApplyServiceInput) ResolvedSpec(defaultRegion string) (cloudplaneapi.Se
 		return cloudplaneapi.ServiceSpec{}, err
 	}
 	return cloudplaneapi.ServiceSpec{
-		Region:               resolvedRegion,
-		InstanceClass:        in.Spec.InstanceClass,
-		Exposure:             resolvedExposure,
-		Image:                in.Spec.Image,
-		Command:              append([]string(nil), in.Spec.Command...),
-		Args:                 append([]string(nil), in.Spec.Args...),
-		DefaultPort:          in.Spec.DefaultPort,
-		ReadinessPath:        strings.TrimSpace(in.Spec.ReadinessPath),
-		Env:                  in.Spec.Env,
-		SecretEnv:            in.Spec.SecretEnv,
-		RegistryCredentialID: in.Spec.RegistryCredentialID,
-		Files:                projectedfile.CloneFiles(in.Spec.Files),
+		Region:             resolvedRegion,
+		InstanceClass:      in.Spec.InstanceClass,
+		Exposure:           resolvedExposure,
+		Image:              in.Spec.Image,
+		Command:            append([]string(nil), in.Spec.Command...),
+		Args:               append([]string(nil), in.Spec.Args...),
+		DefaultPort:        in.Spec.DefaultPort,
+		ReadinessPath:      strings.TrimSpace(in.Spec.ReadinessPath),
+		Env:                in.Spec.Env,
+		SecretEnv:          in.Spec.SecretEnv,
+		RegistryCredential: cloneExecutionImageCredential(in.Spec.RegistryCredential),
+		Files:              projectedfile.CloneFiles(in.Spec.Files),
 	}, nil
 }
 
@@ -191,7 +191,7 @@ func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, input App
 	requestCtx, cancel := context.WithTimeout(ctx, defaultApplyServiceTimeout)
 	defer cancel()
 
-	plan, err := s.buildExecutionPlan(requestCtx, input, spec)
+	plan, err := s.buildExecutionPlan(input, spec)
 	if err != nil {
 		return ApplyResult{}, err
 	}
@@ -255,19 +255,7 @@ func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input De
 	return nil
 }
 
-func (s *Dispatcher) buildExecutionPlan(ctx context.Context, input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
-	var imageCredential *cloudplaneapi.ExecutionImageCredential
-	if spec.RegistryCredentialID != "" {
-		local, err := s.store.GetRegistryCredential(ctx, spec.RegistryCredentialID)
-		if err != nil {
-			return cloudplaneapi.ExecutionPlanRequest{}, err
-		}
-		imageCredential = &cloudplaneapi.ExecutionImageCredential{
-			Server:   local.Server,
-			Username: local.Username,
-			Password: local.Password,
-		}
-	}
+func (s *Dispatcher) buildExecutionPlan(input ApplyServiceInput, spec cloudplaneapi.ServiceSpec) (cloudplaneapi.ExecutionPlanRequest, error) {
 	env := cloneEnvMap(spec.Env)
 	for key, value := range spec.SecretEnv {
 		env[key] = value
@@ -282,12 +270,20 @@ func (s *Dispatcher) buildExecutionPlan(ctx context.Context, input ApplyServiceI
 		Args:              append([]string(nil), spec.Args...),
 		Env:               env,
 		ProjectedFiles:    executionProjectedFiles(spec.Files),
-		ImageCredential:   imageCredential,
+		ImageCredential:   cloneExecutionImageCredential(spec.RegistryCredential),
 		ContainerPort:     spec.DefaultPort,
 		ReadinessPath:     spec.ReadinessPath,
 		InstanceClass:     spec.InstanceClass,
 		Exposure:          spec.Exposure,
 	}, nil
+}
+
+func cloneExecutionImageCredential(input *cloudplaneapi.ExecutionImageCredential) *cloudplaneapi.ExecutionImageCredential {
+	if input == nil {
+		return nil
+	}
+	out := *input
+	return &out
 }
 
 func cloneEnvMap(input map[string]string) map[string]string {

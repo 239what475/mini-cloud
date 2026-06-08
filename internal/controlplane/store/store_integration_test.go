@@ -15,7 +15,7 @@ import (
 func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
-	createdPlane, err := db.Store.CreatePlane(context.Background(), domain.PlaneCreateInput{
+	createdPlane, err := db.Store.CreatePlane(context.Background(), controlplanestore.PlaneCreateInput{
 		Name:            "aliyun-bj-primary",
 		DisplayName:     "Aliyun Beijing Primary",
 		Provider:        "aliyun",
@@ -54,7 +54,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		t.Fatalf("unexpected registered plane ids: %+v", registeredPlaneIDs)
 	}
 
-	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, domain.PlaneUpdateStatusInput{
+	updatedStatus, err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.PlaneUpdateStatusInput{
 		Status:  domain.StatusReady,
 		Message: "heartbeat and snapshot are healthy",
 	})
@@ -74,7 +74,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
 		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)
 	}
-	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, domain.RecordRuntimeInventoryInput{
+	if _, _, err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeInventoryInput{
 		SyncVersion:       7,
 		ObservedAt:        time.Now().UTC(),
 		NodesTotal:        2,
@@ -128,7 +128,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.LatestRuntimeInventory.SyncVersion != 7 {
 		t.Fatalf("latest runtime inventory syncVersion = %d, want 7", gotPlane.LatestRuntimeInventory.SyncVersion)
 	}
-	runtimeConfig, err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, domain.RecordRuntimeConfigInput{
+	runtimeConfig, err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeConfigInput{
 		ObservedAt:  time.Now().UTC(),
 		Fingerprint: "fp-123",
 		Summary: map[string]any{
@@ -184,7 +184,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
-	planeItem, err := db.Store.CreatePlane(ctx, domain.PlaneCreateInput{
+	planeItem, err := db.Store.CreatePlane(ctx, controlplanestore.PlaneCreateInput{
 		Name:            "service-plane",
 		DisplayName:     "Service Plane",
 		Provider:        "aliyun",
@@ -196,7 +196,7 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 		t.Fatalf("CreatePlane returned error: %v", err)
 	}
 
-	serviceItem, err := db.Store.CreateService(ctx, domain.ServiceCreateInput{
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.ServiceCreateInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
 		Spec: domain.Spec{
@@ -208,6 +208,11 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 			ReadinessPath: "/healthz",
 			SecretEnv: map[string]string{
 				"CLIPROXY_TOKEN": "token-v1",
+			},
+			RegistryCredential: &domain.RegistryCredential{
+				Server:   "ghcr.io",
+				Username: "cliproxy",
+				Password: "registry-token",
 			},
 			Files: []projectedfile.File{
 				{
@@ -231,6 +236,9 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	if serviceItem.Spec.SecretEnv["CLIPROXY_TOKEN"] != "token-v1" {
 		t.Fatalf("service secret env was not persisted")
 	}
+	if serviceItem.Spec.RegistryCredential == nil || serviceItem.Spec.RegistryCredential.Password != "registry-token" {
+		t.Fatalf("service registry credential was not persisted")
+	}
 
 	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
 	if err != nil {
@@ -238,6 +246,12 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	}
 	if len(reloaded.Spec.Files) != 2 {
 		t.Fatalf("reloaded files len = %d, want 2", len(reloaded.Spec.Files))
+	}
+	if reloaded.Spec.RegistryCredential == nil ||
+		reloaded.Spec.RegistryCredential.Server != "ghcr.io" ||
+		reloaded.Spec.RegistryCredential.Username != "cliproxy" ||
+		reloaded.Spec.RegistryCredential.Password != "registry-token" {
+		t.Fatalf("unexpected reloaded registry credential: %+v", reloaded.Spec.RegistryCredential)
 	}
 	if reloaded.Spec.Files[0].MountPath != "/etc/cliproxy/auth/token" {
 		t.Fatalf("first file mountPath = %q, want /etc/cliproxy/auth/token", reloaded.Spec.Files[0].MountPath)

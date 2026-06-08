@@ -9,8 +9,21 @@ import (
 	domain "mini-cloud/internal/controlplane/domain"
 )
 
-func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, input domain.RecordRuntimeConfigInput) (domain.RuntimeConfigSnapshot, error) {
-	observedAt := input.ResolvedObservedAt(time.Now().UTC())
+type RecordRuntimeConfigInput struct {
+	ObservedAt  time.Time
+	Fingerprint string
+	Summary     map[string]any
+}
+
+func (in RecordRuntimeConfigInput) resolvedObservedAt(now time.Time) time.Time {
+	if in.ObservedAt.IsZero() {
+		return now.UTC()
+	}
+	return in.ObservedAt.UTC()
+}
+
+func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, input RecordRuntimeConfigInput) (domain.RuntimeConfigSnapshot, error) {
+	observedAt := input.resolvedObservedAt(time.Now().UTC())
 	summaryJSON, err := marshalJSON(input.Summary, map[string]any{})
 	if err != nil {
 		return domain.RuntimeConfigSnapshot{}, fmt.Errorf("marshal plane runtime config summary: %w", err)

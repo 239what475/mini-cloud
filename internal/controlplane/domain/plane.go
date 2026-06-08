@@ -1,39 +1,12 @@
 package domain
 
-import (
-	"errors"
-	"regexp"
-	"strings"
-	"time"
-)
+import "time"
 
 const (
 	StatusRegistering = "registering"
 	StatusReady       = "ready"
 	StatusDegraded    = "degraded"
 	StatusOffline     = "offline"
-)
-
-var (
-	ErrPlaneNameRequired             = errors.New("name is required")
-	ErrInvalidPlaneName              = errors.New("name must use lowercase letters, digits, and hyphens")
-	ErrPlaneDisplayNameRequired      = errors.New("displayName is required")
-	ErrPlaneProviderRequired         = errors.New("provider is required")
-	ErrPlaneRegionRequired           = errors.New("region is required")
-	ErrPlaneGRPCEndpointRequired     = errors.New("grpcEndpoint is required")
-	ErrPlaneSouthboundTokenRequired  = errors.New("southboundToken is required")
-	ErrInvalidPlaneGRPCEndpoint      = errors.New("grpcEndpoint must be a gRPC target such as host:port, grpc://host:port, grpcs://host:port, dns:///name:port, or unix:///path")
-	ErrInvalidPlaneStatus            = errors.New("status must be one of registering, ready, degraded, offline")
-	ErrInvalidNodesTotal             = errors.New("nodesTotal must be greater than or equal to 0")
-	ErrInvalidNodesReady             = errors.New("nodesReady must be greater than or equal to 0")
-	ErrInvalidNodesReadyExceedsTotal = errors.New("nodesReady must be less than or equal to nodesTotal")
-	ErrInvalidCPUMilliCapacity       = errors.New("cpuMilliCapacity must be greater than or equal to 0")
-	ErrInvalidCPUMilliAllocated      = errors.New("cpuMilliAllocated must be greater than or equal to 0")
-	ErrInvalidCPUMilliAllocation     = errors.New("cpuMilliAllocated must be less than or equal to cpuMilliCapacity")
-	ErrInvalidMemoryMiCapacity       = errors.New("memoryMiCapacity must be greater than or equal to 0")
-	ErrInvalidMemoryMiAllocated      = errors.New("memoryMiAllocated must be greater than or equal to 0")
-	ErrInvalidMemoryMiAllocation     = errors.New("memoryMiAllocated must be less than or equal to memoryMiCapacity")
-	planeNamePattern                 = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 type Plane struct {
@@ -111,85 +84,6 @@ type Detail struct {
 	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }
 
-type PlaneCreateInput struct {
-	Name            string `json:"name"`
-	DisplayName     string `json:"displayName"`
-	Provider        string `json:"provider"`
-	Region          string `json:"region"`
-	GRPCEndpoint    string `json:"grpcEndpoint"`
-	SouthboundToken string `json:"southboundToken"`
-}
-
-type PlaneUpdateStatusInput struct {
-	Status          string     `json:"status"`
-	Message         string     `json:"message"`
-	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
-	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
-}
-
-type RecordRuntimeInventoryInput struct {
-	SyncVersion       int64         `json:"syncVersion"`
-	ObservedAt        time.Time     `json:"observedAt"`
-	NodesTotal        int           `json:"nodesTotal"`
-	NodesReady        int           `json:"nodesReady"`
-	CPUMilliCapacity  int           `json:"cpuMilliCapacity"`
-	CPUMilliAllocated int           `json:"cpuMilliAllocated"`
-	MemoryMiCapacity  int           `json:"memoryMiCapacity"`
-	MemoryMiAllocated int           `json:"memoryMiAllocated"`
-	Nodes             []RuntimeNode `json:"nodes"`
-}
-
-type RecordRuntimeConfigInput struct {
-	ObservedAt  time.Time      `json:"observedAt"`
-	Fingerprint string         `json:"fingerprint"`
-	Summary     map[string]any `json:"summary"`
-}
-
-func (in PlaneCreateInput) Validate() error {
-	switch {
-	case strings.TrimSpace(in.Name) == "":
-		return InvalidInput(ErrPlaneNameRequired)
-	case !planeNamePattern.MatchString(strings.TrimSpace(in.Name)):
-		return InvalidInput(ErrInvalidPlaneName)
-	case strings.TrimSpace(in.DisplayName) == "":
-		return InvalidInput(ErrPlaneDisplayNameRequired)
-	case strings.TrimSpace(in.Provider) == "":
-		return InvalidInput(ErrPlaneProviderRequired)
-	case strings.TrimSpace(in.Region) == "":
-		return InvalidInput(ErrPlaneRegionRequired)
-	case strings.TrimSpace(in.SouthboundToken) == "":
-		return InvalidInput(ErrPlaneSouthboundTokenRequired)
-	}
-
-	_, err := normalizeGRPCEndpoint(in.GRPCEndpoint)
-	return InvalidInput(err)
-}
-
-func (in PlaneCreateInput) ResolvedGRPCEndpoint() (string, error) {
-	return normalizeGRPCEndpoint(in.GRPCEndpoint)
-}
-
-func (in PlaneUpdateStatusInput) Validate() error {
-	if !IsStatus(in.Status) {
-		return InvalidInput(ErrInvalidPlaneStatus)
-	}
-	return nil
-}
-
-func (in RecordRuntimeInventoryInput) ResolvedObservedAt(now time.Time) time.Time {
-	if in.ObservedAt.IsZero() {
-		return now.UTC()
-	}
-	return in.ObservedAt.UTC()
-}
-
-func (in RecordRuntimeConfigInput) ResolvedObservedAt(now time.Time) time.Time {
-	if in.ObservedAt.IsZero() {
-		return now.UTC()
-	}
-	return in.ObservedAt.UTC()
-}
-
 func IsStatus(status string) bool {
 	switch status {
 	case StatusRegistering, StatusReady, StatusDegraded, StatusOffline:
@@ -197,29 +91,4 @@ func IsStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-func normalizeGRPCEndpoint(raw string) (string, error) {
-	value := strings.TrimSpace(raw)
-	if value == "" {
-		return "", ErrPlaneGRPCEndpointRequired
-	}
-	if strings.ContainsAny(value, " \t\r\n") {
-		return "", ErrInvalidPlaneGRPCEndpoint
-	}
-	lower := strings.ToLower(value)
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-		return "", ErrInvalidPlaneGRPCEndpoint
-	}
-	if strings.HasPrefix(lower, "grpc://") {
-		target := strings.TrimSpace(value[len("grpc://"):])
-		if target == "" || strings.Contains(target, "/") {
-			return "", ErrInvalidPlaneGRPCEndpoint
-		}
-		return target, nil
-	}
-	if strings.HasPrefix(lower, "grpcs://") || strings.HasPrefix(lower, "dns:///") || strings.HasPrefix(lower, "unix:///") {
-		return value, nil
-	}
-	return value, nil
 }

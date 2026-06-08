@@ -9,8 +9,27 @@ import (
 	domain "mini-cloud/internal/controlplane/domain"
 )
 
-func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string, input domain.RecordRuntimeInventoryInput) (domain.RuntimeInventorySnapshot, []domain.RuntimeNode, error) {
-	observedAt := input.ResolvedObservedAt(time.Now().UTC())
+type RecordRuntimeInventoryInput struct {
+	SyncVersion       int64
+	ObservedAt        time.Time
+	NodesTotal        int
+	NodesReady        int
+	CPUMilliCapacity  int
+	CPUMilliAllocated int
+	MemoryMiCapacity  int
+	MemoryMiAllocated int
+	Nodes             []domain.RuntimeNode
+}
+
+func (in RecordRuntimeInventoryInput) resolvedObservedAt(now time.Time) time.Time {
+	if in.ObservedAt.IsZero() {
+		return now.UTC()
+	}
+	return in.ObservedAt.UTC()
+}
+
+func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string, input RecordRuntimeInventoryInput) (domain.RuntimeInventorySnapshot, []domain.RuntimeNode, error) {
+	observedAt := input.resolvedObservedAt(time.Now().UTC())
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

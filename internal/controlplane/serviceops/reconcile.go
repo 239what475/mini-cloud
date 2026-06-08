@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/contract/cloudplaneapi"
 	domain "mini-cloud/internal/controlplane/domain"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/store"
@@ -132,7 +133,7 @@ func deletingRunStatus(serviceItem domain.Service, runID string) domain.RunStatu
 func (c *Controller) targetPlaneID(ctx context.Context, serviceItem domain.Service) (string, error) {
 	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
 	if planeID == "" {
-		return "", domain.ErrPlaneIDRequired
+		return "", ErrPlaneIDRequired
 	}
 	planeDetail, err := c.store.GetPlane(ctx, planeID)
 	if err != nil {
@@ -183,18 +184,29 @@ func toDeployApplyInput(serviceItem domain.Service) ApplyServiceInput {
 			Generation:  serviceItem.Metadata.Generation,
 		},
 		Spec: ServiceSpec{
-			InstanceClass:        serviceItem.Spec.InstanceClass,
-			Exposure:             serviceItem.Spec.Exposure,
-			Image:                serviceItem.Spec.Image,
-			Command:              append([]string(nil), serviceItem.Spec.Command...),
-			Args:                 append([]string(nil), serviceItem.Spec.Args...),
-			DefaultPort:          serviceItem.Spec.DefaultPort,
-			ReadinessPath:        serviceItem.Spec.ReadinessPath,
-			Env:                  cloneStringMap(serviceItem.Spec.Env),
-			SecretEnv:            cloneStringMap(serviceItem.Spec.SecretEnv),
-			RegistryCredentialID: serviceItem.Spec.RegistryCredentialID,
-			Files:                projectedfile.CloneFiles(serviceItem.Spec.Files),
+			InstanceClass:      serviceItem.Spec.InstanceClass,
+			Exposure:           serviceItem.Spec.Exposure,
+			Image:              serviceItem.Spec.Image,
+			Command:            append([]string(nil), serviceItem.Spec.Command...),
+			Args:               append([]string(nil), serviceItem.Spec.Args...),
+			DefaultPort:        serviceItem.Spec.DefaultPort,
+			ReadinessPath:      serviceItem.Spec.ReadinessPath,
+			Env:                cloneStringMap(serviceItem.Spec.Env),
+			SecretEnv:          cloneStringMap(serviceItem.Spec.SecretEnv),
+			RegistryCredential: toExecutionImageCredential(serviceItem.Spec.RegistryCredential),
+			Files:              projectedfile.CloneFiles(serviceItem.Spec.Files),
 		},
+	}
+}
+
+func toExecutionImageCredential(input *domain.RegistryCredential) *cloudplaneapi.ExecutionImageCredential {
+	if input == nil {
+		return nil
+	}
+	return &cloudplaneapi.ExecutionImageCredential{
+		Server:   input.Server,
+		Username: input.Username,
+		Password: input.Password,
 	}
 }
 
@@ -203,7 +215,7 @@ func (c *Controller) updateServiceStatus(ctx context.Context, serviceID string, 
 	if len(run) > 0 {
 		nextRun = run[0]
 	}
-	input := domain.ServiceUpdateStatusInput{
+	input := store.ServiceUpdateStatusInput{
 		ObservedGeneration: status.ObservedGeneration,
 		Phase:              status.Phase,
 		Healthy:            status.Healthy,

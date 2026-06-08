@@ -42,17 +42,6 @@ CREATE TABLE IF NOT EXISTS plane_southbound_tokens (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS registry_credentials (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    server TEXT NOT NULL,
-    username TEXT NOT NULL,
-    password TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT registry_credentials_name_key UNIQUE (name)
-);
-
 CREATE TABLE IF NOT EXISTS fleet_services (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -67,7 +56,9 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     spec_readiness_path TEXT NOT NULL,
     spec_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     spec_secret_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    spec_registry_credential_id TEXT NOT NULL DEFAULT '',
+    spec_registry_server TEXT NOT NULL DEFAULT '',
+    spec_registry_username TEXT NOT NULL DEFAULT '',
+    spec_registry_password TEXT NOT NULL DEFAULT '',
     spec_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     status_run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb,
     generation BIGINT NOT NULL DEFAULT 1,
@@ -144,7 +135,6 @@ DROP TABLE IF EXISTS fleet_plane_runtime_nodes;
 DROP TABLE IF EXISTS fleet_plane_runtime_inventory_states;
 DROP INDEX IF EXISTS idx_fleet_services_created_at;
 DROP TABLE IF EXISTS fleet_services;
-DROP TABLE IF EXISTS registry_credentials;
 DROP TABLE IF EXISTS plane_southbound_tokens;
 DROP TABLE IF EXISTS fleet_plane_statuses;
 DROP TABLE IF EXISTS fleet_planes;

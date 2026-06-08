@@ -29,13 +29,13 @@ type executionPlanManager interface {
 }
 
 type serviceStore interface {
-	CreateService(context.Context, domain.ServiceCreateInput) (domain.Service, error)
+	CreateService(context.Context, store.ServiceCreateInput) (domain.Service, error)
 	ListServices(context.Context) ([]domain.Service, error)
 	GetService(context.Context, string) (domain.Service, error)
-	UpdateService(context.Context, string, domain.ServiceUpdateInput) (domain.Service, error)
+	UpdateService(context.Context, string, store.ServiceUpdateInput) (domain.Service, error)
 	MarkServiceDeletionRequested(context.Context, string) (domain.Service, error)
-	UpdateServiceStatus(context.Context, string, domain.ServiceUpdateStatusInput) (domain.Service, error)
-	UpdateServiceStatusForGeneration(context.Context, string, int64, domain.ServiceUpdateStatusInput) (domain.Service, error)
+	UpdateServiceStatus(context.Context, string, store.ServiceUpdateStatusInput) (domain.Service, error)
+	UpdateServiceStatusForGeneration(context.Context, string, int64, store.ServiceUpdateStatusInput) (domain.Service, error)
 	DeleteService(context.Context, string) error
 	DeleteServiceForGeneration(context.Context, string, int64) error
 	GetPlane(context.Context, string) (domain.Detail, error)
@@ -71,7 +71,7 @@ func (c *Controller) SetReconcileTimeout(timeout int) {
 	c.timeout = time.Duration(timeout) * time.Second
 }
 
-func (c *Controller) Create(ctx context.Context, input domain.ServiceCreateInput) (View, error) {
+func (c *Controller) Create(ctx context.Context, input store.ServiceCreateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
 	}
@@ -119,7 +119,7 @@ func (c *Controller) Get(ctx context.Context, serviceID string) (View, error) {
 	return c.buildView(ctx, item)
 }
 
-func (c *Controller) Update(ctx context.Context, serviceID string, input domain.ServiceUpdateInput) (View, error) {
+func (c *Controller) Update(ctx context.Context, serviceID string, input store.ServiceUpdateInput) (View, error) {
 	if err := c.validateConfigured(); err != nil {
 		return View{}, err
 	}
