@@ -155,7 +155,7 @@ type cloudPlaneEgressProxyConfig struct {
 type cloudPlaneIngressConfig struct {
 	// Enabled 表示是否由 cloud-plane 后台 reconciler 管理外置 Caddy 配置。
 	Enabled bool `yaml:"enabled"`
-	// BaseDomain 是 public service 默认入口域名后缀。
+	// BaseDomain 是 public service 托管入口域名后缀；每个 service 使用 serviceName.baseDomain。
 	BaseDomain string `yaml:"baseDomain"`
 	// Caddy 描述外置 Caddy 的配置文件和 reload 命令。
 	Caddy cloudPlaneCaddyIngressConfig `yaml:"caddy"`

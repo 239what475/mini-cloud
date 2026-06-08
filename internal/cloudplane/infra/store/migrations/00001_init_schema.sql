@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     provider TEXT NOT NULL,
     region TEXT NOT NULL,
     name TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'runtime',
     private_ip TEXT NOT NULL,
     public_ip TEXT NOT NULL DEFAULT '',
     instance_id TEXT NOT NULL,
@@ -25,20 +24,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (provider, instance_id)
 );
-
-CREATE TABLE IF NOT EXISTS node_heartbeats (
-    id TEXT PRIMARY KEY,
-    node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
-    reported_at TIMESTAMPTZ NOT NULL,
-    agent_version TEXT NOT NULL,
-    cpu_milli_allocatable INTEGER NOT NULL CHECK (cpu_milli_allocatable >= 0),
-    memory_mi_allocatable INTEGER NOT NULL CHECK (memory_mi_allocatable >= 0),
-    running_containers INTEGER NOT NULL CHECK (running_containers >= 0),
-    status TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_node_heartbeats_node_reported_at
-    ON node_heartbeats (node_id, reported_at DESC);
 
 CREATE TABLE IF NOT EXISTS node_agent_session_tokens (
     id TEXT PRIMARY KEY,
@@ -124,5 +109,4 @@ CREATE INDEX IF NOT EXISTS idx_runtime_nodes_status_created_at
 DROP TABLE IF EXISTS runtime_nodes;
 DROP TABLE IF EXISTS execution_intents;
 DROP TABLE IF EXISTS node_agent_session_tokens;
-DROP TABLE IF EXISTS node_heartbeats;
 DROP TABLE IF EXISTS nodes;

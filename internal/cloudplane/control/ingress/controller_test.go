@@ -67,6 +67,32 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 	}
 }
 
+// TestBuildRoutesUsesSingleManagedServiceHost 验证入口域名只由 serviceName 和 baseDomain 组成。
+func TestBuildRoutesUsesSingleManagedServiceHost(t *testing.T) {
+	t.Parallel()
+
+	stores := &fakeStore{
+		sources: []domainingress.RouteSource{
+			{ServiceName: "Sub2 API", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
+		},
+		nodes: map[string]node.Node{
+			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: node.StatusReady},
+		},
+	}
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil)
+
+	routes, err := controller.buildRoutes(context.Background())
+	if err != nil {
+		t.Fatalf("buildRoutes returned error: %v", err)
+	}
+	if len(routes) != 1 {
+		t.Fatalf("routes len = %d, want 1: %+v", len(routes), routes)
+	}
+	if routes[0].Host != "sub2-api.apps.example.test" {
+		t.Fatalf("route host = %q", routes[0].Host)
+	}
+}
+
 // TestReconcileOnceDisabledDoesNotCallSink 验证 ingress 关闭时不构造或应用路由。
 func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 	t.Parallel()

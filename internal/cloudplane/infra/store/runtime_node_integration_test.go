@@ -174,7 +174,6 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          name,
-		Role:          node.RoleRuntime,
 		PrivateIP:     "10.0.0.10",
 		PublicIP:      "",
 		InstanceID:    instanceID,

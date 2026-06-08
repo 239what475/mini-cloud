@@ -42,7 +42,6 @@ func (s *Store) RegisterNode(ctx context.Context, input node.RegisterInput) (nod
 			provider,
 			region,
 			name,
-			role,
 			private_ip,
 			public_ip,
 			instance_id,
@@ -56,12 +55,11 @@ func (s *Store) RegisterNode(ctx context.Context, input node.RegisterInput) (nod
 			status,
 			schedulable
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 0, 0, 0, 0, $12, TRUE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, 0, 0, $11, TRUE)
 		ON CONFLICT (provider, instance_id) DO UPDATE
 		SET
 			region = EXCLUDED.region,
 			name = EXCLUDED.name,
-			role = EXCLUDED.role,
 			private_ip = EXCLUDED.private_ip,
 			public_ip = EXCLUDED.public_ip,
 			instance_type = EXCLUDED.instance_type,
@@ -73,7 +71,6 @@ func (s *Store) RegisterNode(ctx context.Context, input node.RegisterInput) (nod
 			provider,
 			region,
 			name,
-			role,
 			private_ip,
 			public_ip,
 			instance_id,
@@ -94,7 +91,6 @@ func (s *Store) RegisterNode(ctx context.Context, input node.RegisterInput) (nod
 		input.Provider,
 		input.Region,
 		input.Name,
-		input.ResolvedRole(),
 		input.PrivateIP,
 		input.PublicIP,
 		input.InstanceID,
@@ -125,7 +121,6 @@ func (s *Store) ListNodes(ctx context.Context) ([]node.Node, error) {
 			provider,
 			region,
 			name,
-			role,
 			private_ip,
 			public_ip,
 			instance_id,
@@ -172,7 +167,7 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input no
 		return node.HeartbeatSummary{}, time.Time{}, err
 	}
 
-	// 一次心跳既要写历史记录，又要刷新 nodes 表里的最新摘要，所以放在一个事务里。
+	// 一次心跳刷新 nodes 表里的最新摘要，并在 ready 时推进 runtime node 状态。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return node.HeartbeatSummary{}, time.Time{}, fmt.Errorf("begin heartbeat tx: %w", err)
@@ -225,12 +220,6 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input no
 		return node.HeartbeatSummary{}, time.Time{}, ErrHeartbeatMemoryMiAllocatableTooLarge
 	}
 
-	// 每次心跳保留一条历史记录。
-	heartbeatID, err := newID("hb")
-	if err != nil {
-		return node.HeartbeatSummary{}, time.Time{}, err
-	}
-
 	reportedAt := input.ReportedAt.UTC()
 	// lastHeartbeatAt 更适合记录“控制面什么时候真正收到这次心跳”。
 	receivedAt := time.Now().UTC()
@@ -264,32 +253,6 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input no
 			nextStatus = node.StatusOffline
 			nextSchedulable = false
 		}
-	}
-
-	// 写入心跳历史表，保留 agent 原始上报状态。
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO node_heartbeats (
-			id,
-			node_id,
-			reported_at,
-			agent_version,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			running_containers,
-			status
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`,
-		heartbeatID,
-		nodeID,
-		reportedAt,
-		input.AgentVersion,
-		input.CPUMilliAllocatable,
-		input.MemoryMiAllocatable,
-		input.RunningContainers,
-		input.Status,
-	); err != nil {
-		return node.HeartbeatSummary{}, time.Time{}, fmt.Errorf("insert node heartbeat: %w", err)
 	}
 
 	// nodes 表保留的是当前最新摘要，方便平台页和后续调度直接读取。
@@ -353,7 +316,6 @@ func (s *Store) GetNode(ctx context.Context, nodeID string) (node.Node, error) {
 			provider,
 			region,
 			name,
-			role,
 			private_ip,
 			public_ip,
 			instance_id,
@@ -395,7 +357,6 @@ func (s *Store) GetNodeByProviderInstance(ctx context.Context, provider string, 
 			provider,
 			region,
 			name,
-			role,
 			private_ip,
 			public_ip,
 			instance_id,
@@ -440,7 +401,6 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (node.Node, error) {
 		&item.Provider,
 		&item.Region,
 		&item.Name,
-		&item.Role,
 		&item.PrivateIP,
 		&item.PublicIP,
 		&item.InstanceID,

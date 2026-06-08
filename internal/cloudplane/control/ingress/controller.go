@@ -122,12 +122,12 @@ func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, er
 	return routes, nil
 }
 
-// managedHost 生成 public service 的默认入口域名。
+// managedHost 生成 public service 唯一的托管入口域名。
 func (c *Controller) managedHost(serviceName string) string {
 	return fmt.Sprintf("%s.%s", dnsLabel(serviceName), strings.Trim(strings.TrimSpace(c.cfg.Ingress.BaseDomain), "."))
 }
 
-// dnsLabel 将 project/service 名称转换为保守 DNS label。
+// dnsLabel 将 service 名称转换为保守 DNS label。
 func dnsLabel(value string) string {
 	label := strings.ToLower(strings.TrimSpace(value))
 	label = dnsLabelCleaner.ReplaceAllString(label, "-")

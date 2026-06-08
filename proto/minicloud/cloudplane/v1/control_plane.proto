@@ -23,24 +23,21 @@ message PlaneHealth {
 
 message PlaneOverview {
   int32 services_total = 1 [json_name = "servicesTotal"];
-  int32 services_idle = 2 [json_name = "servicesIdle"];
-  int32 services_deploying = 3 [json_name = "servicesDeploying"];
-  int32 services_running = 4 [json_name = "servicesRunning"];
-  int32 services_degraded = 5 [json_name = "servicesDegraded"];
-  int32 services_failed = 6 [json_name = "servicesFailed"];
-  int32 nodes_total = 7 [json_name = "nodesTotal"];
-  int32 nodes_registering = 8 [json_name = "nodesRegistering"];
-  int32 nodes_ready = 9 [json_name = "nodesReady"];
-  int32 nodes_not_ready = 10 [json_name = "nodesNotReady"];
-  int32 nodes_draining = 11 [json_name = "nodesDraining"];
-  int32 nodes_offline = 12 [json_name = "nodesOffline"];
-  int32 execution_plans_total = 13 [json_name = "executionPlansTotal"];
-  int32 execution_plans_pending = 14 [json_name = "executionPlansPending"];
-  int32 execution_plans_scheduling = 15 [json_name = "executionPlansScheduling"];
-  int32 execution_plans_assigned = 16 [json_name = "executionPlansAssigned"];
-  int32 execution_plans_deploying = 17 [json_name = "executionPlansDeploying"];
-  int32 execution_plans_running = 18 [json_name = "executionPlansRunning"];
-  int32 execution_plans_failed = 19 [json_name = "executionPlansFailed"];
+  int32 services_deploying = 2 [json_name = "servicesDeploying"];
+  int32 services_running = 3 [json_name = "servicesRunning"];
+  int32 services_degraded = 4 [json_name = "servicesDegraded"];
+  int32 services_failed = 5 [json_name = "servicesFailed"];
+  int32 nodes_total = 6 [json_name = "nodesTotal"];
+  int32 nodes_registering = 7 [json_name = "nodesRegistering"];
+  int32 nodes_ready = 8 [json_name = "nodesReady"];
+  int32 nodes_not_ready = 9 [json_name = "nodesNotReady"];
+  int32 nodes_draining = 10 [json_name = "nodesDraining"];
+  int32 nodes_offline = 11 [json_name = "nodesOffline"];
+  int32 execution_plans_total = 12 [json_name = "executionPlansTotal"];
+  int32 execution_plans_pending = 13 [json_name = "executionPlansPending"];
+  int32 execution_plans_deploying = 14 [json_name = "executionPlansDeploying"];
+  int32 execution_plans_running = 15 [json_name = "executionPlansRunning"];
+  int32 execution_plans_failed = 16 [json_name = "executionPlansFailed"];
 }
 
 message PlaneCapacity {

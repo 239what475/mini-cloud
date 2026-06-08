@@ -248,6 +248,72 @@ func (s *Store) CountActiveExecutionsByNode(ctx context.Context, nodeID string) 
 	return count, nil
 }
 
+func (s *Store) GetRuntimeNodeScaleOutCandidate(ctx context.Context, nodeNamePrefix string, instanceType string) (*runtimepool.ScaleOutCandidate, error) {
+	var candidate runtimepool.ScaleOutCandidate
+	err := s.db.QueryRowContext(ctx, `
+		WITH pending AS (
+			SELECT
+				plan_id,
+				service_id,
+				cpu_milli_request,
+				memory_mi_request,
+				created_at
+			FROM execution_intents
+			WHERE work_action = $1
+			  AND status = $2
+			ORDER BY created_at ASC, id ASC
+			LIMIT 1
+		),
+		capacity AS (
+			SELECT EXISTS (
+				SELECT 1
+				FROM nodes, pending
+				WHERE status = $3
+				  AND schedulable
+				  AND cpu_milli_allocatable - cpu_milli_allocated >= pending.cpu_milli_request
+				  AND memory_mi_allocatable - memory_mi_allocated >= pending.memory_mi_request
+			) AS has_capacity
+		),
+		provisioning AS (
+			SELECT EXISTS (
+				SELECT 1
+				FROM runtime_nodes
+				WHERE status = $4
+			) AS has_provisioning
+		)
+		SELECT
+			pending.plan_id,
+			pending.service_id,
+			pending.cpu_milli_request,
+			pending.memory_mi_request,
+			$5 || '-' || lower(substr(md5(pending.plan_id), 1, 10)),
+			$6,
+			pending.plan_id,
+			capacity.has_capacity,
+			provisioning.has_provisioning
+		FROM pending
+		CROSS JOIN capacity
+		CROSS JOIN provisioning
+	`, execution.WorkActionRun, execution.StatusPending, node.StatusReady, runtimepool.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
+		&candidate.PlanID,
+		&candidate.ServiceID,
+		&candidate.CPUMilli,
+		&candidate.MemoryMi,
+		&candidate.InstanceName,
+		&candidate.InstanceType,
+		&candidate.ClientToken,
+		&candidate.HasCapacity,
+		&candidate.HasProvisioning,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("query runtime node scale-out candidate: %w", err)
+	}
+	return &candidate, nil
+}
+
 // HasExecutionIntentsWithStatuses 判断当前是否存在任一指定状态的 execution intent。
 // 参数说明：ctx 控制数据库请求生命周期；statuses 是要匹配的 execution intent 状态。
 func (s *Store) HasExecutionIntentsWithStatuses(ctx context.Context, statuses ...string) (bool, error) {

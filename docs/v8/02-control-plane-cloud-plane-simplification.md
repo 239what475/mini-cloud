@@ -189,6 +189,15 @@ cloud-plane 可以继续发布本 plane 的 Caddy route。
 
 但 route 输入应来自 plane-local running executions，而不是 cloud-plane local service rollout state。
 
+public service 只暴露一个平台托管三级域名：
+
+```text
+<service-name>.<ingress.baseDomain>
+```
+
+service 不携带自定义域名、多域名或 path route 配置。不同 service 可以使用相同 container port；
+node-agent 自动分配 hostPort，cloud-plane 只把托管 host 反代到 ready node 的 privateIP:hostPort。
+
 control-plane 负责汇总全局 front door / CDN 需要的 service-level view。
 
 ## 已废弃或替换的模块

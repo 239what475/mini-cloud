@@ -17,8 +17,6 @@ const (
 type Overview struct {
 	// ServicesTotal 是当前 service 总数。
 	ServicesTotal int `json:"servicesTotal"`
-	// ServicesIdle 是处于 idle 状态的 service 数量。
-	ServicesIdle int `json:"servicesIdle"`
 	// ServicesDeploying 是正在发布或变更的 service 数量。
 	ServicesDeploying int `json:"servicesDeploying"`
 	// ServicesRunning 是当前稳定运行的 service 数量。
@@ -45,10 +43,6 @@ type Overview struct {
 	ExecutionPlansTotal int `json:"executionPlansTotal"`
 	// ExecutionPlansPending 是等待进入调度流程的 execution plan 数量。
 	ExecutionPlansPending int `json:"executionPlansPending"`
-	// ExecutionPlansScheduling 是正在选择运行节点的 execution plan 数量。
-	ExecutionPlansScheduling int `json:"executionPlansScheduling"`
-	// ExecutionPlansAssigned 是已经分配节点但执行尚未开始或尚未完成的 execution plan 数量。
-	ExecutionPlansAssigned int `json:"executionPlansAssigned"`
 	// ExecutionPlansDeploying 是 node-agent 正在执行的 execution plan 数量。
 	ExecutionPlansDeploying int `json:"executionPlansDeploying"`
 	// ExecutionPlansRunning 是已成功进入 running 的 execution plan 数量。
@@ -74,10 +68,6 @@ type ExecutionPlanStuckSignal struct {
 	Total int `json:"total"`
 	// Pending 是卡在 pending 状态的 execution plan 数量。
 	Pending int `json:"pending"`
-	// Scheduling 是卡在 scheduling 状态的 execution plan 数量。
-	Scheduling int `json:"scheduling"`
-	// Assigned 是卡在 assigned 状态的 execution plan 数量。
-	Assigned int `json:"assigned"`
 	// Deploying 是卡在 deploying 状态的 execution plan 数量。
 	Deploying int `json:"deploying"`
 	// OldestAgeSeconds 是最早一条非终态 execution plan 已持续的秒数；Total>0 时可用于描述卡住对象的最长持续时间。

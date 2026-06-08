@@ -8,33 +8,85 @@ import (
 	"strings"
 	"time"
 
+	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	"mini-cloud/internal/cloudplane/domain/execution"
 	infraruntimepool "mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/cloudplane/infra/store"
 )
 
-// ScaleInService 负责回收没有 active execution 的弹性 runtime node。
-type ScaleInService struct {
+type Service struct {
 	// logger 记录 runtime node 缩容过程中的单节点失败。
 	logger *slog.Logger
 	// store 提供 runtime node 和 execution intent 的持久化访问。
 	store *store.Store
 	// driver 调用云厂商 API 删除 runtime node 对应的云实例。
 	driver infraruntimepool.RuntimeDriver
+	config cloudplaneconfig.Config
 }
 
-// NewScaleInService 构造 runtime node 缩容控制服务。
+// NewService 构造 runtime node pool 控制服务。
 // 参数说明：logger 记录后台日志；stores 提供本地状态访问；driver 负责云厂商 runtime node 生命周期操作。
-func NewScaleInService(logger *slog.Logger, stores *store.Store, driver infraruntimepool.RuntimeDriver) *ScaleInService {
+func NewService(logger *slog.Logger, stores *store.Store, driver infraruntimepool.RuntimeDriver, cfg cloudplaneconfig.Config) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &ScaleInService{logger: logger, store: stores, driver: driver}
+	return &Service{logger: logger, store: stores, driver: driver, config: cfg}
+}
+
+func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
+	if s == nil || s.store == nil || s.driver == nil {
+		return nil
+	}
+	candidate, err := s.store.GetRuntimeNodeScaleOutCandidate(ctx, s.config.NodeAgent.Defaults.NodeNamePrefix, s.runtimeInstanceType())
+	if err != nil {
+		return err
+	}
+	if candidate == nil || candidate.HasCapacity || candidate.HasProvisioning {
+		return nil
+	}
+
+	intent, err := s.store.CreateRuntimeNodeIntent(ctx, infraruntimepool.CreateIntentInput{
+		Provider:      s.config.Infrastructure.Provider,
+		Region:        s.config.Infrastructure.Location.RegionID,
+		InstanceName:  candidate.InstanceName,
+		InstanceType:  candidate.InstanceType,
+		StatusReason:  "pending execution requires more runtime capacity",
+		ProvisionedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return err
+	}
+
+	result, err := s.driver.Create(ctx, infraruntimepool.CreateRequest{
+		Name:        candidate.InstanceName,
+		ClientToken: candidate.ClientToken,
+		CPUMilli:    candidate.CPUMilli,
+		MemoryMi:    candidate.MemoryMi,
+	})
+	if err != nil {
+		_, cleanupErr := s.store.MarkRuntimeNodeDeleted(
+			ctx,
+			intent.ID,
+			"provider runtime node creation failed: "+err.Error(),
+			time.Now().UTC(),
+		)
+		return errors.Join(err, cleanupErr)
+	}
+	_, err = s.store.BindRuntimeNodeProvisioned(
+		ctx,
+		intent.ID,
+		result.InstanceID,
+		result.InstanceName,
+		result.InstanceType,
+		"provider accepted runtime node creation",
+		time.Now().UTC(),
+	)
+	return err
 }
 
 // ReconcileOnce 执行一轮 runtime node 自动缩容。
 // 参数说明：ctx 控制本轮数据库访问、状态更新和 provider 删除调用。
-func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
+func (s *Service) ReconcileScaleInOnce(ctx context.Context) error {
 	// 如果仍有 execution intent 处在调度或启动过程中，说明系统容量正在被消费或即将被消费；
 	// 本轮不缩容，避免删除刚为调度缺口创建、但还没来得及产生 execution 的 runtime node。
 	unsettled, err := s.store.HasExecutionIntentsWithStatuses(
@@ -85,7 +137,7 @@ func (s *ScaleInService) ReconcileOnce(ctx context.Context) error {
 
 // reconcileRuntimeNodeDeletion 推进单个 runtime node 的删除流程。
 // 参数说明：ctx 控制本次操作；item 是本轮扫描得到的 runtime node 快照。
-func (s *ScaleInService) reconcileRuntimeNodeDeletion(ctx context.Context, item infraruntimepool.Record) error {
+func (s *Service) reconcileRuntimeNodeDeletion(ctx context.Context, item infraruntimepool.Record) error {
 	// 已经 deleted 的记录不会被扫描到；如果并发状态变化导致输入不再可删除，直接跳过。
 	if item.Status != infraruntimepool.StatusReady && item.Status != infraruntimepool.StatusTerminating {
 		return nil
@@ -119,4 +171,15 @@ func (s *ScaleInService) reconcileRuntimeNodeDeletion(ctx context.Context, item 
 		time.Now().UTC(),
 	)
 	return err
+}
+
+func (s *Service) runtimeInstanceType() string {
+	type providerSpec struct {
+		InstanceType string `json:"instanceType"`
+	}
+	var spec providerSpec
+	if err := s.config.RuntimeProvisioning.ParseProviderSpec(&spec); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(spec.InstanceType)
 }

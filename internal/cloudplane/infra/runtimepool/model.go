@@ -68,6 +68,18 @@ type CreateIntentInput struct {
 	ProvisionedAt time.Time
 }
 
+type ScaleOutCandidate struct {
+	PlanID          string
+	ServiceID       string
+	CPUMilli        int
+	MemoryMi        int
+	InstanceName    string
+	InstanceType    string
+	ClientToken     string
+	HasCapacity     bool
+	HasProvisioning bool
+}
+
 // Validate 校验输入或领域值是否符合 cloud-plane 约束。
 func (in CreateIntentInput) Validate() error {
 	// intent 创建在 provider API 调用之前，因此不要求 instanceID；provider/region/name/type 是后续创建云实例必须具备的静态输入。

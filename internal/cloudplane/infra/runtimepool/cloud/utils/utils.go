@@ -80,11 +80,9 @@ func BuildDockerDaemonJSON(mirrors []string) (string, error) {
 }
 
 const (
-	TagKeyManagedBy     = "managed-by"
-	TagKeyPlatform      = "mini-cloud/platform"
-	TagKeyRole          = "mini-cloud/role"
-	TagValueManagedBy   = "mini-cloud"
-	TagValueRoleRuntime = "runtime"
+	TagKeyManagedBy   = "managed-by"
+	TagKeyPlatform    = "mini-cloud/platform"
+	TagValueManagedBy = "mini-cloud"
 )
 
 // BuildOwnershipTags 构建 runtime node 云资源的标准 ownership 标签。
@@ -93,6 +91,5 @@ func BuildOwnershipTags(platformName string) map[string]string {
 	return map[string]string{
 		TagKeyManagedBy: TagValueManagedBy,
 		TagKeyPlatform:  strings.TrimSpace(platformName),
-		TagKeyRole:      TagValueRoleRuntime,
 	}
 }

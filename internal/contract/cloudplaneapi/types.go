@@ -28,9 +28,7 @@ type HealthSummary struct {
 
 type OverviewSummary struct {
 	// Overview 描述 plane 的整体运行概况。
-	// 这里的 Nodes* 是“所有已知 node”的计数，不区分是否承担 runtime 供给。
 	ServicesTotal     int `json:"servicesTotal"`
-	ServicesIdle      int `json:"servicesIdle"`
 	ServicesDeploying int `json:"servicesDeploying"`
 	ServicesRunning   int `json:"servicesRunning"`
 	ServicesDegraded  int `json:"servicesDegraded"`
@@ -43,19 +41,15 @@ type OverviewSummary struct {
 	NodesDraining    int `json:"nodesDraining"`
 	NodesOffline     int `json:"nodesOffline"`
 
-	ExecutionPlansTotal      int `json:"executionPlansTotal"`
-	ExecutionPlansPending    int `json:"executionPlansPending"`
-	ExecutionPlansScheduling int `json:"executionPlansScheduling"`
-	ExecutionPlansAssigned   int `json:"executionPlansAssigned"`
-	ExecutionPlansDeploying  int `json:"executionPlansDeploying"`
-	ExecutionPlansRunning    int `json:"executionPlansRunning"`
-	ExecutionPlansFailed     int `json:"executionPlansFailed"`
+	ExecutionPlansTotal     int `json:"executionPlansTotal"`
+	ExecutionPlansPending   int `json:"executionPlansPending"`
+	ExecutionPlansDeploying int `json:"executionPlansDeploying"`
+	ExecutionPlansRunning   int `json:"executionPlansRunning"`
+	ExecutionPlansFailed    int `json:"executionPlansFailed"`
 }
 
 type CapacitySummary struct {
 	// Capacity 只描述 runtime 供给侧。
-	// RuntimeNodes* 以及 CPU/内存容量都只统计 role=runtime 的 node，
-	// platform node 不进入这份容量视图。
 	RuntimeNodesTotal   int `json:"runtimeNodesTotal"`
 	RuntimeNodesReady   int `json:"runtimeNodesReady"`
 	CPUMilliTotal       int `json:"cpuMilliTotal"`

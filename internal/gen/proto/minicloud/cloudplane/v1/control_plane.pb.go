@@ -153,28 +153,25 @@ func (x *PlaneHealth) GetDatabase() string {
 }
 
 type PlaneOverview struct {
-	state                    protoimpl.MessageState `protogen:"open.v1"`
-	ServicesTotal            int32                  `protobuf:"varint,1,opt,name=services_total,json=servicesTotal,proto3" json:"services_total,omitempty"`
-	ServicesIdle             int32                  `protobuf:"varint,2,opt,name=services_idle,json=servicesIdle,proto3" json:"services_idle,omitempty"`
-	ServicesDeploying        int32                  `protobuf:"varint,3,opt,name=services_deploying,json=servicesDeploying,proto3" json:"services_deploying,omitempty"`
-	ServicesRunning          int32                  `protobuf:"varint,4,opt,name=services_running,json=servicesRunning,proto3" json:"services_running,omitempty"`
-	ServicesDegraded         int32                  `protobuf:"varint,5,opt,name=services_degraded,json=servicesDegraded,proto3" json:"services_degraded,omitempty"`
-	ServicesFailed           int32                  `protobuf:"varint,6,opt,name=services_failed,json=servicesFailed,proto3" json:"services_failed,omitempty"`
-	NodesTotal               int32                  `protobuf:"varint,7,opt,name=nodes_total,json=nodesTotal,proto3" json:"nodes_total,omitempty"`
-	NodesRegistering         int32                  `protobuf:"varint,8,opt,name=nodes_registering,json=nodesRegistering,proto3" json:"nodes_registering,omitempty"`
-	NodesReady               int32                  `protobuf:"varint,9,opt,name=nodes_ready,json=nodesReady,proto3" json:"nodes_ready,omitempty"`
-	NodesNotReady            int32                  `protobuf:"varint,10,opt,name=nodes_not_ready,json=nodesNotReady,proto3" json:"nodes_not_ready,omitempty"`
-	NodesDraining            int32                  `protobuf:"varint,11,opt,name=nodes_draining,json=nodesDraining,proto3" json:"nodes_draining,omitempty"`
-	NodesOffline             int32                  `protobuf:"varint,12,opt,name=nodes_offline,json=nodesOffline,proto3" json:"nodes_offline,omitempty"`
-	ExecutionPlansTotal      int32                  `protobuf:"varint,13,opt,name=execution_plans_total,json=executionPlansTotal,proto3" json:"execution_plans_total,omitempty"`
-	ExecutionPlansPending    int32                  `protobuf:"varint,14,opt,name=execution_plans_pending,json=executionPlansPending,proto3" json:"execution_plans_pending,omitempty"`
-	ExecutionPlansScheduling int32                  `protobuf:"varint,15,opt,name=execution_plans_scheduling,json=executionPlansScheduling,proto3" json:"execution_plans_scheduling,omitempty"`
-	ExecutionPlansAssigned   int32                  `protobuf:"varint,16,opt,name=execution_plans_assigned,json=executionPlansAssigned,proto3" json:"execution_plans_assigned,omitempty"`
-	ExecutionPlansDeploying  int32                  `protobuf:"varint,17,opt,name=execution_plans_deploying,json=executionPlansDeploying,proto3" json:"execution_plans_deploying,omitempty"`
-	ExecutionPlansRunning    int32                  `protobuf:"varint,18,opt,name=execution_plans_running,json=executionPlansRunning,proto3" json:"execution_plans_running,omitempty"`
-	ExecutionPlansFailed     int32                  `protobuf:"varint,19,opt,name=execution_plans_failed,json=executionPlansFailed,proto3" json:"execution_plans_failed,omitempty"`
-	unknownFields            protoimpl.UnknownFields
-	sizeCache                protoimpl.SizeCache
+	state                   protoimpl.MessageState `protogen:"open.v1"`
+	ServicesTotal           int32                  `protobuf:"varint,1,opt,name=services_total,json=servicesTotal,proto3" json:"services_total,omitempty"`
+	ServicesDeploying       int32                  `protobuf:"varint,2,opt,name=services_deploying,json=servicesDeploying,proto3" json:"services_deploying,omitempty"`
+	ServicesRunning         int32                  `protobuf:"varint,3,opt,name=services_running,json=servicesRunning,proto3" json:"services_running,omitempty"`
+	ServicesDegraded        int32                  `protobuf:"varint,4,opt,name=services_degraded,json=servicesDegraded,proto3" json:"services_degraded,omitempty"`
+	ServicesFailed          int32                  `protobuf:"varint,5,opt,name=services_failed,json=servicesFailed,proto3" json:"services_failed,omitempty"`
+	NodesTotal              int32                  `protobuf:"varint,6,opt,name=nodes_total,json=nodesTotal,proto3" json:"nodes_total,omitempty"`
+	NodesRegistering        int32                  `protobuf:"varint,7,opt,name=nodes_registering,json=nodesRegistering,proto3" json:"nodes_registering,omitempty"`
+	NodesReady              int32                  `protobuf:"varint,8,opt,name=nodes_ready,json=nodesReady,proto3" json:"nodes_ready,omitempty"`
+	NodesNotReady           int32                  `protobuf:"varint,9,opt,name=nodes_not_ready,json=nodesNotReady,proto3" json:"nodes_not_ready,omitempty"`
+	NodesDraining           int32                  `protobuf:"varint,10,opt,name=nodes_draining,json=nodesDraining,proto3" json:"nodes_draining,omitempty"`
+	NodesOffline            int32                  `protobuf:"varint,11,opt,name=nodes_offline,json=nodesOffline,proto3" json:"nodes_offline,omitempty"`
+	ExecutionPlansTotal     int32                  `protobuf:"varint,12,opt,name=execution_plans_total,json=executionPlansTotal,proto3" json:"execution_plans_total,omitempty"`
+	ExecutionPlansPending   int32                  `protobuf:"varint,13,opt,name=execution_plans_pending,json=executionPlansPending,proto3" json:"execution_plans_pending,omitempty"`
+	ExecutionPlansDeploying int32                  `protobuf:"varint,14,opt,name=execution_plans_deploying,json=executionPlansDeploying,proto3" json:"execution_plans_deploying,omitempty"`
+	ExecutionPlansRunning   int32                  `protobuf:"varint,15,opt,name=execution_plans_running,json=executionPlansRunning,proto3" json:"execution_plans_running,omitempty"`
+	ExecutionPlansFailed    int32                  `protobuf:"varint,16,opt,name=execution_plans_failed,json=executionPlansFailed,proto3" json:"execution_plans_failed,omitempty"`
+	unknownFields           protoimpl.UnknownFields
+	sizeCache               protoimpl.SizeCache
 }
 
 func (x *PlaneOverview) Reset() {
@@ -210,13 +207,6 @@ func (*PlaneOverview) Descriptor() ([]byte, []int) {
 func (x *PlaneOverview) GetServicesTotal() int32 {
 	if x != nil {
 		return x.ServicesTotal
-	}
-	return 0
-}
-
-func (x *PlaneOverview) GetServicesIdle() int32 {
-	if x != nil {
-		return x.ServicesIdle
 	}
 	return 0
 }
@@ -301,20 +291,6 @@ func (x *PlaneOverview) GetExecutionPlansTotal() int32 {
 func (x *PlaneOverview) GetExecutionPlansPending() int32 {
 	if x != nil {
 		return x.ExecutionPlansPending
-	}
-	return 0
-}
-
-func (x *PlaneOverview) GetExecutionPlansScheduling() int32 {
-	if x != nil {
-		return x.ExecutionPlansScheduling
-	}
-	return 0
-}
-
-func (x *PlaneOverview) GetExecutionPlansAssigned() int32 {
-	if x != nil {
-		return x.ExecutionPlansAssigned
 	}
 	return 0
 }
@@ -1416,30 +1392,27 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\n" +
 	"checked_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\tcheckedAt\x12\x18\n" +
 	"\aservice\x18\x02 \x01(\tR\aservice\x12\x1a\n" +
-	"\bdatabase\x18\x03 \x01(\tR\bdatabase\"\xfc\x06\n" +
+	"\bdatabase\x18\x03 \x01(\tR\bdatabase\"\xdf\x05\n" +
 	"\rPlaneOverview\x12%\n" +
-	"\x0eservices_total\x18\x01 \x01(\x05R\rservicesTotal\x12#\n" +
-	"\rservices_idle\x18\x02 \x01(\x05R\fservicesIdle\x12-\n" +
-	"\x12services_deploying\x18\x03 \x01(\x05R\x11servicesDeploying\x12)\n" +
-	"\x10services_running\x18\x04 \x01(\x05R\x0fservicesRunning\x12+\n" +
-	"\x11services_degraded\x18\x05 \x01(\x05R\x10servicesDegraded\x12'\n" +
-	"\x0fservices_failed\x18\x06 \x01(\x05R\x0eservicesFailed\x12\x1f\n" +
-	"\vnodes_total\x18\a \x01(\x05R\n" +
+	"\x0eservices_total\x18\x01 \x01(\x05R\rservicesTotal\x12-\n" +
+	"\x12services_deploying\x18\x02 \x01(\x05R\x11servicesDeploying\x12)\n" +
+	"\x10services_running\x18\x03 \x01(\x05R\x0fservicesRunning\x12+\n" +
+	"\x11services_degraded\x18\x04 \x01(\x05R\x10servicesDegraded\x12'\n" +
+	"\x0fservices_failed\x18\x05 \x01(\x05R\x0eservicesFailed\x12\x1f\n" +
+	"\vnodes_total\x18\x06 \x01(\x05R\n" +
 	"nodesTotal\x12+\n" +
-	"\x11nodes_registering\x18\b \x01(\x05R\x10nodesRegistering\x12\x1f\n" +
-	"\vnodes_ready\x18\t \x01(\x05R\n" +
+	"\x11nodes_registering\x18\a \x01(\x05R\x10nodesRegistering\x12\x1f\n" +
+	"\vnodes_ready\x18\b \x01(\x05R\n" +
 	"nodesReady\x12&\n" +
-	"\x0fnodes_not_ready\x18\n" +
-	" \x01(\x05R\rnodesNotReady\x12%\n" +
-	"\x0enodes_draining\x18\v \x01(\x05R\rnodesDraining\x12#\n" +
-	"\rnodes_offline\x18\f \x01(\x05R\fnodesOffline\x122\n" +
-	"\x15execution_plans_total\x18\r \x01(\x05R\x13executionPlansTotal\x126\n" +
-	"\x17execution_plans_pending\x18\x0e \x01(\x05R\x15executionPlansPending\x12<\n" +
-	"\x1aexecution_plans_scheduling\x18\x0f \x01(\x05R\x18executionPlansScheduling\x128\n" +
-	"\x18execution_plans_assigned\x18\x10 \x01(\x05R\x16executionPlansAssigned\x12:\n" +
-	"\x19execution_plans_deploying\x18\x11 \x01(\x05R\x17executionPlansDeploying\x126\n" +
-	"\x17execution_plans_running\x18\x12 \x01(\x05R\x15executionPlansRunning\x124\n" +
-	"\x16execution_plans_failed\x18\x13 \x01(\x05R\x14executionPlansFailed\"\x87\x03\n" +
+	"\x0fnodes_not_ready\x18\t \x01(\x05R\rnodesNotReady\x12%\n" +
+	"\x0enodes_draining\x18\n" +
+	" \x01(\x05R\rnodesDraining\x12#\n" +
+	"\rnodes_offline\x18\v \x01(\x05R\fnodesOffline\x122\n" +
+	"\x15execution_plans_total\x18\f \x01(\x05R\x13executionPlansTotal\x126\n" +
+	"\x17execution_plans_pending\x18\r \x01(\x05R\x15executionPlansPending\x12:\n" +
+	"\x19execution_plans_deploying\x18\x0e \x01(\x05R\x17executionPlansDeploying\x126\n" +
+	"\x17execution_plans_running\x18\x0f \x01(\x05R\x15executionPlansRunning\x124\n" +
+	"\x16execution_plans_failed\x18\x10 \x01(\x05R\x14executionPlansFailed\"\x87\x03\n" +
 	"\rPlaneCapacity\x12.\n" +
 	"\x13runtime_nodes_total\x18\x01 \x01(\x05R\x11runtimeNodesTotal\x12.\n" +
 	"\x13runtime_nodes_ready\x18\x02 \x01(\x05R\x11runtimeNodesReady\x12&\n" +

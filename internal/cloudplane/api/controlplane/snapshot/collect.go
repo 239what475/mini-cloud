@@ -81,25 +81,22 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 		},
 		Health: health,
 		Overview: cloudplaneapi.OverviewSummary{
-			ServicesTotal:            overview.ServicesTotal,
-			ServicesIdle:             overview.ServicesIdle,
-			ServicesDeploying:        overview.ServicesDeploying,
-			ServicesRunning:          overview.ServicesRunning,
-			ServicesDegraded:         overview.ServicesDegraded,
-			ServicesFailed:           overview.ServicesFailed,
-			NodesTotal:               overview.NodesTotal,
-			NodesRegistering:         overview.NodesRegistering,
-			NodesReady:               overview.NodesReady,
-			NodesNotReady:            overview.NodesNotReady,
-			NodesDraining:            overview.NodesDraining,
-			NodesOffline:             overview.NodesOffline,
-			ExecutionPlansTotal:      overview.ExecutionPlansTotal,
-			ExecutionPlansPending:    overview.ExecutionPlansPending,
-			ExecutionPlansScheduling: overview.ExecutionPlansScheduling,
-			ExecutionPlansAssigned:   overview.ExecutionPlansAssigned,
-			ExecutionPlansDeploying:  overview.ExecutionPlansDeploying,
-			ExecutionPlansRunning:    overview.ExecutionPlansRunning,
-			ExecutionPlansFailed:     overview.ExecutionPlansFailed,
+			ServicesTotal:           overview.ServicesTotal,
+			ServicesDeploying:       overview.ServicesDeploying,
+			ServicesRunning:         overview.ServicesRunning,
+			ServicesDegraded:        overview.ServicesDegraded,
+			ServicesFailed:          overview.ServicesFailed,
+			NodesTotal:              overview.NodesTotal,
+			NodesRegistering:        overview.NodesRegistering,
+			NodesReady:              overview.NodesReady,
+			NodesNotReady:           overview.NodesNotReady,
+			NodesDraining:           overview.NodesDraining,
+			NodesOffline:            overview.NodesOffline,
+			ExecutionPlansTotal:     overview.ExecutionPlansTotal,
+			ExecutionPlansPending:   overview.ExecutionPlansPending,
+			ExecutionPlansDeploying: overview.ExecutionPlansDeploying,
+			ExecutionPlansRunning:   overview.ExecutionPlansRunning,
+			ExecutionPlansFailed:    overview.ExecutionPlansFailed,
 		},
 		Capacity: summarizeCapacity(nodes),
 		Reliability: cloudplaneapi.ReliabilitySummary{
@@ -128,10 +125,6 @@ func buildRuntimeInventory(observedAt time.Time, nodes []node.Node) cloudplaneap
 	// maxUpdatedAt 用于让 inventory syncVersion 反映参与同步的 runtime node 最新更新时间。
 	var maxUpdatedAt time.Time
 	for _, item := range nodes {
-		// runtime inventory 只暴露 runtime node，不把 platform node 纳入 control-plane selection 基线。
-		if item.ResolvedRole() != node.RoleRuntime {
-			continue
-		}
 		// 记录最新 runtime node 更新时间，后面用它覆盖默认 syncVersion。
 		if item.UpdatedAt.After(maxUpdatedAt) {
 			maxUpdatedAt = item.UpdatedAt
@@ -170,10 +163,6 @@ func summarizeCapacity(nodes []node.Node) cloudplaneapi.CapacitySummary {
 	// 从空汇总开始，逐个累加 runtime node 的容量和分配量。
 	out := cloudplaneapi.CapacitySummary{}
 	for _, item := range nodes {
-		// capacity 只统计承担业务调度的 runtime 节点；platform node 不计入供给侧容量。
-		if item.ResolvedRole() != node.RoleRuntime {
-			continue
-		}
 		out.RuntimeNodesTotal++
 		if item.Status == node.StatusReady {
 			out.RuntimeNodesReady++

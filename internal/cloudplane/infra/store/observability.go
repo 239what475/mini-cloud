@@ -42,7 +42,6 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		)
 		SELECT
 			COUNT(*),
-			0,
 			COUNT(*) FILTER (WHERE failed_count = 0 AND active_count > 0),
 			COUNT(*) FILTER (WHERE failed_count = 0 AND intent_count > 0 AND running_count >= intent_count),
 			COUNT(*) FILTER (WHERE failed_count > 0 AND running_count > 0),
@@ -50,7 +49,6 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		FROM latest_plan
 	`).Scan(
 		&out.ServicesTotal,
-		&out.ServicesIdle,
 		&out.ServicesDeploying,
 		&out.ServicesRunning,
 		&out.ServicesDegraded,
@@ -96,8 +94,6 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 		SELECT
 			COUNT(*),
 			COUNT(*) FILTER (WHERE pending_count > 0 AND deploying_count = 0 AND running_count = 0 AND failed_count = 0),
-			0,
-			0,
 			COUNT(*) FILTER (WHERE failed_count = 0 AND deploying_count > 0),
 			COUNT(*) FILTER (WHERE failed_count = 0 AND intent_count > 0 AND running_count >= intent_count),
 			COUNT(*) FILTER (WHERE failed_count > 0)
@@ -105,8 +101,6 @@ func (s *Store) GetPlatformOverview(ctx context.Context) (observability.Overview
 	`).Scan(
 		&out.ExecutionPlansTotal,
 		&out.ExecutionPlansPending,
-		&out.ExecutionPlansScheduling,
-		&out.ExecutionPlansAssigned,
 		&out.ExecutionPlansDeploying,
 		&out.ExecutionPlansRunning,
 		&out.ExecutionPlansFailed,
@@ -169,8 +163,6 @@ func (s *Store) GetExecutionPlanStuckSignal(ctx context.Context, threshold time.
 		)
 		SELECT
 			COUNT(*) FILTER (WHERE pending_count > 0 AND deploying_count = 0),
-			0,
-			0,
 			COUNT(*) FILTER (WHERE deploying_count > 0),
 			COALESCE(MAX(EXTRACT(EPOCH FROM (now() - updated_at))) FILTER (
 				WHERE pending_count > 0 OR deploying_count > 0
@@ -178,15 +170,13 @@ func (s *Store) GetExecutionPlanStuckSignal(ctx context.Context, threshold time.
 		FROM stuck
 	`, out.ThresholdSeconds).Scan(
 		&out.Pending,
-		&out.Scheduling,
-		&out.Assigned,
 		&out.Deploying,
 		&out.OldestAgeSeconds,
 	); err != nil {
 		return observability.ExecutionPlanStuckSignal{}, fmt.Errorf("count stuck execution plans: %w", err)
 	}
 	// total 是各非终态超时状态计数之和。
-	out.Total = out.Pending + out.Scheduling + out.Assigned + out.Deploying
+	out.Total = out.Pending + out.Deploying
 	return out, nil
 }
 
@@ -243,14 +233,14 @@ func (s *Store) GetPlatformReliabilityInputs(ctx context.Context) (observability
 		Overview: overview,
 	}
 
-	// 统计 runtime 角色节点的基础健康分布。
+	// 统计 runtime 节点的基础健康分布。
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT
-			COUNT(*) FILTER (WHERE role = 'runtime'),
-			COUNT(*) FILTER (WHERE role = 'runtime' AND status = 'ready'),
-			COUNT(*) FILTER (WHERE role = 'runtime' AND status = 'offline'),
-			COUNT(*) FILTER (WHERE role = 'runtime' AND status = 'not_ready'),
-			COUNT(*) FILTER (WHERE role = 'runtime' AND status = 'draining')
+			COUNT(*),
+			COUNT(*) FILTER (WHERE status = 'ready'),
+			COUNT(*) FILTER (WHERE status = 'offline'),
+			COUNT(*) FILTER (WHERE status = 'not_ready'),
+			COUNT(*) FILTER (WHERE status = 'draining')
 		FROM nodes
 	`).Scan(
 		&input.RuntimeNodesTotal,

@@ -10,7 +10,6 @@ type HealthzResponse = {
 
 type PlatformOverview = {
   servicesTotal: number;
-  servicesIdle: number;
   servicesDeploying: number;
   servicesRunning: number;
   servicesDegraded: number;

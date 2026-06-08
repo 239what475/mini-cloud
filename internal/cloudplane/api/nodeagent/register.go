@@ -37,12 +37,10 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// cloud-plane 只接受 runtime node-agent 注册，因此 Role 固定写为 runtime。
 	registered, err := s.store.RegisterNode(ctx, node.RegisterInput{
 		Provider:      input.Provider,
 		Region:        input.Region,
 		Name:          input.Name,
-		Role:          node.RoleRuntime,
 		PrivateIP:     input.PrivateIP,
 		PublicIP:      input.PublicIP,
 		InstanceID:    input.InstanceID,

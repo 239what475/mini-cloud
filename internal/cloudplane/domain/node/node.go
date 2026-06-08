@@ -11,7 +11,7 @@ import (
 const (
 	// StatusRegistering 表示 node-agent 已开始注册但尚未 ready。
 	StatusRegistering = "registering"
-	// StatusReady 表示 node 从健康状态上已 ready；是否可调度还需结合 role、schedulable 和资源余量判断。
+	// StatusReady 表示 node 从健康状态上已 ready；是否可调度还需结合 schedulable 和资源余量判断。
 	StatusReady = "ready"
 	// StatusNotReady 表示 node 已注册但暂时不可执行 workload。
 	StatusNotReady = "not_ready"
@@ -19,11 +19,6 @@ const (
 	StatusDraining = "draining"
 	// StatusOffline 表示 node 心跳超时或被判定离线。
 	StatusOffline = "offline"
-
-	// RolePlatform 表示 node 承载平台控制面组件。
-	RolePlatform = "platform"
-	// RoleRuntime 表示 node 承载用户 workload。
-	RoleRuntime = "runtime"
 )
 
 var (
@@ -31,8 +26,6 @@ var (
 	ErrProviderRequired = errors.New("provider is required")
 	// ErrRegionRequired 表示节点输入缺少地域。
 	ErrRegionRequired = errors.New("region is required")
-	// ErrInvalidRole 表示节点角色不属于允许集合。
-	ErrInvalidRole = errors.New("role must be one of platform, runtime")
 	// ErrNodeNameRequired 表示节点输入缺少名称。
 	ErrNodeNameRequired = errors.New("name is required")
 	// ErrPrivateIPRequired 表示节点输入缺少内网 IP。
@@ -63,7 +56,7 @@ var (
 	ErrInvalidStatus = errors.New("status must be one of registering, ready, not_ready, draining, offline")
 )
 
-// Node 描述 runtime node 或平台 node 的状态。
+// Node 描述 cloud-plane 管理的 runtime node 状态。
 type Node struct {
 	// ID 是 node 记录的唯一标识。
 	ID string `json:"id"`
@@ -73,8 +66,6 @@ type Node struct {
 	Region string `json:"region"`
 	// Name 是 node 的机器可读名称。
 	Name string `json:"name"`
-	// Role 表示 node 在平台中的职责。
-	Role string `json:"role"`
 	// PrivateIP 是节点内网地址。
 	PrivateIP string `json:"privateIP"`
 	// PublicIP 是节点公网地址。
@@ -159,8 +150,6 @@ type RegisterInput struct {
 	Region string `json:"region"`
 	// Name 是 node 的机器可读名称。
 	Name string `json:"name"`
-	// Role 表示 node 在平台中的职责。
-	Role string `json:"role"`
 	// PrivateIP 是节点内网地址。
 	PrivateIP string `json:"privateIP"`
 	// PublicIP 是节点公网地址。
@@ -188,10 +177,6 @@ func (in RegisterInput) Validate() error {
 	// name 是 node 的机器可读标识，注册时必须上报。
 	if strings.TrimSpace(in.Name) == "" {
 		return ErrNodeNameRequired
-	}
-	// role 可以为空；为空时后续 ResolvedRole 会按 runtime 处理。
-	if in.Role != "" && !IsRole(in.Role) {
-		return ErrInvalidRole
 	}
 	// private IP 是 cloud-plane 或 node-agent 间内网通信和探测的基础地址。
 	if strings.TrimSpace(in.PrivateIP) == "" {
@@ -279,30 +264,4 @@ func IsStatus(status string) bool {
 	default:
 		return false
 	}
-}
-
-// IsRole 判断节点角色是否属于当前允许值。
-func IsRole(role string) bool {
-	switch role {
-	case RolePlatform, RoleRuntime:
-		return true
-	default:
-		return false
-	}
-}
-
-// ResolvedRole 返回显式合法角色；未设置或非法时按 runtime 处理。
-func (in RegisterInput) ResolvedRole() string {
-	if IsRole(in.Role) {
-		return in.Role
-	}
-	return RoleRuntime
-}
-
-// ResolvedRole 返回显式合法角色；未设置或非法时按 runtime 处理。
-func (n Node) ResolvedRole() string {
-	if IsRole(n.Role) {
-		return n.Role
-	}
-	return RoleRuntime
 }

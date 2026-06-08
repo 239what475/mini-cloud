@@ -109,11 +109,10 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		ReloadCommand:  cfg.Ingress.Caddy.ReloadCommand,
 	}))
 	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 runtime node 缩容。
-	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController)
+	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController, cfg)
 	// gRPC server 是 cloud-plane 对 control-plane 和 node-agent 暴露的唯一进程入口。
 	grpcServer := cloudplaneapi.NewGRPCServer(cloudplaneapi.Options{
-		Config:        cfg,
-		RuntimeDriver: driver,
+		Config: cfg,
 	}, logger, db, stores)
 	// RunCLI 返回时兜底 Stop gRPC server；正常 ctx 退出路径会先尝试 GracefulStop。
 	defer grpcServer.Stop()

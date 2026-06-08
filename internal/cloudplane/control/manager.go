@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	"mini-cloud/internal/cloudplane/control/nodepool"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/cloudplane/infra/store"
@@ -33,9 +34,8 @@ type Manager struct {
 	// store 提供 cloud-plane 本地持久化状态读写能力。
 	store *store.Store
 	// ingress 负责把 public service 运行态发布到外置 ingress 数据面。
-	ingress ingressReconciler
-	// nodeScaleIn 负责 runtime node 自动缩容状态机。
-	nodeScaleIn *nodepool.ScaleInService
+	ingress  ingressReconciler
+	nodePool *nodepool.Service
 	// staleAfter 是 node-agent 心跳超过该时间未刷新后被视为离线的阈值。
 	staleAfter time.Duration
 
@@ -45,15 +45,14 @@ type Manager struct {
 
 // NewManager 构造 cloud-plane 后台收敛管理器。
 // 参数说明：logger 记录后台循环日志；stores 提供本地状态访问；driver 操作云厂商 runtime node；ingress 发布外置入口路由。
-func NewManager(logger *slog.Logger, stores *store.Store, driver runtimepool.RuntimeDriver, ingress ingressReconciler) *Manager {
+func NewManager(logger *slog.Logger, stores *store.Store, driver runtimepool.RuntimeDriver, ingress ingressReconciler, cfg cloudplaneconfig.Config) *Manager {
 	// Manager 只保存 execution/node/ingress 需要的控制器；service lifecycle truth 已迁回 control-plane。
 	return &Manager{
 		logger: logger,
 		store:  stores,
 		// ingress reconciler 不承载 HTTP 流量，只负责把路由快照发布到外置数据面。
-		ingress: ingress,
-		// nodeScaleIn 封装 runtime node 缩容候选判断和 provider 删除状态机。
-		nodeScaleIn: nodepool.NewScaleInService(logger, stores, driver),
+		ingress:  ingress,
+		nodePool: nodepool.NewService(logger, stores, driver, cfg),
 		// 心跳超过 3 分钟未刷新会在 node-health loop 中被标记为 offline。
 		staleAfter: 3 * time.Minute,
 	}
@@ -66,8 +65,9 @@ func (m *Manager) Start(ctx context.Context) {
 	m.startLoop(ctx, "node-health", nodeHealthInterval, m.reconcileNodeHealthOnce)
 	// ingress 循环把当前 running backends 发布到外置入口数据面；未启用 ingress 时该循环是 no-op。
 	m.startLoop(ctx, "ingress", fastReconcileInterval, m.reconcileIngressOnce)
+	m.startLoop(ctx, "runtime-node-scale-out", fastReconcileInterval, m.nodePool.ReconcileScaleOutOnce)
 	// runtime-node-scale-in 循环回收没有 active execution 的弹性 runtime node；允许缩到 0 台。
-	m.startLoop(ctx, "runtime-node-scale-in", fastReconcileInterval, m.nodeScaleIn.ReconcileOnce)
+	m.startLoop(ctx, "runtime-node-scale-in", fastReconcileInterval, m.nodePool.ReconcileScaleInOnce)
 }
 
 // Wait 等待已启动的后台控制循环退出。

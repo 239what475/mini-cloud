@@ -170,7 +170,7 @@ type EgressProxyConfig struct {
 type IngressConfig struct {
 	// Enabled 表示是否由 cloud-plane 管理外置 ingress 配置。
 	Enabled bool
-	// BaseDomain 是 public service 默认入口域名后缀。
+	// BaseDomain 是 public service 托管入口域名后缀；每个 service 使用 serviceName.baseDomain。
 	BaseDomain string
 	// Caddy 描述外置 Caddy 配置。
 	Caddy CaddyIngressConfig

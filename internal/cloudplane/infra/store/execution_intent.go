@@ -384,12 +384,16 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 
 	var schedulable bool
 	var nodeStatus string
+	var cpuMilliAllocatable int
+	var memoryMiAllocatable int
+	var cpuMilliAllocated int
+	var memoryMiAllocated int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT status, schedulable
+		SELECT status, schedulable, cpu_milli_allocatable, memory_mi_allocatable, cpu_milli_allocated, memory_mi_allocated
 		FROM nodes
 		WHERE id = $1
 		FOR UPDATE
-	`, nodeID).Scan(&nodeStatus, &schedulable); err != nil {
+	`, nodeID).Scan(&nodeStatus, &schedulable, &cpuMilliAllocatable, &memoryMiAllocatable, &cpuMilliAllocated, &memoryMiAllocated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
@@ -439,12 +443,25 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		WHERE status = $1
 		  AND (
 			(work_action = $2 AND node_id = $3)
-			OR (work_action = $4 AND $5)
+			OR (
+				work_action = $4
+				AND $5
+				AND cpu_milli_request <= $6
+				AND memory_mi_request <= $7
+			)
 		  )
 		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
-	`, execution.StatusPending, execution.WorkActionDelete, nodeID, execution.WorkActionRun, schedulable).Scan(
+	`,
+		execution.StatusPending,
+		execution.WorkActionDelete,
+		nodeID,
+		execution.WorkActionRun,
+		schedulable,
+		cpuMilliAllocatable-cpuMilliAllocated,
+		memoryMiAllocatable-memoryMiAllocated,
+	).Scan(
 		&work.ExecutionID,
 		&work.Action,
 		&work.PlanID,
