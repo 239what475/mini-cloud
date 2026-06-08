@@ -15,13 +15,13 @@
 
 ## 这一组文件的角色
 
-- [control-plane.env.example](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/control-plane/control-plane.env.example)
+- [control-plane.yaml.example](control-plane.yaml.example)
   - `control-plane`
-    进程环境文件模板
-- [docker-compose.postgres.yml.example](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/control-plane/docker-compose.postgres.yml.example)
+    进程配置文件模板
+- [docker-compose.postgres.yml.example](docker-compose.postgres.yml.example)
   - 单活 `Postgres`
     依赖模板
-- [mini-cloud-control-plane.service.example](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/control-plane/systemd/mini-cloud-control-plane.service.example)
+- [mini-cloud-control-plane.service.example](systemd/mini-cloud-control-plane.service.example)
   - `systemd`
     单元模板
 
@@ -34,7 +34,7 @@
 
 这也是为什么本目录自带：
 
-- [/.gitignore](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/control-plane/.gitignore)
+- [.gitignore](.gitignore)
 
 来忽略本机实际文件。
 
@@ -57,7 +57,7 @@
 和 shared host
 目录布局则改看：
 
-- [deploy/platform-host/README.md](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/platform-host/README.md)
+- [deploy/platform-host/README.md](../platform-host/README.md)
 
 ## 推荐的主机布局
 
@@ -67,8 +67,8 @@
   - `/opt/mini-cloud/control-plane/bin/control-plane`
 - 工作目录：
   - `/opt/mini-cloud/control-plane`
-- 环境文件：
-  - `/etc/mini-cloud/control-plane/control-plane.env`
+- 配置文件：
+  - `/etc/mini-cloud/control-plane/control-plane.yaml`
 - 日志目录：
   - `/var/log/mini-cloud/control-plane.log`
 - `systemd`
@@ -84,7 +84,7 @@
 
 - `control-plane`
   自己保持成一个普通 Go 进程
-- 进程配置收进单独 env 文件
+- 进程配置收进单独 YAML 配置文件
 - 数据库存储先保持成单机单实例
   `Postgres`
 
@@ -93,14 +93,14 @@
 ### 1. 准备实际文件
 
 ```bash
-cp deploy/control-plane/control-plane.env.example deploy/control-plane/control-plane.env
+cp deploy/control-plane/control-plane.yaml.example deploy/control-plane/control-plane.yaml
 cp deploy/control-plane/docker-compose.postgres.yml.example deploy/control-plane/docker-compose.postgres.yml
 cp deploy/control-plane/systemd/mini-cloud-control-plane.service.example /tmp/mini-cloud-control-plane.service
 ```
 
 然后按你的机器环境改：
 
-- `control-plane.env`
+- `control-plane.yaml`
 - `docker-compose.postgres.yml`
 - `mini-cloud-control-plane.service`
 
@@ -120,7 +120,7 @@ docker compose -f deploy/control-plane/docker-compose.postgres.yml up -d
 
 ```bash
 sudo install -d -o minicloud -g minicloud /var/log/mini-cloud
-sudo install -o minicloud -g minicloud -m 0640 deploy/control-plane/control-plane.env /etc/mini-cloud/control-plane/control-plane.env
+sudo install -o minicloud -g minicloud -m 0640 deploy/control-plane/control-plane.yaml /etc/mini-cloud/control-plane/control-plane.yaml
 sudo cp /tmp/mini-cloud-control-plane.service /etc/systemd/system/mini-cloud-control-plane.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now mini-cloud-control-plane
@@ -139,21 +139,21 @@ curl -fsS http://127.0.0.1:18080/api/healthz
 - `GET /api/v1/control/logs`
 
 这样的聚合日志查询，
-那它自己的 env
+那它自己的 YAML 配置
 里还必须显式配置：
 
-- `MINICLOUD_LOKI_URL`
+- `logs.loki.url`
 
 通常同机 center
 部署时，
 就直接写：
 
-- `MINICLOUD_LOKI_URL=http://127.0.0.1:3100`
+- `logs.loki.url: http://127.0.0.1:3100`
 
 如果有租户隔离，
 再继续补：
 
-- `MINICLOUD_LOKI_TENANT_ID`
+- `logs.loki.tenantID`
 
 否则最直观的现象就是：
 
@@ -171,12 +171,12 @@ curl -fsS http://127.0.0.1:18080/api/healthz
 生产环境恢复链路应由部署系统或运维平台封装，
 这里保留最小命令形态，方便理解边界。
 
-先确认环境变量：
+先确认本机路径变量：
 
 ```bash
-export MINICLOUD_CONTROL_PLANE_ENV_FILE=/etc/mini-cloud/control-plane/control-plane.env
-export MINICLOUD_CONTROL_PLANE_POSTGRES_CONTAINER=mini-cloud-control-plane-postgres
-export MINICLOUD_CONTROL_PLANE_COMPOSE_FILE=/opt/mini-cloud/control-plane/deploy/control-plane/docker-compose.postgres.yml
+control_plane_config_file=/etc/mini-cloud/control-plane/control-plane.yaml
+control_plane_postgres_container=mini-cloud-control-plane-postgres
+control_plane_compose_file=/opt/mini-cloud/control-plane/deploy/control-plane/docker-compose.postgres.yml
 ```
 
 备份数据库：
@@ -184,10 +184,10 @@ export MINICLOUD_CONTROL_PLANE_COMPOSE_FILE=/opt/mini-cloud/control-plane/deploy
 ```bash
 backup_dir=/var/backups/mini-cloud/control-plane/$(date +%Y%m%d-%H%M%S)
 mkdir -p "$backup_dir"
-docker exec "$MINICLOUD_CONTROL_PLANE_POSTGRES_CONTAINER" \
+docker exec "$control_plane_postgres_container" \
   pg_dump -U mini_cloud -d mini_cloud_control_plane -Fc \
   > "$backup_dir/control-plane.dump"
-cp "$MINICLOUD_CONTROL_PLANE_ENV_FILE" "$backup_dir/control-plane.env"
+cp "$control_plane_config_file" "$backup_dir/control-plane.yaml"
 ```
 
 如果数据库容器已经由别的方式拉起来了，
@@ -198,11 +198,11 @@ cp "$MINICLOUD_CONTROL_PLANE_ENV_FILE" "$backup_dir/control-plane.env"
 
 ```bash
 backup_dir=/var/backups/mini-cloud/control-plane/<timestamp>
-docker exec "$MINICLOUD_CONTROL_PLANE_POSTGRES_CONTAINER" \
+docker exec "$control_plane_postgres_container" \
   psql -U mini_cloud -d postgres -v ON_ERROR_STOP=1 \
   -c "DROP DATABASE IF EXISTS mini_cloud_control_plane;" \
   -c "CREATE DATABASE mini_cloud_control_plane;"
-docker exec -i "$MINICLOUD_CONTROL_PLANE_POSTGRES_CONTAINER" \
+docker exec -i "$control_plane_postgres_container" \
   pg_restore -U mini_cloud -d mini_cloud_control_plane \
   < "$backup_dir/control-plane.dump"
 ```

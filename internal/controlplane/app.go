@@ -26,12 +26,7 @@ type App struct {
 	cancel context.CancelFunc
 }
 
-func Build(logger *slog.Logger) (App, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return App{}, fmt.Errorf("load process config: %w", err)
-	}
-
+func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	db, err := store.Open(cfg.DatabaseURL)
 	if err != nil {
 		return App{}, fmt.Errorf("open database: %w", err)
