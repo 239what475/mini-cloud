@@ -203,13 +203,23 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
+	planeItem, err := db.Store.CreatePlane(ctx, plane.CreateInput{
+		Name:            "service-plane",
+		DisplayName:     "Service Plane",
+		Provider:        "aliyun",
+		Region:          "cn-beijing",
+		GRPCEndpoint:    "service-plane.example.com:443",
+		SouthboundToken: "service-plane-token",
+	})
+	if err != nil {
+		t.Fatalf("CreatePlane returned error: %v", err)
+	}
 
 	serviceItem, err := db.Store.CreateService(ctx, controlservice.CreateInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
 		Spec: controlservice.Spec{
-			Provider:      "aliyun",
-			Region:        "cn-beijing",
+			PlaneID:       planeItem.ID,
 			InstanceClass: controlservice.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/cliproxyapi:v1",

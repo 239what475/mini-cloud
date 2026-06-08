@@ -18,9 +18,7 @@ import (
 )
 
 type serviceSpec struct {
-	Provider             string               `json:"provider"`
-	Region               string               `json:"region"`
-	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
+	PlaneID              string               `json:"planeID"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -73,9 +71,7 @@ type serviceEnvelope struct {
 }
 
 type serviceSpecInput struct {
-	Provider             string               `json:"provider"`
-	Region               string               `json:"region"`
-	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
+	PlaneID              string               `json:"planeID"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -154,6 +150,9 @@ func (h serviceHandler) createService(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
+		case errors.Is(err, store.ErrPlaneNotFound):
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
 			writeJSON(c, http.StatusConflict, map[string]any{"error": err.Error()})
 			return
@@ -227,6 +226,9 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		case errors.Is(err, store.ErrRegistryCredentialNotFound):
 			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
+		case errors.Is(err, store.ErrPlaneNotFound):
+			writeJSON(c, http.StatusNotFound, map[string]any{"error": err.Error()})
+			return
 		default:
 			logger.Error("update service failed", "service_id", serviceID, "error", err)
 			writeJSON(c, http.StatusInternalServerError, map[string]any{"error": "internal server error"})
@@ -286,9 +288,7 @@ func buildServiceResource(view controller.View) serviceResource {
 			Generation:  view.Service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
-			Provider:             view.Service.Spec.Provider,
-			Region:               view.Service.Spec.Region,
-			PinnedPlaneID:        view.Service.Spec.PinnedPlaneID,
+			PlaneID:              view.Service.Spec.PlaneID,
 			InstanceClass:        view.Service.Spec.InstanceClass,
 			Exposure:             view.Service.Spec.Exposure,
 			Image:                view.Service.Spec.Image,
@@ -356,9 +356,7 @@ func (r serviceCreateRequest) toCreateInput() (controlservice.CreateInput, error
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec: controlservice.Spec{
-			Provider:             strings.TrimSpace(spec.Provider),
-			Region:               strings.TrimSpace(spec.Region),
-			PinnedPlaneID:        strings.TrimSpace(spec.PinnedPlaneID),
+			PlaneID:              strings.TrimSpace(spec.PlaneID),
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
 			Image:                strings.TrimSpace(spec.Image),
@@ -382,9 +380,7 @@ func (r serviceUpdateRequest) toUpdateInput() (controlservice.UpdateInput, error
 	return controlservice.UpdateInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec: controlservice.Spec{
-			Provider:             strings.TrimSpace(spec.Provider),
-			Region:               strings.TrimSpace(spec.Region),
-			PinnedPlaneID:        strings.TrimSpace(spec.PinnedPlaneID),
+			PlaneID:              strings.TrimSpace(spec.PlaneID),
 			InstanceClass:        strings.TrimSpace(spec.InstanceClass),
 			Exposure:             strings.TrimSpace(spec.Exposure),
 			Image:                strings.TrimSpace(spec.Image),
@@ -405,9 +401,7 @@ func isServiceInputError(err error) bool {
 		errors.Is(err, controlservice.ErrServiceNameRequired) ||
 		errors.Is(err, controlservice.ErrInvalidServiceName) ||
 		errors.Is(err, controlservice.ErrDisplayNameRequired) ||
-		errors.Is(err, controlservice.ErrProviderRequired) ||
-		errors.Is(err, controlservice.ErrRegionRequired) ||
-		errors.Is(err, controlservice.ErrPinnedPlaneIDInvalid) ||
+		errors.Is(err, controlservice.ErrPlaneIDRequired) ||
 		errors.Is(err, controlservice.ErrInvalidInstanceClass) ||
 		errors.Is(err, controlservice.ErrInvalidExposure) ||
 		errors.Is(err, controlservice.ErrImageRequired) ||

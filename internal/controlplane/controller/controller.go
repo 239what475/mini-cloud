@@ -9,7 +9,6 @@ import (
 
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/planeselector"
 	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -19,15 +18,11 @@ const (
 	defaultReconcileTimeout  = 30 * time.Second
 )
 
-var ErrNoEligibleAssignment = errors.New("no eligible plane matched the requested provider/region/capacity")
+var ErrPlaneNotReady = errors.New("plane is not ready")
 
 type View struct {
 	Service controlservice.Service `json:"service"`
 	Plane   *plane.Detail          `json:"plane,omitempty"`
-}
-
-type planeSelector interface {
-	PreviewSelection(context.Context, planeselector.SelectionInput) (planeselector.SelectionResult, error)
 }
 
 type executionPlanManager interface {
@@ -51,21 +46,19 @@ type serviceStore interface {
 type Controller struct {
 	logger   *slog.Logger
 	store    serviceStore
-	selector planeSelector
 	deploy   executionPlanManager
 	interval time.Duration
 	timeout  time.Duration
 	trigger  chan struct{}
 }
 
-func New(logger *slog.Logger, stores serviceStore, planner planeSelector, deploySvc executionPlanManager) *Controller {
+func New(logger *slog.Logger, stores serviceStore, deploySvc executionPlanManager) *Controller {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Controller{
 		logger:   logger,
 		store:    stores,
-		selector: planner,
 		deploy:   deploySvc,
 		interval: defaultReconcileInterval,
 		timeout:  defaultReconcileTimeout,
@@ -224,7 +217,7 @@ func (c *Controller) Reconcile(ctx context.Context) error {
 }
 
 func (c *Controller) validateConfigured() error {
-	if c == nil || c.store == nil || c.selector == nil || c.deploy == nil {
+	if c == nil || c.store == nil || c.deploy == nil {
 		return fmt.Errorf("service controller is not configured")
 	}
 	return nil

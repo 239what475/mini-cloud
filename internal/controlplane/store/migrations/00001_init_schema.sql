@@ -65,9 +65,7 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
-    spec_provider TEXT NOT NULL DEFAULT '',
-    spec_region TEXT NOT NULL DEFAULT '',
-    spec_pinned_plane_id TEXT NULL,
+    spec_plane_id TEXT NOT NULL,
     spec_instance_class TEXT NOT NULL DEFAULT 'small',
     spec_exposure TEXT NOT NULL,
     spec_image TEXT NOT NULL,
@@ -93,8 +91,8 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT fleet_services_name_key UNIQUE (name),
-    CONSTRAINT fleet_services_pinned_plane_fk
-        FOREIGN KEY (spec_pinned_plane_id) REFERENCES fleet_planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED,
+    CONSTRAINT fleet_services_plane_fk
+        FOREIGN KEY (spec_plane_id) REFERENCES fleet_planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED,
     CONSTRAINT fleet_services_assigned_plane_fk
         FOREIGN KEY (status_assigned_plane_id) REFERENCES fleet_planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );

@@ -23,9 +23,7 @@ const serviceSelectColumns = `
 	id,
 	name,
 	display_name,
-	spec_provider,
-	spec_region,
-	spec_pinned_plane_id,
+	spec_plane_id,
 	spec_instance_class,
 	spec_exposure,
 	spec_image,
@@ -56,11 +54,11 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 	if err := input.Validate(); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.RegistryCredentialID); err != nil {
+	planeID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	if err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
-	if err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
 		return controlservice.Service{}, err
 	}
 
@@ -101,9 +99,7 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			id,
 			name,
 			display_name,
-			spec_provider,
-			spec_region,
-			spec_pinned_plane_id,
+			spec_plane_id,
 			spec_instance_class,
 			spec_exposure,
 			spec_image,
@@ -127,15 +123,13 @@ func (s *Store) CreateService(ctx context.Context, input controlservice.CreateIn
 			status_remote_status,
 			status_remote_message
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, NULL, NULL, '', '')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, $17, $18, $19, $20, $21, NULL, NULL, '', '')
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
 		input.Name,
 		input.DisplayName,
-		provider,
-		region,
-		nullableString(pinnedPlaneID),
+		planeID,
 		instanceClass,
 		input.Spec.Exposure,
 		input.Spec.Image,
@@ -260,11 +254,11 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 	if err := input.Validate(current.Metadata.Name); err != nil {
 		return controlservice.Service{}, err
 	}
-	if err := s.ensureServiceResourceReferencesResolved(ctx, input.Spec.RegistryCredentialID); err != nil {
+	planeID, instanceClass, err := controlservice.ResolveServicePlacementFields(input.Spec.PlaneID, input.Spec.InstanceClass)
+	if err != nil {
 		return controlservice.Service{}, err
 	}
-	provider, region, pinnedPlaneID, instanceClass, err := controlservice.ResolveServiceAssignmentFields(input.Spec.Provider, input.Spec.Region, input.Spec.PinnedPlaneID, input.Spec.InstanceClass)
-	if err != nil {
+	if err := s.ensureServiceReferencesResolved(ctx, planeID, input.Spec.RegistryCredentialID); err != nil {
 		return controlservice.Service{}, err
 	}
 	currentRunJSON, err := marshalJSON(current.Status.Run, controlservice.RunStatus{Phase: controlservice.RunPhasePending})
@@ -279,41 +273,36 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input contr
 		UPDATE fleet_services
 		SET
 			display_name = $2,
-			spec_provider = $3,
-			spec_region = $4,
-			spec_pinned_plane_id = $5,
-			spec_instance_class = $6,
-			spec_exposure = $7,
-			spec_image = $8,
-			spec_command_json = $9,
-			spec_args_json = $10,
-			spec_default_port = $11,
-			spec_readiness_path = $12,
-			spec_env_json = $13,
-			spec_secret_env_json = $14,
-			spec_registry_credential_id = $15,
-			spec_files_json = $16,
-			status_run_json = $17,
-			generation = $18,
-			status_desired_state = $19,
-			status_observed_generation = $20,
-			status_phase = $21,
-			status_healthy = $22,
-			status_message = $23,
+			spec_plane_id = $3,
+			spec_instance_class = $4,
+			spec_exposure = $5,
+			spec_image = $6,
+			spec_command_json = $7,
+			spec_args_json = $8,
+			spec_default_port = $9,
+			spec_readiness_path = $10,
+			spec_env_json = $11,
+			spec_secret_env_json = $12,
+			spec_registry_credential_id = $13,
+			spec_files_json = $14,
+			status_run_json = $15,
+			generation = $16,
+			status_desired_state = $17,
+			status_observed_generation = $18,
+			status_phase = $19,
+			status_healthy = $20,
+			status_message = $21,
 			status_last_reconciled_at = NULL,
-			status_assigned_plane_id = NULL,
 			status_remote_status = '',
 			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $24
+			AND generation = $22
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
 		input.DisplayName,
-		provider,
-		region,
-		nullableString(pinnedPlaneID),
+		planeID,
 		instanceClass,
 		input.Spec.Exposure,
 		input.Spec.Image,
@@ -531,16 +520,13 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 	var secretEnvJSON []byte
 	var filesJSON []byte
 	var runJSON []byte
-	var pinnedPlaneID sql.NullString
 	var lastReconciledAt sql.NullTime
 	var assignedPlaneID sql.NullString
 	if err := scanner.Scan(
 		&item.Metadata.ID,
 		&item.Metadata.Name,
 		&item.Metadata.DisplayName,
-		&item.Spec.Provider,
-		&item.Spec.Region,
-		&pinnedPlaneID,
+		&item.Spec.PlaneID,
 		&item.Spec.InstanceClass,
 		&item.Spec.Exposure,
 		&item.Spec.Image,
@@ -588,9 +574,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (controlservice.S
 		return controlservice.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
 	item.Status.Run.Phase = controlservice.NormalizeRunPhase(item.Status.Run.Phase)
-	if pinnedPlaneID.Valid {
-		item.Spec.PinnedPlaneID = pinnedPlaneID.String
-	}
 	if lastReconciledAt.Valid {
 		lastValue := lastReconciledAt.Time.UTC()
 		item.Status.Observed.LastReconciledAt = &lastValue
@@ -615,7 +598,10 @@ func nullableOptionalString(value *string) any {
 	return strings.TrimSpace(*value)
 }
 
-func (s *Store) ensureServiceResourceReferencesResolved(ctx context.Context, registryCredentialID string) error {
+func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID string, registryCredentialID string) error {
+	if _, err := s.GetPlane(ctx, planeID); err != nil {
+		return err
+	}
 	if registryCredentialID != "" {
 		if _, err := s.GetRegistryCredential(ctx, registryCredentialID); err != nil {
 			return err

@@ -9,8 +9,8 @@ import (
 
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/controlplane/deploy"
+	plane "mini-cloud/internal/controlplane/plane"
 	planeclient "mini-cloud/internal/controlplane/planeclient"
-	"mini-cloud/internal/controlplane/planeselector"
 	controlservice "mini-cloud/internal/controlplane/service"
 	"mini-cloud/internal/controlplane/store"
 )
@@ -56,32 +56,26 @@ func (c *Controller) reconcileServiceDeletion(ctx context.Context, serviceItem c
 }
 
 func (c *Controller) reconcileServiceWithoutAssignment(ctx context.Context, serviceItem controlservice.Service) error {
-	decision, err := c.selectPlane(ctx, serviceItem)
+	targetPlaneID, err := c.targetPlaneID(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, err))
 		return errors.Join(err, statusErr)
 	}
-	if decision == nil {
-		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, pendingPlaneSelectorStatus(serviceItem.Metadata.Generation, ErrNoEligibleAssignment))
-	}
-	_, err = c.applyServiceToPlane(ctx, serviceItem, *decision, nil)
+	_, err = c.applyServiceToPlane(ctx, serviceItem, targetPlaneID, nil)
 	return err
 }
 
 func (c *Controller) reconcileServiceDesiredSpec(ctx context.Context, serviceItem controlservice.Service, assignedPlaneID string) error {
-	if c.canReuseAssignment(ctx, serviceItem, assignedPlaneID) {
-		_, err := c.applyServiceToAssignedPlane(ctx, serviceItem, assignedPlaneID)
-		return err
-	}
-	decision, err := c.selectPlane(ctx, serviceItem)
+	targetPlaneID, err := c.targetPlaneID(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, err))
 		return errors.Join(err, statusErr)
 	}
-	if decision == nil {
-		return c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, pendingPlaneSelectorStatus(serviceItem.Metadata.Generation, ErrNoEligibleAssignment))
+	if strings.TrimSpace(assignedPlaneID) == targetPlaneID {
+		_, err := c.applyServiceToAssignedPlane(ctx, serviceItem, assignedPlaneID)
+		return err
 	}
-	_, err = c.applyServiceToPlane(ctx, serviceItem, *decision, &assignedPlaneID)
+	_, err = c.applyServiceToPlane(ctx, serviceItem, targetPlaneID, &assignedPlaneID)
 	return err
 }
 
@@ -96,8 +90,8 @@ func (c *Controller) applyServiceToAssignedPlane(ctx context.Context, serviceIte
 	return result.PlaneID, statusErr
 }
 
-func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem controlservice.Service, decision planeselector.Decision, previousPlaneID *string) (string, error) {
-	result, err := c.deploy.ApplyService(ctx, decision.PlaneID, toDeployApplyInput(serviceItem))
+func (c *Controller) applyServiceToPlane(ctx context.Context, serviceItem controlservice.Service, planeID string, previousPlaneID *string) (string, error) {
+	result, err := c.deploy.ApplyService(ctx, planeID, toDeployApplyInput(serviceItem))
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, failedServiceStatus(serviceItem.Metadata.Generation, err))
 		return "", errors.Join(err, statusErr)
@@ -137,37 +131,25 @@ func deletingRunStatus(serviceItem controlservice.Service, runID string) control
 	return runStatus
 }
 
-func (c *Controller) selectPlane(ctx context.Context, serviceItem controlservice.Service) (*planeselector.Decision, error) {
-	result, err := c.selector.PreviewSelection(ctx, planeselector.SelectionInput{
-		Provider:      serviceItem.Spec.Provider,
-		Region:        serviceItem.Spec.Region,
-		PinnedPlaneID: serviceItem.Spec.PinnedPlaneID,
-		InstanceClass: serviceItem.Spec.InstanceClass,
-	})
+func (c *Controller) targetPlaneID(ctx context.Context, serviceItem controlservice.Service) (string, error) {
+	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
+	if planeID == "" {
+		return "", controlservice.ErrPlaneIDRequired
+	}
+	planeDetail, err := c.store.GetPlane(ctx, planeID)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return result.Decision, nil
-}
-
-func (c *Controller) canReuseAssignment(ctx context.Context, serviceItem controlservice.Service, assignedPlaneID string) bool {
-	if strings.TrimSpace(assignedPlaneID) == "" {
-		return false
+	if !planeDetail.Registration.Registered {
+		return "", deploy.ErrPlaneNotRegistered
 	}
-	plane, err := c.store.GetPlane(ctx, assignedPlaneID)
-	if err != nil {
-		return false
+	if planeDetail.Status.Status != plane.StatusReady {
+		return "", fmt.Errorf("%w: current status is %s", ErrPlaneNotReady, planeDetail.Status.Status)
 	}
-	if strings.TrimSpace(serviceItem.Spec.PinnedPlaneID) != "" && plane.ID != serviceItem.Spec.PinnedPlaneID {
-		return false
+	if !planeDetail.Operation.AcceptingNewRuns() {
+		return "", fmt.Errorf("%w: plane operation state is %s", deploy.ErrPlaneNotAcceptingNewRuns, planeDetail.Operation.ResolvedState())
 	}
-	if plane.Provider != serviceItem.Spec.Provider || plane.Region != serviceItem.Spec.Region {
-		return false
-	}
-	if !plane.Registration.Registered || !plane.Operation.AcceptingNewRuns() {
-		return false
-	}
-	return true
+	return planeID, nil
 }
 
 func deletePlanID(serviceItem controlservice.Service) string {
@@ -206,7 +188,6 @@ func toDeployApplyInput(serviceItem controlservice.Service) deploy.ApplyServiceI
 			Generation:  serviceItem.Metadata.Generation,
 		},
 		Spec: deploy.ServiceSpec{
-			Region:               serviceItem.Spec.Region,
 			InstanceClass:        serviceItem.Spec.InstanceClass,
 			Exposure:             serviceItem.Spec.Exposure,
 			Image:                serviceItem.Spec.Image,
@@ -286,21 +267,6 @@ func deletePlanDispatchedStatus(generation int64, planeID string, planID string)
 		AssignedPlaneID:    planeID,
 		RemoteStatus:       remoteStatus,
 		RemoteMessage:      remoteMessage,
-	}
-}
-
-func pendingPlaneSelectorStatus(generation int64, err error) controlservice.Status {
-	now := time.Now().UTC()
-	message := "service is waiting for an eligible plane"
-	if err != nil {
-		message = err.Error()
-	}
-	return controlservice.Status{
-		ObservedGeneration: generation,
-		Phase:              controlservice.PhasePending,
-		Healthy:            false,
-		Message:            message,
-		LastReconciledAt:   &now,
 	}
 }
 

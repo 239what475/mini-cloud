@@ -36,9 +36,7 @@ var (
 	ErrInvalidDefaultPort    = errors.New("defaultPort must be between 1 and 65535")
 	ErrInvalidReadinessPath  = errors.New("readinessPath must start with /")
 	ErrInvalidEnvironmentKey = errors.New("env keys must not be empty")
-	ErrPinnedPlaneIDInvalid  = errors.New("pinnedPlaneID must not be blank when provided")
-	ErrProviderRequired      = errors.New("provider is required")
-	ErrRegionRequired        = errors.New("region is required")
+	ErrPlaneIDRequired       = errors.New("planeID is required")
 	ErrInvalidInstanceClass  = errors.New("instanceClass must be one of small, medium, large")
 	serviceNamePattern       = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
@@ -59,9 +57,7 @@ type Metadata struct {
 }
 
 type Spec struct {
-	Provider             string               `json:"provider"`
-	Region               string               `json:"region"`
-	PinnedPlaneID        string               `json:"pinnedPlaneID,omitempty"`
+	PlaneID              string               `json:"planeID"`
 	InstanceClass        string               `json:"instanceClass"`
 	Exposure             string               `json:"exposure"`
 	Image                string               `json:"image"`
@@ -204,9 +200,7 @@ func copyStringMap(input map[string]string) map[string]string {
 
 func CloneSpec(input Spec) Spec {
 	return Spec{
-		Provider:             input.Provider,
-		Region:               input.Region,
-		PinnedPlaneID:        input.PinnedPlaneID,
+		PlaneID:              input.PlaneID,
 		InstanceClass:        input.InstanceClass,
 		Exposure:             input.Exposure,
 		Image:                input.Image,
@@ -222,7 +216,7 @@ func CloneSpec(input Spec) Spec {
 }
 
 func (spec Spec) Validate() error {
-	provider, region, pinnedPlaneID, instanceClass, err := ResolveServiceAssignmentFields(spec.Provider, spec.Region, spec.PinnedPlaneID, spec.InstanceClass)
+	planeID, instanceClass, err := ResolveServicePlacementFields(spec.PlaneID, spec.InstanceClass)
 	if err != nil {
 		return err
 	}
@@ -255,9 +249,7 @@ func (spec Spec) Validate() error {
 	if err := projectedfile.ValidateFiles(spec.Files); err != nil {
 		return err
 	}
-	_ = provider
-	_ = region
-	_ = pinnedPlaneID
+	_ = planeID
 	_ = instanceClass
 	return nil
 }
@@ -267,7 +259,7 @@ func serviceNeedsNewRun(before Spec, after Spec) bool {
 }
 
 func SpecRuntimeEqual(before Spec, after Spec) bool {
-	return before.Region == after.Region &&
+	return before.PlaneID == after.PlaneID &&
 		before.InstanceClass == after.InstanceClass &&
 		before.Image == after.Image &&
 		reflect.DeepEqual(before.Command, after.Command) &&
@@ -280,23 +272,14 @@ func SpecRuntimeEqual(before Spec, after Spec) bool {
 		reflect.DeepEqual(projectedfile.CloneFiles(before.Files), projectedfile.CloneFiles(after.Files))
 }
 
-func ResolveServiceAssignmentFields(provider string, region string, pinnedPlaneID string, instanceClass string) (string, string, string, string, error) {
-	if strings.TrimSpace(provider) == "" {
-		return "", "", "", "", ErrProviderRequired
-	}
-	if strings.TrimSpace(region) == "" {
-		return "", "", "", "", ErrRegionRequired
-	}
-	if strings.TrimSpace(pinnedPlaneID) == "" {
-		pinnedPlaneID = ""
-	}
-	if pinnedPlaneID != "" && strings.TrimSpace(pinnedPlaneID) == "" {
-		return "", "", "", "", ErrPinnedPlaneIDInvalid
+func ResolveServicePlacementFields(planeID string, instanceClass string) (string, string, error) {
+	if strings.TrimSpace(planeID) == "" {
+		return "", "", ErrPlaneIDRequired
 	}
 	if !IsInstanceClass(instanceClass) {
-		return "", "", "", "", ErrInvalidInstanceClass
+		return "", "", ErrInvalidInstanceClass
 	}
-	return strings.TrimSpace(provider), strings.TrimSpace(region), strings.TrimSpace(pinnedPlaneID), instanceClass, nil
+	return strings.TrimSpace(planeID), instanceClass, nil
 }
 
 func NormalizeRunPhase(phase string) string {

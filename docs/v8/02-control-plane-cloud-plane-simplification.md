@@ -60,9 +60,8 @@ control-plane 是全局事实来源，负责：
 - service spec
 - service generation
 - service run
-- placement
+- explicit service-to-plane assignment
 - global service status
-- plane selection
 - operation history and audit
 
 service lifecycle 只应该在 control-plane 存在。
@@ -153,7 +152,7 @@ cloud-plane / node-agent 只接收本次 execution 需要的材料
 ```text
 1. 用户创建或更新 service
 2. control-plane 写入 service generation / run
-3. control-plane 选择目标 cloud-plane
+3. control-plane 按 service.spec.planeID 确认目标 cloud-plane 可用
 4. control-plane 创建属于该 plane 的 execution intents
 5. cloud-plane 拉取或接收属于自己的 execution intents
 6. cloud-plane 分配给 node-agent
@@ -212,10 +211,9 @@ control-plane 负责汇总全局 front door / CDN 需要的 service-level view�
 
 已改造为通过 execution plan 驱动 cloud-plane：
 
-- `internal/controlplane/servicecontroller`
+- `internal/controlplane/controller`
 - `internal/controlplane/deploy`
 - `internal/controlplane/planeclient`
-- `internal/controlplane/planeselector`
 - service status aggregation
 
 control-plane 不再调用 cloud-plane `ApplyService`、`GetService`、`RollbackService`。

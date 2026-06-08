@@ -11,7 +11,6 @@ import (
 	"mini-cloud/internal/controlplane/controller"
 	"mini-cloud/internal/controlplane/deploy"
 	plane "mini-cloud/internal/controlplane/plane"
-	"mini-cloud/internal/controlplane/planeselector"
 	"mini-cloud/internal/controlplane/planesync"
 	"mini-cloud/internal/controlplane/store"
 
@@ -24,7 +23,6 @@ type Options struct {
 	LogQueryService   logquery.Backend
 	PlaneSyncer       *planesync.Syncer
 	Dispatcher        *deploy.Dispatcher
-	PlaneSelector     *planeselector.Selector
 	ServiceController *controller.Controller
 }
 
@@ -38,11 +36,8 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	if opts.Dispatcher == nil {
 		opts.Dispatcher = deploy.NewDispatcher(logger, stores)
 	}
-	if opts.PlaneSelector == nil {
-		opts.PlaneSelector = planeselector.NewSelector(logger, stores)
-	}
 	if opts.ServiceController == nil {
-		opts.ServiceController = controller.New(logger, stores, opts.PlaneSelector, opts.Dispatcher)
+		opts.ServiceController = controller.New(logger, stores, opts.Dispatcher)
 	}
 
 	serveRootJSONOrIndex(logger, opts.UIDir, router)
@@ -87,7 +82,6 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	logQueryHandler := newLogQueryHandler(logger, opts.LogQueryService)
 
 	controlHandler := newControlHandler(logger, stores, opts.PlaneSyncer)
-	controlPlaneSelectionHandler := newControlPlaneSelectionHandler(logger, stores, opts.PlaneSelector)
 	control := api.Group("/control")
 	control.GET("/logs", logQueryHandler.queryControlLogs)
 	control.GET("/inventory", controlHandler.inventory)
@@ -97,7 +91,6 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	control.DELETE("/planes/:planeID", controlHandler.deletePlane)
 	control.POST("/planes/:planeID/actions/sync", controlHandler.syncPlane)
 	control.PUT("/planes/:planeID/operation", controlHandler.updatePlaneOperation)
-	control.POST("/plane-selection/preview-service", controlPlaneSelectionHandler.previewSelection)
 	control.GET("/operations", operationHistoryHandler.listControlOperations)
 
 	return router
