@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logquery"
-	"mini-cloud/internal/controlplane/serviceops"
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +16,7 @@ type Options struct {
 	AdminToken        string
 	UIDir             string
 	LogQueryService   logquery.Backend
-	ServiceController *serviceops.Controller
+	ServiceController *coordination.ServiceController
 }
 
 func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler {

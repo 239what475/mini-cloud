@@ -12,8 +12,7 @@ import (
 	"mini-cloud/internal/common/logquery"
 	"mini-cloud/internal/controlplane/api"
 	"mini-cloud/internal/controlplane/config"
-	"mini-cloud/internal/controlplane/planesync"
-	"mini-cloud/internal/controlplane/serviceops"
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/controlplane/store/migrations"
 )
@@ -42,12 +41,10 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 
 	stores := store.New(db)
 
-	syncer := planesync.NewSyncer(logger, stores)
-	planesync.StartLoop(backgroundCtx, logger, syncer, cfg.PlaneSyncIntervalSeconds)
+	planeSyncer := coordination.NewPlaneSyncer(logger, stores)
+	coordination.StartPlaneSyncLoop(backgroundCtx, logger, planeSyncer, cfg.PlaneSyncIntervalSeconds)
 
-	dispatcher := serviceops.NewDispatcher(logger, stores)
-
-	serviceController := serviceops.New(logger, stores, dispatcher)
+	serviceController := coordination.NewServiceController(logger, stores)
 	serviceController.SetReconcileTimeout(cfg.ServiceReconcileTimeoutSeconds)
 
 	go serviceController.Run(backgroundCtx)

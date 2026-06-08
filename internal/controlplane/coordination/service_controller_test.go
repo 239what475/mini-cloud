@@ -1,4 +1,4 @@
-package serviceops
+package coordination
 
 import (
 	"context"
@@ -18,7 +18,7 @@ func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	planeItem := mustCreateReadyPlane(t, db, "plane-create")
 
 	deployer := newFakeDeploy()
-	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
+	controller := newServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
 
 	service, err := controller.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
@@ -50,7 +50,7 @@ func TestUpdateReusesCurrentAssignment(t *testing.T) {
 	planeItem := mustCreateReadyPlane(t, db, "plane-update")
 
 	deployer := newFakeDeploy()
-	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
+	controller := newServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
 
 	created, err := controller.Create(ctx, createInput(planeItem.ID, "api", "API", "nginx:1.27-alpine"))
 	if err != nil {
@@ -78,7 +78,7 @@ func TestUpdateMovesAssignmentWhenPlaneIDChanges(t *testing.T) {
 	planeB := mustCreateReadyPlane(t, db, "plane-move-b")
 
 	deployer := newFakeDeploy()
-	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
+	controller := newServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
 
 	created, err := controller.Create(ctx, createInput(planeA.ID, "move", "Move", "nginx:1.27-alpine"))
 	if err != nil {
@@ -105,7 +105,7 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	planeItem := mustCreateReadyPlane(t, db, "plane-delete")
 
 	deployer := newFakeDeploy()
-	controller := New(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
+	controller := newServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, deployer)
 
 	created, err := controller.Create(ctx, createInput(planeItem.ID, "gone", "Gone", "nginx:1.27-alpine"))
 	if err != nil {
@@ -160,7 +160,7 @@ type fakeDeploy struct {
 	applyPlaneIDs  []string
 	applyServices  []model.Service
 	deletePlaneIDs []string
-	deleteInputs   []DeleteServiceInput
+	deleteInputs   []deleteServiceInput
 	deleteCalls    int
 }
 
@@ -168,13 +168,13 @@ func newFakeDeploy() *fakeDeploy {
 	return &fakeDeploy{}
 }
 
-func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, service model.Service) (ApplyResult, error) {
+func (f *fakeDeploy) ApplyService(_ context.Context, planeID string, service model.Service) (applyResult, error) {
 	f.applyPlaneIDs = append(f.applyPlaneIDs, planeID)
 	f.applyServices = append(f.applyServices, service)
-	return ApplyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation)}, nil
+	return applyResult{PlaneID: planeID, Action: "updated", PlanID: fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation)}, nil
 }
 
-func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input DeleteServiceInput) error {
+func (f *fakeDeploy) DeleteService(_ context.Context, planeID string, input deleteServiceInput) error {
 	f.deleteCalls++
 	f.deletePlaneIDs = append(f.deletePlaneIDs, planeID)
 	f.deleteInputs = append(f.deleteInputs, input)

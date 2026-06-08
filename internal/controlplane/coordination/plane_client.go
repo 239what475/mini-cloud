@@ -1,4 +1,4 @@
-package planeclient
+package coordination
 
 import (
 	"context"
@@ -19,32 +19,32 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-var ErrNotFound = errors.New("plane api object not found")
+var errPlaneObjectNotFound = errors.New("plane api object not found")
 
-type RPCError struct {
+type planeRPCError struct {
 	Code    string
 	Message string
 }
 
-func (e *RPCError) Error() string {
+func (e *planeRPCError) Error() string {
 	if strings.TrimSpace(e.Code) != "" {
 		return fmt.Sprintf("plane gRPC returned code %s: %s", e.Code, e.Message)
 	}
 	return fmt.Sprintf("plane gRPC returned error: %s", e.Message)
 }
 
-type Client struct {
+type planeClient struct {
 	bearerToken  string
 	conn         *grpc.ClientConn
 	snapshotRPC  cloudplanev1.ControlPlaneSnapshotServiceClient
 	executionRPC cloudplanev1.ControlPlaneExecutionServiceClient
 }
 
-func New(grpcEndpoint string, bearerToken string) (*Client, error) {
-	return NewWithDialOptions(grpcEndpoint, bearerToken)
+func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, error) {
+	return newPlaneClientWithDialOptions(grpcEndpoint, bearerToken)
 }
 
-func NewWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...grpc.DialOption) (*Client, error) {
+func newPlaneClientWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...grpc.DialOption) (*planeClient, error) {
 	target, transportCredentials, err := resolveTarget(grpcEndpoint)
 	if err != nil {
 		return nil, err
@@ -58,7 +58,7 @@ func NewWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...
 	if err != nil {
 		return nil, fmt.Errorf("dial plane service: %w", err)
 	}
-	return &Client{
+	return &planeClient{
 		bearerToken:  strings.TrimSpace(bearerToken),
 		conn:         conn,
 		snapshotRPC:  cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
@@ -66,14 +66,14 @@ func NewWithDialOptions(grpcEndpoint string, bearerToken string, dialOptions ...
 	}, nil
 }
 
-func (c *Client) Close() error {
+func (c *planeClient) Close() error {
 	if c == nil || c.conn == nil {
 		return nil
 	}
 	return c.conn.Close()
 }
 
-func (c *Client) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, error) {
+func (c *planeClient) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, error) {
 	resp, err := c.snapshotRPC.GetSnapshot(withAuth(ctx, c.bearerToken), &emptypb.Empty{})
 	if err != nil {
 		return cloudplaneapi.SnapshotResponse{}, classifyRPCError(err)
@@ -81,7 +81,7 @@ func (c *Client) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, 
 	return snapshotFromProto(resp), nil
 }
 
-func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.ExecutionPlanRequest) (cloudplaneapi.ExecutionPlanResponse, error) {
+func (c *planeClient) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.ExecutionPlanRequest) (cloudplaneapi.ExecutionPlanResponse, error) {
 	resp, err := c.executionRPC.ApplyExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyExecutionPlanRequest{
 		PlanId:            strings.TrimSpace(input.PlanID),
 		ServiceId:         strings.TrimSpace(input.ServiceID),
@@ -104,7 +104,7 @@ func (c *Client) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.Exe
 	return executionPlanResponseFromProto(resp), nil
 }
 
-func (c *Client) DeleteExecutionPlan(ctx context.Context, input cloudplaneapi.DeleteExecutionPlanRequest) error {
+func (c *planeClient) DeleteExecutionPlan(ctx context.Context, input cloudplaneapi.DeleteExecutionPlanRequest) error {
 	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteExecutionPlanRequest{
 		ServiceId:         strings.TrimSpace(input.ServiceID),
 		ServiceGeneration: input.ServiceGeneration,
@@ -179,9 +179,9 @@ func withAuth(ctx context.Context, bearerToken string) context.Context {
 func classifyRPCError(err error) error {
 	st := status.Convert(err)
 	if st.Code() == codes.NotFound {
-		return fmt.Errorf("%w: %s", ErrNotFound, st.Message())
+		return fmt.Errorf("%w: %s", errPlaneObjectNotFound, st.Message())
 	}
-	apiErr := &RPCError{
+	apiErr := &planeRPCError{
 		Code:    st.Code().String(),
 		Message: st.Message(),
 	}

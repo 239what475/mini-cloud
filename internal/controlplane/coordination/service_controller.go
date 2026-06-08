@@ -1,4 +1,4 @@
-package serviceops
+package coordination
 
 import (
 	"context"
@@ -16,11 +16,11 @@ const (
 	defaultReconcileTimeout  = 30 * time.Second
 )
 
-var ErrPlaneNotReady = errors.New("plane is not ready")
+var errPlaneNotReady = errors.New("plane is not ready")
 
 type executionPlanManager interface {
-	ApplyService(context.Context, string, model.Service) (ApplyResult, error)
-	DeleteService(context.Context, string, DeleteServiceInput) error
+	ApplyService(context.Context, string, model.Service) (applyResult, error)
+	DeleteService(context.Context, string, deleteServiceInput) error
 }
 
 type serviceStore interface {
@@ -36,7 +36,7 @@ type serviceStore interface {
 	GetPlane(context.Context, string) (model.PlaneDetail, error)
 }
 
-type Controller struct {
+type ServiceController struct {
 	logger   *slog.Logger
 	store    serviceStore
 	deploy   executionPlanManager
@@ -45,11 +45,15 @@ type Controller struct {
 	trigger  chan struct{}
 }
 
-func New(logger *slog.Logger, stores serviceStore, deploySvc executionPlanManager) *Controller {
+func NewServiceController(logger *slog.Logger, stores *store.Store) *ServiceController {
+	return newServiceController(logger, stores, newServiceApplier(logger, stores))
+}
+
+func newServiceController(logger *slog.Logger, stores serviceStore, deploySvc executionPlanManager) *ServiceController {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Controller{
+	return &ServiceController{
 		logger:   logger,
 		store:    stores,
 		deploy:   deploySvc,
@@ -59,14 +63,14 @@ func New(logger *slog.Logger, stores serviceStore, deploySvc executionPlanManage
 	}
 }
 
-func (c *Controller) SetReconcileTimeout(timeout int) {
+func (c *ServiceController) SetReconcileTimeout(timeout int) {
 	if c == nil || timeout <= 0 {
 		return
 	}
 	c.timeout = time.Duration(timeout) * time.Second
 }
 
-func (c *Controller) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
+func (c *ServiceController) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
 		return model.Service{}, err
 	}
@@ -80,21 +84,21 @@ func (c *Controller) Create(ctx context.Context, input store.CreateServiceInput)
 	return c.store.GetService(ctx, created.Metadata.ID)
 }
 
-func (c *Controller) List(ctx context.Context) ([]model.Service, error) {
+func (c *ServiceController) List(ctx context.Context) ([]model.Service, error) {
 	if c == nil || c.store == nil {
 		return nil, fmt.Errorf("service controller is not configured")
 	}
 	return c.store.ListServices(ctx)
 }
 
-func (c *Controller) Get(ctx context.Context, serviceID string) (model.Service, error) {
+func (c *ServiceController) Get(ctx context.Context, serviceID string) (model.Service, error) {
 	if c == nil || c.store == nil {
 		return model.Service{}, fmt.Errorf("service controller is not configured")
 	}
 	return c.store.GetService(ctx, serviceID)
 }
 
-func (c *Controller) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
+func (c *ServiceController) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
 		return model.Service{}, err
 	}
@@ -108,7 +112,7 @@ func (c *Controller) Update(ctx context.Context, serviceID string, input store.U
 	return c.store.GetService(ctx, updated.Metadata.ID)
 }
 
-func (c *Controller) Delete(ctx context.Context, serviceID string) (model.Service, error) {
+func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model.Service, error) {
 	if err := c.validateConfigured(); err != nil {
 		return model.Service{}, err
 	}
@@ -132,7 +136,7 @@ func (c *Controller) Delete(ctx context.Context, serviceID string) (model.Servic
 	return reloaded, nil
 }
 
-func (c *Controller) Trigger() {
+func (c *ServiceController) Trigger() {
 	if c == nil {
 		return
 	}
@@ -142,7 +146,7 @@ func (c *Controller) Trigger() {
 	}
 }
 
-func (c *Controller) Run(ctx context.Context) {
+func (c *ServiceController) Run(ctx context.Context) {
 	if c == nil {
 		return
 	}
@@ -161,14 +165,14 @@ func (c *Controller) Run(ctx context.Context) {
 	}
 }
 
-func (c *Controller) ReconcileOnce(ctx context.Context) error {
+func (c *ServiceController) ReconcileOnce(ctx context.Context) error {
 	if c == nil {
 		return nil
 	}
 	return c.reconcileWithTimeout(ctx)
 }
 
-func (c *Controller) Reconcile(ctx context.Context) error {
+func (c *ServiceController) Reconcile(ctx context.Context) error {
 	if err := c.validateConfigured(); err != nil {
 		return err
 	}
@@ -185,20 +189,20 @@ func (c *Controller) Reconcile(ctx context.Context) error {
 	return errors.Join(reconcileErrs...)
 }
 
-func (c *Controller) validateConfigured() error {
+func (c *ServiceController) validateConfigured() error {
 	if c == nil || c.store == nil || c.deploy == nil {
 		return fmt.Errorf("service controller is not configured")
 	}
 	return nil
 }
 
-func (c *Controller) runOnce(ctx context.Context, reason string) {
+func (c *ServiceController) runOnce(ctx context.Context, reason string) {
 	if err := c.reconcileWithTimeout(ctx); err != nil && c.logger != nil {
 		c.logger.Error("service reconcile failed", "reason", reason, "error", err)
 	}
 }
 
-func (c *Controller) reconcileWithTimeout(ctx context.Context) error {
+func (c *ServiceController) reconcileWithTimeout(ctx context.Context) error {
 	reconcileCtx := ctx
 	cancel := func() {}
 	if c.timeout > 0 {

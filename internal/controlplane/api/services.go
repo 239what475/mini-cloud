@@ -10,8 +10,8 @@ import (
 
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/serviceops"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -113,10 +113,10 @@ var errServiceSpecRequired = errors.New("spec is required")
 type serviceHandler struct {
 	logger   *slog.Logger
 	store    *store.Store
-	services *serviceops.Controller
+	services *coordination.ServiceController
 }
 
-func newServiceHandler(logger *slog.Logger, stores *store.Store, services *serviceops.Controller) serviceHandler {
+func newServiceHandler(logger *slog.Logger, stores *store.Store, services *coordination.ServiceController) serviceHandler {
 	return serviceHandler{
 		logger:   logger,
 		store:    stores,

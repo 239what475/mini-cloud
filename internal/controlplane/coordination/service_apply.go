@@ -1,4 +1,4 @@
-package serviceops
+package coordination
 
 import (
 	"context"
@@ -12,15 +12,14 @@ import (
 	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/model"
-	planeclient "mini-cloud/internal/controlplane/planeclient"
 	"mini-cloud/internal/controlplane/store"
 )
 
 var (
-	ErrPlaneIDRequired    = errors.New("planeID is required")
-	ErrServiceIDRequired  = errors.New("serviceID is required")
-	ErrRegionRequired     = errors.New("region is required")
-	ErrPlaneNotRegistered = errors.New("plane southbound registration must complete before service apply actions can run")
+	errPlaneIDRequired         = errors.New("planeID is required")
+	errServiceIDRequired       = errors.New("serviceID is required")
+	errRegionRequired          = errors.New("region is required")
+	errPlaneApplyNotRegistered = errors.New("plane southbound registration must complete before service apply actions can run")
 )
 
 const (
@@ -28,52 +27,52 @@ const (
 	defaultDeleteServiceTimeout = 2 * time.Minute
 )
 
-type ApplyResult struct {
+type applyResult struct {
 	PlaneID string `json:"planeID"`
 	Action  string `json:"action"`
 	PlanID  string `json:"planID"`
 }
 
-type DeleteServiceInput struct {
+type deleteServiceInput struct {
 	ServiceID         string `json:"serviceID"`
 	ServiceGeneration int64  `json:"serviceGeneration"`
 	PlanID            string `json:"planID"`
 }
 
-type Dispatcher struct {
+type serviceApplier struct {
 	logger *slog.Logger
 	store  *store.Store
 }
 
-func NewDispatcher(logger *slog.Logger, stores *store.Store) *Dispatcher {
-	return &Dispatcher{
+func newServiceApplier(logger *slog.Logger, stores *store.Store) *serviceApplier {
+	return &serviceApplier{
 		logger: logger,
 		store:  stores,
 	}
 }
 
-func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, service model.Service) (ApplyResult, error) {
+func (s *serviceApplier) ApplyService(ctx context.Context, planeID string, service model.Service) (applyResult, error) {
 	if s == nil || s.store == nil {
-		return ApplyResult{}, fmt.Errorf("deploy service is not configured")
+		return applyResult{}, fmt.Errorf("deploy service is not configured")
 	}
 	if planeID == "" {
-		return ApplyResult{}, ErrPlaneIDRequired
+		return applyResult{}, errPlaneIDRequired
 	}
 
 	plane, err := s.store.GetPlane(ctx, planeID)
 	if err != nil {
-		return ApplyResult{}, err
+		return applyResult{}, err
 	}
 	if !plane.Registration.Registered {
-		return ApplyResult{}, ErrPlaneNotRegistered
+		return applyResult{}, errPlaneApplyNotRegistered
 	}
 	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
 	if err != nil {
-		return ApplyResult{}, err
+		return applyResult{}, err
 	}
-	client, err := planeclient.New(plane.GRPCEndpoint, token)
+	client, err := newPlaneClient(plane.GRPCEndpoint, token)
 	if err != nil {
-		return ApplyResult{}, err
+		return applyResult{}, err
 	}
 	defer util.CloseAndLog(s.logger, "plane client", client, "plane_id", planeID)
 
@@ -82,29 +81,29 @@ func (s *Dispatcher) ApplyService(ctx context.Context, planeID string, service m
 
 	plan, err := executionPlanRequest(service, plane.Region)
 	if err != nil {
-		return ApplyResult{}, err
+		return applyResult{}, err
 	}
 	accepted, err := client.ApplyExecutionPlan(requestCtx, plan)
 	if err != nil {
-		return ApplyResult{}, fmt.Errorf("apply execution plan: %w", err)
+		return applyResult{}, fmt.Errorf("apply execution plan: %w", err)
 	}
 
-	return ApplyResult{
+	return applyResult{
 		PlaneID: planeID,
 		Action:  accepted.Action,
 		PlanID:  accepted.PlanID,
 	}, nil
 }
 
-func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input DeleteServiceInput) error {
+func (s *serviceApplier) DeleteService(ctx context.Context, planeID string, input deleteServiceInput) error {
 	if s == nil || s.store == nil {
 		return fmt.Errorf("deploy service is not configured")
 	}
 	if planeID == "" {
-		return ErrPlaneIDRequired
+		return errPlaneIDRequired
 	}
 	if input.ServiceID == "" {
-		return ErrServiceIDRequired
+		return errServiceIDRequired
 	}
 	if input.ServiceGeneration <= 0 {
 		return fmt.Errorf("serviceGeneration must be greater than 0")
@@ -118,14 +117,14 @@ func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input De
 		return err
 	}
 	if !plane.Registration.Registered {
-		return ErrPlaneNotRegistered
+		return errPlaneApplyNotRegistered
 	}
 
 	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
 	if err != nil {
 		return err
 	}
-	client, err := planeclient.New(plane.GRPCEndpoint, token)
+	client, err := newPlaneClient(plane.GRPCEndpoint, token)
 	if err != nil {
 		return err
 	}
@@ -146,10 +145,10 @@ func (s *Dispatcher) DeleteService(ctx context.Context, planeID string, input De
 
 func executionPlanRequest(service model.Service, defaultRegion string) (cloudplaneapi.ExecutionPlanRequest, error) {
 	if strings.TrimSpace(service.Metadata.ID) == "" {
-		return cloudplaneapi.ExecutionPlanRequest{}, ErrServiceIDRequired
+		return cloudplaneapi.ExecutionPlanRequest{}, errServiceIDRequired
 	}
 	if strings.TrimSpace(defaultRegion) == "" {
-		return cloudplaneapi.ExecutionPlanRequest{}, ErrRegionRequired
+		return cloudplaneapi.ExecutionPlanRequest{}, errRegionRequired
 	}
 
 	env := cloneEnvMap(service.Spec.Env)

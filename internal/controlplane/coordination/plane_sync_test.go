@@ -1,4 +1,4 @@
-package planesync
+package coordination
 
 import (
 	"strings"
