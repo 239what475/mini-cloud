@@ -65,6 +65,7 @@ type InfrastructureConfig struct {
 }
 
 type RuntimeProvisioningConfig struct {
+	InstanceType        string         `yaml:"instanceType"`
 	RegistryMirrors     []string       `yaml:"registryMirrors"`
 	EgressProxyEndpoint string         `yaml:"egressProxyEndpoint"`
 	ProviderSpec        map[string]any `yaml:"providerSpec"`
@@ -132,6 +133,7 @@ func (c *Config) normalize() {
 	c.NodeAgent.ConnectEndpoint = strings.TrimSpace(c.NodeAgent.ConnectEndpoint)
 	c.NodeAgent.BootstrapToken = strings.TrimSpace(c.NodeAgent.BootstrapToken)
 	c.NodeAgent.BinaryURL = strings.TrimSpace(c.NodeAgent.BinaryURL)
+	c.RuntimeProvisioning.InstanceType = strings.TrimSpace(c.RuntimeProvisioning.InstanceType)
 	c.RuntimeProvisioning.RegistryMirrors = trimStringList(c.RuntimeProvisioning.RegistryMirrors)
 	c.RuntimeProvisioning.EgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.EgressProxyEndpoint)
 	c.Ingress.BaseDomain = strings.Trim(strings.TrimSpace(c.Ingress.BaseDomain), ".")
@@ -172,6 +174,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Infrastructure.RegionID) == "" {
 		return fmt.Errorf("infrastructure.regionId is required")
+	}
+	if strings.TrimSpace(c.RuntimeProvisioning.InstanceType) == "" {
+		return fmt.Errorf("runtimeProvisioning.instanceType is required")
 	}
 	if len(c.RuntimeProvisioning.ProviderSpec) == 0 {
 		return fmt.Errorf("runtimeProvisioning.providerSpec is required")

@@ -22,11 +22,11 @@ infrastructure:
   zoneId: ap-beijing-6
 
 runtimeProvisioning:
+  instanceType: S5.MEDIUM2
   registryMirrors:
     - https://mirror.ccs.tencentyun.com
   egressProxyEndpoint: http://replace-with-platform-private-ip:3128
   providerSpec:
-    instanceType: S5.MEDIUM2
     imageId: replace-with-image-id
     keyIds: []
     vpcId: replace-with-vpc-id

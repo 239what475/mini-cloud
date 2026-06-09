@@ -1,4 +1,4 @@
-// Package nodepool 承载 runtime node 池的调度期扩容和后台缩容控制用例。
+// Package nodepool 承载 runtime node 池的后台收敛控制用例。
 package nodepool
 
 import (
@@ -15,17 +15,15 @@ import (
 )
 
 type Service struct {
-	// logger 记录 runtime node 缩容过程中的单节点失败。
+	// logger 记录 runtime node 池收敛过程中的单节点失败。
 	logger *slog.Logger
 	// store 提供 runtime node 和 execution intent 的持久化访问。
 	store *store.Store
-	// driver 调用云厂商 API 删除 runtime node 对应的云实例。
+	// driver 调用云厂商 API 创建和删除 runtime node 对应的云实例。
 	driver infraruntimepool.RuntimeDriver
 	config cloudplaneconfig.Config
 }
 
-// NewService 构造 runtime node pool 控制服务。
-// 参数说明：logger 记录后台日志；stores 提供本地状态访问；driver 负责云厂商 runtime node 生命周期操作。
 func NewService(logger *slog.Logger, stores *store.Store, driver infraruntimepool.RuntimeDriver, cfg cloudplaneconfig.Config) *Service {
 	if logger == nil {
 		logger = slog.Default()
@@ -33,16 +31,31 @@ func NewService(logger *slog.Logger, stores *store.Store, driver infraruntimepoo
 	return &Service{logger: logger, store: stores, driver: driver, config: cfg}
 }
 
-func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
+// ReconcileOnce 将 runtime node 池收敛到当前 execution 需求。
+func (s *Service) ReconcileOnce(ctx context.Context) error {
 	if s == nil || s.store == nil || s.driver == nil {
 		return nil
 	}
-	candidate, err := s.store.GetRuntimeNodeScaleOutCandidate(ctx, s.config.Plane.Name+cloudplaneconfig.RuntimeNodeNameSuffix, s.runtimeInstanceType())
+	if err := s.reconcileTerminatingNodes(ctx); err != nil {
+		return err
+	}
+	scaledOut, err := s.reconcileCapacityShortage(ctx)
 	if err != nil {
 		return err
 	}
-	if candidate == nil || candidate.HasCapacity || candidate.HasProvisioning {
+	if scaledOut {
 		return nil
+	}
+	return s.reconcileIdleNodes(ctx)
+}
+
+func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
+	candidate, err := s.store.GetRuntimeNodeScaleOutCandidate(ctx, s.config.Plane.Name+cloudplaneconfig.RuntimeNodeNameSuffix, s.config.RuntimeProvisioning.InstanceType)
+	if err != nil {
+		return false, err
+	}
+	if candidate == nil || candidate.HasCapacity || candidate.HasProvisioning {
+		return false, nil
 	}
 
 	intent, err := s.store.CreateRuntimeNodeIntent(ctx, infraruntimepool.CreateIntentInput{
@@ -54,7 +67,7 @@ func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
 		ProvisionedAt: time.Now().UTC(),
 	})
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	result, err := s.driver.Create(ctx, infraruntimepool.CreateRequest{
@@ -70,7 +83,7 @@ func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
 			"provider runtime node creation failed: "+err.Error(),
 			time.Now().UTC(),
 		)
-		return errors.Join(err, cleanupErr)
+		return false, errors.Join(err, cleanupErr)
 	}
 	_, err = s.store.BindRuntimeNodeProvisioned(
 		ctx,
@@ -81,14 +94,18 @@ func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
 		"provider accepted runtime node creation",
 		time.Now().UTC(),
 	)
-	return err
+	return err == nil, err
 }
 
-// ReconcileOnce 执行一轮 runtime node 自动缩容。
-// 参数说明：ctx 控制本轮数据库访问、状态更新和 provider 删除调用。
-func (s *Service) ReconcileScaleInOnce(ctx context.Context) error {
-	// 如果仍有 execution intent 处在调度或启动过程中，说明系统容量正在被消费或即将被消费；
-	// 本轮不缩容，避免删除刚为调度缺口创建、但还没来得及产生 execution 的 runtime node。
+func (s *Service) reconcileTerminatingNodes(ctx context.Context) error {
+	items, err := s.store.ListRuntimeNodesByStatuses(ctx, infraruntimepool.StatusTerminating)
+	if err != nil {
+		return err
+	}
+	return s.reconcileDeletableNodes(ctx, items)
+}
+
+func (s *Service) reconcileIdleNodes(ctx context.Context) error {
 	unsettled, err := s.store.HasExecutionIntentsWithStatuses(
 		ctx,
 		cloudmodel.StatusPending,
@@ -101,19 +118,19 @@ func (s *Service) ReconcileScaleInOnce(ctx context.Context) error {
 		return nil
 	}
 
-	// 查询 ready 节点和上轮已进入 terminating 的节点；具体删除候选条件由本层策略判断。
-	items, err := s.store.ListRuntimeNodesByStatuses(ctx, infraruntimepool.StatusReady, infraruntimepool.StatusTerminating)
+	items, err := s.store.ListRuntimeNodesByStatuses(ctx, infraruntimepool.StatusReady)
 	if err != nil {
 		return err
 	}
+	return s.reconcileDeletableNodes(ctx, items)
+}
 
+func (s *Service) reconcileDeletableNodes(ctx context.Context, items []infraruntimepool.Record) error {
 	var joinedErr error
 	for _, item := range items {
-		// 只有已经绑定云实例和 backing node 的 runtime node 才能走 provider 删除。
 		if strings.TrimSpace(item.InstanceID) == "" || strings.TrimSpace(item.NodeID) == "" {
 			continue
 		}
-		// active execution 是缩容硬保护条件；没有 active execution 的节点才进入删除状态机。
 		activeCount, err := s.store.CountActiveExecutionsByNode(ctx, item.NodeID)
 		if err != nil {
 			return err
@@ -121,10 +138,9 @@ func (s *Service) ReconcileScaleInOnce(ctx context.Context) error {
 		if activeCount > 0 {
 			continue
 		}
-		// 单个节点失败只记录并继续处理其它候选；失败节点会通过 terminating 状态在后续轮次重试。
 		if err := s.reconcileRuntimeNodeDeletion(ctx, item); err != nil {
 			joinedErr = errors.Join(joinedErr, err)
-			s.logger.Warn("runtime node scale-in failed",
+			s.logger.Warn("runtime node deletion failed",
 				"runtime_node_id", item.ID,
 				"instance_id", item.InstanceID,
 				"node_id", item.NodeID,
@@ -171,15 +187,4 @@ func (s *Service) reconcileRuntimeNodeDeletion(ctx context.Context, item infraru
 		time.Now().UTC(),
 	)
 	return err
-}
-
-func (s *Service) runtimeInstanceType() string {
-	type providerSpec struct {
-		InstanceType string `json:"instanceType"`
-	}
-	var spec providerSpec
-	if err := s.config.RuntimeProvisioning.ParseProviderSpec(&spec); err != nil {
-		return ""
-	}
-	return strings.TrimSpace(spec.InstanceType)
 }

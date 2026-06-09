@@ -65,9 +65,8 @@ func (m *Manager) Start(ctx context.Context) {
 	m.startLoop(ctx, "node-health", nodeHealthInterval, m.reconcileNodeHealthOnce)
 	// ingress 循环把当前 running backends 发布到外置入口数据面；未启用 ingress 时该循环是 no-op。
 	m.startLoop(ctx, "ingress", fastReconcileInterval, m.reconcileIngressOnce)
-	m.startLoop(ctx, "runtime-node-scale-out", fastReconcileInterval, m.nodePool.ReconcileScaleOutOnce)
-	// runtime-node-scale-in 循环回收没有 active execution 的弹性 runtime node；允许缩到 0 台。
-	m.startLoop(ctx, "runtime-node-scale-in", fastReconcileInterval, m.nodePool.ReconcileScaleInOnce)
+	// runtime-node-pool 循环把弹性 runtime node 池收敛到当前 execution 需求。
+	m.startLoop(ctx, "runtime-node-pool", fastReconcileInterval, m.nodePool.ReconcileOnce)
 }
 
 // Wait 等待已启动的后台控制循环退出。

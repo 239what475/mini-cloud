@@ -45,8 +45,6 @@ type RuntimeConfig struct {
 
 // RuntimeNodeSpec 描述阿里云 runtime node 创建参数。
 type RuntimeNodeSpec struct {
-	// InstanceType 是云厂商实例规格。
-	InstanceType string `json:"instanceType"`
 	// ImageID 表示 image 的唯一标识。
 	ImageID string `json:"imageId"`
 	// KeyPairName 是创建 ECS 实例时绑定的 SSH key pair 名称。
@@ -110,6 +108,9 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.Config) (RuntimeConfig, error) {
 	if strings.TrimSpace(cfg.NodeAgent.BootstrapToken) == "" {
 		return RuntimeConfig{}, fmt.Errorf("nodeAgent.bootstrapToken is required for aliyun runtime driver")
 	}
+	if strings.TrimSpace(cfg.RuntimeProvisioning.InstanceType) == "" {
+		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.instanceType is required for aliyun runtime driver")
+	}
 
 	// providerSpec 使用 aliyun 专属结构解析，并拒绝未知字段。
 	var spec RuntimeNodeSpec
@@ -125,10 +126,7 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.Config) (RuntimeConfig, error) {
 	if spec.SystemDiskSizeGiB == 0 {
 		spec.SystemDiskSizeGiB = 40
 	}
-	// instance type、image、vSwitch 和 security group 是 RunInstances 的必要参数。
-	if strings.TrimSpace(spec.InstanceType) == "" {
-		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.providerSpec.instanceType is required for aliyun")
-	}
+	// image、vSwitch 和 security group 是 RunInstances 的 provider 专属必要参数。
 	if strings.TrimSpace(spec.ImageID) == "" {
 		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.providerSpec.imageId is required for aliyun")
 	}
@@ -204,7 +202,7 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 		InstanceChargeType:      new("PostPaid"),
 		AutoPay:                 new(true),
 		ImageId:                 new(p.config.ProviderSpec.ImageID),
-		InstanceType:            new(p.config.ProviderSpec.InstanceType),
+		InstanceType:            new(p.config.CloudPlane.RuntimeProvisioning.InstanceType),
 		Amount:                  new(int32(1)),
 		ClientToken:             new(clientToken),
 		InstanceName:            new(instanceName),
@@ -242,7 +240,7 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 	return runtimepool.CreateResult{
 		InstanceID:   instanceID,
 		InstanceName: instanceName,
-		InstanceType: p.config.ProviderSpec.InstanceType,
+		InstanceType: p.config.CloudPlane.RuntimeProvisioning.InstanceType,
 	}, nil
 }
 
@@ -344,7 +342,7 @@ func (p *runtimeDriver) Delete(ctx context.Context, request runtimepool.DeleteRe
 func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, error) {
 	// 查询配置中 instance type 的规格信息。
 	response, err := p.client.DescribeInstanceTypes(&ecs20140526.DescribeInstanceTypesRequest{
-		InstanceTypes: []*string{new(p.config.ProviderSpec.InstanceType)},
+		InstanceTypes: []*string{new(p.config.CloudPlane.RuntimeProvisioning.InstanceType)},
 		MaxResults:    new(int64(1)),
 	})
 	if err != nil {
@@ -352,7 +350,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 	}
 	// 响应必须包含目标 instance type。
 	if response.Body == nil || response.Body.InstanceTypes == nil || len(response.Body.InstanceTypes.InstanceType) == 0 || response.Body.InstanceTypes.InstanceType[0] == nil {
-		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes did not return runtime instance type %q", p.config.ProviderSpec.InstanceType)
+		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes did not return runtime instance type %q", p.config.CloudPlane.RuntimeProvisioning.InstanceType)
 	}
 
 	// 阿里云返回 CPU core 和 GiB 内存，这里转换成 cloud-plane 使用的 millicore/MiB。
@@ -361,7 +359,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 	memoryMi := int(math.Round(float64(tea.Float32Value(item.MemorySize)) * 1024))
 	// 防御 SDK 返回异常容量。
 	if cpuMilli <= 0 || memoryMi <= 0 {
-		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes returned invalid capacity for %q", p.config.ProviderSpec.InstanceType)
+		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes returned invalid capacity for %q", p.config.CloudPlane.RuntimeProvisioning.InstanceType)
 	}
 
 	// 返回规范化后的容量。

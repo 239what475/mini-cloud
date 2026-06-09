@@ -45,8 +45,6 @@ type RuntimeConfig struct {
 
 // RuntimeNodeSpec 描述 tencent providerSpec 中的 CVM 创建参数。
 type RuntimeNodeSpec struct {
-	// InstanceType 是云厂商实例规格。
-	InstanceType string `json:"instanceType"`
 	// ImageID 表示 image 的唯一标识。
 	ImageID string `json:"imageId"`
 	// KeyIDs 是创建 CVM 实例时绑定的 SSH key ID 集合。
@@ -112,6 +110,9 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.Config) (RuntimeConfig, error) {
 	if strings.TrimSpace(cfg.NodeAgent.BootstrapToken) == "" {
 		return RuntimeConfig{}, fmt.Errorf("nodeAgent.bootstrapToken is required for tencent runtime driver")
 	}
+	if strings.TrimSpace(cfg.RuntimeProvisioning.InstanceType) == "" {
+		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.instanceType is required for tencent runtime driver")
+	}
 
 	// providerSpec 使用 tencent 专属结构解析，并拒绝未知字段。
 	var spec RuntimeNodeSpec
@@ -127,10 +128,7 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.Config) (RuntimeConfig, error) {
 	if spec.SystemDiskSizeGiB == 0 {
 		spec.SystemDiskSizeGiB = 50
 	}
-	// instance type、image、VPC、subnet 和 security group 是 RunInstances 的必要参数。
-	if strings.TrimSpace(spec.InstanceType) == "" {
-		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.providerSpec.instanceType is required for tencent")
-	}
+	// image、VPC、subnet 和 security group 是 RunInstances 的 provider 专属必要参数。
 	if strings.TrimSpace(spec.ImageID) == "" {
 		return RuntimeConfig{}, fmt.Errorf("runtimeProvisioning.providerSpec.imageId is required for tencent")
 	}
@@ -206,7 +204,7 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 	runRequest := cvm.NewRunInstancesRequest()
 	runRequest.InstanceChargeType = new("POSTPAID_BY_HOUR")
 	runRequest.ImageId = new(p.config.ProviderSpec.ImageID)
-	runRequest.InstanceType = new(p.config.ProviderSpec.InstanceType)
+	runRequest.InstanceType = new(p.config.CloudPlane.RuntimeProvisioning.InstanceType)
 	runRequest.InstanceCount = new(int64(1))
 	runRequest.InstanceName = new(instanceName)
 	runRequest.HostName = new(buildRuntimeNodeHostName(instanceName))
@@ -268,7 +266,7 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 	return runtimepool.CreateResult{
 		InstanceID:   instanceID,
 		InstanceName: instanceName,
-		InstanceType: p.config.ProviderSpec.InstanceType,
+		InstanceType: p.config.CloudPlane.RuntimeProvisioning.InstanceType,
 	}, nil
 }
 
@@ -384,7 +382,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 	request.Filters = []*cvm.Filter{
 		{
 			Name:   new("instance-type"),
-			Values: []*string{new(p.config.ProviderSpec.InstanceType)},
+			Values: []*string{new(p.config.CloudPlane.RuntimeProvisioning.InstanceType)},
 		},
 	}
 	// zone 是可选过滤条件；配置后可避免拿到其他 zone 不支持的规格信息。
@@ -402,7 +400,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 	}
 	// 响应必须包含目标 instance type。
 	if response == nil || response.Response == nil || len(response.Response.InstanceTypeConfigSet) == 0 || response.Response.InstanceTypeConfigSet[0] == nil {
-		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypeConfigs did not return runtime instance type %q", p.config.ProviderSpec.InstanceType)
+		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypeConfigs did not return runtime instance type %q", p.config.CloudPlane.RuntimeProvisioning.InstanceType)
 	}
 
 	// 腾讯云返回 CPU core 和 GiB 内存，这里转换成 cloud-plane 使用的 millicore/MiB。
@@ -411,7 +409,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 	memoryMi := int(math.Round(float64(valueInt64(item.Memory)) * 1024))
 	// 防御 SDK 返回异常容量。
 	if cpuMilli <= 0 || memoryMi <= 0 {
-		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypeConfigs returned invalid capacity for %q", p.config.ProviderSpec.InstanceType)
+		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypeConfigs returned invalid capacity for %q", p.config.CloudPlane.RuntimeProvisioning.InstanceType)
 	}
 
 	// 返回规范化后的容量。

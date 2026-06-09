@@ -163,7 +163,7 @@ bash -c '</dev/tcp/127.0.0.1/18081'
 - 启动首个固定 node-agent
 - 提供 node-agent 连接、下载和 runtime node bootstrap 默认参数
 
-cloud-plane 固定启用云上动态扩容，不再支持手动扩容模式。`cloud-plane.yaml` 必须填写 `runtimeProvisioning.providerSpec`，该字段是 provider 专属结构，由 cloud-plane 按 `infrastructure.provider` 延迟解析。
+cloud-plane 固定启用云上动态扩容，不再支持手动扩容模式。`cloud-plane.yaml` 必须填写 `runtimeProvisioning.instanceType` 和 `runtimeProvisioning.providerSpec`；`instanceType` 是 runtime node pool 的公共规格，`providerSpec` 只保留 provider 专属创建参数。
 
 ## 这组文件刻意不做什么
 

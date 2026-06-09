@@ -25,7 +25,10 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 			BootstrapToken:  "bootstrap-token",
 			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
-		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{ProviderSpec: spec},
+		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
+			InstanceType: "S5.MEDIUM4",
+			ProviderSpec: spec,
+		},
 	}
 }
 
@@ -33,7 +36,6 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 func TestParseRuntimeConfig(t *testing.T) {
 	// 只提供必填 providerSpec 字段，验证默认系统盘参数会按 driver 规则补齐。
 	spec := map[string]any{
-		"instanceType":     "S5.MEDIUM4",
 		"imageId":          "img-123",
 		"vpcId":            "vpc-123",
 		"subnetId":         "subnet-123",
@@ -57,7 +59,7 @@ func TestParseRuntimeConfig(t *testing.T) {
 
 // TestParseRuntimeConfigRequiresTencentFields 验证 tencent provider 必填字段缺失时解析失败。
 func TestParseRuntimeConfigRequiresTencentFields(t *testing.T) {
-	spec := map[string]any{"instanceType": "S5.MEDIUM4"}
+	spec := map[string]any{"imageId": "img-123"}
 
 	if _, err := ParseRuntimeConfig(testRuntimeConfig(spec)); err == nil {
 		t.Fatalf("expected ParseRuntimeConfig to reject missing provider-specific fields")

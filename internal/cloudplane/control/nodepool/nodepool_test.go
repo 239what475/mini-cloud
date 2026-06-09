@@ -23,8 +23,8 @@ func TestScaleOutCreatesRuntimeNodeWhenPendingExecutionHasNoCapacity(t *testing.
 
 	seedPendingExecution(t, ctx, db.Store, "scale-out-no-capacity", "medium")
 
-	if err := service.ReconcileScaleOutOnce(ctx); err != nil {
-		t.Fatalf("ReconcileScaleOutOnce returned error: %v", err)
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
@@ -50,8 +50,8 @@ func TestScaleOutSkipsWhenReadyNodeHasCapacity(t *testing.T) {
 	seedReadyNode(t, ctx, db.Store, "ready-capacity", 2000, 2048)
 	seedPendingExecution(t, ctx, db.Store, "scale-out-has-capacity", "small")
 
-	if err := service.ReconcileScaleOutOnce(ctx); err != nil {
-		t.Fatalf("ReconcileScaleOutOnce returned error: %v", err)
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 0 {
 		t.Fatalf("create requests = %d, want 0", len(driver.createRequests))
@@ -75,8 +75,8 @@ func TestScaleOutSkipsWhenRuntimeNodeAlreadyProvisioning(t *testing.T) {
 	}
 	seedPendingExecution(t, ctx, db.Store, "scale-out-existing-provisioning", "small")
 
-	if err := service.ReconcileScaleOutOnce(ctx); err != nil {
-		t.Fatalf("ReconcileScaleOutOnce returned error: %v", err)
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 0 {
 		t.Fatalf("create requests = %d, want 0", len(driver.createRequests))
@@ -91,8 +91,8 @@ func TestScaleOutMarksRuntimeNodeDeletedWhenProviderCreateFails(t *testing.T) {
 
 	seedPendingExecution(t, ctx, db.Store, "scale-out-provider-fails", "small")
 
-	if err := service.ReconcileScaleOutOnce(ctx); err == nil {
-		t.Fatal("ReconcileScaleOutOnce returned nil, want error")
+	if err := service.ReconcileOnce(ctx); err == nil {
+		t.Fatal("ReconcileOnce returned nil, want error")
 	}
 	items, err := db.Store.ListRuntimeNodesByStatuses(ctx, runtimepool.StatusProvisioning)
 	if err != nil {
@@ -107,6 +107,49 @@ func TestScaleOutMarksRuntimeNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].StatusReason == "" {
 		t.Fatalf("unexpected deleted runtime nodes: %+v", items)
+	}
+}
+
+func TestReconcileDeletesIdleRuntimeNode(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeRuntimeDriver{}
+	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+
+	runtimeNode, _ := seedReadyRuntimeNode(t, ctx, db.Store, "idle-runtime-node", "i-idle-runtime-node")
+
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.deleteRequests) != 1 || driver.deleteRequests[0].InstanceID != "i-idle-runtime-node" {
+		t.Fatalf("delete requests = %+v, want idle runtime node deletion", driver.deleteRequests)
+	}
+	items, err := db.Store.ListRuntimeNodesByStatuses(ctx, runtimepool.StatusDeleted)
+	if err != nil {
+		t.Fatalf("ListRuntimeNodesByStatuses deleted returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != runtimeNode.ID {
+		t.Fatalf("deleted runtime nodes = %+v, want %s", items, runtimeNode.ID)
+	}
+}
+
+func TestReconcileDoesNotDeleteIdleNodeWhenScalingOut(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeRuntimeDriver{}
+	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+
+	seedReadyRuntimeNode(t, ctx, db.Store, "idle-runtime-node", "i-idle-runtime-node")
+	seedPendingExecution(t, ctx, db.Store, "scale-out-and-idle-node", "large")
+
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.createRequests) != 1 {
+		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
+	}
+	if len(driver.deleteRequests) != 0 {
+		t.Fatalf("delete requests = %+v, want no deletion in scale-out round", driver.deleteRequests)
 	}
 }
 
@@ -146,7 +189,8 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 			RegionID: "cn-beijing",
 		},
 		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
-			ProviderSpec: map[string]any{"instanceType": "ecs.demo"},
+			InstanceType: "ecs.demo",
+			ProviderSpec: map[string]any{"imageId": "m-test"},
 		},
 	}
 }
@@ -194,4 +238,67 @@ func seedReadyNode(t *testing.T, ctx context.Context, stores *store.Store, name 
 	if err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
+}
+
+func seedReadyRuntimeNode(t *testing.T, ctx context.Context, stores *store.Store, name string, instanceID string) (runtimepool.Record, cloudmodel.Node) {
+	t.Helper()
+
+	runtimeNode, err := stores.CreateRuntimeNodeIntent(ctx, runtimepool.CreateIntentInput{
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		InstanceName:  name,
+		InstanceType:  "ecs.demo",
+		StatusReason:  "test runtime node",
+		ProvisionedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("CreateRuntimeNodeIntent returned error: %v", err)
+	}
+	if _, err := stores.BindRuntimeNodeProvisioned(
+		ctx,
+		runtimeNode.ID,
+		instanceID,
+		name,
+		"ecs.demo",
+		"test runtime node provisioned",
+		time.Now().UTC(),
+	); err != nil {
+		t.Fatalf("BindRuntimeNodeProvisioned returned error: %v", err)
+	}
+
+	backingNode, err := stores.RegisterNode(ctx, cloudmodel.RegisterInput{
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		Name:          name,
+		PrivateIP:     "10.0.0.10",
+		InstanceID:    instanceID,
+		InstanceType:  "ecs.demo",
+		CPUMilliTotal: 1000,
+		MemoryMiTotal: 1024,
+	})
+	if err != nil {
+		t.Fatalf("RegisterNode returned error: %v", err)
+	}
+	if _, _, err := stores.RecordNodeHeartbeat(ctx, backingNode.ID, cloudmodel.HeartbeatInput{
+		ReportedAt:          time.Now().UTC(),
+		AgentVersion:        "test-agent",
+		CPUMilliAllocatable: 1000,
+		MemoryMiAllocatable: 1024,
+		RunningContainers:   0,
+		Status:              cloudmodel.StatusReady,
+	}); err != nil {
+		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
+	}
+
+	items, err := stores.ListRuntimeNodesByStatuses(ctx, runtimepool.StatusReady)
+	if err != nil {
+		t.Fatalf("ListRuntimeNodesByStatuses ready returned error: %v", err)
+	}
+	for _, item := range items {
+		if item.ID == runtimeNode.ID {
+			return item, backingNode
+		}
+	}
+	t.Fatalf("runtime node %s did not become ready; ready nodes = %+v", runtimeNode.ID, items)
+	return runtimepool.Record{}, cloudmodel.Node{}
 }

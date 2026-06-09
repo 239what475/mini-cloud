@@ -25,7 +25,10 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 			BootstrapToken:  "bootstrap-token",
 			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
-		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{ProviderSpec: spec},
+		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
+			InstanceType: "ecs.u1-c1m1.large",
+			ProviderSpec: spec,
+		},
 	}
 }
 
@@ -33,7 +36,6 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 func TestParseRuntimeConfig(t *testing.T) {
 	// 只提供必填 providerSpec 字段，验证 ParseRuntimeConfig 会填入默认磁盘配置。
 	spec := map[string]any{
-		"instanceType":    "ecs.u1-c1m1.large",
 		"imageId":         "m-123",
 		"vSwitchId":       "vsw-123",
 		"securityGroupId": "sg-123",
@@ -52,14 +54,14 @@ func TestParseRuntimeConfig(t *testing.T) {
 	if typed.ProviderSpec.SystemDiskSizeGiB != 40 {
 		t.Fatalf("SystemDiskSizeGiB = %d, want 40", typed.ProviderSpec.SystemDiskSizeGiB)
 	}
-	if typed.ProviderSpec.InstanceType != "ecs.u1-c1m1.large" {
-		t.Fatalf("InstanceType = %q, want ecs.u1-c1m1.large", typed.ProviderSpec.InstanceType)
+	if typed.CloudPlane.RuntimeProvisioning.InstanceType != "ecs.u1-c1m1.large" {
+		t.Fatalf("InstanceType = %q, want ecs.u1-c1m1.large", typed.CloudPlane.RuntimeProvisioning.InstanceType)
 	}
 }
 
 // TestParseRuntimeConfigRequiresAliyunFields 验证 aliyun provider 必填字段缺失时解析失败。
 func TestParseRuntimeConfigRequiresAliyunFields(t *testing.T) {
-	spec := map[string]any{"instanceType": "ecs.u1-c1m1.large"}
+	spec := map[string]any{"imageId": "m-123"}
 
 	if _, err := ParseRuntimeConfig(testRuntimeConfig(spec)); err == nil {
 		t.Fatalf("expected ParseRuntimeConfig to reject missing provider-specific fields")

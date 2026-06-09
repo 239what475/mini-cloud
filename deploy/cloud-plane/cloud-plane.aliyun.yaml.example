@@ -22,11 +22,11 @@ infrastructure:
   zoneId: replace-with-zone-id
 
 runtimeProvisioning:
+  instanceType: ecs.u1-c1m1.large
   registryMirrors:
     - https://docker.m.daocloud.io
   egressProxyEndpoint: http://replace-with-platform-private-ip:3128
   providerSpec:
-    instanceType: ecs.u1-c1m1.large
     imageId: replace-with-image-id
     keyPairName: replace-with-key-pair-name
     vSwitchId: replace-with-vswitch-id

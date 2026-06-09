@@ -29,8 +29,8 @@ infrastructure:
   provider: aliyun
   regionId: cn-beijing
 runtimeProvisioning:
+  instanceType: ecs.u1-c1m1.large
   providerSpec:
-    instanceType: ecs.u1-c1m1.large
     imageId: m-test
     vSwitchId: vsw-test
     securityGroupId: sg-test
@@ -69,8 +69,11 @@ func TestValidateAcceptsHTTPNodeAgentConnectEndpoint(t *testing.T) {
 			BootstrapToken:  "bootstrap-token",
 			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
-		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large"}},
+		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{
+			InstanceType: "ecs.u1-c1m1.large",
+			ProviderSpec: map[string]any{"imageId": "m-test"},
+		},
 	}
 	// Validate 应接受 http/https 形式的 connectEndpoint。
 	if err := cfg.Validate(); err != nil {
@@ -93,8 +96,11 @@ func TestValidateRejectsLocalProvider(t *testing.T) {
 			BootstrapToken:  "bootstrap-token",
 			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
-		Infrastructure:      InfrastructureConfig{Provider: "local", RegionID: "local"},
-		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "local"}},
+		Infrastructure: InfrastructureConfig{Provider: "local", RegionID: "local"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{
+			InstanceType: "local",
+			ProviderSpec: map[string]any{"imageId": "m-test"},
+		},
 	}
 	// provider=local 不能通过校验，避免重新引入手动扩容语义。
 	if err := cfg.Validate(); err == nil {
@@ -127,8 +133,9 @@ infrastructure:
   regionId: cn-beijing
 runtimeProvisioning:
   enabled: true
+  instanceType: ecs.u1-c1m1.large
   providerSpec:
-    instanceType: ecs.u1-c1m1.large
+    imageId: m-test
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
@@ -155,11 +162,33 @@ func TestValidateRequiresRuntimeProvisioningProviderSpec(t *testing.T) {
 			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
 		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		RuntimeProvisioning: RuntimeProvisioningConfig{},
+		RuntimeProvisioning: RuntimeProvisioningConfig{InstanceType: "ecs.u1-c1m1.large"},
 	}
 	// runtime driver 必须依赖 providerSpec 构造，因此缺失时校验失败。
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate error = nil, want runtime provisioning providerSpec requirement")
+	}
+}
+
+// TestValidateRequiresRuntimeProvisioningInstanceType 验证 runtime node pool 必须声明公共实例规格。
+func TestValidateRequiresRuntimeProvisioningInstanceType(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
+		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		NodeAgent: NodeAgentConfig{
+			ConnectEndpoint: "10.0.0.10:18081",
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
+		},
+		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: map[string]any{"imageId": "m-test"}},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate error = nil, want runtime provisioning instanceType requirement")
 	}
 }
 
@@ -169,20 +198,20 @@ func TestParseProviderSpec(t *testing.T) {
 
 	// providerSpec 原始 JSON 包含目标结构体中声明的两个字段。
 	cfg := RuntimeProvisioningConfig{
-		ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large", "systemDiskSizeGiB": 40},
+		ProviderSpec: map[string]any{"imageId": "m-test", "systemDiskSizeGiB": 40},
 	}
 
 	// 使用临时结构体模拟 provider driver 的专属配置结构。
 	var spec struct {
-		InstanceType      string `json:"instanceType"`
+		ImageID           string `json:"imageId"`
 		SystemDiskSizeGiB int    `json:"systemDiskSizeGiB"`
 	}
 	if err := cfg.ParseProviderSpec(&spec); err != nil {
 		t.Fatalf("ParseProviderSpec error: %v", err)
 	}
 	// 解码后逐项断言，确认 raw JSON 被写入目标结构体。
-	if spec.InstanceType != "ecs.u1-c1m1.large" {
-		t.Fatalf("InstanceType = %q, want ecs.u1-c1m1.large", spec.InstanceType)
+	if spec.ImageID != "m-test" {
+		t.Fatalf("ImageID = %q, want m-test", spec.ImageID)
 	}
 	if spec.SystemDiskSizeGiB != 40 {
 		t.Fatalf("SystemDiskSizeGiB = %d, want 40", spec.SystemDiskSizeGiB)
@@ -194,11 +223,11 @@ func TestParseProviderSpecRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 
 	// providerSpec 含有目标结构体未声明的字段，用来验证 DisallowUnknownFields 生效。
-	cfg := RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large", "unexpected": true}}
+	cfg := RuntimeProvisioningConfig{ProviderSpec: map[string]any{"imageId": "m-test", "unexpected": true}}
 
-	// 目标结构体只声明 instanceType，unexpected 必须触发解析错误。
+	// 目标结构体只声明 imageId，unexpected 必须触发解析错误。
 	var spec struct {
-		InstanceType string `json:"instanceType"`
+		ImageID string `json:"imageId"`
 	}
 	if err := cfg.ParseProviderSpec(&spec); err == nil {
 		t.Fatal("ParseProviderSpec error = nil, want unknown field rejection")
