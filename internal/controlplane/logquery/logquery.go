@@ -16,6 +16,11 @@ import (
 
 var ErrNotConfigured = errors.New("log query backend is not configured")
 
+const (
+	queryLimit     = 200
+	queryDirection = "backward"
+)
+
 type InputError struct {
 	Message string
 }
@@ -49,11 +54,9 @@ type Service struct {
 }
 
 type QueryInput struct {
-	Start     time.Time
-	End       time.Time
-	Limit     int
-	Direction string
-	Filters   Filters
+	Start   time.Time
+	End     time.Time
+	Filters Filters
 }
 
 type Filters struct {
@@ -61,7 +64,6 @@ type Filters struct {
 	PlatformName string
 	PlaneID      string
 	ServiceID    string
-	DeploymentID string
 	NodeID       string
 	ExecutionID  string
 	RequestID    string
@@ -70,12 +72,10 @@ type Filters struct {
 }
 
 type Result struct {
-	Query     string      `json:"query"`
-	Start     time.Time   `json:"start"`
-	End       time.Time   `json:"end"`
-	Limit     int         `json:"limit"`
-	Direction string      `json:"direction"`
-	Items     []LogRecord `json:"items"`
+	Query string      `json:"query"`
+	Start time.Time   `json:"start"`
+	End   time.Time   `json:"end"`
+	Items []LogRecord `json:"items"`
 }
 
 type LogRecord struct {
@@ -113,16 +113,14 @@ func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Resu
 
 	logQL := buildLogQL(normalized.Filters)
 	result = Result{
-		Query:     logQL,
-		Start:     normalized.Start,
-		End:       normalized.End,
-		Limit:     normalized.Limit,
-		Direction: normalized.Direction,
+		Query: logQL,
+		Start: normalized.Start,
+		End:   normalized.End,
 	}
 	values := url.Values{}
 	values.Set("query", logQL)
-	values.Set("limit", strconv.Itoa(normalized.Limit))
-	values.Set("direction", normalized.Direction)
+	values.Set("limit", strconv.Itoa(queryLimit))
+	values.Set("direction", queryDirection)
 	values.Set("start", strconv.FormatInt(normalized.Start.UTC().UnixNano(), 10))
 	values.Set("end", strconv.FormatInt(normalized.End.UTC().UnixNano(), 10))
 
@@ -193,7 +191,7 @@ func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Resu
 		return result, fmt.Errorf("unsupported Loki result type %q", payload.Data.ResultType)
 	}
 
-	items := make([]LogRecord, 0, normalized.Limit)
+	items := make([]LogRecord, 0, queryLimit)
 	for _, stream := range payload.Data.Result {
 		for _, pair := range stream.Values {
 			timestamp, err := parseLokiTimestamp(pair[0])
@@ -209,13 +207,10 @@ func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Resu
 	}
 
 	sort.Slice(items, func(i, j int) bool {
-		if normalized.Direction == "forward" {
-			return items[i].Timestamp.Before(items[j].Timestamp)
-		}
 		return items[i].Timestamp.After(items[j].Timestamp)
 	})
-	if len(items) > normalized.Limit {
-		items = items[:normalized.Limit]
+	if len(items) > queryLimit {
+		items = items[:queryLimit]
 	}
 
 	result.Items = items
@@ -224,19 +219,6 @@ func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Resu
 
 func normalizeInput(input QueryInput) (QueryInput, error) {
 	out := input
-	if out.Limit <= 0 {
-		out.Limit = 200
-	}
-	if out.Limit > 2000 {
-		out.Limit = 2000
-	}
-	if out.Direction == "" {
-		out.Direction = "backward"
-	}
-	if out.Direction != "backward" && out.Direction != "forward" {
-		return QueryInput{}, &InputError{Message: "direction must be backward or forward"}
-	}
-
 	end := out.End.UTC()
 	if end.IsZero() {
 		end = time.Now().UTC()
@@ -287,7 +269,6 @@ func buildLogQL(filters Filters) string {
 	appendParsedFilter(&builder, "platform_name", filters.PlatformName)
 	appendParsedFilter(&builder, "plane_id", filters.PlaneID)
 	appendParsedFilter(&builder, "service_id", filters.ServiceID)
-	appendParsedFilter(&builder, "deployment_id", filters.DeploymentID)
 	appendParsedFilter(&builder, "node_id", filters.NodeID)
 	appendParsedFilter(&builder, "execution_id", filters.ExecutionID)
 	appendParsedFilter(&builder, "request_id", filters.RequestID)

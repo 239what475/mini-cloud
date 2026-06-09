@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/projectedfile"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
+	"mini-cloud/internal/logctx"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/workloadlogs"
+	"mini-cloud/internal/projectedfile"
 )
 
 // ReadinessWaiter 定义等待工作负载 readiness 端点通过的能力。

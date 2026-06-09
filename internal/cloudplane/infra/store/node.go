@@ -9,7 +9,6 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	commonid "mini-cloud/internal/common/id"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -49,7 +48,7 @@ func (s *Store) CreateProvisioningNode(ctx context.Context, input cloudmodel.Pro
 	if err := input.Validate(); err != nil {
 		return cloudmodel.Node{}, err
 	}
-	id, err := commonid.New("node")
+	id, err := newID("node")
 	if err != nil {
 		return cloudmodel.Node{}, err
 	}
@@ -109,7 +108,7 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 		return cloudmodel.Node{}, err
 	}
 
-	id, err := commonid.New("node")
+	id, err := newID("node")
 	if err != nil {
 		return cloudmodel.Node{}, err
 	}

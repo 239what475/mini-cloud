@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+	"mini-cloud/internal/logctx"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )

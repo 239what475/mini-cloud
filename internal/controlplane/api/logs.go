@@ -5,9 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"mini-cloud/internal/common/httpx"
-	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/logquery"
+	"mini-cloud/internal/controlplane/logquery"
+	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )
@@ -33,7 +32,7 @@ func (h logQueryHandler) queryControlLogs(c *gin.Context) {
 		return
 	}
 
-	input, err := httpx.ParseLogQueryInput(c.Request)
+	input, err := parseLogQueryInput(c.Request)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{
 			"error": err.Error(),
@@ -69,12 +68,10 @@ func (h logQueryHandler) queryControlLogs(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, map[string]any{
-		"backend":   "loki",
-		"query":     result.Query,
-		"start":     result.Start,
-		"end":       result.End,
-		"limit":     result.Limit,
-		"direction": result.Direction,
-		"items":     result.Items,
+		"backend": "loki",
+		"query":   result.Query,
+		"start":   result.Start,
+		"end":     result.End,
+		"items":   result.Items,
 	})
 }

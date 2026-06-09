@@ -16,13 +16,12 @@ func TestBuildLogQL(t *testing.T) {
 		Component:    "cloud-plane",
 		PlatformName: "mini-cloud-simulated-v2",
 		ServiceID:    "app_demo",
-		DeploymentID: "dep_demo",
 		RequestID:    "req_demo",
 		Level:        "info",
 		Contains:     "http request",
 	})
 
-	want := `{component="cloud-plane",job="mini-cloud"} |= "http request" | logfmt | platform_name="mini-cloud-simulated-v2" | service_id="app_demo" | deployment_id="dep_demo" | request_id="req_demo" | level="INFO"`
+	want := `{component="cloud-plane",job="mini-cloud"} |= "http request" | logfmt | platform_name="mini-cloud-simulated-v2" | service_id="app_demo" | request_id="req_demo" | level="INFO"`
 	if query != want {
 		t.Fatalf("buildLogQL() = %q, want %q", query, want)
 	}
@@ -38,8 +37,8 @@ func TestServiceQueryRange(t *testing.T) {
 		if got := r.URL.Query().Get("direction"); got != "backward" {
 			t.Fatalf("direction = %q, want backward", got)
 		}
-		if got := r.URL.Query().Get("limit"); got != "2" {
-			t.Fatalf("limit = %q, want 2", got)
+		if got := r.URL.Query().Get("limit"); got != "200" {
+			t.Fatalf("limit = %q, want 200", got)
 		}
 		if got := r.URL.Query().Get("query"); !strings.Contains(got, `service_id="app_demo"`) {
 			t.Fatalf("query = %q, want service filter", got)
@@ -65,7 +64,6 @@ func TestServiceQueryRange(t *testing.T) {
 
 	service := NewService(server.URL, "", 5*time.Second)
 	result, err := service.QueryRange(context.Background(), QueryInput{
-		Limit: 2,
 		Filters: Filters{
 			ServiceID: "app_demo",
 		},

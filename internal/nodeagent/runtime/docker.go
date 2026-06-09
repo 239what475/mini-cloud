@@ -28,8 +28,8 @@ import (
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 
-	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/logctx"
+	"mini-cloud/internal/projectedfile"
 )
 
 const (

@@ -12,8 +12,8 @@ import (
 	cloudplaneidentity "mini-cloud/internal/cloudplane/control/identity"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/common/projectedfile"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
+	"mini-cloud/internal/projectedfile"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

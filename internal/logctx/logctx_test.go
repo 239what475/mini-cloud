@@ -32,9 +32,9 @@ func TestWithFieldsMergesValues(t *testing.T) {
 func TestLoggerAddsStructuredFields(t *testing.T) {
 	base := slog.New(slog.NewTextHandler(io.Discard, nil))
 	ctx := WithFields(context.Background(), Fields{
-		PlaneID:      "plane-a",
-		RequestID:    "req-a",
-		DeploymentID: "dep-a",
+		PlaneID:   "plane-a",
+		RequestID: "req-a",
+		PlanID:    "plan-a",
 	})
 
 	logger := Logger(ctx, base)

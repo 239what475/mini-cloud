@@ -8,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/common/util"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+	"mini-cloud/internal/projectedfile"
 )
 
 var (
@@ -74,7 +73,7 @@ func (s *serviceApplier) ApplyService(ctx context.Context, planeID string, servi
 	if err != nil {
 		return applyResult{}, err
 	}
-	defer util.CloseAndLog(s.logger, "plane client", client, "plane_id", planeID)
+	defer closeAndLog(s.logger, "plane client", client, "plane_id", planeID)
 
 	requestCtx, cancel := context.WithTimeout(ctx, defaultApplyServiceTimeout)
 	defer cancel()
@@ -128,7 +127,7 @@ func (s *serviceApplier) DeleteService(ctx context.Context, planeID string, inpu
 	if err != nil {
 		return err
 	}
-	defer util.CloseAndLog(s.logger, "plane client", client, "plane_id", planeID)
+	defer closeAndLog(s.logger, "plane client", client, "plane_id", planeID)
 
 	requestCtx, cancel := context.WithTimeout(ctx, defaultDeleteServiceTimeout)
 	defer cancel()
@@ -206,4 +205,19 @@ func executionProjectedFiles(files []projectedfile.File) []*cloudplanev1.Executi
 		})
 	}
 	return out
+}
+
+func closeAndLog(logger *slog.Logger, resource string, closer interface{ Close() error }, attrs ...any) {
+	if closer == nil {
+		return
+	}
+	if err := closer.Close(); err != nil {
+		if logger == nil {
+			logger = slog.Default()
+		}
+		args := make([]any, 0, len(attrs)+2)
+		args = append(args, "error", err)
+		args = append(args, attrs...)
+		logger.Warn("close "+resource+" failed", args...)
+	}
 }

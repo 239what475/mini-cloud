@@ -6,7 +6,7 @@ import (
 	"runtime/debug"
 	"time"
 
-	"mini-cloud/internal/common/logctx"
+	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )

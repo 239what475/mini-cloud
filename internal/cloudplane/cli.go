@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -16,7 +17,6 @@ import (
 	nodeprovidercloud "mini-cloud/internal/cloudplane/infra/nodeprovider/cloud"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudplanemigrations "mini-cloud/internal/cloudplane/infra/store/migrations"
-	"mini-cloud/internal/common/util"
 
 	"google.golang.org/grpc"
 )
@@ -174,6 +174,6 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 // PrintUsage 向 stderr 写入 cloud-plane 命令行用法。
 // 参数说明：stderr 是命令行帮助文本的输出目标。
 func PrintUsage(stderr io.Writer) {
-	util.Fprintln(stderr, "usage:")
-	util.Fprintln(stderr, "  cloud-plane --config ./cloud-plane.yaml")
+	_, _ = fmt.Fprintln(stderr, "usage:")
+	_, _ = fmt.Fprintln(stderr, "  cloud-plane --config ./cloud-plane.yaml")
 }

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
+	"mini-cloud/internal/projectedfile"
 	"mini-cloud/internal/testutil"
 )
 

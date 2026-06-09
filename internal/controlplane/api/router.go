@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"mini-cloud/internal/common/logquery"
 	"mini-cloud/internal/controlplane/coordination"
+	"mini-cloud/internal/controlplane/logquery"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"

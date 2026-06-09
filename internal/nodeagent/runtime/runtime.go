@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/projectedfile"
 )
 
 const (

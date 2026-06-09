@@ -11,7 +11,7 @@ import (
 
 	"github.com/docker/docker/api/types/registry"
 
-	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/projectedfile"
 )
 
 // TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove 验证容器创建配置包含端口发布、自动删除和 mini-cloud 标签。

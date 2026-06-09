@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/controlplane/model"
+	"mini-cloud/internal/projectedfile"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )

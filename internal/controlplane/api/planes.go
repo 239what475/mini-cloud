@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/controlplane/store"
+	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )

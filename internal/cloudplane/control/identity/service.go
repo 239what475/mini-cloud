@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/cloudplane/infra/store"
-	commontoken "mini-cloud/internal/common/token"
 )
 
 const (
@@ -31,7 +30,7 @@ func NewService(stores *store.Store) *Service {
 // IssueNodeAgentSessionToken 为 node-agent 签发 node-scoped session token。
 // 参数说明：ctx 控制数据库请求生命周期；nodeID 是 node 唯一标识；ttl 是 token 有效期。
 func (s *Service) IssueNodeAgentSessionToken(ctx context.Context, nodeID string, ttl time.Duration) (string, error) {
-	secret, err := commontoken.NewSecret(nodeAgentSessionTokenPrefix, tokenRandomBytes)
+	secret, err := newSecretToken(nodeAgentSessionTokenPrefix, tokenRandomBytes)
 	if err != nil {
 		return "", err
 	}
@@ -58,5 +57,5 @@ func (s *Service) ResolveNodeAgentSessionTokenBySecret(ctx context.Context, secr
 	if trimmed == "" {
 		return "", store.ErrNodeAgentSessionTokenNotFound
 	}
-	return s.store.ResolveNodeAgentSessionTokenByHash(ctx, commontoken.Hash(trimmed))
+	return s.store.ResolveNodeAgentSessionTokenByHash(ctx, tokenHash(trimmed))
 }

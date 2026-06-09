@@ -19,7 +19,6 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	"mini-cloud/internal/cloudplane/infra/nodeprovider"
 	"mini-cloud/internal/cloudplane/infra/nodeprovider/cloud/utils"
-	tencentcred "mini-cloud/internal/common/cloud/tencent"
 )
 
 // Name 定义当前 cloud-plane 模块复用的常量。
@@ -445,7 +444,7 @@ func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanc
 // 参数说明：regionID 是云厂商地域标识。
 func newCVMClient(regionID string) (*cvm.Client, error) {
 	// 使用项目内腾讯云凭据解析逻辑创建 credential。
-	credential, err := tencentcred.ResolveCredential()
+	credential, err := ResolveCredential()
 	if err != nil {
 		return nil, fmt.Errorf("create tencent credential: %w", err)
 	}

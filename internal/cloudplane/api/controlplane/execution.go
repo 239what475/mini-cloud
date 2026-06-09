@@ -7,8 +7,8 @@ import (
 
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/common/projectedfile"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+	"mini-cloud/internal/projectedfile"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

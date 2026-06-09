@@ -7,8 +7,8 @@ import (
 	"sync"
 	"testing"
 
-	"mini-cloud/internal/common/logctx"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
+	"mini-cloud/internal/logctx"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

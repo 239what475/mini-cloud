@@ -9,8 +9,7 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	commonid "mini-cloud/internal/common/id"
-	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/projectedfile"
 )
 
 // ErrExecutionNotFound 表示 execution intent 记录不存在。
@@ -87,7 +86,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 		return "", fmt.Errorf("supersede old execution intents: %w", err)
 	}
 
-	id, err := commonid.New("exe")
+	id, err := newID("exe")
 	if err != nil {
 		return "", err
 	}

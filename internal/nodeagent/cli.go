@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
 
-	"mini-cloud/internal/common/util"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/daemon"
 )
@@ -72,6 +72,6 @@ func parseCLIArgs(args []string, stderr io.Writer) (string, error) {
 
 // PrintUsage 向 stderr 写入 node-agent 命令行用法。
 func PrintUsage(stderr io.Writer) {
-	util.Fprintln(stderr, "usage:")
-	util.Fprintln(stderr, "  node-agent --config ./node-agent.yaml")
+	_, _ = fmt.Fprintln(stderr, "usage:")
+	_, _ = fmt.Fprintln(stderr, "  node-agent --config ./node-agent.yaml")
 }

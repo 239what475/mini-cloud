@@ -6,7 +6,7 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/common/projectedfile"
+	"mini-cloud/internal/projectedfile"
 	"mini-cloud/internal/testutil"
 )
 
