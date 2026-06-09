@@ -73,7 +73,7 @@ observability:
 	if cfg.BootstrapToken != "bootstrap-secret" {
 		t.Fatalf("BootstrapToken = %q", cfg.BootstrapToken)
 	}
-	if cfg.RegisterInput.Provider != "aliyun" || cfg.RegisterInput.InstanceID != "aliyun-node-a" {
+	if cfg.RegisterInput.GetProvider() != "aliyun" || cfg.RegisterInput.GetInstanceId() != "aliyun-node-a" {
 		t.Fatalf("RegisterInput = %+v", cfg.RegisterInput)
 	}
 	if cfg.CPUMilliAllocatable != 3250 {

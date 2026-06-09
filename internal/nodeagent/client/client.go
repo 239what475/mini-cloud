@@ -8,11 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
 	"google.golang.org/grpc"
@@ -20,7 +17,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Client 是 node-agent 访问控制面 NodeAgentService 的 gRPC 客户端。
@@ -137,76 +133,46 @@ func IsInvalidSession(err error) bool {
 }
 
 // RegisterNode 使用启动令牌向控制面注册节点，并保存返回的会话令牌。
-func (c *Client) RegisterNode(ctx context.Context, input nodeagentapi.RegisterNodeRequest) (nodeagentapi.RegisterNodeResponse, error) {
+func (c *Client) RegisterNode(ctx context.Context, input *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
-		return nodeagentapi.RegisterNodeResponse{}, err
+		return nil, err
 	}
-	resp, err := client.RegisterNode(withOutgoingMetadata(ctx, c.bootstrapToken), &nodeagentv1.RegisterNodeRequest{
-		Provider:      input.Provider,
-		Region:        input.Region,
-		Name:          input.Name,
-		PrivateIp:     input.PrivateIP,
-		PublicIp:      input.PublicIP,
-		InstanceId:    input.InstanceID,
-		InstanceType:  input.InstanceType,
-		CpuMilliTotal: int32(input.CPUMilliTotal),
-		MemoryMiTotal: int32(input.MemoryMiTotal),
-	})
+	resp, err := client.RegisterNode(withOutgoingMetadata(ctx, c.bootstrapToken), input)
 	if err != nil {
-		return nodeagentapi.RegisterNodeResponse{}, grpcControlError(err, operationRegisterNode)
+		return nil, grpcControlError(err, operationRegisterNode)
 	}
 	if resp == nil {
-		return nodeagentapi.RegisterNodeResponse{}, errors.New("invalid register response: empty response")
+		return nil, errors.New("invalid register response: empty response")
 	}
-	out := nodeagentapi.RegisterNodeResponse{
-		NodeID:         resp.GetNodeId(),
-		SessionToken:   resp.GetSessionToken(),
-		ObservedStatus: resp.GetObservedStatus(),
-		AcceptedAt:     timestampAsTime(resp.GetAcceptedAt()),
+	if strings.TrimSpace(resp.GetNodeId()) == "" || strings.TrimSpace(resp.GetSessionToken()) == "" || resp.GetAcceptedAt() == nil {
+		return nil, errors.New("invalid register response")
 	}
-	if err := out.Validate(); err != nil {
-		return nodeagentapi.RegisterNodeResponse{}, fmt.Errorf("invalid register response: %w", err)
-	}
-	c.SetSessionToken(out.SessionToken)
-	return out, nil
+	c.SetSessionToken(resp.GetSessionToken())
+	return resp, nil
 }
 
 // SendHeartbeat 使用节点会话令牌向控制面上报一次节点心跳。
-func (c *Client) SendHeartbeat(ctx context.Context, nodeID string, input nodeagentapi.HeartbeatRequest) (nodeagentapi.HeartbeatResponse, error) {
+func (c *Client) SendHeartbeat(ctx context.Context, input *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
-		return nodeagentapi.HeartbeatResponse{}, err
+		return nil, err
 	}
-	resp, err := client.RecordHeartbeat(withOutgoingMetadata(ctx, c.getSessionToken()), &nodeagentv1.HeartbeatRequest{
-		NodeId:              nodeID,
-		ReportedAt:          timestampOrNil(input.ReportedAt),
-		AgentVersion:        input.AgentVersion,
-		CpuMilliAllocatable: int32(input.CPUMilliAllocatable),
-		MemoryMiAllocatable: int32(input.MemoryMiAllocatable),
-		RunningContainers:   int32(input.RunningContainers),
-		Status:              input.Status,
-	})
+	resp, err := client.RecordHeartbeat(withOutgoingMetadata(ctx, c.getSessionToken()), input)
 	if err != nil {
-		return nodeagentapi.HeartbeatResponse{}, grpcControlError(err, operationSendHeartbeat)
+		return nil, grpcControlError(err, operationSendHeartbeat)
 	}
 	if resp == nil {
-		return nodeagentapi.HeartbeatResponse{}, errors.New("invalid heartbeat response: empty response")
+		return nil, errors.New("invalid heartbeat response: empty response")
 	}
-	out := nodeagentapi.HeartbeatResponse{
-		NodeID:         resp.GetNodeId(),
-		Accepted:       resp.GetAccepted(),
-		ObservedStatus: resp.GetObservedStatus(),
-		ReceivedAt:     timestampAsTime(resp.GetReceivedAt()),
+	if strings.TrimSpace(resp.GetNodeId()) == "" || strings.TrimSpace(resp.GetObservedStatus()) == "" || resp.GetReceivedAt() == nil {
+		return nil, errors.New("invalid heartbeat response")
 	}
-	if err := out.Validate(); err != nil {
-		return nodeagentapi.HeartbeatResponse{}, fmt.Errorf("invalid heartbeat response: %w", err)
-	}
-	return out, nil
+	return resp, nil
 }
 
 // PollExecutionWork 从控制面拉取当前节点的下一项执行任务。
-func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeagentapi.WorkItem, error) {
+func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeagentv1.WorkItem, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err
@@ -220,47 +186,26 @@ func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeage
 	if resp == nil {
 		return nil, errors.New("invalid work response: empty response")
 	}
-	item := contractWorkItem(resp.GetItem())
-	if item != nil {
-		if err := item.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid work response: %w", err)
-		}
-	}
-	return item, nil
+	return resp.GetItem(), nil
 }
 
 // ReportExecution 向控制面上报指定执行的运行中或终态结果。
-func (c *Client) ReportExecution(ctx context.Context, nodeID string, executionID string, input nodeagentapi.ReportExecutionRequest) (nodeagentapi.ReportExecutionResponse, error) {
+func (c *Client) ReportExecution(ctx context.Context, input *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
-		return nodeagentapi.ReportExecutionResponse{}, err
+		return nil, err
 	}
-	resp, err := client.ReportExecution(withOutgoingMetadata(ctx, c.getSessionToken()), &nodeagentv1.ReportExecutionRequest{
-		NodeId:                nodeID,
-		ExecutionId:           executionID,
-		Status:                input.Status,
-		Reason:                input.Reason,
-		ContainerId:           input.ContainerID,
-		ContainerName:         input.ContainerName,
-		HostPort:              int32(input.HostPort),
-		SupersededExecutionId: input.SupersededExecutionID,
-	})
+	resp, err := client.ReportExecution(withOutgoingMetadata(ctx, c.getSessionToken()), input)
 	if err != nil {
-		return nodeagentapi.ReportExecutionResponse{}, grpcControlError(err, operationReportExecution)
+		return nil, grpcControlError(err, operationReportExecution)
 	}
 	if resp == nil {
-		return nodeagentapi.ReportExecutionResponse{}, errors.New("invalid report execution response: empty response")
+		return nil, errors.New("invalid report execution response: empty response")
 	}
-	out := nodeagentapi.ReportExecutionResponse{
-		Ack: nodeagentapi.ReportExecutionAck{
-			Execution:  contractExecutionRecord(resp.GetAck().GetExecution()),
-			ObservedAt: timestampAsTime(resp.GetAck().GetObservedAt()),
-		},
+	if resp.GetAck() == nil || resp.GetAck().GetExecution() == nil || strings.TrimSpace(resp.GetAck().GetExecution().GetId()) == "" {
+		return nil, errors.New("invalid report execution response")
 	}
-	if err := out.Validate(); err != nil {
-		return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("invalid report execution response: %w", err)
-	}
-	return out, nil
+	return resp, nil
 }
 
 // grpcClient 返回基于复用 ClientConn 的 NodeAgentService gRPC stub。
@@ -326,122 +271,4 @@ func normalizeTarget(serverURL string) string {
 		return strings.TrimPrefix(trimmed, "http://")
 	}
 	return parsed.Host
-}
-
-// timestampOrNil 将非零 time.Time 转为 protobuf Timestamp，零值返回 nil。
-func timestampOrNil(value time.Time) *timestamppb.Timestamp {
-	if value.IsZero() {
-		return nil
-	}
-	return timestamppb.New(value.UTC())
-}
-
-// timestampAsTime 将 protobuf Timestamp 转为 time.Time，nil 返回零值时间。
-func timestampAsTime(value *timestamppb.Timestamp) time.Time {
-	if value == nil {
-		return time.Time{}
-	}
-	return value.AsTime()
-}
-
-// contractWorkItem 将 protobuf WorkItem 转换为 nodeagentapi 契约模型。
-func contractWorkItem(item *nodeagentv1.WorkItem) *nodeagentapi.WorkItem {
-	if item == nil {
-		return nil
-	}
-	out := &nodeagentapi.WorkItem{
-		Action:         item.GetAction(),
-		ExecutionID:    item.GetExecutionId(),
-		PlanID:         item.GetPlanId(),
-		NodeID:         item.GetNodeId(),
-		ServiceID:      item.GetServiceId(),
-		ServiceName:    item.GetServiceName(),
-		Image:          item.GetImage(),
-		Command:        append([]string(nil), item.GetCommand()...),
-		Args:           append([]string(nil), item.GetArgs()...),
-		Env:            cloneStringMap(item.GetEnv()),
-		ProjectedFiles: contractProjectedFiles(item.GetProjectedFiles()),
-		ContainerPort:  int(item.GetContainerPort()),
-		ReadinessPath:  item.GetReadinessPath(),
-		ContainerName:  item.GetContainerName(),
-		ContainerID:    item.GetContainerId(),
-		HostPort:       int(item.GetHostPort()),
-	}
-	if item.GetImageCredential() != nil {
-		out.ImageCredential = &nodeagentapi.ImageCredential{
-			Server:   item.GetImageCredential().GetServer(),
-			Username: item.GetImageCredential().GetUsername(),
-			Password: item.GetImageCredential().GetPassword(),
-		}
-	}
-	if item.GetSupersededExecution() != nil {
-		out.SupersededExecution = &nodeagentapi.SupersededExecution{
-			PlanID:        item.GetSupersededExecution().GetPlanId(),
-			ExecutionID:   item.GetSupersededExecution().GetExecutionId(),
-			ContainerID:   item.GetSupersededExecution().GetContainerId(),
-			ContainerName: item.GetSupersededExecution().GetContainerName(),
-		}
-	}
-	return out
-}
-
-// contractProjectedFiles 将 protobuf projected file 列表转换为内部契约模型。
-func contractProjectedFiles(items []*nodeagentv1.ProjectedFile) []projectedfile.File {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]projectedfile.File, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, projectedfile.File{
-			MountPath: item.GetMountPath(),
-			Content:   item.GetContent(),
-			Mode:      item.GetMode(),
-			Sensitive: item.GetSensitive(),
-		})
-	}
-	return projectedfile.CloneFiles(out)
-}
-
-// contractExecutionRecord 将 protobuf ExecutionRecord 转换为 nodeagentapi 契约模型。
-func contractExecutionRecord(item *nodeagentv1.ExecutionRecord) nodeagentapi.ExecutionRecord {
-	if item == nil {
-		return nodeagentapi.ExecutionRecord{}
-	}
-	var finishedAt *time.Time
-	if item.GetFinishedAt() != nil {
-		value := timestampAsTime(item.GetFinishedAt())
-		finishedAt = &value
-	}
-	return nodeagentapi.ExecutionRecord{
-		ID:            item.GetId(),
-		PlanID:        item.GetPlanId(),
-		NodeID:        item.GetNodeId(),
-		Image:         item.GetImage(),
-		ContainerName: item.GetContainerName(),
-		ContainerID:   item.GetContainerId(),
-		ContainerPort: int(item.GetContainerPort()),
-		HostPort:      int(item.GetHostPort()),
-		ReadinessPath: item.GetReadinessPath(),
-		Status:        item.GetStatus(),
-		StatusReason:  item.GetStatusReason(),
-		StartedAt:     timestampAsTime(item.GetStartedAt()),
-		FinishedAt:    finishedAt,
-		CreatedAt:     timestampAsTime(item.GetCreatedAt()),
-		UpdatedAt:     timestampAsTime(item.GetUpdatedAt()),
-	}
-}
-
-// cloneStringMap 复制字符串 map，空输入返回空 map。
-func cloneStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

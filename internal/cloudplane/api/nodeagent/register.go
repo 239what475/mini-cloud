@@ -5,7 +5,6 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
 	"google.golang.org/grpc/codes"
@@ -21,8 +20,7 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		return nil, err
 	}
 
-	// 将 protobuf 请求转换为 contract 输入；contract 层负责基础字段校验。
-	input := nodeagentapi.RegisterNodeRequest{
+	registered, err := s.store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      req.GetProvider(),
 		Region:        req.GetRegion(),
 		Name:          req.GetName(),
@@ -32,21 +30,6 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		InstanceType:  req.GetInstanceType(),
 		CPUMilliTotal: int(req.GetCpuMilliTotal()),
 		MemoryMiTotal: int(req.GetMemoryMiTotal()),
-	}
-	if err := input.Validate(); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	registered, err := s.store.RegisterNode(ctx, cloudmodel.RegisterInput{
-		Provider:      input.Provider,
-		Region:        input.Region,
-		Name:          input.Name,
-		PrivateIP:     input.PrivateIP,
-		PublicIP:      input.PublicIP,
-		InstanceID:    input.InstanceID,
-		InstanceType:  input.InstanceType,
-		CPUMilliTotal: input.CPUMilliTotal,
-		MemoryMiTotal: input.MemoryMiTotal,
 	})
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

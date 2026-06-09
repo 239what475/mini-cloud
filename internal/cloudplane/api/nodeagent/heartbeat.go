@@ -7,7 +7,6 @@ import (
 
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
 	"google.golang.org/grpc/codes"
@@ -27,28 +26,18 @@ func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.Heartbea
 	if err := s.requireNodeAgentSession(ctx, nodeID); err != nil {
 		return nil, err
 	}
+	if req.GetReportedAt() == nil {
+		return nil, status.Error(codes.InvalidArgument, "reportedAt is required")
+	}
 
-	// 将 protobuf 心跳转换为 contract 输入，校验时间、版本、容量和状态。
-	input := nodeagentapi.HeartbeatRequest{
+	// 写入心跳摘要，同时更新 node 的 allocatable 容量和最新状态。
+	summary, receivedAt, err := s.store.RecordNodeHeartbeat(ctx, nodeID, cloudmodel.HeartbeatInput{
 		ReportedAt:          req.GetReportedAt().AsTime(),
 		AgentVersion:        req.GetAgentVersion(),
 		CPUMilliAllocatable: int(req.GetCpuMilliAllocatable()),
 		MemoryMiAllocatable: int(req.GetMemoryMiAllocatable()),
 		RunningContainers:   int(req.GetRunningContainers()),
 		Status:              req.GetStatus(),
-	}
-	if err := input.Validate(); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// 写入心跳摘要，同时更新 node 的 allocatable 容量和最新状态。
-	summary, receivedAt, err := s.store.RecordNodeHeartbeat(ctx, nodeID, cloudmodel.HeartbeatInput{
-		ReportedAt:          input.ReportedAt,
-		AgentVersion:        input.AgentVersion,
-		CPUMilliAllocatable: input.CPUMilliAllocatable,
-		MemoryMiAllocatable: input.MemoryMiAllocatable,
-		RunningContainers:   input.RunningContainers,
-		Status:              input.Status,
 	})
 	if err != nil {
 		// node 不存在返回 NotFound；除 NotFound 外当前统一映射为 InvalidArgument。

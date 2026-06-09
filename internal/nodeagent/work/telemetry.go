@@ -4,7 +4,7 @@ import (
 	"sort"
 	"strings"
 
-	"mini-cloud/internal/contract/nodeagentapi"
+	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 )
 
 // telemetryEnvOptions 配置注入到工作负载环境变量中的遥测元数据。
@@ -16,7 +16,7 @@ type telemetryEnvOptions struct {
 }
 
 // injectTelemetryEnv 按需注入 OpenTelemetry exporter 默认配置，并写入 mini-cloud 资源属性。
-func injectTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opts telemetryEnvOptions) map[string]string {
+func injectTelemetryEnv(base map[string]string, item *nodeagentv1.WorkItem, opts telemetryEnvOptions) map[string]string {
 	env := cloneStringMap(base)
 	if env == nil {
 		env = map[string]string{}
@@ -30,13 +30,13 @@ func injectTelemetryEnv(base map[string]string, item *nodeagentapi.WorkItem, opt
 		env["OTEL_EXPORTER_OTLP_ENDPOINT"] = endpoint
 		env["OTEL_EXPORTER_OTLP_PROTOCOL"] = "http/protobuf"
 	}
-	if strings.TrimSpace(env["OTEL_SERVICE_NAME"]) == "" && strings.TrimSpace(item.ServiceName) != "" {
-		env["OTEL_SERVICE_NAME"] = item.ServiceName
+	if strings.TrimSpace(env["OTEL_SERVICE_NAME"]) == "" && strings.TrimSpace(item.GetServiceName()) != "" {
+		env["OTEL_SERVICE_NAME"] = item.GetServiceName()
 	}
 	reserved := map[string]string{
-		"mini_cloud.service_id":   sanitizeOTelResourceValue(item.ServiceID),
-		"mini_cloud.plan_id":      sanitizeOTelResourceValue(item.PlanID),
-		"mini_cloud.execution_id": sanitizeOTelResourceValue(item.ExecutionID),
+		"mini_cloud.service_id":   sanitizeOTelResourceValue(item.GetServiceId()),
+		"mini_cloud.plan_id":      sanitizeOTelResourceValue(item.GetPlanId()),
+		"mini_cloud.execution_id": sanitizeOTelResourceValue(item.GetExecutionId()),
 	}
 	if strings.TrimSpace(opts.PlatformName) != "" {
 		reserved["mini_cloud.platform_name"] = sanitizeOTelResourceValue(opts.PlatformName)

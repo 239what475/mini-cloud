@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
 	"google.golang.org/grpc"
@@ -69,20 +68,20 @@ func TestRegisterNodeUsesBootstrapToken(t *testing.T) {
 			return &nodeagentv1.RegisterNodeResponse{
 				NodeId:         "node_x",
 				SessionToken:   "session-secret",
-				ObservedStatus: string(nodeagentapi.NodeStatusRegistering),
+				ObservedStatus: "registering",
 				AcceptedAt:     timestamppb.Now(),
 			}, nil
 		},
 	})
 
-	_, err := client.RegisterNode(context.Background(), nodeagentapi.RegisterNodeRequest{
+	_, err := client.RegisterNode(context.Background(), &nodeagentv1.RegisterNodeRequest{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "node-a",
-		PrivateIP:     "10.0.0.10",
-		InstanceID:    "i-abc",
+		PrivateIp:     "10.0.0.10",
+		InstanceId:    "i-abc",
 		InstanceType:  "ecs.u1-c1m1.large",
-		CPUMilliTotal: 2000,
+		CpuMilliTotal: 2000,
 		MemoryMiTotal: 4096,
 	})
 	if err != nil {
@@ -131,14 +130,14 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	if item == nil {
 		t.Fatalf("PollExecutionWork returned nil item")
 	}
-	if item.ServiceID != "svc_demo" {
-		t.Fatalf("ServiceID = %q, want svc_demo", item.ServiceID)
+	if item.GetServiceId() != "svc_demo" {
+		t.Fatalf("ServiceID = %q, want svc_demo", item.GetServiceId())
 	}
-	if item.ServiceName != "hello" {
-		t.Fatalf("ServiceName = %q, want hello", item.ServiceName)
+	if item.GetServiceName() != "hello" {
+		t.Fatalf("ServiceName = %q, want hello", item.GetServiceName())
 	}
-	if item.PlanID != "plan_demo" {
-		t.Fatalf("PlanID = %q, want plan_demo", item.PlanID)
+	if item.GetPlanId() != "plan_demo" {
+		t.Fatalf("PlanID = %q, want plan_demo", item.GetPlanId())
 	}
 }
 
@@ -150,20 +149,20 @@ func TestClientRejectsInvalidRegisterResponse(t *testing.T) {
 		registerNode: func(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			return &nodeagentv1.RegisterNodeResponse{
 				NodeId:         "node_x",
-				ObservedStatus: string(nodeagentapi.NodeStatusReady),
+				ObservedStatus: "ready",
 				AcceptedAt:     timestamppb.Now(),
 			}, nil
 		},
 	})
 
-	_, err := client.RegisterNode(context.Background(), nodeagentapi.RegisterNodeRequest{
+	_, err := client.RegisterNode(context.Background(), &nodeagentv1.RegisterNodeRequest{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "node-a",
-		PrivateIP:     "10.0.0.10",
-		InstanceID:    "i-abc",
+		PrivateIp:     "10.0.0.10",
+		InstanceId:    "i-abc",
 		InstanceType:  "ecs.u1-c1m1.large",
-		CPUMilliTotal: 2000,
+		CpuMilliTotal: 2000,
 		MemoryMiTotal: 4096,
 	})
 	if err == nil {
@@ -189,13 +188,14 @@ func TestClientRejectsInvalidHeartbeatResponse(t *testing.T) {
 	})
 	client.SetSessionToken("node-session")
 
-	_, err := client.SendHeartbeat(context.Background(), "node-a", nodeagentapi.HeartbeatRequest{
-		ReportedAt:          timestamppb.Now().AsTime(),
+	_, err := client.SendHeartbeat(context.Background(), &nodeagentv1.HeartbeatRequest{
+		NodeId:              "node-a",
+		ReportedAt:          timestamppb.Now(),
 		AgentVersion:        "test",
-		CPUMilliAllocatable: 1000,
+		CpuMilliAllocatable: 1000,
 		MemoryMiAllocatable: 1024,
 		RunningContainers:   1,
-		Status:              nodeagentapi.NodeStatusReady,
+		Status:              "ready",
 	})
 	if err == nil {
 		t.Fatalf("SendHeartbeat returned nil error, want invalid response error")

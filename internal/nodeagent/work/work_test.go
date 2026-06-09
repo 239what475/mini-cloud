@@ -11,8 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
@@ -48,18 +46,18 @@ func TestExecuteNextReportsFailedWhenRuntimeStartFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "runtime start failed") {
 		t.Fatalf("ExecuteNext error = %v, want runtime start failure", err)
 	}
-	if result.Report == nil || result.Report.Ack.Execution.Status != nodeagentapi.ExecutionStatusFailed {
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusFailed {
 		t.Fatalf("result.Report = %+v, want failed report", result.Report)
 	}
 	if len(recorder.reports) != 1 {
 		t.Fatalf("report count = %d, want 1", len(recorder.reports))
 	}
 	report := recorder.reports[0]
-	if report.Status != nodeagentapi.ExecutionStatusFailed {
-		t.Fatalf("report status = %q, want failed", report.Status)
+	if report.GetStatus() != executionStatusFailed {
+		t.Fatalf("report status = %q, want failed", report.GetStatus())
 	}
-	if report.ContainerName != "svc-web-0" {
-		t.Fatalf("report container name = %q, want svc-web-0", report.ContainerName)
+	if report.GetContainerName() != "svc-web-0" {
+		t.Fatalf("report container name = %q, want svc-web-0", report.GetContainerName())
 	}
 }
 
@@ -84,18 +82,18 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteNext returned error: %v", err)
 	}
-	if result.Report == nil || result.Report.Ack.Execution.Status != nodeagentapi.ExecutionStatusRunning {
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusRunning {
 		t.Fatalf("result.Report = %+v, want running report", result.Report)
 	}
 	if len(recorder.reports) != 1 {
 		t.Fatalf("report count = %d, want 1", len(recorder.reports))
 	}
 	report := recorder.reports[0]
-	if report.Status != nodeagentapi.ExecutionStatusRunning {
-		t.Fatalf("report status = %q, want running", report.Status)
+	if report.GetStatus() != executionStatusRunning {
+		t.Fatalf("report status = %q, want running", report.GetStatus())
 	}
-	if report.HostPort != 32080 {
-		t.Fatalf("report host port = %d, want 32080", report.HostPort)
+	if report.GetHostPort() != 32080 {
+		t.Fatalf("report host port = %d, want 32080", report.GetHostPort())
 	}
 	if len(workloadLogs.starts) != 1 {
 		t.Fatalf("workload log start count = %d, want 1", len(workloadLogs.starts))
@@ -134,13 +132,13 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure", err)
 	}
-	if result.Report == nil || result.Report.Ack.Execution.Status != nodeagentapi.ExecutionStatusFailed {
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusFailed {
 		t.Fatalf("result.Report = %+v, want failed report", result.Report)
 	}
 	if len(containerRuntime.stops) != 1 || containerRuntime.stops[0] != "container-new" {
 		t.Fatalf("stopped containers = %v, want [container-new]", containerRuntime.stops)
 	}
-	if len(recorder.reports) != 1 || !strings.Contains(recorder.reports[0].Reason, "logs: workload boot failed") {
+	if len(recorder.reports) != 1 || !strings.Contains(recorder.reports[0].GetReason(), "logs: workload boot failed") {
 		t.Fatalf("report = %+v, want log snippet in failed reason", recorder.reports)
 	}
 }
@@ -150,9 +148,9 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 	t.Parallel()
 
 	item := testWorkItem()
-	item.SupersededExecution = &nodeagentapi.SupersededExecution{
-		ExecutionID:   "exec-old",
-		ContainerID:   "container-old",
+	item.SupersededExecution = &nodeagentv1.SupersededExecution{
+		ExecutionId:   "exec-old",
+		ContainerId:   "container-old",
 		ContainerName: "svc-web-old",
 	}
 	recorder := &workTestRecorder{item: item}
@@ -174,13 +172,13 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 	if err == nil || !strings.Contains(err.Error(), "stopping superseded container") {
 		t.Fatalf("ExecuteNext error = %v, want superseded stop failure", err)
 	}
-	if result.Report == nil || result.Report.Ack.Execution.Status != nodeagentapi.ExecutionStatusFailed {
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusFailed {
 		t.Fatalf("result.Report = %+v, want failed report", result.Report)
 	}
 	if strings.Join(containerRuntime.stops, ",") != "container-old,container-new" {
 		t.Fatalf("stopped containers = %v, want old then new", containerRuntime.stops)
 	}
-	if len(recorder.reports) != 1 || recorder.reports[0].Status != nodeagentapi.ExecutionStatusFailed {
+	if len(recorder.reports) != 1 || recorder.reports[0].GetStatus() != executionStatusFailed {
 		t.Fatalf("reports = %+v, want failed report", recorder.reports)
 	}
 }
@@ -190,8 +188,8 @@ func TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded(t *testing.T) {
 	t.Parallel()
 
 	item := testWorkItem()
-	item.Action = nodeagentapi.WorkActionDelete
-	item.ContainerID = "container-old"
+	item.Action = workActionDelete
+	item.ContainerId = "container-old"
 	item.ContainerName = "svc-web-old"
 	item.HostPort = 32080
 	recorder := &workTestRecorder{item: item}
@@ -208,7 +206,7 @@ func TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded(t *testing.T) {
 	if len(containerRuntime.stops) != 1 || containerRuntime.stops[0] != "container-old" {
 		t.Fatalf("stopped containers = %v, want [container-old]", containerRuntime.stops)
 	}
-	if len(recorder.reports) != 1 || recorder.reports[0].Status != nodeagentapi.ExecutionStatusSuperseded {
+	if len(recorder.reports) != 1 || recorder.reports[0].GetStatus() != executionStatusSuperseded {
 		t.Fatalf("reports = %+v, want superseded report", recorder.reports)
 	}
 }
@@ -258,7 +256,7 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure after cancellation", err)
 	}
-	if result.Report == nil || result.Report.Ack.Execution.Status != nodeagentapi.ExecutionStatusFailed {
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusFailed {
 		t.Fatalf("result.Report = %+v, want failed report", result.Report)
 	}
 	if len(containerRuntime.stops) != 1 || containerRuntime.stops[0] != "container-new" {
@@ -314,12 +312,12 @@ func testOptions() Options {
 }
 
 // testWorkItem 返回执行状态机测试使用的基础任务。
-func testWorkItem() *nodeagentapi.WorkItem {
-	return &nodeagentapi.WorkItem{
-		ExecutionID:   "exec-new",
-		PlanID:        "plan-a",
-		NodeID:        "node-a",
-		ServiceID:     "service-a",
+func testWorkItem() *nodeagentv1.WorkItem {
+	return &nodeagentv1.WorkItem{
+		ExecutionId:   "exec-new",
+		PlanId:        "plan-a",
+		NodeId:        "node-a",
+		ServiceId:     "service-a",
 		ServiceName:   "web",
 		Image:         "example/web:latest",
 		Env:           map[string]string{"APP_ENV": "test"},
@@ -342,21 +340,14 @@ func (s *workTestService) PollWork(context.Context, *nodeagentv1.PollWorkRequest
 	if s.recorder.pollErr != nil {
 		return nil, s.recorder.pollErr
 	}
-	return &nodeagentv1.PollWorkResponse{Item: protoWorkItem(s.recorder.item)}, nil
+	return &nodeagentv1.PollWorkResponse{Item: s.recorder.item}, nil
 }
 
 func (s *workTestService) ReportExecution(_ context.Context, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	if s.recorder == nil {
 		return &nodeagentv1.ReportExecutionResponse{Ack: protoReportAck(req.GetExecutionId(), req.GetStatus())}, nil
 	}
-	s.recorder.reports = append(s.recorder.reports, nodeagentapi.ReportExecutionRequest{
-		Status:                req.GetStatus(),
-		Reason:                req.GetReason(),
-		ContainerID:           req.GetContainerId(),
-		ContainerName:         req.GetContainerName(),
-		HostPort:              int(req.GetHostPort()),
-		SupersededExecutionID: req.GetSupersededExecutionId(),
-	})
+	s.recorder.reports = append(s.recorder.reports, req)
 	if s.recorder.reportErr != nil {
 		return nil, s.recorder.reportErr
 	}
@@ -387,62 +378,6 @@ func newWorkTestClient(t *testing.T, recorder *workTestRecorder) *agentclient.Cl
 	})
 }
 
-func protoWorkItem(item *nodeagentapi.WorkItem) *nodeagentv1.WorkItem {
-	if item == nil {
-		return nil
-	}
-	out := &nodeagentv1.WorkItem{
-		Action:         item.Action,
-		ExecutionId:    item.ExecutionID,
-		PlanId:         item.PlanID,
-		NodeId:         item.NodeID,
-		ServiceId:      item.ServiceID,
-		ServiceName:    item.ServiceName,
-		Image:          item.Image,
-		Command:        append([]string(nil), item.Command...),
-		Args:           append([]string(nil), item.Args...),
-		Env:            cloneStringMapForTest(item.Env),
-		ContainerPort:  int32(item.ContainerPort),
-		ReadinessPath:  item.ReadinessPath,
-		ContainerName:  item.ContainerName,
-		ContainerId:    item.ContainerID,
-		HostPort:       int32(item.HostPort),
-		ProjectedFiles: protoProjectedFiles(item.ProjectedFiles),
-	}
-	if item.ImageCredential != nil {
-		out.ImageCredential = &nodeagentv1.ImageCredential{
-			Server:   item.ImageCredential.Server,
-			Username: item.ImageCredential.Username,
-			Password: item.ImageCredential.Password,
-		}
-	}
-	if item.SupersededExecution != nil {
-		out.SupersededExecution = &nodeagentv1.SupersededExecution{
-			PlanId:        item.SupersededExecution.PlanID,
-			ExecutionId:   item.SupersededExecution.ExecutionID,
-			ContainerId:   item.SupersededExecution.ContainerID,
-			ContainerName: item.SupersededExecution.ContainerName,
-		}
-	}
-	return out
-}
-
-func protoProjectedFiles(items []projectedfile.File) []*nodeagentv1.ProjectedFile {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*nodeagentv1.ProjectedFile, 0, len(items))
-	for _, item := range items {
-		out = append(out, &nodeagentv1.ProjectedFile{
-			MountPath: item.MountPath,
-			Content:   item.Content,
-			Mode:      item.Mode,
-			Sensitive: item.Sensitive,
-		})
-	}
-	return out
-}
-
 func protoReportAck(executionID string, status string) *nodeagentv1.ReportExecutionAck {
 	return &nodeagentv1.ReportExecutionAck{
 		Execution: &nodeagentv1.ExecutionRecord{
@@ -453,27 +388,16 @@ func protoReportAck(executionID string, status string) *nodeagentv1.ReportExecut
 	}
 }
 
-func cloneStringMapForTest(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
-}
-
 // workTestRecorder 记录执行状态机测试里的控制面交互。
 type workTestRecorder struct {
 	// item 是 PollExecutionWork 返回的预设任务。
-	item *nodeagentapi.WorkItem
+	item *nodeagentv1.WorkItem
 	// pollErr 是 PollExecutionWork 返回的预设错误。
 	pollErr error
 	// reportErr 是 ReportExecution 返回的预设错误。
 	reportErr error
 	// reports 记录所有执行结果上报请求。
-	reports []nodeagentapi.ReportExecutionRequest
+	reports []*nodeagentv1.ReportExecutionRequest
 }
 
 // fakeRuntime 是执行状态机测试用的容器运行时。

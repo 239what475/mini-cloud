@@ -8,7 +8,6 @@ import (
 
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
 	"google.golang.org/grpc/codes"
@@ -35,27 +34,14 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 		return nil, status.Error(codes.InvalidArgument, "executionID is required")
 	}
 
-	// 将 protobuf 上报转换为 contract 输入，校验状态、原因、容器名和 host port。
-	input := nodeagentapi.ReportExecutionRequest{
+	// 写入 execution 结果；该 store 事务边界方法会在同一事务内推进 execution intent 和 node allocation。
+	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
 		Status:                req.GetStatus(),
 		Reason:                req.GetReason(),
 		ContainerID:           req.GetContainerId(),
 		ContainerName:         req.GetContainerName(),
 		HostPort:              int(req.GetHostPort()),
 		SupersededExecutionID: req.GetSupersededExecutionId(),
-	}
-	if err := input.Validate(); err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
-	}
-
-	// 写入 execution 结果；该 store 事务边界方法会在同一事务内推进 execution intent 和 node allocation。
-	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
-		Status:                input.Status,
-		Reason:                input.Reason,
-		ContainerID:           input.ContainerID,
-		ContainerName:         input.ContainerName,
-		HostPort:              input.HostPort,
-		SupersededExecutionID: input.SupersededExecutionID,
 	})
 	if err != nil {
 		// execution 不存在返回 NotFound；除 NotFound 外当前统一映射为 InvalidArgument。

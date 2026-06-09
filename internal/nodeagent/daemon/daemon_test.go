@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
@@ -93,7 +92,7 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 			return &nodeagentv1.RegisterNodeResponse{
 				NodeId:         "node-renewed",
 				SessionToken:   "session-new",
-				ObservedStatus: string(nodeagentapi.NodeStatusRegistering),
+				ObservedStatus: "registering",
 				AcceptedAt:     timestamppb.Now(),
 			}, nil
 		},
@@ -109,7 +108,7 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 				return &nodeagentv1.HeartbeatResponse{
 					NodeId:         "node-renewed",
 					Accepted:       true,
-					ObservedStatus: string(nodeagentapi.NodeStatusReady),
+					ObservedStatus: "ready",
 					ReceivedAt:     timestamppb.Now(),
 				}, nil
 			default:
@@ -123,14 +122,14 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 	cfg := agentconfig.Config{
 		ServerURL:      "http://bufconn",
 		BootstrapToken: "bootstrap-secret",
-		RegisterInput: nodeagentapi.RegisterNodeRequest{
+		RegisterInput: &nodeagentv1.RegisterNodeRequest{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
 			Name:          "node-a",
-			PrivateIP:     "10.0.0.10",
-			InstanceID:    "i-node-a",
+			PrivateIp:     "10.0.0.10",
+			InstanceId:    "i-node-a",
 			InstanceType:  "ecs.u1-c1m1.large",
-			CPUMilliTotal: 2000,
+			CpuMilliTotal: 2000,
 			MemoryMiTotal: 4096,
 		},
 		AgentVersion:        "test-agent",
@@ -173,7 +172,7 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	var registerCalls int
 	var heartbeatCalls int
 	var pollCalls int
-	var lastHeartbeat nodeagentapi.HeartbeatRequest
+	var lastHeartbeat *nodeagentv1.HeartbeatRequest
 	heartbeatDone := make(chan struct{})
 	pollDone := make(chan struct{})
 	client := newDaemonTestClient(t, agentclient.Config{}, &nodeAgentTestService{
@@ -182,7 +181,7 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			return &nodeagentv1.RegisterNodeResponse{
 				NodeId:         "node-injected",
 				SessionToken:   "session-injected",
-				ObservedStatus: nodeagentapi.NodeStatusRegistering,
+				ObservedStatus: "registering",
 				AcceptedAt:     timestamppb.Now(),
 			}, nil
 		},
@@ -191,17 +190,11 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			if heartbeatCalls == 1 {
 				close(heartbeatDone)
 			}
-			lastHeartbeat = nodeagentapi.HeartbeatRequest{
-				AgentVersion:        req.GetAgentVersion(),
-				CPUMilliAllocatable: int(req.GetCpuMilliAllocatable()),
-				MemoryMiAllocatable: int(req.GetMemoryMiAllocatable()),
-				RunningContainers:   int(req.GetRunningContainers()),
-				Status:              req.GetStatus(),
-			}
+			lastHeartbeat = req
 			return &nodeagentv1.HeartbeatResponse{
 				NodeId:         "node-injected",
 				Accepted:       true,
-				ObservedStatus: nodeagentapi.NodeStatusReady,
+				ObservedStatus: "ready",
 				ReceivedAt:     timestamppb.Now(),
 			}, nil
 		},
@@ -218,14 +211,14 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		t.Fatalf("workloadlogs.NewManager returned error: %v", err)
 	}
 	cfg := agentconfig.Config{
-		RegisterInput: nodeagentapi.RegisterNodeRequest{
+		RegisterInput: &nodeagentv1.RegisterNodeRequest{
 			Provider:      "aliyun",
 			Region:        "cn-beijing",
 			Name:          "node-injected",
-			PrivateIP:     "127.0.0.1",
-			InstanceID:    "i-node-injected",
+			PrivateIp:     "127.0.0.1",
+			InstanceId:    "i-node-injected",
 			InstanceType:  "ecs.u1-c1m1.large",
-			CPUMilliTotal: 1000,
+			CpuMilliTotal: 1000,
 			MemoryMiTotal: 1024,
 		},
 		AgentVersion:        "test-agent",
@@ -262,8 +255,8 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	if heartbeatCalls != 1 {
 		t.Fatalf("heartbeatCalls = %d, want 1", heartbeatCalls)
 	}
-	if lastHeartbeat.Status != nodeagentapi.NodeStatusReady {
-		t.Fatalf("heartbeat status = %q, want %q", lastHeartbeat.Status, nodeagentapi.NodeStatusReady)
+	if lastHeartbeat.GetStatus() != "ready" {
+		t.Fatalf("heartbeat status = %q, want ready", lastHeartbeat.GetStatus())
 	}
 	if pollCalls != 1 {
 		t.Fatalf("pollCalls = %d, want 1", pollCalls)

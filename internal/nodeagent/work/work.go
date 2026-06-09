@@ -9,7 +9,8 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/contract/nodeagentapi"
+	"mini-cloud/internal/common/projectedfile"
+	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/workloadlogs"
@@ -26,6 +27,12 @@ type WorkloadLogStarter func(workloadlogs.StartRequest)
 
 // ExecutionPhase 表示执行状态机阶段。
 const (
+	workActionDelete = "delete"
+
+	executionStatusFailed     = "failed"
+	executionStatusRunning    = "running"
+	executionStatusSuperseded = "superseded"
+
 	// PhasePolled 表示执行任务已从控制面拉取。
 	PhasePolled = "polled"
 	// PhaseValidated 表示执行任务契约校验已通过。
@@ -107,13 +114,13 @@ type Result struct {
 	// WorkFound 表示本次轮询是否拿到了执行任务。
 	WorkFound bool `json:"workFound"`
 	// WorkItem 是控制面返回的执行任务。
-	WorkItem *nodeagentapi.WorkItem `json:"workItem,omitempty"`
+	WorkItem *nodeagentv1.WorkItem `json:"workItem,omitempty"`
 	// RuntimeRun 是运行时容器启动结果。
 	RuntimeRun *runtime.RunResult `json:"runtimeRun,omitempty"`
 	// Readiness 是工作负载 readiness 探测结果。
 	Readiness *ReadinessResult `json:"readiness,omitempty"`
 	// Report 是最后一次执行结果上报响应。
-	Report *nodeagentapi.ReportExecutionResponse `json:"report,omitempty"`
+	Report *nodeagentv1.ReportExecutionResponse `json:"report,omitempty"`
 	// string 是本次状态机推进到的最后阶段。
 	Phase string `json:"phase,omitempty"`
 }
@@ -173,25 +180,25 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	workLogger := e.workLogger(item)
 	workLogger.Info("claimed execution work", "request_id", logctx.RequestID(pollCtx))
 
-	if err := item.Validate(); err != nil {
+	if err := validateWorkItem(item); err != nil {
 		report, reason, reportErr := e.reportValidationFailure(ctx, item, err)
 		if reportErr != nil {
 			return result, fmt.Errorf("report failed execution after invalid work item: %w", reportErr)
 		}
-		result.Report = &report
+		result.Report = report
 		result.Phase = PhaseFailedReported
 		e.logReport(workLogger, report)
 		return result, fmt.Errorf("%s", reason)
 	}
 	result.Phase = PhaseValidated
-	if nodeagentapi.NormalizeWorkAction(item.Action) == nodeagentapi.WorkActionDelete {
+	if normalizeWorkAction(item.GetAction()) == workActionDelete {
 		result.Phase = PhaseDeleting
 		report, err := e.deleteWorkItem(ctx, item)
 		if err != nil {
-			result.Report = &report
+			result.Report = report
 			return result, err
 		}
-		result.Report = &report
+		result.Report = report
 		result.Phase = PhaseDeleteReported
 		e.logReport(workLogger, report)
 		return result, nil
@@ -204,7 +211,7 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		if reportErr != nil {
 			return result, fmt.Errorf("report failed execution after runtime start error: %w", reportErr)
 		}
-		result.Report = &report
+		result.Report = report
 		e.logReport(workLogger, report)
 		return result, fmt.Errorf("%s", reason)
 	}
@@ -223,7 +230,7 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	if readinessHost == "" {
 		readinessHost = "127.0.0.1"
 	}
-	readinessURL := fmt.Sprintf("http://%s%s", net.JoinHostPort(readinessHost, fmt.Sprintf("%d", runResult.HostPort)), item.ReadinessPath)
+	readinessURL := fmt.Sprintf("http://%s%s", net.JoinHostPort(readinessHost, fmt.Sprintf("%d", runResult.HostPort)), item.GetReadinessPath())
 	result.Phase = PhaseReadinessChecking
 	readinessResult := e.readinessWaiter.Wait(ctx, ReadinessConfig{
 		URL:      readinessURL,
@@ -238,10 +245,10 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		result.Phase = PhaseReportingRun
 		report, err := e.reportRunning(ctx, item, runResult, readinessURL)
 		if err != nil {
-			result.Report = &report
+			result.Report = report
 			return result, err
 		}
-		result.Report = &report
+		result.Report = report
 		result.Phase = PhaseRunningReported
 		e.logReport(workLogger, report)
 		return result, nil
@@ -252,44 +259,44 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 	if err != nil {
 		return result, err
 	}
-	result.Report = &report
+	result.Report = report
 	result.Phase = PhaseFailedReported
 	e.logReport(workLogger, report)
 	return result, fmt.Errorf("%s", reason)
 }
 
 // deleteWorkItem 停止已有容器并将 execution 标记为 superseded；失败时上报 failed，供控制面保留删除中状态继续重试。
-func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) (nodeagentapi.ReportExecutionResponse, error) {
+func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (*nodeagentv1.ReportExecutionResponse, error) {
 	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.RuntimeStopTimeout))
-	stopErr := e.containerRuntime.Stop(stopCtx, item.ContainerID)
+	stopErr := e.containerRuntime.Stop(stopCtx, item.GetContainerId())
 	cancelStop()
 	if stopErr != nil {
-		report, reportErr := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
-			Reason:        TruncateReason(fmt.Sprintf("delete execution failed while stopping container %s: %v", item.ContainerName, stopErr)),
-			ContainerID:   item.ContainerID,
-			ContainerName: item.ContainerName,
-			HostPort:      item.HostPort,
+		report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
+			Reason:        TruncateReason(fmt.Sprintf("delete execution failed while stopping container %s: %v", item.GetContainerName(), stopErr)),
+			ContainerId:   item.GetContainerId(),
+			ContainerName: item.GetContainerName(),
+			HostPort:      item.GetHostPort(),
 		})
 		if reportErr != nil {
-			return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report failed delete execution: %w", reportErr)
+			return nil, fmt.Errorf("report failed delete execution: %w", reportErr)
 		}
 		return report, stopErr
 	}
-	report, err := e.report(ctx, item, nodeagentapi.ReportExecutionRequest{
-		Status:        nodeagentapi.ExecutionStatusSuperseded,
-		Reason:        fmt.Sprintf("service deletion stopped container %s", item.ContainerName),
-		ContainerID:   item.ContainerID,
-		ContainerName: item.ContainerName,
-		HostPort:      item.HostPort,
+	report, err := e.report(ctx, item, &nodeagentv1.ReportExecutionRequest{
+		Status:        executionStatusSuperseded,
+		Reason:        fmt.Sprintf("service deletion stopped container %s", item.GetContainerName()),
+		ContainerId:   item.GetContainerId(),
+		ContainerName: item.GetContainerName(),
+		HostPort:      item.GetHostPort(),
 	})
 	if err != nil {
-		return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report deleted execution: %w", err)
+		return nil, fmt.Errorf("report deleted execution: %w", err)
 	}
 	return report, nil
 }
 
 // pollWork 带超时和日志上下文字段拉取下一项执行任务。
-func (e Executor) pollWork(ctx context.Context) (*nodeagentapi.WorkItem, context.Context, error) {
+func (e Executor) pollWork(ctx context.Context) (*nodeagentv1.WorkItem, context.Context, error) {
 	pollCtx, cancel := context.WithTimeout(ctx, e.timeout(e.opts.PollWorkTimeout))
 	defer cancel()
 	pollCtx = logctx.WithFields(pollCtx, logctx.Fields{
@@ -301,29 +308,29 @@ func (e Executor) pollWork(ctx context.Context) (*nodeagentapi.WorkItem, context
 }
 
 // runWorkItem 将执行任务转换为运行时输入并启动容器。
-func (e Executor) runWorkItem(ctx context.Context, item *nodeagentapi.WorkItem) (runtime.RunResult, error) {
+func (e Executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (runtime.RunResult, error) {
 	runCtx, cancelRun := context.WithTimeout(e.workContext(ctx, item), e.timeout(e.opts.RuntimeTimeout))
 	defer cancelRun()
 
-	env := injectTelemetryEnv(item.Env, item, telemetryEnvOptions{
+	env := injectTelemetryEnv(item.GetEnv(), item, telemetryEnvOptions{
 		PlatformName:         e.opts.PlatformName,
 		WorkloadOTLPEndpoint: e.opts.WorkloadOTLPEndpoint,
 	})
 	env = injectEgressProxyEnv(env, e.opts)
 	return e.containerRuntime.Run(runCtx, runtime.RunInput{
-		ContainerName:   item.ContainerName,
+		ContainerName:   item.GetContainerName(),
 		NodeID:          e.opts.NodeID,
-		ExecutionID:     item.ExecutionID,
-		PlanID:          item.PlanID,
-		ServiceID:       item.ServiceID,
-		ProjectionRef:   item.ExecutionID,
-		Image:           item.Image,
-		Command:         item.Command,
-		Args:            item.Args,
+		ExecutionID:     item.GetExecutionId(),
+		PlanID:          item.GetPlanId(),
+		ServiceID:       item.GetServiceId(),
+		ProjectionRef:   item.GetExecutionId(),
+		Image:           item.GetImage(),
+		Command:         append([]string(nil), item.GetCommand()...),
+		Args:            append([]string(nil), item.GetArgs()...),
 		Env:             env,
-		ProjectedFiles:  item.ProjectedFiles,
-		ImageCredential: convertExecutionImageCredential(item.ImageCredential),
-		ContainerPort:   item.ContainerPort,
+		ProjectedFiles:  projectedFilesFromProto(item.GetProjectedFiles()),
+		ImageCredential: convertExecutionImageCredential(item.GetImageCredential()),
+		ContainerPort:   int(item.GetContainerPort()),
 		HostBindIP:      e.opts.NodePrivateIP,
 		HostPortMin:     e.opts.HostPortMin,
 		HostPortMax:     e.opts.HostPortMax,
@@ -351,42 +358,42 @@ func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string
 }
 
 // reportRunning 在新执行 readiness 通过后尝试停止被替换执行；成功后上报 running，失败则上报 failed。
-func (e Executor) reportRunning(ctx context.Context, item *nodeagentapi.WorkItem, runResult runtime.RunResult, readinessURL string) (nodeagentapi.ReportExecutionResponse, error) {
+func (e Executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessURL string) (*nodeagentv1.ReportExecutionResponse, error) {
 	if err := e.stopSuperseded(ctx, item, runResult); err != nil {
-		report, reportErr := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
+		report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 			Reason:        err.Error(),
-			ContainerID:   runResult.ContainerID,
+			ContainerId:   runResult.ContainerID,
 			ContainerName: runResult.ContainerName,
-			HostPort:      runResult.HostPort,
+			HostPort:      int32(runResult.HostPort),
 		})
 		if reportErr != nil {
-			return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report failed execution after superseded stop error: %w", reportErr)
+			return nil, fmt.Errorf("report failed execution after superseded stop error: %w", reportErr)
 		}
 		return report, err
 	}
 
-	report, err := e.report(ctx, item, nodeagentapi.ReportExecutionRequest{
-		Status:                nodeagentapi.ExecutionStatusRunning,
+	report, err := e.report(ctx, item, &nodeagentv1.ReportExecutionRequest{
+		Status:                executionStatusRunning,
 		Reason:                fmt.Sprintf("readiness check passed at %s", readinessURL),
-		ContainerID:           runResult.ContainerID,
+		ContainerId:           runResult.ContainerID,
 		ContainerName:         runResult.ContainerName,
-		HostPort:              runResult.HostPort,
-		SupersededExecutionID: supersededExecutionID(item.SupersededExecution),
+		HostPort:              int32(runResult.HostPort),
+		SupersededExecutionId: supersededExecutionID(item.GetSupersededExecution()),
 	})
 	if err != nil {
-		return nodeagentapi.ReportExecutionResponse{}, fmt.Errorf("report running execution: %w", err)
+		return nil, fmt.Errorf("report running execution: %w", err)
 	}
 	return report, nil
 }
 
 // stopSuperseded 在新容器 readiness 通过后停止被替换的旧容器；失败时清理新容器。
-func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentapi.WorkItem, runResult runtime.RunResult) error {
-	if item.SupersededExecution == nil || item.SupersededExecution.ContainerID == "" {
+func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult) error {
+	if item.GetSupersededExecution() == nil || item.GetSupersededExecution().GetContainerId() == "" {
 		return nil
 	}
 
 	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.RuntimeStopTimeout))
-	stopErr := e.containerRuntime.Stop(stopCtx, item.SupersededExecution.ContainerID)
+	stopErr := e.containerRuntime.Stop(stopCtx, item.GetSupersededExecution().GetContainerId())
 	cancelStop()
 	if stopErr == nil {
 		return nil
@@ -398,13 +405,13 @@ func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentapi.WorkIte
 
 	return fmt.Errorf("%s", TruncateReason(fmt.Sprintf(
 		"candidate passed readiness, but stopping superseded container %s failed: %v",
-		item.SupersededExecution.ContainerName,
+		item.GetSupersededExecution().GetContainerName(),
 		stopErr,
 	)))
 }
 
 // cleanupFailedRun 在 readiness 探测失败后采集日志、停止容器并上报失败。
-func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentapi.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (nodeagentapi.ReportExecutionResponse, string, error) {
+func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	logSnippet := ""
 	logCtx, cancelLogs := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.RuntimeLogsTimeout))
 	logSnippet, _ = e.containerRuntime.Logs(logCtx, runResult.ContainerID, e.opts.LogTail)
@@ -415,71 +422,79 @@ func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentapi.WorkI
 	cancelStop()
 
 	reason := BuildFailedExecutionReason(readinessResult, logSnippet, stopErr)
-	report, reportErr := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
+	report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
-		ContainerID:   runResult.ContainerID,
+		ContainerId:   runResult.ContainerID,
 		ContainerName: runResult.ContainerName,
-		HostPort:      runResult.HostPort,
+		HostPort:      int32(runResult.HostPort),
 	})
 	if reportErr != nil {
-		return nodeagentapi.ReportExecutionResponse{}, "", fmt.Errorf("report failed execution: %w", reportErr)
+		return nil, "", fmt.Errorf("report failed execution: %w", reportErr)
 	}
 	return report, reason, nil
 }
 
 // reportRuntimeStartFailure 将容器启动错误转换为失败上报。
-func (e Executor) reportRuntimeStartFailure(ctx context.Context, item *nodeagentapi.WorkItem, runErr error) (nodeagentapi.ReportExecutionResponse, string, error) {
+func (e Executor) reportRuntimeStartFailure(ctx context.Context, item *nodeagentv1.WorkItem, runErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	reason := TruncateReason(fmt.Sprintf("runtime start failed: %v", runErr))
-	report, err := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
+	report, err := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
-		ContainerName: item.ContainerName,
+		ContainerName: item.GetContainerName(),
 	})
+	if report == nil {
+		return nil, reason, err
+	}
 	return report, reason, err
 }
 
 // reportValidationFailure 将任务校验错误转换为失败上报。
-func (e Executor) reportValidationFailure(ctx context.Context, item *nodeagentapi.WorkItem, validationErr error) (nodeagentapi.ReportExecutionResponse, string, error) {
+func (e Executor) reportValidationFailure(ctx context.Context, item *nodeagentv1.WorkItem, validationErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	reason := TruncateReason(fmt.Sprintf("invalid work item: %v", validationErr))
-	report, err := e.reportFailed(ctx, item, nodeagentapi.ReportExecutionRequest{
+	report, err := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
-		ContainerName: item.ContainerName,
+		ContainerName: item.GetContainerName(),
 	})
+	if report == nil {
+		return nil, reason, err
+	}
 	return report, reason, err
 }
 
 // reportFailed 补齐 failed 状态和默认原因后上报执行结果。
-func (e Executor) reportFailed(ctx context.Context, item *nodeagentapi.WorkItem, req nodeagentapi.ReportExecutionRequest) (nodeagentapi.ReportExecutionResponse, error) {
-	req.Status = nodeagentapi.ExecutionStatusFailed
-	if req.Reason == "" {
+func (e Executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
+	req.Status = executionStatusFailed
+	if req.GetReason() == "" {
 		req.Reason = "execution failed"
 	}
 	return e.report(ctx, item, req)
 }
 
 // report 带超时和日志上下文字段向控制面上报执行结果。
-func (e Executor) report(ctx context.Context, item *nodeagentapi.WorkItem, req nodeagentapi.ReportExecutionRequest) (nodeagentapi.ReportExecutionResponse, error) {
+func (e Executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	reportCtx, cancel := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.ReportTimeout))
 	defer cancel()
 	reportCtx = logctx.WithFields(reportCtx, logctx.Fields{
 		RequestID:   logctx.EnsureRequestID(""),
 		NodeID:      e.opts.NodeID,
-		ServiceID:   item.ServiceID,
-		PlanID:      item.PlanID,
-		ExecutionID: item.ExecutionID,
+		ServiceID:   item.GetServiceId(),
+		PlanID:      item.GetPlanId(),
+		ExecutionID: item.GetExecutionId(),
 	})
-	return e.client.ReportExecution(reportCtx, e.opts.NodeID, item.ExecutionID, req)
+	req.NodeId = e.opts.NodeID
+	req.ExecutionId = item.GetExecutionId()
+	return e.client.ReportExecution(reportCtx, req)
 }
 
 // startWorkloadLogForwarding 在日志采集依赖存在时尝试启动当前执行的工作负载日志采集。
-func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runResult runtime.RunResult) {
+func (e Executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResult runtime.RunResult) {
 	if e.opts.WorkloadLogs == nil {
 		return
 	}
 	e.opts.WorkloadLogs(workloadlogs.StartRequest{
-		ServiceID:     item.ServiceID,
-		ServiceName:   item.ServiceName,
-		PlanID:        item.PlanID,
-		ExecutionID:   item.ExecutionID,
+		ServiceID:     item.GetServiceId(),
+		ServiceName:   item.GetServiceName(),
+		PlanID:        item.GetPlanId(),
+		ExecutionID:   item.GetExecutionId(),
 		NodeID:        e.opts.NodeID,
 		ContainerID:   runResult.ContainerID,
 		ContainerName: runResult.ContainerName,
@@ -487,38 +502,38 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentapi.WorkItem, runRes
 }
 
 // workLogger 返回带节点和执行上下文字段的 logger。
-func (e Executor) workLogger(item *nodeagentapi.WorkItem) *slog.Logger {
+func (e Executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
 	return logctx.WithLoggerFields(e.logger, logctx.Fields{
 		NodeID:      e.opts.NodeID,
-		ServiceID:   item.ServiceID,
-		PlanID:      item.PlanID,
-		ExecutionID: item.ExecutionID,
+		ServiceID:   item.GetServiceId(),
+		PlanID:      item.GetPlanId(),
+		ExecutionID: item.GetExecutionId(),
 	})
 }
 
 // workContext 在调用方上下文中追加节点和执行字段。
-func (e Executor) workContext(ctx context.Context, item *nodeagentapi.WorkItem) context.Context {
+func (e Executor) workContext(ctx context.Context, item *nodeagentv1.WorkItem) context.Context {
 	return logctx.WithFields(ctx, logctx.Fields{
 		NodeID:      e.opts.NodeID,
-		ServiceID:   item.ServiceID,
-		PlanID:      item.PlanID,
-		ExecutionID: item.ExecutionID,
+		ServiceID:   item.GetServiceId(),
+		PlanID:      item.GetPlanId(),
+		ExecutionID: item.GetExecutionId(),
 	})
 }
 
 // detachedWorkContext 创建不继承调用方取消、deadline 和 value，只重新注入节点和执行字段的后台上下文。
-func (e Executor) detachedWorkContext(item *nodeagentapi.WorkItem) context.Context {
+func (e Executor) detachedWorkContext(item *nodeagentv1.WorkItem) context.Context {
 	return logctx.WithFields(context.Background(), logctx.Fields{
 		NodeID:      e.opts.NodeID,
-		ServiceID:   item.ServiceID,
-		PlanID:      item.PlanID,
-		ExecutionID: item.ExecutionID,
+		ServiceID:   item.GetServiceId(),
+		PlanID:      item.GetPlanId(),
+		ExecutionID: item.GetExecutionId(),
 	})
 }
 
 // logReport 记录控制面确认后的执行状态。
-func (e Executor) logReport(logger *slog.Logger, report nodeagentapi.ReportExecutionResponse) {
-	logger.Info("reported execution status", "status", report.Ack.Execution.Status)
+func (e Executor) logReport(logger *slog.Logger, report *nodeagentv1.ReportExecutionResponse) {
+	logger.Info("reported execution status", "status", report.GetAck().GetExecution().GetStatus())
 }
 
 // timeout 返回显式超时，或按清理、运行时、1 秒的顺序选择兜底值。
@@ -578,21 +593,110 @@ func TruncateReason(value string) string {
 }
 
 // supersededExecutionID 安全返回被替换执行 ID。
-func supersededExecutionID(item *nodeagentapi.SupersededExecution) string {
+func supersededExecutionID(item *nodeagentv1.SupersededExecution) string {
 	if item == nil {
 		return ""
 	}
-	return item.ExecutionID
+	return item.GetExecutionId()
 }
 
 // convertExecutionImageCredential 将控制面镜像凭据转换为运行时镜像凭据。
-func convertExecutionImageCredential(value *nodeagentapi.ImageCredential) *runtime.ImageCredential {
+func convertExecutionImageCredential(value *nodeagentv1.ImageCredential) *runtime.ImageCredential {
 	if value == nil {
 		return nil
 	}
 	return &runtime.ImageCredential{
-		Server:   value.Server,
-		Username: value.Username,
-		Password: value.Password,
+		Server:   value.GetServer(),
+		Username: value.GetUsername(),
+		Password: value.GetPassword(),
 	}
+}
+
+func normalizeWorkAction(action string) string {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "", "run":
+		return "run"
+	case workActionDelete:
+		return workActionDelete
+	default:
+		return strings.ToLower(strings.TrimSpace(action))
+	}
+}
+
+func validateWorkItem(item *nodeagentv1.WorkItem) error {
+	if item == nil {
+		return fmt.Errorf("work item is required")
+	}
+	action := normalizeWorkAction(item.GetAction())
+	if action != "run" && action != workActionDelete {
+		return fmt.Errorf("work action must be one of run, delete")
+	}
+	if strings.TrimSpace(item.GetExecutionId()) == "" {
+		return fmt.Errorf("executionID is required")
+	}
+	if strings.TrimSpace(item.GetPlanId()) == "" {
+		return fmt.Errorf("planID is required")
+	}
+	if strings.TrimSpace(item.GetNodeId()) == "" {
+		return fmt.Errorf("nodeID is required")
+	}
+	if strings.TrimSpace(item.GetServiceId()) == "" {
+		return fmt.Errorf("serviceID is required")
+	}
+	if strings.TrimSpace(item.GetContainerName()) == "" {
+		return fmt.Errorf("containerName is required")
+	}
+	if action == workActionDelete {
+		if strings.TrimSpace(item.GetContainerId()) == "" {
+			return fmt.Errorf("containerID is required")
+		}
+		return nil
+	}
+	if strings.TrimSpace(item.GetImage()) == "" {
+		return fmt.Errorf("image is required")
+	}
+	if item.GetContainerPort() <= 0 {
+		return fmt.Errorf("containerPort must be greater than 0")
+	}
+	readinessPath := strings.TrimSpace(item.GetReadinessPath())
+	if readinessPath == "" {
+		return fmt.Errorf("readinessPath is required")
+	}
+	if !strings.HasPrefix(readinessPath, "/") {
+		return fmt.Errorf("readinessPath must start with /")
+	}
+	for _, item := range item.GetProjectedFiles() {
+		if item == nil {
+			continue
+		}
+		file := projectedfile.File{
+			MountPath: item.GetMountPath(),
+			Content:   item.GetContent(),
+			Mode:      item.GetMode(),
+			Sensitive: item.GetSensitive(),
+		}
+		if err := file.Validate(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func projectedFilesFromProto(items []*nodeagentv1.ProjectedFile) []projectedfile.File {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]projectedfile.File, 0, len(items))
+	for _, item := range items {
+		if item == nil {
+			continue
+		}
+		out = append(out, projectedfile.File{
+			MountPath: item.GetMountPath(),
+			Content:   item.GetContent(),
+			Mode:      item.GetMode(),
+			Sensitive: item.GetSensitive(),
+		})
+	}
+	return projectedfile.CloneFiles(out)
 }

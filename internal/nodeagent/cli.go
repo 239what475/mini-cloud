@@ -30,13 +30,13 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 
 	logger = logger.With(
 		"platform_name", cfg.PlatformName,
-		"provider", cfg.RegisterInput.Provider,
-		"region", cfg.RegisterInput.Region,
+		"provider", cfg.RegisterInput.GetProvider(),
+		"region", cfg.RegisterInput.GetRegion(),
 	)
 
 	logger.Info("starting node agent loop",
 		"server", cfg.ServerURL,
-		"instance_id", cfg.RegisterInput.InstanceID,
+		"instance_id", cfg.RegisterInput.GetInstanceId(),
 		"heartbeat_interval", cfg.HeartbeatInterval,
 		"work_interval", cfg.WorkInterval,
 	)

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"mini-cloud/internal/contract/nodeagentapi"
+	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 )
 
 // TestInjectTelemetryEnvSetsDefaults 验证默认 OTEL exporter 和资源属性注入。
@@ -14,11 +14,11 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	base := map[string]string{
 		"APP_ENV": "test",
 	}
-	item := &nodeagentapi.WorkItem{
-		ServiceID:   "svc_demo",
+	item := &nodeagentv1.WorkItem{
+		ServiceId:   "svc_demo",
 		ServiceName: "hello",
-		PlanID:      "plan_demo",
-		ExecutionID: "exec_demo",
+		PlanId:      "plan_demo",
+		ExecutionId: "exec_demo",
 	}
 
 	got := injectTelemetryEnv(base, item, telemetryEnvOptions{
@@ -61,10 +61,10 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		"OTEL_SERVICE_NAME":           "custom-service-name",
 		"OTEL_RESOURCE_ATTRIBUTES":    "service.version=1.2.3,mini_cloud.service_id=wrong",
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-collector:4318",
-	}, &nodeagentapi.WorkItem{
-		ServiceID:   "svc_demo",
-		PlanID:      "plan_demo",
-		ExecutionID: "exec_demo",
+	}, &nodeagentv1.WorkItem{
+		ServiceId:   "svc_demo",
+		PlanId:      "plan_demo",
+		ExecutionId: "exec_demo",
 		ServiceName: "ignored-by-test",
 	}, telemetryEnvOptions{
 		PlatformName:         "mini-cloud-lab",

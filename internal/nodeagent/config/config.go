@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/contract/nodeagentapi"
+	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	"mini-cloud/internal/nodeagent/capacity"
 
 	"gopkg.in/yaml.v3"
@@ -197,7 +197,7 @@ type Config struct {
 	// BootstrapToken 是节点获得会话令牌前使用的注册令牌。
 	BootstrapToken string
 	// RegisterInput 是完整校验后的节点注册请求体。
-	RegisterInput nodeagentapi.RegisterNodeRequest
+	RegisterInput *nodeagentv1.RegisterNodeRequest
 	// AgentVersion 是通过心跳上报的 agent 版本。
 	AgentVersion string
 	// CPUMilliAllocatable 是 node-agent 承诺给 mini-cloud 调度器使用的静态 CPU 预算。
@@ -463,18 +463,18 @@ func build(fileCfg nodeAgentFileConfig) (Config, error) {
 			return Config{}, fmt.Errorf("network.egressProxy.endpoint must include host")
 		}
 	}
-	registerInput := nodeagentapi.RegisterNodeRequest{
+	registerInput := &nodeagentv1.RegisterNodeRequest{
 		Provider:      fileCfg.Node.Provider,
 		Region:        fileCfg.Node.Region,
 		Name:          fileCfg.Node.Name,
-		PrivateIP:     fileCfg.Node.PrivateIP,
-		PublicIP:      fileCfg.Node.PublicIP,
-		InstanceID:    fileCfg.Node.InstanceID,
+		PrivateIp:     fileCfg.Node.PrivateIP,
+		PublicIp:      fileCfg.Node.PublicIP,
+		InstanceId:    fileCfg.Node.InstanceID,
 		InstanceType:  fileCfg.Node.InstanceType,
-		CPUMilliTotal: resolvedCapacity.Total.CPUMilli,
-		MemoryMiTotal: resolvedCapacity.Total.MemoryMi,
+		CpuMilliTotal: int32(resolvedCapacity.Total.CPUMilli),
+		MemoryMiTotal: int32(resolvedCapacity.Total.MemoryMi),
 	}
-	if err := registerInput.Validate(); err != nil {
+	if err := validateRegisterInput(registerInput); err != nil {
 		return Config{}, err
 	}
 
@@ -533,6 +533,41 @@ func toResource(value nodeAgentResourceConfig) capacity.Resources {
 		CPUMilli: value.CPUMilli,
 		MemoryMi: value.MemoryMi,
 	}
+}
+
+func validateRegisterInput(input *nodeagentv1.RegisterNodeRequest) error {
+	if strings.TrimSpace(input.GetProvider()) == "" {
+		return fmt.Errorf("node.provider is required")
+	}
+	if strings.TrimSpace(input.GetRegion()) == "" {
+		return fmt.Errorf("node.region is required")
+	}
+	if strings.TrimSpace(input.GetName()) == "" {
+		return fmt.Errorf("node.name is required")
+	}
+	privateIP := strings.TrimSpace(input.GetPrivateIp())
+	if privateIP == "" {
+		return fmt.Errorf("node.privateIP is required")
+	}
+	if net.ParseIP(privateIP) == nil {
+		return fmt.Errorf("node.privateIP must be a valid IP address")
+	}
+	if publicIP := strings.TrimSpace(input.GetPublicIp()); publicIP != "" && net.ParseIP(publicIP) == nil {
+		return fmt.Errorf("node.publicIP must be a valid IP address")
+	}
+	if strings.TrimSpace(input.GetInstanceId()) == "" {
+		return fmt.Errorf("node.instanceID is required")
+	}
+	if strings.TrimSpace(input.GetInstanceType()) == "" {
+		return fmt.Errorf("node.instanceType is required")
+	}
+	if input.GetCpuMilliTotal() <= 0 {
+		return fmt.Errorf("capacity total cpuMilli must be greater than 0")
+	}
+	if input.GetMemoryMiTotal() <= 0 {
+		return fmt.Errorf("capacity total memoryMi must be greater than 0")
+	}
+	return nil
 }
 
 // trimStringList 清理字符串列表中的空白项，并保持原有顺序。

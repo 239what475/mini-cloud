@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/contract/nodeagentapi"
+	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/work"
 	"mini-cloud/internal/nodeagent/workloadlogs"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Runner 持有 node-agent daemon 主循环运行所需的组件和内存状态。
@@ -114,7 +116,7 @@ func (r *Runner) Run(ctx context.Context) error {
 
 	// 后台循环启动前先注册并重置本机 runtime，避免心跳和任务循环并发触发首次注册。
 	if nodeID, err := r.registerNode(ctx); err != nil {
-		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
+		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
 	} else if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
 		r.logger.Warn("node agent initial runtime reset failed", "node_id", nodeID, "error", err)
 	}
@@ -183,7 +185,7 @@ func (r *Runner) runWorkerLoop(ctx context.Context) {
 func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
-		r.logger.Warn("node agent registration failed", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
+		r.logger.Warn("node agent registration failed", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
 		return
 	}
 	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
@@ -201,7 +203,7 @@ func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 func (r *Runner) tryWorkCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
-		r.logger.Warn("node agent registration failed before work poll", "instance_id", r.cfg.RegisterInput.InstanceID, "error", err)
+		r.logger.Warn("node agent registration failed before work poll", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
 		return
 	}
 	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
@@ -211,7 +213,7 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 
 	result, err := work.ExecuteNext(ctx, r.logger, r.controlClient, r.containerRuntime, work.Options{
 		NodeID:               nodeID,
-		NodePrivateIP:        r.cfg.RegisterInput.PrivateIP,
+		NodePrivateIP:        r.cfg.RegisterInput.GetPrivateIp(),
 		HostPortMin:          r.cfg.Runtime.HostPortMin,
 		HostPortMax:          r.cfg.Runtime.HostPortMax,
 		PlatformName:         r.cfg.Work.PlatformName,
@@ -235,9 +237,9 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
 		if result.WorkItem != nil {
 			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:   result.WorkItem.ServiceID,
-				PlanID:      result.WorkItem.PlanID,
-				ExecutionID: result.WorkItem.ExecutionID,
+				ServiceID:   result.WorkItem.GetServiceId(),
+				PlanID:      result.WorkItem.GetPlanId(),
+				ExecutionID: result.WorkItem.GetExecutionId(),
 			})
 		}
 		workLogger.Warn("node work execution failed", "error", err)
@@ -249,13 +251,13 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		reportStatus := ""
 		if result.WorkItem != nil {
 			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:   result.WorkItem.ServiceID,
-				PlanID:      result.WorkItem.PlanID,
-				ExecutionID: result.WorkItem.ExecutionID,
+				ServiceID:   result.WorkItem.GetServiceId(),
+				PlanID:      result.WorkItem.GetPlanId(),
+				ExecutionID: result.WorkItem.GetExecutionId(),
 			})
 		}
 		if result.Report != nil {
-			reportStatus = string(result.Report.Ack.Execution.Status)
+			reportStatus = result.Report.GetAck().GetExecution().GetStatus()
 		}
 		workLogger.Info("node work execution finished",
 			"report_status", reportStatus,
@@ -292,17 +294,17 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	}
 
 	r.mu.Lock()
-	r.nodeID = registered.NodeID
+	r.nodeID = registered.GetNodeId()
 	r.runtimeResetDone = false
 	r.mu.Unlock()
 
-	r.controlClient.SetSessionToken(registered.SessionToken)
+	r.controlClient.SetSessionToken(registered.GetSessionToken())
 
-	logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: registered.NodeID}).Info("node agent registered",
-		"instance_id", r.cfg.RegisterInput.InstanceID,
+	logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: registered.GetNodeId()}).Info("node agent registered",
+		"instance_id", r.cfg.RegisterInput.GetInstanceId(),
 		"request_id", logctx.RequestID(reqCtx),
 	)
-	return registered.NodeID, nil
+	return registered.GetNodeId(), nil
 }
 
 // sendHeartbeat 尝试统计运行中容器数量并向控制面发送心跳。
@@ -324,15 +326,16 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 		RequestID: logctx.EnsureRequestID(""),
 		NodeID:    nodeID,
 	})
-	ack, err := r.controlClient.SendHeartbeat(reqCtx, nodeID, nodeagentapi.HeartbeatRequest{
-		ReportedAt:   time.Now().UTC(),
+	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.HeartbeatRequest{
+		NodeId:       nodeID,
+		ReportedAt:   timestamppb.New(time.Now().UTC()),
 		AgentVersion: r.cfg.AgentVersion,
 		// 心跳上报的是静态 allocatable 预算：
 		// total - systemReserved - agentReserved - evictionReserved。
 		// 它不是宿主机实时 CPU idle，也不是 /proc/meminfo 的 MemAvailable。
-		CPUMilliAllocatable: r.cfg.CPUMilliAllocatable,
-		MemoryMiAllocatable: r.cfg.MemoryMiAllocatable,
-		RunningContainers:   runningContainers,
+		CpuMilliAllocatable: int32(r.cfg.CPUMilliAllocatable),
+		MemoryMiAllocatable: int32(r.cfg.MemoryMiAllocatable),
+		RunningContainers:   int32(runningContainers),
 		Status:              r.heartbeatStatus(),
 	})
 	if err != nil {
@@ -340,7 +343,7 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	}
 
 	logger.Info("node heartbeat accepted",
-		"status", ack.ObservedStatus,
+		"status", ack.GetObservedStatus(),
 		"running_containers", runningContainers,
 		"request_id", logctx.RequestID(reqCtx),
 	)
@@ -352,7 +355,7 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 // 当前 node-agent 只在主循环可运行时发送心跳，因此固定上报 ready。
 // draining/offline 由控制面维护；后续接入本机 runtime/node 自检后，再在这里派生 not_ready。
 func (r *Runner) heartbeatStatus() string {
-	return nodeagentapi.NodeStatusReady
+	return "ready"
 }
 
 // resetRuntimeOnce 在当前进程注册后停止本节点旧 workload 容器，并清理孤儿本地资源。
