@@ -39,11 +39,19 @@ var (
 	ErrServiceNameRequired       = errors.New("serviceName is required")
 	ErrImageRequired             = errors.New("image is required")
 	ErrInvalidContainerPort      = errors.New("containerPort must be between 1 and 65535")
+	ErrInvalidExecutionResource  = errors.New("cpuMilliRequest and memoryMiRequest must be greater than 0")
+	ErrInvalidInstanceClass      = errors.New("instanceClass must be one of small, medium, large")
+	ErrInvalidExposure           = errors.New("exposure must be public or private")
 )
 
 const (
 	WorkActionRun    = "run"
 	WorkActionDelete = "delete"
+)
+
+const (
+	ExposurePublic  = "public"
+	ExposurePrivate = "private"
 )
 
 type PlanInput struct {
@@ -59,7 +67,8 @@ type PlanInput struct {
 	ImageCredential   *ImageCredential     `json:"imageCredential,omitempty"`
 	ContainerPort     int                  `json:"containerPort"`
 	ReadinessPath     string               `json:"readinessPath"`
-	InstanceClass     string               `json:"instanceClass"`
+	CPUMilliRequest   int                  `json:"cpuMilliRequest"`
+	MemoryMiRequest   int                  `json:"memoryMiRequest"`
 	Exposure          string               `json:"exposure"`
 }
 
@@ -108,12 +117,42 @@ func (in PlanInput) Validate() error {
 	if in.ContainerPort <= 0 || in.ContainerPort > 65535 {
 		return ErrInvalidContainerPort
 	}
+	if in.CPUMilliRequest <= 0 || in.MemoryMiRequest <= 0 {
+		return ErrInvalidExecutionResource
+	}
+	if in.Exposure != ExposurePublic && in.Exposure != ExposurePrivate {
+		return ErrInvalidExposure
+	}
 	for _, item := range projectedfile.CloneFiles(in.ProjectedFiles) {
 		if err := item.Validate(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func ResourceRequestForInstanceClass(class string) (int, int, error) {
+	switch strings.TrimSpace(class) {
+	case "", "small":
+		return 500, 512, nil
+	case "medium":
+		return 1000, 1024, nil
+	case "large":
+		return 1500, 1536, nil
+	default:
+		return 0, 0, ErrInvalidInstanceClass
+	}
+}
+
+func ParseExposure(value string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", ExposurePublic:
+		return ExposurePublic, nil
+	case ExposurePrivate:
+		return ExposurePrivate, nil
+	default:
+		return "", ErrInvalidExposure
+	}
 }
 
 // WorkItem 是 cloud-plane 下发给 node-agent 执行的服务实例任务。

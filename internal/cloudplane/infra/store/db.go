@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"time"
 
-	commonid "mini-cloud/internal/common/id"
-
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -47,10 +45,4 @@ func Open(databaseURL string) (*sql.DB, error) {
 // 参数说明：db 表示数据库连接。
 func New(db *sql.DB) *Store {
 	return &Store{db: db}
-}
-
-// newID 生成带业务前缀的短随机 ID。
-// 参数说明：prefix 是 ID 的可读前缀。
-func newID(prefix string) (string, error) {
-	return commonid.New(prefix)
 }

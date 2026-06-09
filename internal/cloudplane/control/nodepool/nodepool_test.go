@@ -197,6 +197,10 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 
 func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store, name string, class string) {
 	t.Helper()
+	cpuMilliRequest, memoryMiRequest, err := cloudmodel.ResourceRequestForInstanceClass(class)
+	if err != nil {
+		t.Fatalf("ResourceRequestForInstanceClass returned error: %v", err)
+	}
 	if _, err := stores.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            name + "-g1",
 		ServiceID:         name,
@@ -205,8 +209,9 @@ func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store
 		Image:             "nginx:latest",
 		ContainerPort:     80,
 		ReadinessPath:     "/",
-		InstanceClass:     class,
-		Exposure:          "public",
+		CPUMilliRequest:   cpuMilliRequest,
+		MemoryMiRequest:   memoryMiRequest,
+		Exposure:          cloudmodel.ExposurePublic,
 	}); err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}

@@ -3,12 +3,13 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
+	commonid "mini-cloud/internal/common/id"
 	"mini-cloud/internal/common/projectedfile"
 )
 
@@ -19,25 +20,51 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	if err := input.Validate(); err != nil {
 		return "", err
 	}
-	cpuMilliRequest, memoryMiRequest, err := intentResourceRequest(input.InstanceClass)
-	if err != nil {
-		return "", err
+	command := input.Command
+	if command == nil {
+		command = []string{}
 	}
-	commandJSON, err := marshalJSON(input.Command, []string{})
+	commandJSON, err := json.Marshal(command)
 	if err != nil {
 		return "", fmt.Errorf("marshal execution command: %w", err)
 	}
-	argsJSON, err := marshalJSON(input.Args, []string{})
+	args := input.Args
+	if args == nil {
+		args = []string{}
+	}
+	argsJSON, err := json.Marshal(args)
 	if err != nil {
 		return "", fmt.Errorf("marshal execution args: %w", err)
 	}
-	envJSON, err := marshalJSON(input.Env, map[string]string{})
+	env := input.Env
+	if env == nil {
+		env = map[string]string{}
+	}
+	envJSON, err := json.Marshal(env)
 	if err != nil {
 		return "", fmt.Errorf("marshal execution env: %w", err)
 	}
-	projectedFilesJSON, err := marshalJSON(projectedfile.CloneFiles(input.ProjectedFiles), []projectedfile.File{})
+	projectedFiles := projectedfile.CloneFiles(input.ProjectedFiles)
+	if projectedFiles == nil {
+		projectedFiles = []projectedfile.File{}
+	}
+	projectedFilesJSON, err := json.Marshal(projectedFiles)
 	if err != nil {
 		return "", fmt.Errorf("marshal execution projected files: %w", err)
+	}
+	var credentialServer sql.NullString
+	var credentialUsername sql.NullString
+	var credentialPassword sql.NullString
+	if input.ImageCredential != nil {
+		if input.ImageCredential.Server != "" {
+			credentialServer = sql.NullString{String: input.ImageCredential.Server, Valid: true}
+		}
+		if input.ImageCredential.Username != "" {
+			credentialUsername = sql.NullString{String: input.ImageCredential.Username, Valid: true}
+		}
+		if input.ImageCredential.Password != "" {
+			credentialPassword = sql.NullString{String: input.ImageCredential.Password, Valid: true}
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -60,7 +87,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 		return "", fmt.Errorf("supersede old execution intents: %w", err)
 	}
 
-	id, err := newID("exe")
+	id, err := commonid.New("exe")
 	if err != nil {
 		return "", err
 	}
@@ -114,20 +141,20 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 		input.PlanID,
 		input.ServiceID,
 		input.ServiceName,
-		normalizeExecutionExposure(input.Exposure),
+		input.Exposure,
 		input.ServiceGeneration,
 		input.Image,
 		commandJSON,
 		argsJSON,
 		envJSON,
 		projectedFilesJSON,
-		nullableStringFromValue(imageCredentialServer(input.ImageCredential)),
-		nullableStringFromValue(imageCredentialUsername(input.ImageCredential)),
-		nullableStringFromValue(imageCredentialPassword(input.ImageCredential)),
+		credentialServer,
+		credentialUsername,
+		credentialPassword,
 		input.ContainerPort,
 		input.ReadinessPath,
-		cpuMilliRequest,
-		memoryMiRequest,
+		input.CPUMilliRequest,
+		input.MemoryMiRequest,
 		cloudmodel.StatusPending,
 		"execution plan accepted",
 	); err != nil {
@@ -224,7 +251,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}
-	defer closeRows(rows)
+	defer rows.Close()
 
 	items := make([]cloudmodel.RouteSource, 0)
 	for rows.Next() {
@@ -269,7 +296,7 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudmodel.Execut
 	if err != nil {
 		return nil, fmt.Errorf("query execution snapshots: %w", err)
 	}
-	defer closeRows(rows)
+	defer rows.Close()
 
 	items := make([]cloudmodel.ExecutionSnapshot, 0)
 	for rows.Next() {
@@ -432,19 +459,43 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 		}
 		return &work, nil
 	}
-	if err := unmarshalJSON(commandJSON, &work.Command, []string{}); err != nil {
-		return nil, fmt.Errorf("decode execution command: %w", err)
+	work.Command = []string{}
+	if len(commandJSON) > 0 {
+		if err := json.Unmarshal(commandJSON, &work.Command); err != nil {
+			return nil, fmt.Errorf("decode execution command: %w", err)
+		}
 	}
-	if err := unmarshalJSON(argsJSON, &work.Args, []string{}); err != nil {
-		return nil, fmt.Errorf("decode execution args: %w", err)
+	if work.Command == nil {
+		work.Command = []string{}
 	}
-	if err := unmarshalJSON(envJSON, &work.Env, map[string]string{}); err != nil {
-		return nil, fmt.Errorf("decode execution env: %w", err)
+	work.Args = []string{}
+	if len(argsJSON) > 0 {
+		if err := json.Unmarshal(argsJSON, &work.Args); err != nil {
+			return nil, fmt.Errorf("decode execution args: %w", err)
+		}
 	}
-	if err := unmarshalJSON(projectedFilesJSON, &work.ProjectedFiles, []projectedfile.File{}); err != nil {
-		return nil, fmt.Errorf("decode execution projected files: %w", err)
+	if work.Args == nil {
+		work.Args = []string{}
+	}
+	work.Env = map[string]string{}
+	if len(envJSON) > 0 {
+		if err := json.Unmarshal(envJSON, &work.Env); err != nil {
+			return nil, fmt.Errorf("decode execution env: %w", err)
+		}
+	}
+	if work.Env == nil {
+		work.Env = map[string]string{}
+	}
+	work.ProjectedFiles = []projectedfile.File{}
+	if len(projectedFilesJSON) > 0 {
+		if err := json.Unmarshal(projectedFilesJSON, &work.ProjectedFiles); err != nil {
+			return nil, fmt.Errorf("decode execution projected files: %w", err)
+		}
 	}
 	work.ProjectedFiles = projectedfile.CloneFiles(work.ProjectedFiles)
+	if work.ProjectedFiles == nil {
+		work.ProjectedFiles = []projectedfile.File{}
+	}
 	if credentialServer.Valid {
 		work.ImageCredential = &cloudmodel.ImageCredential{
 			Server:   credentialServer.String,
@@ -662,54 +713,4 @@ func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilli
 		return fmt.Errorf("free node allocation for execution intent: %w", err)
 	}
 	return nil
-}
-
-func intentResourceRequest(class string) (int, int, error) {
-	switch class {
-	case "small", "":
-		return 500, 512, nil
-	case "medium":
-		return 1000, 1024, nil
-	case "large":
-		return 1500, 1536, nil
-	default:
-		return 0, 0, fmt.Errorf("instanceClass must be one of small, medium, large")
-	}
-}
-
-func normalizeExecutionExposure(value string) string {
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "private":
-		return "private"
-	default:
-		return "public"
-	}
-}
-
-func imageCredentialServer(item *cloudmodel.ImageCredential) string {
-	if item == nil {
-		return ""
-	}
-	return item.Server
-}
-
-func imageCredentialUsername(item *cloudmodel.ImageCredential) string {
-	if item == nil {
-		return ""
-	}
-	return item.Username
-}
-
-func imageCredentialPassword(item *cloudmodel.ImageCredential) string {
-	if item == nil {
-		return ""
-	}
-	return item.Password
-}
-
-func nullableStringFromValue(value string) sql.NullString {
-	if value == "" {
-		return sql.NullString{}
-	}
-	return sql.NullString{String: value, Valid: true}
 }

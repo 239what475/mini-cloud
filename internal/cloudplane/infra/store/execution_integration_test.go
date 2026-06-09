@@ -30,10 +30,11 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 			{MountPath: "/etc/demo/config.yaml", Content: "mode: plan-v1\n", Mode: 0o644},
 			{MountPath: "/etc/demo/token", Content: "token-v1", Mode: 0o400, Sensitive: true},
 		},
-		ContainerPort: 8080,
-		ReadinessPath: "/healthz",
-		InstanceClass: "small",
-		Exposure:      "public",
+		ContainerPort:   8080,
+		ReadinessPath:   "/healthz",
+		CPUMilliRequest: 500,
+		MemoryMiRequest: 512,
+		Exposure:        cloudmodel.ExposurePublic,
 	}); err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
@@ -76,8 +77,9 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		Image:             "nginx:1.27-alpine",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
-		InstanceClass:     "small",
-		Exposure:          "public",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
 	}); err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}

@@ -30,6 +30,14 @@ func (s *ExecutionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 	if err := s.auth.Authorize(ctx); err != nil {
 		return nil, err
 	}
+	cpuMilliRequest, memoryMiRequest, err := cloudmodel.ResourceRequestForInstanceClass(req.GetInstanceClass())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	exposure, err := cloudmodel.ParseExposure(req.GetExposure())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
 	input := cloudmodel.PlanInput{
 		PlanID:            strings.TrimSpace(req.GetPlanId()),
 		ServiceID:         strings.TrimSpace(req.GetServiceId()),
@@ -42,8 +50,9 @@ func (s *ExecutionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 		ProjectedFiles:    projectedFilesFromProto(req.GetProjectedFiles()),
 		ContainerPort:     int(req.GetContainerPort()),
 		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
-		InstanceClass:     strings.TrimSpace(req.GetInstanceClass()),
-		Exposure:          strings.TrimSpace(req.GetExposure()),
+		CPUMilliRequest:   cpuMilliRequest,
+		MemoryMiRequest:   memoryMiRequest,
+		Exposure:          exposure,
 	}
 	if cred := req.GetImageCredential(); cred != nil {
 		input.ImageCredential = &cloudmodel.ImageCredential{
