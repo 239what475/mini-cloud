@@ -97,7 +97,7 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 }
 
 func (s *Service) reconcileTerminatingNodes(ctx context.Context) error {
-	items, err := s.store.ListNodesByStatuses(ctx, cloudmodel.StatusDraining)
+	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDraining)
 	if err != nil {
 		return err
 	}
@@ -113,7 +113,7 @@ func (s *Service) reconcileIdleNodes(ctx context.Context) error {
 		return nil
 	}
 
-	items, err := s.store.ListNodesByStatuses(ctx, cloudmodel.StatusReady)
+	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusReady)
 	if err != nil {
 		return err
 	}
@@ -124,6 +124,9 @@ func (s *Service) reconcileDeletableNodes(ctx context.Context, items []cloudmode
 	var joinedErr error
 	for _, item := range items {
 		if strings.TrimSpace(item.InstanceID) == "" {
+			continue
+		}
+		if !item.Elastic {
 			continue
 		}
 		if err := s.reconcileNodeDeletion(ctx, item); err != nil {
@@ -144,7 +147,7 @@ func (s *Service) reconcileNodeDeletion(ctx context.Context, item cloudmodel.Nod
 	if item.Status != cloudmodel.StatusReady && item.Status != cloudmodel.StatusDraining {
 		return nil
 	}
-	if strings.TrimSpace(item.InstanceID) == "" {
+	if !item.Elastic || strings.TrimSpace(item.InstanceID) == "" {
 		return nil
 	}
 

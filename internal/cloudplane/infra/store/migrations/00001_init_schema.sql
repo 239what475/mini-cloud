@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS nodes (
     status TEXT NOT NULL,
     status_reason TEXT NOT NULL DEFAULT '',
     schedulable BOOLEAN NOT NULL DEFAULT TRUE,
+    elastic BOOLEAN NOT NULL DEFAULT FALSE,
     last_heartbeat_at TIMESTAMPTZ NULL,
     session_token_prefix TEXT NOT NULL DEFAULT '',
     session_token_hash TEXT NULL UNIQUE,

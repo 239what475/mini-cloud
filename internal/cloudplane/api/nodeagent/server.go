@@ -26,17 +26,14 @@ type Options struct {
 	Logger         *slog.Logger
 	Store          *store.Store
 	BootstrapToken string
-	SessionTTL     time.Duration
 }
+
+const sessionTTL = 24 * time.Hour
 
 func RegisterGRPC(grpcServer *grpc.Server, opts Options) {
 	logger := opts.Logger
 	if logger == nil {
 		logger = slog.Default()
-	}
-	sessionTTL := opts.SessionTTL
-	if sessionTTL <= 0 {
-		sessionTTL = 24 * time.Hour
 	}
 	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, &service{
 		logger:          logger,

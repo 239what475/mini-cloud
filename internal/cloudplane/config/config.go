@@ -8,13 +8,11 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 const (
-	NodeAgentSessionTTL               = 24 * time.Hour
 	NodeAgentHeartbeatIntervalSeconds = 15
 	NodeAgentWorkIntervalSeconds      = 5
 	NodeAgentHostPortMin              = 30000

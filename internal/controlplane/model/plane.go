@@ -48,18 +48,9 @@ type RuntimeInventorySnapshot struct {
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
-type RuntimeConfigSnapshot struct {
-	PlaneID     string         `json:"planeID"`
-	ObservedAt  time.Time      `json:"observedAt"`
-	Fingerprint string         `json:"fingerprint"`
-	Summary     map[string]any `json:"summary"`
-	UpdatedAt   time.Time      `json:"updatedAt"`
-}
-
 type PlaneNode struct {
 	PlaneID           string     `json:"planeID"`
 	NodeID            string     `json:"nodeID"`
-	NodeEpoch         int64      `json:"nodeEpoch"`
 	Name              string     `json:"name"`
 	Provider          string     `json:"provider"`
 	Region            string     `json:"region"`
@@ -67,6 +58,7 @@ type PlaneNode struct {
 	InstanceType      string     `json:"instanceType"`
 	Status            string     `json:"status"`
 	Schedulable       bool       `json:"schedulable"`
+	Elastic           bool       `json:"elastic"`
 	CPUMilliCapacity  int        `json:"cpuMilliCapacity"`
 	CPUMilliAllocated int        `json:"cpuMilliAllocated"`
 	MemoryMiCapacity  int        `json:"memoryMiCapacity"`
@@ -81,7 +73,6 @@ type PlaneDetail struct {
 	Status                 PlaneStatus               `json:"status"`
 	Registration           PlaneRegistration         `json:"registration"`
 	LatestRuntimeInventory *RuntimeInventorySnapshot `json:"latestRuntimeInventory,omitempty"`
-	LatestRuntimeConfig    *RuntimeConfigSnapshot    `json:"latestRuntimeConfig,omitempty"`
 }
 
 func IsStatus(status string) bool {

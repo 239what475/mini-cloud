@@ -344,12 +344,7 @@ func planeDetailBaseQuery(suffix string) string {
 			ris.cpu_milli_allocated,
 			ris.memory_mi_capacity,
 			ris.memory_mi_allocated,
-			ris.updated_at,
-			rcs.plane_id,
-			rcs.observed_at,
-			rcs.fingerprint,
-			rcs.summary_json,
-			rcs.updated_at
+			ris.updated_at
 		FROM fleet_planes p
 		JOIN fleet_plane_statuses s
 			ON s.plane_id = p.id
@@ -357,8 +352,6 @@ func planeDetailBaseQuery(suffix string) string {
 			ON bt.plane_id = p.id
 		LEFT JOIN fleet_plane_runtime_inventory_states ris
 			ON ris.plane_id = p.id
-		LEFT JOIN fleet_plane_runtime_config_states rcs
-			ON rcs.plane_id = p.id
 	` + suffix
 }
 
@@ -378,11 +371,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 	var runtimeMemoryMiCapacity sql.NullInt64
 	var runtimeMemoryMiAllocated sql.NullInt64
 	var runtimeUpdatedAt sql.NullTime
-	var runtimeConfigPlaneID sql.NullString
-	var runtimeConfigObservedAt sql.NullTime
-	var runtimeConfigFingerprint sql.NullString
-	var runtimeConfigSummary []byte
-	var runtimeConfigUpdatedAt sql.NullTime
 
 	if err := scanner.Scan(
 		&item.ID,
@@ -410,11 +398,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 		&runtimeMemoryMiCapacity,
 		&runtimeMemoryMiAllocated,
 		&runtimeUpdatedAt,
-		&runtimeConfigPlaneID,
-		&runtimeConfigObservedAt,
-		&runtimeConfigFingerprint,
-		&runtimeConfigSummary,
-		&runtimeConfigUpdatedAt,
 	); err != nil {
 		return model.PlaneDetail{}, err
 	}
@@ -447,17 +430,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 			MemoryMiCapacity:  int(runtimeMemoryMiCapacity.Int64),
 			MemoryMiAllocated: int(runtimeMemoryMiAllocated.Int64),
 			UpdatedAt:         runtimeUpdatedAt.Time,
-		}
-	}
-	if runtimeConfigPlaneID.Valid {
-		item.LatestRuntimeConfig = &model.RuntimeConfigSnapshot{
-			PlaneID:     runtimeConfigPlaneID.String,
-			ObservedAt:  runtimeConfigObservedAt.Time,
-			Fingerprint: runtimeConfigFingerprint.String,
-			UpdatedAt:   runtimeConfigUpdatedAt.Time,
-		}
-		if err := unmarshalJSON(runtimeConfigSummary, &item.LatestRuntimeConfig.Summary, map[string]any{}); err != nil {
-			return model.PlaneDetail{}, fmt.Errorf("unmarshal plane runtime config summary: %w", err)
 		}
 	}
 	return item, nil

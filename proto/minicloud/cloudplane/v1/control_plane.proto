@@ -5,7 +5,6 @@ package minicloud.cloudplane.v1;
 option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1";
 
 import "google/protobuf/empty.proto";
-import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 
 message PlaneSummary {
@@ -27,7 +26,6 @@ message PlaneReliability {
 
 message PlaneRuntimeNode {
   string node_id = 1 [json_name = "nodeID"];
-  int64 node_epoch = 2 [json_name = "nodeEpoch"];
   string name = 3;
   string provider = 4;
   string region = 5;
@@ -42,18 +40,13 @@ message PlaneRuntimeNode {
   int32 memory_mi_allocatable = 14 [json_name = "memoryMiAllocatable"];
   int32 memory_mi_allocated = 15 [json_name = "memoryMiAllocated"];
   google.protobuf.Timestamp last_heartbeat_at = 16 [json_name = "lastHeartbeatAt"];
+  bool elastic = 17;
 }
 
 message PlaneRuntimeInventory {
   int64 sync_version = 1 [json_name = "syncVersion"];
   google.protobuf.Timestamp observed_at = 2 [json_name = "observedAt"];
   repeated PlaneRuntimeNode nodes = 3;
-}
-
-message PlaneRuntimeConfig {
-  google.protobuf.Timestamp observed_at = 1 [json_name = "observedAt"];
-  string fingerprint = 2;
-  google.protobuf.Struct summary = 3;
 }
 
 message PlaneExecutionSnapshot {
@@ -71,7 +64,6 @@ message PlaneSnapshot {
   PlaneHealth health = 2;
   PlaneReliability reliability = 5;
   PlaneRuntimeInventory runtime_inventory = 7 [json_name = "runtimeInventory"];
-  PlaneRuntimeConfig runtime_config = 8 [json_name = "runtimeConfig"];
   repeated PlaneExecutionSnapshot executions = 9;
 }
 

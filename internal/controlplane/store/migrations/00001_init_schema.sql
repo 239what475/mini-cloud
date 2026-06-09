@@ -99,7 +99,6 @@ CREATE TABLE IF NOT EXISTS fleet_plane_runtime_inventory_states (
 CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
     plane_id TEXT NOT NULL REFERENCES fleet_planes(id) ON DELETE CASCADE,
     node_id TEXT NOT NULL,
-    node_epoch BIGINT NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
     provider TEXT NOT NULL,
     region TEXT NOT NULL,
@@ -107,6 +106,7 @@ CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
     instance_type TEXT NOT NULL,
     status TEXT NOT NULL,
     schedulable BOOLEAN NOT NULL,
+    elastic BOOLEAN NOT NULL DEFAULT FALSE,
     cpu_milli_capacity INTEGER NOT NULL,
     cpu_milli_allocated INTEGER NOT NULL,
     memory_mi_capacity INTEGER NOT NULL,
@@ -120,16 +120,7 @@ CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
 CREATE INDEX IF NOT EXISTS idx_fleet_plane_nodes_plane_status
     ON fleet_plane_nodes (plane_id, status, schedulable);
 
-CREATE TABLE IF NOT EXISTS fleet_plane_runtime_config_states (
-    plane_id TEXT PRIMARY KEY REFERENCES fleet_planes(id) ON DELETE CASCADE,
-    observed_at TIMESTAMPTZ NOT NULL,
-    fingerprint TEXT NOT NULL,
-    summary_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- +goose Down
-DROP TABLE IF EXISTS fleet_plane_runtime_config_states;
 DROP INDEX IF EXISTS idx_fleet_plane_nodes_plane_status;
 DROP TABLE IF EXISTS fleet_plane_nodes;
 DROP TABLE IF EXISTS fleet_plane_runtime_inventory_states;

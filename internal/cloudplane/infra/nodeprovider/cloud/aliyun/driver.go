@@ -244,66 +244,6 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 	}, nil
 }
 
-// List 按 mini-cloud ownership 标签分页查询当前 region 下归属本平台的 ECS node。
-// 参数说明：ctx 按接口签名保留，当前实现未传入阿里云 SDK 查询。
-func (p *providerDriver) List(_ context.Context) ([]nodeprovider.Node, error) {
-	// driver 或 SDK client 缺失时无法查询云资源。
-	if p == nil || p.client == nil {
-		return nil, fmt.Errorf("aliyun node provider driver is not initialized")
-	}
-
-	// 只查询带 mini-cloud ownership 标签的平台 node。
-	filters := buildAliyunDescribeInstanceTags(utils.BuildOwnershipTags(p.config.CloudPlane.Plane.Name))
-	out := make([]nodeprovider.Node, 0)
-	nextToken := ""
-
-	// DescribeInstances 使用分页；nextToken 为空表示第一页或已经结束。
-	for {
-		req := &ecs20140526.DescribeInstancesRequest{
-			RegionId:   new(p.config.CloudPlane.Infrastructure.RegionID),
-			MaxResults: new(int32(100)),
-			Tag:        filters,
-		}
-		if strings.TrimSpace(nextToken) != "" {
-			req.NextToken = new(nextToken)
-		}
-
-		// 按 ownership 标签查询实例。
-		resp, err := p.client.DescribeInstances(req)
-		if err != nil {
-			return nil, fmt.Errorf("DescribeInstances for mini-cloud nodes failed: %s", formatAliyunSDKError(err))
-		}
-		// body 或 instances 为空时视为没有更多结果。
-		if resp.Body == nil || resp.Body.Instances == nil {
-			break
-		}
-
-		// 将每个 ECS 实例转换为 nodeprovider 统一 node 视图。
-		for _, item := range resp.Body.Instances.Instance {
-			if item == nil {
-				continue
-			}
-			// 保留云实例原始标签，供上层做 ownership 诊断或校验。
-			tags := aliyunTagMap(item)
-			out = append(out, nodeprovider.Node{
-				InstanceID:   tea.StringValue(item.InstanceId),
-				InstanceName: tea.StringValue(item.InstanceName),
-				InstanceType: tea.StringValue(item.InstanceType),
-				Tags:         tags,
-			})
-		}
-
-		// 没有 nextToken 时分页结束。
-		nextToken = tea.StringValue(resp.Body.NextToken)
-		if nextToken == "" {
-			break
-		}
-	}
-
-	// 返回所有匹配 ownership 标签的实例视图。
-	return out, nil
-}
-
 // Delete 在阿里云侧释放一台 node 云主机。
 // 参数说明：ctx 用于在调用 SDK 前响应上层取消；request 只包含要删除的云实例 ID。
 func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.DeleteRequest) error {
@@ -506,51 +446,6 @@ func buildAliyunRunInstanceTags(tags map[string]string) []*ecs20140526.RunInstan
 	}
 	// map 遍历顺序不保证稳定；标签语义不依赖顺序。
 	return result
-}
-
-// buildAliyunDescribeInstanceTags 构造查询 ECS 实例时使用的 ownership 标签过滤条件。
-// 参数说明：filters 是待转换为 DescribeInstances tag filter 的 key/value 条件。
-func buildAliyunDescribeInstanceTags(filters map[string]string) []*ecs20140526.DescribeInstancesRequestTag {
-	// 将通用 ownership filter 转成 DescribeInstances tag filter。
-	result := make([]*ecs20140526.DescribeInstancesRequestTag, 0, len(filters))
-	for key, value := range filters {
-		// 空 value 不参与过滤。
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		// 使用 SDK setter 构造查询 tag。
-		result = append(result, (&ecs20140526.DescribeInstancesRequestTag{}).
-			SetKey(key).
-			SetValue(value))
-	}
-	// map 遍历顺序不保证稳定；查询语义不依赖顺序。
-	return result
-}
-
-// aliyunTagMap 将阿里云 tag 列表转换为 key/value map。
-// 参数说明：instance 是 DescribeInstances 返回的 ECS 实例对象。
-func aliyunTagMap(instance *ecs20140526.DescribeInstancesResponseBodyInstancesInstance) map[string]string {
-	// nil instance 或无 tags 时返回空 map，方便调用方直接按 key 读取。
-	out := make(map[string]string)
-	if instance == nil || instance.Tags == nil {
-		return out
-	}
-	// 遍历 SDK tag 列表，清理 key/value 外围空白。
-	for _, tag := range instance.Tags.Tag {
-		if tag == nil {
-			continue
-		}
-		key := strings.TrimSpace(tea.StringValue(tag.TagKey))
-		value := strings.TrimSpace(tea.StringValue(tag.TagValue))
-		// 空 key 无法作为 ownership 字段，直接忽略。
-		if key == "" {
-			continue
-		}
-		out[key] = value
-	}
-	// 返回普通 map 供 nodeprovider 统一读取。
-	return out
 }
 
 // formatAliyunSDKError 优先格式化阿里云 SDKError 的 code/message/data，非 SDKError 退回 err.Error。

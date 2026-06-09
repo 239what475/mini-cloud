@@ -133,6 +133,22 @@ func TestReconcileDeletesIdleNode(t *testing.T) {
 	}
 }
 
+func TestReconcileKeepsIdleFixedNode(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeDriver{}
+	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+
+	seedReadyNode(t, ctx, db.Store, "fixed-node", 2000, 2048)
+
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.deleteRequests) != 0 {
+		t.Fatalf("delete requests = %+v, want no fixed node deletion", driver.deleteRequests)
+	}
+}
+
 func TestReconcileDoesNotDeleteIdleNodeWhenScalingOut(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
@@ -169,10 +185,6 @@ func (f *fakeDriver) Create(_ context.Context, request nodeprovider.CreateReques
 		InstanceName: request.Name,
 		InstanceType: "ecs.demo",
 	}, nil
-}
-
-func (f *fakeDriver) List(context.Context) ([]nodeprovider.Node, error) {
-	return nil, nil
 }
 
 func (f *fakeDriver) Delete(_ context.Context, request nodeprovider.DeleteRequest) error {

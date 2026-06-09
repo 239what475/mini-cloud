@@ -2,14 +2,10 @@ package controlplane
 
 import (
 	"context"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
-	"strings"
 	"time"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
@@ -21,7 +17,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -88,12 +83,6 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		return nil, fmt.Errorf("load execution snapshots: %w", err)
 	}
 
-	runtimeConfig, err := s.runtimeConfigSnapshot(checkedAt)
-	if err != nil {
-		logger.Error("build cloud-plane runtime config snapshot failed", "error", err)
-		return nil, fmt.Errorf("build runtime config snapshot: %w", err)
-	}
-
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:       s.config.Plane.Name,
@@ -110,7 +99,6 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 			AlertsFiring: int32(alertSignal.AlertsFiring),
 		},
 		RuntimeInventory: protoRuntimeInventory(checkedAt, nodes),
-		RuntimeConfig:    runtimeConfig,
 		Executions:       protoExecutionSnapshots(executions),
 	}, nil
 }
@@ -129,7 +117,6 @@ func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloud
 		}
 		protoNode := &cloudplanev1.PlaneRuntimeNode{
 			NodeId:              item.ID,
-			NodeEpoch:           1,
 			Name:                item.Name,
 			Provider:            item.Provider,
 			Region:              item.Region,
@@ -137,6 +124,7 @@ func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloud
 			InstanceType:        item.InstanceType,
 			Status:              item.Status,
 			Schedulable:         item.Schedulable,
+			Elastic:             item.Elastic,
 			CpuMilliTotal:       int32(item.CPUMilliTotal),
 			CpuMilliAllocatable: int32(item.CPUMilliAllocatable),
 			CpuMilliAllocated:   int32(item.CPUMilliAllocated),
@@ -177,62 +165,4 @@ func protoTimestamp(value time.Time) *timestamppb.Timestamp {
 		return nil
 	}
 	return timestamppb.New(value.UTC())
-}
-
-func (s *SnapshotServer) runtimeConfigSnapshot(observedAt time.Time) (*cloudplanev1.PlaneRuntimeConfig, error) {
-	summary := map[string]any{
-		"observedAt": observedAt.UTC().Format(time.RFC3339Nano),
-		"plane": map[string]any{
-			"name": strings.TrimSpace(s.config.Plane.Name),
-		},
-		"provider": map[string]any{
-			"name":     strings.TrimSpace(s.config.Infrastructure.Provider),
-			"regionId": strings.TrimSpace(s.config.Infrastructure.RegionID),
-			"zoneId":   strings.TrimSpace(s.config.Infrastructure.ZoneID),
-		},
-		"nodeAgent": map[string]any{
-			"connectEndpoint":          strings.TrimSpace(s.config.NodeAgent.ConnectEndpoint),
-			"bootstrapTokenConfigured": strings.TrimSpace(s.config.NodeAgent.BootstrapToken) != "",
-			"binaryUrl":                strings.TrimSpace(s.config.NodeAgent.BinaryURL),
-		},
-		"runtimeProvisioning": map[string]any{
-			"providerSpecConfigured": len(s.config.RuntimeProvisioning.ProviderSpec) > 0,
-			"registryMirrorsCount":   len(s.config.RuntimeProvisioning.RegistryMirrors),
-			"egressProxyConfigured":  strings.TrimSpace(s.config.RuntimeProvisioning.EgressProxyEndpoint) != "",
-		},
-		"ingress": map[string]any{
-			"configured": strings.TrimSpace(s.config.Ingress.BaseDomain) != "",
-			"baseDomain": strings.TrimSpace(s.config.Ingress.BaseDomain),
-		},
-		"observability": map[string]any{
-			"logsConfigured":   strings.TrimSpace(s.config.Observability.LokiURL) != "",
-			"tracesConfigured": strings.TrimSpace(s.config.Observability.OTLPEndpoint) != "",
-		},
-	}
-	summary["fingerprint"] = runtimeConfigFingerprint(summary)
-	protoSummary, err := structpb.NewStruct(summary)
-	if err != nil {
-		return nil, err
-	}
-	return &cloudplanev1.PlaneRuntimeConfig{
-		ObservedAt:  protoTimestamp(observedAt),
-		Fingerprint: summary["fingerprint"].(string),
-		Summary:     protoSummary,
-	}, nil
-}
-
-func runtimeConfigFingerprint(summary map[string]any) string {
-	payload := make(map[string]any, len(summary))
-	for key, value := range summary {
-		if key == "observedAt" || key == "fingerprint" {
-			continue
-		}
-		payload[key] = value
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return ""
-	}
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
 }

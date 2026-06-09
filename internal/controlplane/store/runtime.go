@@ -97,7 +97,6 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 			INSERT INTO fleet_plane_nodes (
 				plane_id,
 				node_id,
-				node_epoch,
 				name,
 				provider,
 				region,
@@ -105,6 +104,7 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 				instance_type,
 				status,
 				schedulable,
+				elastic,
 				cpu_milli_capacity,
 				cpu_milli_allocated,
 				memory_mi_capacity,
@@ -116,7 +116,6 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 		`,
 			planeID,
 			item.NodeID,
-			item.NodeEpoch,
 			item.Name,
 			item.Provider,
 			item.Region,
@@ -124,6 +123,7 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 			item.InstanceType,
 			item.Status,
 			item.Schedulable,
+			item.Elastic,
 			item.CPUMilliCapacity,
 			item.CPUMilliAllocated,
 			item.MemoryMiCapacity,
@@ -137,46 +137,6 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit replace plane runtime inventory tx: %w", err)
-	}
-	return nil
-}
-
-type RecordRuntimeConfigInput struct {
-	ObservedAt  time.Time
-	Fingerprint string
-	Summary     map[string]any
-}
-
-func (in RecordRuntimeConfigInput) resolvedObservedAt(now time.Time) time.Time {
-	if in.ObservedAt.IsZero() {
-		return now.UTC()
-	}
-	return in.ObservedAt.UTC()
-}
-
-func (s *Store) RecordPlaneRuntimeConfig(ctx context.Context, planeID string, input RecordRuntimeConfigInput) error {
-	observedAt := input.resolvedObservedAt(time.Now().UTC())
-	summaryJSON, err := marshalJSON(input.Summary, map[string]any{})
-	if err != nil {
-		return fmt.Errorf("marshal plane runtime config summary: %w", err)
-	}
-
-	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO fleet_plane_runtime_config_states (
-			plane_id,
-			observed_at,
-			fingerprint,
-			summary_json
-		)
-		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (plane_id) DO UPDATE
-		SET
-			observed_at = EXCLUDED.observed_at,
-			fingerprint = EXCLUDED.fingerprint,
-			summary_json = EXCLUDED.summary_json,
-			updated_at = now()
-		`, planeID, observedAt, input.Fingerprint, summaryJSON); err != nil {
-		return fmt.Errorf("upsert plane runtime config state: %w", err)
 	}
 	return nil
 }

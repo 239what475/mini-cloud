@@ -96,6 +96,8 @@ type Node struct {
 	StatusReason string `json:"statusReason"`
 	// Schedulable 表示节点是否允许接受新的 workload 调度。
 	Schedulable bool `json:"schedulable"`
+	// Elastic 表示该节点由 cloud-plane 自动扩容创建，允许空闲时自动缩容删除。
+	Elastic bool `json:"elastic"`
 	// LastHeartbeatAt 是 cloud-plane 最近一次接收到该 node 心跳的时间。
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt"`
 	// CreatedAt 是资源创建时间。

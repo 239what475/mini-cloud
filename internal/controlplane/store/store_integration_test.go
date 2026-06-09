@@ -82,7 +82,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		Nodes: []model.PlaneNode{
 			{
 				NodeID:            "node-a",
-				NodeEpoch:         1,
 				Name:              "node-a",
 				Provider:          "aliyun",
 				Region:            "cn-beijing",
@@ -90,6 +89,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 				InstanceType:      "ecs.u1-c1m1.large",
 				Status:            "ready",
 				Schedulable:       true,
+				Elastic:           true,
 				CPUMilliCapacity:  2000,
 				CPUMilliAllocated: 500,
 				MemoryMiCapacity:  4096,
@@ -97,7 +97,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 			},
 			{
 				NodeID:            "node-b",
-				NodeEpoch:         1,
 				Name:              "node-b",
 				Provider:          "aliyun",
 				Region:            "cn-beijing",
@@ -105,6 +104,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 				InstanceType:      "ecs.u1-c1m1.large",
 				Status:            "ready",
 				Schedulable:       true,
+				Elastic:           false,
 				CPUMilliCapacity:  2000,
 				CPUMilliAllocated: 1000,
 				MemoryMiCapacity:  4096,
@@ -124,35 +124,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.LatestRuntimeInventory.SyncVersion != 7 {
 		t.Fatalf("latest runtime inventory syncVersion = %d, want 7", gotPlane.LatestRuntimeInventory.SyncVersion)
 	}
-	if err := db.Store.RecordPlaneRuntimeConfig(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeConfigInput{
-		ObservedAt:  time.Now().UTC(),
-		Fingerprint: "fp-123",
-		Summary: map[string]any{
-			"provider": map[string]any{
-				"name":     "aliyun",
-				"regionId": "cn-beijing",
-			},
-			"nodeAgent": map[string]any{
-				"bootstrapTokenConfigured": true,
-			},
-		},
-	}); err != nil {
-		t.Fatalf("RecordPlaneRuntimeConfig returned error: %v", err)
-	}
-	gotPlane, err = db.Store.GetPlane(context.Background(), createdPlane.ID)
-	if err != nil {
-		t.Fatalf("GetPlane(after runtime config) returned error: %v", err)
-	}
-	if gotPlane.LatestRuntimeConfig == nil {
-		t.Fatalf("expected latest runtime config to be populated")
-	}
-	if gotPlane.LatestRuntimeConfig.Fingerprint != "fp-123" {
-		t.Fatalf("latest runtime config fingerprint = %q, want fp-123", gotPlane.LatestRuntimeConfig.Fingerprint)
-	}
-	providerSummary, ok := gotPlane.LatestRuntimeConfig.Summary["provider"].(map[string]any)
-	if !ok || providerSummary["name"] != "aliyun" {
-		t.Fatalf("unexpected runtime config summary: %+v", gotPlane.LatestRuntimeConfig.Summary)
-	}
 
 	listedPlanes, err := db.Store.ListPlanes(context.Background())
 	if err != nil {
@@ -163,9 +134,6 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	}
 	if listedPlanes[0].LatestRuntimeInventory == nil {
 		t.Fatalf("expected listed plane runtime inventory to be populated")
-	}
-	if listedPlanes[0].LatestRuntimeConfig == nil {
-		t.Fatalf("expected listed plane runtime config to be populated")
 	}
 
 	if err := db.Store.DeletePlane(context.Background(), createdPlane.ID); err != nil {

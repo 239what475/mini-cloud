@@ -184,9 +184,9 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 			finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
 			updated_at = now()
 		WHERE service_id = $1
-		  AND work_action = $6
+		  AND work_action = $5
 		  AND status = $4
-	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
+	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.WorkActionRun); err != nil {
 		return fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
 	}
 

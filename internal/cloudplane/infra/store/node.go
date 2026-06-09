@@ -39,6 +39,7 @@ const nodeSelectColumns = `
 	status,
 	status_reason,
 	schedulable,
+	elastic,
 	last_heartbeat_at,
 	created_at,
 	updated_at
@@ -62,9 +63,10 @@ func (s *Store) CreateProvisioningNode(ctx context.Context, input cloudmodel.Pro
 			instance_type,
 			status,
 			status_reason,
-			schedulable
+			schedulable,
+			elastic
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE, TRUE)
 		RETURNING `+nodeSelectColumns+`
 	`, id, input.Provider, input.Region, input.Name, input.InstanceType, cloudmodel.StatusProvisioning, input.StatusReason)
 
@@ -130,9 +132,10 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 			memory_mi_allocated,
 			status,
 			status_reason,
-			schedulable
+			schedulable,
+			elastic
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, 0, 0, 0, 0, $11, '', TRUE)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, 0, 0, 0, 0, $11, '', TRUE, FALSE)
 		ON CONFLICT (provider, instance_id) DO UPDATE
 		SET
 			region = EXCLUDED.region,
@@ -232,6 +235,36 @@ func (s *Store) ListNodesByStatuses(ctx context.Context, statuses ...string) ([]
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate nodes by statuses: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Store) ListElasticNodesByStatuses(ctx context.Context, statuses ...string) ([]cloudmodel.Node, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+nodeSelectColumns+`
+		FROM nodes
+		WHERE status = ANY($1::text[])
+		  AND elastic
+		ORDER BY created_at ASC, id ASC
+	`, statuses)
+	if err != nil {
+		return nil, fmt.Errorf("query elastic nodes by statuses: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]cloudmodel.Node, 0)
+	for rows.Next() {
+		item, err := scanNode(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan elastic node by statuses: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate elastic nodes by statuses: %w", err)
 	}
 	return items, nil
 }
@@ -452,7 +485,7 @@ func (s *Store) MarkNodeDraining(ctx context.Context, nodeID string, reason stri
 	if current.Status == cloudmodel.StatusDraining {
 		return current, true, nil
 	}
-	if current.Status != cloudmodel.StatusReady || strings.TrimSpace(current.InstanceID) == "" {
+	if current.Status != cloudmodel.StatusReady || !current.Elastic || strings.TrimSpace(current.InstanceID) == "" {
 		return current, false, nil
 	}
 
@@ -780,6 +813,7 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, er
 		&item.Status,
 		&item.StatusReason,
 		&item.Schedulable,
+		&item.Elastic,
 		&lastHeartbeatAt,
 		&item.CreatedAt,
 		&item.UpdatedAt,

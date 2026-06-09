@@ -270,77 +270,6 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 	}, nil
 }
 
-// List 按 mini-cloud ownership 标签分页查询当前 region 下归属本平台的 CVM node。
-// 参数说明：ctx 按接口签名保留，当前实现未传入腾讯云 SDK 查询。
-func (p *providerDriver) List(_ context.Context) ([]nodeprovider.Node, error) {
-	// driver 或 SDK client 缺失时无法查询云资源。
-	if p == nil || p.client == nil {
-		return nil, fmt.Errorf("tencent node provider driver is not initialized")
-	}
-
-	// 先构造 provider 无关的 ownership filter。
-	baseFilters := utils.BuildOwnershipTags(p.config.CloudPlane.Plane.Name)
-	describeFilters := make([]*cvm.Filter, 0, len(baseFilters))
-	for key, value := range baseFilters {
-		// 空 value 不参与过滤。
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		// 腾讯云 DescribeInstances 使用 tag:<key> 作为标签过滤名。
-		filterName := "tag:" + key
-		describeFilters = append(describeFilters, &cvm.Filter{
-			Name:   new(filterName),
-			Values: []*string{new(value)},
-		})
-	}
-
-	out := make([]nodeprovider.Node, 0)
-	offset := int64(0)
-
-	// DescribeInstances 使用 offset/limit 分页。
-	for {
-		req := cvm.NewDescribeInstancesRequest()
-		req.Filters = describeFilters
-		req.Offset = new(offset)
-		req.Limit = new(int64(100))
-
-		// 按 ownership 标签查询实例。
-		resp, err := p.client.DescribeInstances(req)
-		if err != nil {
-			return nil, fmt.Errorf("DescribeInstances for mini-cloud nodes failed: %s", formatTencentSDKError(err))
-		}
-		// 响应为空或本页无实例时视为分页结束。
-		if resp == nil || resp.Response == nil || len(resp.Response.InstanceSet) == 0 {
-			break
-		}
-
-		// 将每个 CVM 实例转换为 nodeprovider 统一 node 视图。
-		for _, item := range resp.Response.InstanceSet {
-			if item == nil {
-				continue
-			}
-			// 保留云实例原始标签，供上层做 ownership 诊断或校验。
-			tags := tencentTagMap(item.Tags)
-			out = append(out, nodeprovider.Node{
-				InstanceID:   valueString(item.InstanceId),
-				InstanceName: valueString(item.InstanceName),
-				InstanceType: valueString(item.InstanceType),
-				Tags:         tags,
-			})
-		}
-
-		// 按本页数量推进 offset；TotalCount 缺失或已覆盖总量时结束。
-		offset += int64(len(resp.Response.InstanceSet))
-		if resp.Response.TotalCount == nil || offset >= valueInt64(resp.Response.TotalCount) {
-			break
-		}
-	}
-
-	// 返回所有匹配 ownership 标签的实例视图。
-	return out, nil
-}
-
 // Delete 在腾讯云侧退还一台 node 云主机。
 // 参数说明：ctx 用于在调用 SDK 前响应上层取消；request 只包含要删除的云实例 ID。
 func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.DeleteRequest) error {
@@ -569,28 +498,6 @@ func buildTencentRunInstanceTags(tags map[string]string) []*cvm.Tag {
 	}
 	// map 遍历顺序不保证稳定；标签语义不依赖顺序。
 	return result
-}
-
-// tencentTagMap 将腾讯云 tag 列表转换为 key/value map。
-// 参数说明：tags 是 DescribeInstances 返回的 CVM 实例标签列表。
-func tencentTagMap(tags []*cvm.Tag) map[string]string {
-	// 空 tag 列表返回空 map，方便调用方直接按 key 读取。
-	out := make(map[string]string)
-	// 遍历 SDK tag 列表，清理 key/value 外围空白。
-	for _, tag := range tags {
-		if tag == nil {
-			continue
-		}
-		key := strings.TrimSpace(valueString(tag.Key))
-		value := strings.TrimSpace(valueString(tag.Value))
-		// 空 key 无法作为 ownership 字段，直接忽略。
-		if key == "" {
-			continue
-		}
-		out[key] = value
-	}
-	// 返回普通 map 供 nodeprovider 统一读取。
-	return out
 }
 
 // formatTencentSDKError 提取腾讯云 SDK 错误码和 request id，生成可读错误。

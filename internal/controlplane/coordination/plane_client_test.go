@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
-	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type stubControlPlaneSouthbound struct {
@@ -29,17 +28,6 @@ type stubControlPlaneSouthbound struct {
 
 func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
 	s.assertAuthorization(ctx)
-	summary, err := structpb.NewStruct(map[string]any{
-		"provider": map[string]any{
-			"name": "aliyun",
-		},
-		"nodeAgent": map[string]any{
-			"bootstrapTokenConfigured": true,
-		},
-	})
-	if err != nil {
-		s.t.Fatalf("build runtime config summary: %v", err)
-	}
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:       "plane-a",
@@ -54,10 +42,7 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: 1,
 		},
-		RuntimeConfig: &cloudplanev1.PlaneRuntimeConfig{
-			Fingerprint: "runtime-fp-a",
-			Summary:     summary,
-		},
+		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
 			{
 				PlanId:            "svc-1-g12",
@@ -153,9 +138,6 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	}
 	if snapshot.GetPlane().GetName() != "plane-a" {
 		t.Fatalf("unexpected snapshot: %+v", snapshot)
-	}
-	if snapshot.GetRuntimeConfig().GetFingerprint() != "runtime-fp-a" {
-		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.GetRuntimeConfig())
 	}
 	if len(snapshot.GetExecutions()) != 1 || snapshot.GetExecutions()[0].GetPlanId() != "svc-1-g12" || snapshot.GetExecutions()[0].GetStatus() != "running" {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())

@@ -145,9 +145,6 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 	if err := s.store.ReplacePlaneRuntimeInventory(ctx, planeID, buildRuntimeInventory(snapshot)); err != nil {
 		return planeSyncResult{}, err
 	}
-	if err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
-		return planeSyncResult{}, err
-	}
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
 		return planeSyncResult{}, err
 	}
@@ -247,15 +244,17 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		if item.GetServiceGeneration() != serviceItem.Metadata.Generation {
 			continue
 		}
-		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
-		if serviceItem.Status.DesiredState == model.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
-			if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
-				!errors.Is(err, store.ErrServiceNotFound) &&
-				!errors.Is(err, store.ErrServiceGenerationConflict) {
-				return err
+		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
+			if deleteExecutionPlanComplete(item) {
+				if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
+					!errors.Is(err, store.ErrServiceNotFound) &&
+					!errors.Is(err, store.ErrServiceGenerationConflict) {
+					return err
+				}
 			}
 			continue
 		}
+		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
 		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration(), store.UpdateServiceStatusInput{
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
@@ -416,7 +415,6 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 		out.MemoryMiAllocated += int(item.GetMemoryMiAllocated())
 		out.Nodes = append(out.Nodes, model.PlaneNode{
 			NodeID:            item.GetNodeId(),
-			NodeEpoch:         item.GetNodeEpoch(),
 			Name:              item.GetName(),
 			Provider:          item.GetProvider(),
 			Region:            item.GetRegion(),
@@ -424,6 +422,7 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 			InstanceType:      item.GetInstanceType(),
 			Status:            item.GetStatus(),
 			Schedulable:       item.GetSchedulable(),
+			Elastic:           item.GetElastic(),
 			CPUMilliCapacity:  int(item.GetCpuMilliAllocatable()),
 			CPUMilliAllocated: int(item.GetCpuMilliAllocated()),
 			MemoryMiCapacity:  int(item.GetMemoryMiAllocatable()),
@@ -432,19 +431,6 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 		})
 	}
 	return out
-}
-
-func buildRuntimeConfig(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRuntimeConfigInput {
-	runtimeConfig := snapshot.GetRuntimeConfig()
-	summary := map[string]any{}
-	if runtimeConfig.GetSummary() != nil {
-		summary = runtimeConfig.GetSummary().AsMap()
-	}
-	return store.RecordRuntimeConfigInput{
-		ObservedAt:  protoTime(runtimeConfig.GetObservedAt()),
-		Fingerprint: runtimeConfig.GetFingerprint(),
-		Summary:     summary,
-	}
 }
 
 func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {

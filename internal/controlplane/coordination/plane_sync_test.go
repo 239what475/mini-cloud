@@ -8,7 +8,6 @@ import (
 	"mini-cloud/internal/controlplane/model"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
-	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -80,33 +79,31 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	}
 }
 
-func TestBuildRuntimeConfigUsesObservedSnapshot(t *testing.T) {
+func TestBuildRuntimeInventoryIncludesElasticNodeSource(t *testing.T) {
 	observedAt := time.Now().UTC()
-	summary, err := structpb.NewStruct(map[string]any{
-		"provider": map[string]any{
-			"name": "aliyun",
-		},
-	})
-	if err != nil {
-		t.Fatalf("build summary: %v", err)
-	}
-	input := buildRuntimeConfig(&cloudplanev1.PlaneSnapshot{
-		RuntimeConfig: &cloudplanev1.PlaneRuntimeConfig{
+	input := buildRuntimeInventory(&cloudplanev1.PlaneSnapshot{
+		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
+			SyncVersion: 12,
 			ObservedAt:  timestamppb.New(observedAt),
-			Fingerprint: "runtime-fingerprint",
-			Summary:     summary,
+			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+				{
+					NodeId:              "node-a",
+					Name:                "node-a",
+					Status:              "ready",
+					Schedulable:         true,
+					Elastic:             true,
+					CpuMilliAllocatable: 1000,
+					MemoryMiAllocatable: 1024,
+				},
+			},
 		},
 	})
 
 	if !input.ObservedAt.Equal(observedAt) {
 		t.Fatalf("observedAt = %v, want %v", input.ObservedAt, observedAt)
 	}
-	if input.Fingerprint != "runtime-fingerprint" {
-		t.Fatalf("fingerprint = %q, want runtime-fingerprint", input.Fingerprint)
-	}
-	provider, ok := input.Summary["provider"].(map[string]any)
-	if !ok || provider["name"] != "aliyun" {
-		t.Fatalf("unexpected runtime config summary: %+v", input.Summary)
+	if len(input.Nodes) != 1 || !input.Nodes[0].Elastic {
+		t.Fatalf("runtime inventory nodes = %+v, want elastic node", input.Nodes)
 	}
 }
 
