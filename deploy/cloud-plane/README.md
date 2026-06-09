@@ -74,15 +74,15 @@ cp deploy/cloud-plane/systemd/mini-cloud-node-agent.service.example /tmp/mini-cl
 - `cloud-plane.yaml`
   - `server.listenGRPCAddr`
   - `database.url`
-  - `plane.identity.*`
-  - `controlPlane.auth.bearerToken`
+  - `plane.name`
+  - `controlPlane.bearerToken`
   - `nodeAgent.connectEndpoint`
-  - `nodeAgent.auth.*`
-  - `nodeAgent.artifact.*`
-  - `nodeAgent.defaults.*`
-    - `hostPortRange` 必须和 runtime node 安全组放行的 hostPort 范围一致。
+  - `nodeAgent.bootstrapToken`
+  - `nodeAgent.binaryUrl`
   - `infrastructure.*`
   - `runtimeProvisioning.*`
+    - runtime node hostPort 范围固定为 `30000-60999`，必须和安全组放行范围一致。
+  - `ingress.*`
   - `observability.*`
 - `node-agent.yaml`
 
@@ -91,14 +91,14 @@ cloud-plane 尚未正式发布，数据库 schema 以 `00001_init_schema.sql` �
 
 ### 1.1 准备外置数据面
 
-如果 `cloud-plane.yaml` 中启用了 `ingress.enabled` 或 `runtimeProvisioning.egress.proxy.enabled`，需要先在 platform host 上准备外置数据面：
+如果 `cloud-plane.yaml` 中配置了 `ingress.baseDomain` 或 `runtimeProvisioning.egressProxyEndpoint`，需要先在 platform host 上准备外置数据面：
 
-- Caddy：监听 `ingress.caddy.listenHTTPAddr`，并让 `ingress.caddy.reloadCommand` 可以成功 reload 当前 Caddyfile。
-- Tinyproxy：监听 `runtimeProvisioning.egress.proxy.endpoint` 中的端口，只允许 runtime node 私网网段访问。
+- Caddy：监听固定地址 `0.0.0.0:80`，并让 `ingress.caddyReloadCommand` 可以成功 reload 当前 Caddyfile。
+- Tinyproxy：监听 `runtimeProvisioning.egressProxyEndpoint` 中的端口，只允许 runtime node 私网网段访问。
 
 Terraform lab 会自动安装并启动这两个组件。手工部署时必须自行安装，否则 public service 入口和 runtime node 出公网代理都不会生效。
 
-如果沿用示例 `reloadCommand: ["docker", "exec", "mini-cloud-caddy", ...]`，`minicloud` 用户必须能访问 Docker socket。示例 systemd 单元通过 `SupplementaryGroups=docker` 表达这个权限；生产环境也可以改成受限的 `systemctl reload caddy` 或专用 sudoers 命令，但必须保证 cloud-plane 能写 `ingress.caddy.configPath` 并触发 reload。
+如果沿用示例 `caddyReloadCommand: ["docker", "exec", "mini-cloud-caddy", ...]`，`minicloud` 用户必须能访问 Docker socket。示例 systemd 单元通过 `SupplementaryGroups=docker` 表达这个权限；生产环境也可以改成受限的 `systemctl reload caddy` 或专用 sudoers 命令，但必须保证 cloud-plane 能写 `ingress.caddyConfigPath` 并触发 reload。
 
 ### 2. 构建 Linux 二进制
 
@@ -153,7 +153,7 @@ readiness 使用 TCP/gRPC 探测内部 gRPC 端口：
 bash -c '</dev/tcp/127.0.0.1/18081'
 ```
 
-首次注册到 control-plane 时，control-plane 通过配置中的 `controlPlane.auth.bearerToken` 访问 cloud-plane 的 `ControlPlaneSnapshotService、ControlPlaneExecutionService`。
+首次注册到 control-plane 时，control-plane 通过配置中的 `controlPlane.bearerToken` 访问 cloud-plane 的 `ControlPlaneSnapshotService、ControlPlaneExecutionService`。
 
 ## runtime scale-out 的关系
 

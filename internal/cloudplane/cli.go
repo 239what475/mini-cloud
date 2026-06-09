@@ -69,7 +69,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	}
 
 	// 根据配置中的云厂商运行时参数创建 runtime driver，用于创建和盘点 runtime node 云资源。
-	driver, err := runtimepoolcloud.NewRuntimeDriver(cfg.ToProviderRuntimeConfig())
+	driver, err := runtimepoolcloud.NewRuntimeDriver(cfg)
 	if err != nil {
 		return err
 	}
@@ -96,17 +96,17 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 
 	// 给进程级 logger 增加稳定上下文字段，后续 reconciler、gRPC handler 日志都能定位 plane 和地域。
 	logger = logger.With(
-		"plane_name", cfg.Plane.Identity.Name,
+		"plane_name", cfg.Plane.Name,
 		"provider", cfg.Infrastructure.Provider,
-		"region", cfg.Infrastructure.Location.RegionID,
+		"region", cfg.Infrastructure.RegionID,
 	)
 	// Store 聚合所有数据库访问方法，供 gRPC 服务和 reconciler 共享同一份本地状态。
 	stores := store.New(db)
 	// ingressController 只生成路由快照；Caddyfile 渲染、文件写入和 reload 由 infra sink 完成。
 	ingressController := cloudplaneingress.NewController(logger, stores, cfg, caddyingress.NewSink(logger, caddyingress.Config{
-		ListenHTTPAddr: cfg.Ingress.Caddy.ListenHTTPAddr,
-		ConfigPath:     cfg.Ingress.Caddy.ConfigPath,
-		ReloadCommand:  cfg.Ingress.Caddy.ReloadCommand,
+		ListenHTTPAddr: cloudplaneconfig.CaddyListenHTTPAddr,
+		ConfigPath:     cfg.Ingress.CaddyConfigPath,
+		ReloadCommand:  cfg.Ingress.CaddyReloadCommand,
 	}))
 	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 runtime node 缩容。
 	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController, cfg)
@@ -119,7 +119,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	logger.Info("starting mini-cloud cloud-plane",
 		"config_path", cfg.Path,
 		"grpc_addr", cfg.Server.ListenGRPCAddr,
-		"zone", cfg.Infrastructure.Location.ZoneID,
+		"zone", cfg.Infrastructure.ZoneID,
 	)
 
 	// 创建 TCP listener；只有 listener 成功后才启动 gRPC Serve。

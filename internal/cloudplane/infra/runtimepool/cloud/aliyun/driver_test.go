@@ -2,7 +2,6 @@ package aliyun
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"os/exec"
 	"strings"
 	"testing"
@@ -10,24 +9,21 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 )
 
-// testRuntimeConfig 构造 aliyun driver 单测用的 provider runtime 配置。
-func testRuntimeConfig(spec []byte) cloudplaneconfig.ProviderRuntimeConfig {
-	// 组装 aliyun driver 单测所需的公共 runtime 配置视图。
-	return cloudplaneconfig.ProviderRuntimeConfig{
+// testRuntimeConfig 构造 aliyun driver 单测用的 cloud-plane 配置。
+func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
+	// 组装 aliyun driver 单测所需的公共配置。
+	return cloudplaneconfig.Config{
 		// plane/infrastructure/node-agent 字段参与 user-data 和实例归属信息生成。
-		PlaneIdentity: cloudplaneconfig.PlaneIdentity{Name: "mini-cloud-lab"},
+		Plane: cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
 			Provider: Name,
-			Location: cloudplaneconfig.InfrastructureLocation{
-				RegionID: "cn-beijing",
-				ZoneID:   "cn-beijing-f",
-			},
+			RegionID: "cn-beijing",
+			ZoneID:   "cn-beijing-f",
 		},
 		NodeAgent: cloudplaneconfig.NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
-			Auth:            cloudplaneconfig.NodeAgentAuthConfig{BootstrapToken: "bootstrap-token"},
-			Artifact:        cloudplaneconfig.NodeAgentArtifactConfig{BinaryURL: "https://artifacts.example.com/node-agent-linux-amd64"},
-			Defaults:        cloudplaneconfig.NodeAgentDefaultsConfig{NodeNamePrefix: "mini-cloud-runtime-node", HeartbeatIntervalSeconds: 15, WorkIntervalSeconds: 5, HostPortRange: cloudplaneconfig.HostPortRangeConfig{Min: 30000, Max: 60999}},
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
 		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{ProviderSpec: spec},
 	}
@@ -36,14 +32,11 @@ func testRuntimeConfig(spec []byte) cloudplaneconfig.ProviderRuntimeConfig {
 // TestParseRuntimeConfig 验证 aliyun runtime config 解析和默认值填充。
 func TestParseRuntimeConfig(t *testing.T) {
 	// 只提供必填 providerSpec 字段，验证 ParseRuntimeConfig 会填入默认磁盘配置。
-	spec, err := json.Marshal(map[string]any{
+	spec := map[string]any{
 		"instanceType":    "ecs.u1-c1m1.large",
 		"imageId":         "m-123",
 		"vSwitchId":       "vsw-123",
 		"securityGroupId": "sg-123",
-	})
-	if err != nil {
-		t.Fatalf("Marshal spec error: %v", err)
 	}
 
 	// 解析完整 runtime config，得到 aliyun provider 的强类型配置。
@@ -66,10 +59,7 @@ func TestParseRuntimeConfig(t *testing.T) {
 
 // TestParseRuntimeConfigRequiresAliyunFields 验证 aliyun provider 必填字段缺失时解析失败。
 func TestParseRuntimeConfigRequiresAliyunFields(t *testing.T) {
-	spec, err := json.Marshal(map[string]any{"instanceType": "ecs.u1-c1m1.large"})
-	if err != nil {
-		t.Fatalf("Marshal spec error: %v", err)
-	}
+	spec := map[string]any{"instanceType": "ecs.u1-c1m1.large"}
 
 	if _, err := ParseRuntimeConfig(testRuntimeConfig(spec)); err == nil {
 		t.Fatalf("expected ParseRuntimeConfig to reject missing provider-specific fields")
@@ -83,7 +73,7 @@ func TestBuildRuntimeNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	// 使用最小 driver 配置构造 user-data，不触发真实 aliyun SDK 调用。
 	driver := runtimeDriver{
 		config: RuntimeConfig{
-			Runtime: testRuntimeConfig(nil),
+			CloudPlane: testRuntimeConfig(nil),
 		},
 	}
 

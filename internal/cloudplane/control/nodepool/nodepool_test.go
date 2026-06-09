@@ -2,7 +2,6 @@ package nodepool
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -140,27 +139,14 @@ func (f *fakeRuntimeDriver) Delete(_ context.Context, request runtimepool.Delete
 
 func testConfig(t *testing.T) cloudplaneconfig.Config {
 	t.Helper()
-	providerSpec, err := json.Marshal(map[string]any{"instanceType": "ecs.demo"})
-	if err != nil {
-		t.Fatalf("marshal provider spec: %v", err)
-	}
 	return cloudplaneconfig.Config{
-		Plane: cloudplaneconfig.PlaneConfig{
-			Identity: cloudplaneconfig.PlaneIdentity{Name: "demo"},
-		},
+		Plane: cloudplaneconfig.PlaneConfig{Name: "demo"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
 			Provider: "aliyun",
-			Location: cloudplaneconfig.InfrastructureLocation{
-				RegionID: "cn-beijing",
-			},
-		},
-		NodeAgent: cloudplaneconfig.NodeAgentConfig{
-			Defaults: cloudplaneconfig.NodeAgentDefaultsConfig{
-				NodeNamePrefix: "demo-runtime-node",
-			},
+			RegionID: "cn-beijing",
 		},
 		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
-			ProviderSpec: providerSpec,
+			ProviderSpec: map[string]any{"instanceType": "ecs.demo"},
 		},
 	}
 }

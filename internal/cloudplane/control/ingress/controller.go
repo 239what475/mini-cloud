@@ -53,7 +53,7 @@ func NewController(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig
 // 参数说明：ctx 控制数据库读取和下游 sink 应用生命周期。
 func (c *Controller) ReconcileOnce(ctx context.Context) error {
 	// 未启用 ingress 时不构建路由、不触碰外置数据面，保持纯 gRPC plane 的最小运行形态。
-	if !c.cfg.Ingress.Enabled {
+	if strings.TrimSpace(c.cfg.Ingress.BaseDomain) == "" {
 		return nil
 	}
 	// 构建 public service 的 observed route snapshot；失败时终止本轮，下一轮 reconciler 继续重试。

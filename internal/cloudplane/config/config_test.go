@@ -1,17 +1,15 @@
 package config
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// TestLoadAppliesDefaults 验证配置加载会补齐 cloud-plane 默认值。
-func TestLoadAppliesDefaults(t *testing.T) {
+// TestLoadAcceptsMinimalCloudPlaneConfig 验证 cloud-plane YAML 只需要保留真正需要人工配置的字段。
+func TestLoadAcceptsMinimalCloudPlaneConfig(t *testing.T) {
 	t.Parallel()
 
-	// 准备只包含必填字段的配置文件，用来验证 Load 会补齐派生默认值。
 	dir := t.TempDir()
 	path := filepath.Join(dir, "cloud-plane.yaml")
 	data := []byte(`
@@ -20,21 +18,16 @@ server:
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
-  identity:
-    name: mini-cloud-lab
+  name: mini-cloud-lab
 controlPlane:
-  auth:
-    bearerToken: southbound-token
+  bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
-  auth:
-    bootstrapToken: bootstrap-token
-  artifact:
-    binaryUrl: https://artifact.example/node-agent-linux-amd64
+  bootstrapToken: bootstrap-token
+  binaryUrl: https://artifact.example/node-agent-linux-amd64
 infrastructure:
   provider: aliyun
-  location:
-    regionId: cn-beijing
+  regionId: cn-beijing
 runtimeProvisioning:
   providerSpec:
     instanceType: ecs.u1-c1m1.large
@@ -46,25 +39,18 @@ runtimeProvisioning:
 		t.Fatalf("WriteFile error: %v", err)
 	}
 
-	// 加载配置后断言 node-agent 相关默认值来自 plane name 和内置默认策略。
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
 	}
-	if cfg.NodeAgent.Defaults.NodeNamePrefix != "mini-cloud-lab-runtime-node" {
-		t.Fatalf("NodeNamePrefix = %q, want mini-cloud-lab-runtime-node", cfg.NodeAgent.Defaults.NodeNamePrefix)
+	if cfg.Path != path {
+		t.Fatalf("Path = %q, want %q", cfg.Path, path)
 	}
-	if cfg.NodeAgent.Defaults.HeartbeatIntervalSeconds != 15 {
-		t.Fatalf("HeartbeatIntervalSeconds = %d, want 15", cfg.NodeAgent.Defaults.HeartbeatIntervalSeconds)
+	if cfg.Plane.Name != "mini-cloud-lab" {
+		t.Fatalf("Plane.Name = %q, want mini-cloud-lab", cfg.Plane.Name)
 	}
-	if cfg.NodeAgent.Defaults.WorkIntervalSeconds != 5 {
-		t.Fatalf("WorkIntervalSeconds = %d, want 5", cfg.NodeAgent.Defaults.WorkIntervalSeconds)
-	}
-	if cfg.NodeAgent.Defaults.HostPortRange.Min != 30000 || cfg.NodeAgent.Defaults.HostPortRange.Max != 60999 {
-		t.Fatalf("HostPortRange = %d-%d, want 30000-60999", cfg.NodeAgent.Defaults.HostPortRange.Min, cfg.NodeAgent.Defaults.HostPortRange.Max)
-	}
-	if cfg.NodeAgent.Auth.SessionTTL.String() != "24h0m0s" {
-		t.Fatalf("SessionTTL = %s, want 24h0m0s", cfg.NodeAgent.Auth.SessionTTL)
+	if cfg.Infrastructure.Provider != "aliyun" {
+		t.Fatalf("Infrastructure.Provider = %q, want aliyun", cfg.Infrastructure.Provider)
 	}
 }
 
@@ -76,16 +62,15 @@ func TestValidateAcceptsHTTPNodeAgentConnectEndpoint(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Identity: PlaneIdentity{Name: "mini-cloud-lab"}},
-		ControlPlane: ControlPlaneConfig{Auth: ControlPlaneAuthConfig{BearerToken: "southbound-token"}},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "https://10.0.0.10:18081",
-			Auth:            NodeAgentAuthConfig{BootstrapToken: "bootstrap-token", SessionTTL: 1},
-			Artifact:        NodeAgentArtifactConfig{BinaryURL: "https://artifact.example/node-agent-linux-amd64"},
-			Defaults:        NodeAgentDefaultsConfig{NodeNamePrefix: "mini-cloud-lab-runtime-node", HeartbeatIntervalSeconds: 15, WorkIntervalSeconds: 5, HostPortRange: HostPortRangeConfig{Min: 30000, Max: 60999}},
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
-		Infrastructure:      InfrastructureConfig{Provider: "aliyun", Location: InfrastructureLocation{RegionID: "cn-beijing"}},
-		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: json.RawMessage(`{"instanceType":"ecs.u1-c1m1.large"}`)},
+		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large"}},
 	}
 	// Validate 应接受 http/https 形式的 connectEndpoint。
 	if err := cfg.Validate(); err != nil {
@@ -101,16 +86,15 @@ func TestValidateRejectsLocalProvider(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Identity: PlaneIdentity{Name: "mini-cloud-lab"}},
-		ControlPlane: ControlPlaneConfig{Auth: ControlPlaneAuthConfig{BearerToken: "southbound-token"}},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
-			Auth:            NodeAgentAuthConfig{BootstrapToken: "bootstrap-token", SessionTTL: 1},
-			Artifact:        NodeAgentArtifactConfig{BinaryURL: "https://artifact.example/node-agent-linux-amd64"},
-			Defaults:        NodeAgentDefaultsConfig{NodeNamePrefix: "mini-cloud-lab-runtime-node", HeartbeatIntervalSeconds: 15, WorkIntervalSeconds: 5, HostPortRange: HostPortRangeConfig{Min: 30000, Max: 60999}},
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
-		Infrastructure:      InfrastructureConfig{Provider: "local", Location: InfrastructureLocation{RegionID: "local"}},
-		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: json.RawMessage(`{"instanceType":"local"}`)},
+		Infrastructure:      InfrastructureConfig{Provider: "local", RegionID: "local"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "local"}},
 	}
 	// provider=local 不能通过校验，避免重新引入手动扩容语义。
 	if err := cfg.Validate(); err == nil {
@@ -131,21 +115,16 @@ server:
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
-  identity:
-    name: mini-cloud-lab
+  name: mini-cloud-lab
 controlPlane:
-  auth:
-    bearerToken: southbound-token
+  bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
-  auth:
-    bootstrapToken: bootstrap-token
-  artifact:
-    binaryUrl: https://artifact.example/node-agent-linux-amd64
+  bootstrapToken: bootstrap-token
+  binaryUrl: https://artifact.example/node-agent-linux-amd64
 infrastructure:
   provider: aliyun
-  location:
-    regionId: cn-beijing
+  regionId: cn-beijing
 runtimeProvisioning:
   enabled: true
   providerSpec:
@@ -168,15 +147,14 @@ func TestValidateRequiresRuntimeProvisioningProviderSpec(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Identity: PlaneIdentity{Name: "mini-cloud-lab"}},
-		ControlPlane: ControlPlaneConfig{Auth: ControlPlaneAuthConfig{BearerToken: "southbound-token"}},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
-			Auth:            NodeAgentAuthConfig{BootstrapToken: "bootstrap-token", SessionTTL: 1},
-			Artifact:        NodeAgentArtifactConfig{BinaryURL: "https://artifact.example/node-agent-linux-amd64"},
-			Defaults:        NodeAgentDefaultsConfig{NodeNamePrefix: "mini-cloud-lab-runtime-node", HeartbeatIntervalSeconds: 15, WorkIntervalSeconds: 5, HostPortRange: HostPortRangeConfig{Min: 30000, Max: 60999}},
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
 		},
-		Infrastructure:      InfrastructureConfig{Provider: "aliyun", Location: InfrastructureLocation{RegionID: "cn-beijing"}},
+		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
 		RuntimeProvisioning: RuntimeProvisioningConfig{},
 	}
 	// runtime driver 必须依赖 providerSpec 构造，因此缺失时校验失败。
@@ -191,7 +169,7 @@ func TestParseProviderSpec(t *testing.T) {
 
 	// providerSpec 原始 JSON 包含目标结构体中声明的两个字段。
 	cfg := RuntimeProvisioningConfig{
-		ProviderSpec: json.RawMessage(`{"instanceType":"ecs.u1-c1m1.large","systemDiskSizeGiB":40}`),
+		ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large", "systemDiskSizeGiB": 40},
 	}
 
 	// 使用临时结构体模拟 provider driver 的专属配置结构。
@@ -216,7 +194,7 @@ func TestParseProviderSpecRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 
 	// providerSpec 含有目标结构体未声明的字段，用来验证 DisallowUnknownFields 生效。
-	cfg := RuntimeProvisioningConfig{ProviderSpec: json.RawMessage(`{"instanceType":"ecs.u1-c1m1.large","unexpected":true}`)}
+	cfg := RuntimeProvisioningConfig{ProviderSpec: map[string]any{"instanceType": "ecs.u1-c1m1.large", "unexpected": true}}
 
 	// 目标结构体只声明 instanceType，unexpected 必须触发解析错误。
 	var spec struct {
@@ -240,19 +218,15 @@ server:
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
-  identity:
-    name: mini-cloud-lab
+  name: mini-cloud-lab
 controlPlane:
-  auth:
-    bearerToken: southbound-token
+  bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
-  auth:
-    bootstrapToken: bootstrap-token
+  bootstrapToken: bootstrap-token
 infrastructure:
   provider: aliyun
-  location:
-    regionId: cn-beijing
+  regionId: cn-beijing
 legacyEnvFallback: true
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
@@ -277,22 +251,18 @@ server:
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 controlPlane:
-  auth:
-    bearerToken: southbound-token
+  bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
-  auth:
-    bootstrapToken: bootstrap-token
+  bootstrapToken: bootstrap-token
 cloudPlane:
   internalGRPCEndpoint: 10.0.0.10:18081
   nodeAgentBootstrapToken: legacy-location-token
 plane:
-  identity:
-    name: mini-cloud-lab
+  name: mini-cloud-lab
 infrastructure:
   provider: aliyun
-  location:
-    regionId: cn-beijing
+  regionId: cn-beijing
 `)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
@@ -300,43 +270,6 @@ infrastructure:
 	// 严格配置模型应拒绝 legacy cloudPlane block。
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load error = nil, want legacy cloudPlane block rejection")
-	}
-}
-
-// TestLoadRejectsInvalidSessionTTL 验证 node-agent session TTL 必须为正值。
-func TestLoadRejectsInvalidSessionTTL(t *testing.T) {
-	t.Parallel()
-
-	// sessionTTL=0s 不具备有效会话窗口，配置加载应拒绝。
-	dir := t.TempDir()
-	path := filepath.Join(dir, "cloud-plane.yaml")
-	data := []byte(`
-server:
-  listenGRPCAddr: 0.0.0.0:18081
-database:
-  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
-plane:
-  identity:
-    name: mini-cloud-lab
-controlPlane:
-  auth:
-    bearerToken: southbound-token
-nodeAgent:
-  connectEndpoint: 10.0.0.10:18081
-  auth:
-    bootstrapToken: bootstrap-token
-    sessionTTL: 0s
-infrastructure:
-  provider: aliyun
-  location:
-    regionId: cn-beijing
-`)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile error: %v", err)
-	}
-	// Load 会解析 duration 并校验必须为正值。
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load error = nil, want invalid session TTL rejection")
 	}
 }
 

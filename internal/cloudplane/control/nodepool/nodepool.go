@@ -37,7 +37,7 @@ func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
 	if s == nil || s.store == nil || s.driver == nil {
 		return nil
 	}
-	candidate, err := s.store.GetRuntimeNodeScaleOutCandidate(ctx, s.config.NodeAgent.Defaults.NodeNamePrefix, s.runtimeInstanceType())
+	candidate, err := s.store.GetRuntimeNodeScaleOutCandidate(ctx, s.config.Plane.Name+cloudplaneconfig.RuntimeNodeNameSuffix, s.runtimeInstanceType())
 	if err != nil {
 		return err
 	}
@@ -47,7 +47,7 @@ func (s *Service) ReconcileScaleOutOnce(ctx context.Context) error {
 
 	intent, err := s.store.CreateRuntimeNodeIntent(ctx, infraruntimepool.CreateIntentInput{
 		Provider:      s.config.Infrastructure.Provider,
-		Region:        s.config.Infrastructure.Location.RegionID,
+		Region:        s.config.Infrastructure.RegionID,
 		InstanceName:  candidate.InstanceName,
 		InstanceType:  candidate.InstanceType,
 		StatusReason:  "pending execution requires more runtime capacity",

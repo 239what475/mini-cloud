@@ -3,7 +3,6 @@ set -euo pipefail
 
 INSTALL_ROOT={{.InstallRoot}}
 AGENT_BINARY_URL={{.AgentBinaryURL}}
-AGENT_BINARY_SHA256={{.AgentBinarySHA256}}
 DOCKER_DAEMON_JSON_BASE64={{.DockerDaemonJSONBase64}}
 EGRESS_PROXY_ENABLED={{.EgressProxyEnabledShell}}
 EGRESS_PROXY_ENDPOINT={{.EgressProxyEndpoint}}
@@ -90,9 +89,6 @@ systemctl restart docker
 log "download node-agent binary from $AGENT_BINARY_URL"
 curl -fsSL "$AGENT_BINARY_URL" -o "$INSTALL_ROOT/bin/node-agent"
 chmod 0755 "$INSTALL_ROOT/bin/node-agent"
-if [[ -n "$AGENT_BINARY_SHA256" ]]; then
-  printf '%s  %s\n' "$AGENT_BINARY_SHA256" "$INSTALL_ROOT/bin/node-agent" | sha256sum -c -
-fi
 
 cat >"$INSTALL_ROOT/node-agent.yaml" <<EOF_NODE_AGENT_CONFIG
 server:

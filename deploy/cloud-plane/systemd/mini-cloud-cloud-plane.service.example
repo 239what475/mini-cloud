@@ -7,7 +7,7 @@ Wants=network-online.target docker.service
 Type=simple
 User=minicloud
 Group=minicloud
-# 示例配置的 ingress.caddy.reloadCommand 使用 docker exec reload 外置 Caddy，
+# 示例配置的 ingress.caddyReloadCommand 使用 docker exec reload 外置 Caddy，
 # 因此长期运行部署需要把 minicloud 用户加入 docker 组；若改用 systemctl/sudo 等 reload 方式，可按实际权限模型调整。
 SupplementaryGroups=docker
 WorkingDirectory=/opt/mini-cloud/cloud-plane

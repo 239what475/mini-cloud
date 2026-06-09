@@ -23,8 +23,8 @@ func NewGRPCServer(cfg cloudplaneconfig.Config, logger *slog.Logger, db *sql.DB,
 	nodeagent.RegisterGRPC(grpcServer, nodeagent.Options{
 		Logger:         logger,
 		Store:          stores,
-		BootstrapToken: cfg.NodeAgent.Auth.BootstrapToken,
-		SessionTTL:     cfg.NodeAgent.Auth.SessionTTL,
+		BootstrapToken: cfg.NodeAgent.BootstrapToken,
+		SessionTTL:     cloudplaneconfig.NodeAgentSessionTTL,
 	})
 	return grpcServer
 }

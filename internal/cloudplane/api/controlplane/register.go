@@ -19,7 +19,7 @@ type Options struct {
 }
 
 func RegisterGRPC(grpcServer *grpc.Server, opts Options) {
-	auth := NewAuthenticator(opts.Config.ControlPlane.Auth.BearerToken)
+	auth := NewAuthenticator(opts.Config.ControlPlane.BearerToken)
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, NewSnapshotServer(opts.Logger, opts.DB, opts.Store, opts.Config, auth))
 	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, NewExecutionServer(opts.Logger, opts.Store, auth))
 }

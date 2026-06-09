@@ -11,8 +11,8 @@ import (
 )
 
 // NewRuntimeDriver 根据配置中的 provider 名称创建对应的云厂商 runtime driver。
-// 参数说明：cfg 是创建 runtime driver 所需的 cloud-plane 配置视图。
-func NewRuntimeDriver(cfg cloudplaneconfig.ProviderRuntimeConfig) (runtimepool.RuntimeDriver, error) {
+// 参数说明：cfg 是创建 runtime driver 所需的 cloud-plane 配置。
+func NewRuntimeDriver(cfg cloudplaneconfig.Config) (runtimepool.RuntimeDriver, error) {
 	// provider 名称来自配置文件，选择 driver 前统一 trim/lower。
 	providerName := strings.ToLower(strings.TrimSpace(cfg.Infrastructure.Provider))
 	switch providerName {

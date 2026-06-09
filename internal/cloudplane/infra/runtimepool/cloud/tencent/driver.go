@@ -25,10 +25,20 @@ import (
 // Name 定义当前 cloud-plane 模块复用的常量。
 const Name = "tencent"
 
+var runtimeNodeNoProxy = []string{
+	"127.0.0.1",
+	"localhost",
+	"10.0.0.0/8",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"169.254.169.254",
+	"metadata.tencentyun.com",
+}
+
 // RuntimeConfig 描述腾讯云 runtime driver 使用的配置。
 type RuntimeConfig struct {
-	// Runtime 表示 provider 创建 runtime node 所需的 cloud-plane 配置视图。
-	Runtime cloudplaneconfig.ProviderRuntimeConfig
+	// CloudPlane 表示 provider 创建 runtime node 所需的 cloud-plane 配置。
+	CloudPlane cloudplaneconfig.Config
 	// ProviderSpec 是解析后的云厂商 runtime node 创建参数。
 	ProviderSpec RuntimeNodeSpec
 }
@@ -72,15 +82,15 @@ type instanceTypeCapacity struct {
 }
 
 // NewRuntimeDriver 构造腾讯云 runtime driver。
-// 参数说明：cfg 提供创建腾讯云 runtime node 所需的 cloud-plane 配置视图。
-func NewRuntimeDriver(cfg cloudplaneconfig.ProviderRuntimeConfig) (runtimepool.RuntimeDriver, error) {
+// 参数说明：cfg 提供创建腾讯云 runtime node 所需的 cloud-plane 配置。
+func NewRuntimeDriver(cfg cloudplaneconfig.Config) (runtimepool.RuntimeDriver, error) {
 	// 先解析 providerSpec 和通用运行配置，确保 driver 持有的是已校验配置。
 	typedConfig, err := ParseRuntimeConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 	// CVM client 绑定到配置中的 region。
-	client, err := newCVMClient(typedConfig.Runtime.Infrastructure.Location.RegionID)
+	client, err := newCVMClient(typedConfig.CloudPlane.Infrastructure.RegionID)
 	if err != nil {
 		return nil, err
 	}
@@ -93,14 +103,14 @@ func NewRuntimeDriver(cfg cloudplaneconfig.ProviderRuntimeConfig) (runtimepool.R
 
 // ParseRuntimeConfig 解析并校验当前 provider 的 runtime node 创建配置。
 // 参数说明：cfg 提供当前组件配置。
-func ParseRuntimeConfig(cfg cloudplaneconfig.ProviderRuntimeConfig) (RuntimeConfig, error) {
+func ParseRuntimeConfig(cfg cloudplaneconfig.Config) (RuntimeConfig, error) {
 	// 防止把非 tencent 配置误交给 tencent driver。
 	if !strings.EqualFold(strings.TrimSpace(cfg.Infrastructure.Provider), Name) {
 		return RuntimeConfig{}, fmt.Errorf("runtime config provider %q does not match %q", cfg.Infrastructure.Provider, Name)
 	}
 	// bootstrap token 会通过 user-data 注入，并在实例内渲染到 node-agent 配置文件；缺失时新节点无法注册。
-	if strings.TrimSpace(cfg.NodeAgent.Auth.BootstrapToken) == "" {
-		return RuntimeConfig{}, fmt.Errorf("provider runtime config nodeAgent.auth.bootstrapToken is required for tencent")
+	if strings.TrimSpace(cfg.NodeAgent.BootstrapToken) == "" {
+		return RuntimeConfig{}, fmt.Errorf("nodeAgent.bootstrapToken is required for tencent runtime driver")
 	}
 
 	// providerSpec 使用 tencent 专属结构解析，并拒绝未知字段。
@@ -139,7 +149,7 @@ func ParseRuntimeConfig(cfg cloudplaneconfig.ProviderRuntimeConfig) (RuntimeConf
 	}
 	// 返回通用配置和 tencent 专属 spec 的组合。
 	return RuntimeConfig{
-		Runtime:      cfg,
+		CloudPlane:   cfg,
 		ProviderSpec: spec,
 	}, nil
 }
@@ -226,11 +236,11 @@ func (p *runtimeDriver) Create(_ context.Context, request runtimepool.CreateRequ
 	runRequest.TagSpecification = []*cvm.TagSpecification{
 		{
 			ResourceType: new("instance"),
-			Tags:         buildTencentRunInstanceTags(utils.BuildOwnershipTags(p.config.Runtime.PlaneIdentity.Name)),
+			Tags:         buildTencentRunInstanceTags(utils.BuildOwnershipTags(p.config.CloudPlane.Plane.Name)),
 		},
 	}
 	// zone 是可选配置，未配置时由腾讯云根据 subnet 等参数决定。
-	if zoneID := strings.TrimSpace(p.config.Runtime.Infrastructure.Location.ZoneID); zoneID != "" {
+	if zoneID := strings.TrimSpace(p.config.CloudPlane.Infrastructure.ZoneID); zoneID != "" {
 		runRequest.Placement = &cvm.Placement{
 			Zone: new(zoneID),
 		}
@@ -271,7 +281,7 @@ func (p *runtimeDriver) List(_ context.Context) ([]runtimepool.Node, error) {
 	}
 
 	// 先构造 provider 无关的 ownership filter。
-	baseFilters := utils.BuildOwnershipTags(p.config.Runtime.PlaneIdentity.Name)
+	baseFilters := utils.BuildOwnershipTags(p.config.CloudPlane.Plane.Name)
 	describeFilters := make([]*cvm.Filter, 0, len(baseFilters))
 	for key, value := range baseFilters {
 		// 空 value 不参与过滤。
@@ -378,7 +388,7 @@ func (p *runtimeDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, erro
 		},
 	}
 	// zone 是可选过滤条件；配置后可避免拿到其他 zone 不支持的规格信息。
-	if zoneID := strings.TrimSpace(p.config.Runtime.Infrastructure.Location.ZoneID); zoneID != "" {
+	if zoneID := strings.TrimSpace(p.config.CloudPlane.Infrastructure.ZoneID); zoneID != "" {
 		request.Filters = append(request.Filters, &cvm.Filter{
 			Name:   new("zone"),
 			Values: []*string{new(zoneID)},
@@ -419,7 +429,6 @@ var runtimeNodeBootstrapTemplate string
 type runtimeNodeBootstrapData struct {
 	InstallRoot             string
 	AgentBinaryURL          string
-	AgentBinarySHA256       string
 	DockerDaemonJSONBase64  string
 	EgressProxyEnabledShell string
 	EgressProxyEnabledYAML  string
@@ -452,41 +461,41 @@ type runtimeNodeBootstrapData struct {
 // 参数说明：instanceName 是云厂商实例名称；capacity 是要写入 node-agent 配置的节点容量。
 func (p *runtimeDriver) buildRuntimeNodeUserData(instanceName string, capacity instanceTypeCapacity) (string, error) {
 	// Docker daemon 配置先序列化为 JSON，再以 base64 传给 shell，避免模板处理 JSON 引号和换行。
-	dockerDaemonJSON, err := utils.BuildDockerDaemonJSON(p.config.Runtime.RuntimeProvisioning.ImagePull.RegistryMirrors)
+	dockerDaemonJSON, err := utils.BuildDockerDaemonJSON(p.config.CloudPlane.RuntimeProvisioning.RegistryMirrors)
 	if err != nil {
 		return "", err
 	}
 
 	// proxy 配置既要写入 shell 环境，也要写入 node-agent YAML；两处使用同一份输入。
-	proxy := p.config.Runtime.RuntimeProvisioning.Egress.Proxy
+	proxy := p.config.CloudPlane.RuntimeProvisioning
+	egressProxyEnabled := strings.TrimSpace(proxy.EgressProxyEndpoint) != ""
 	data := runtimeNodeBootstrapData{
 		InstallRoot:             utils.ShellQuote("/opt/mini-cloud"),
-		AgentBinaryURL:          utils.ShellQuote(p.config.Runtime.NodeAgent.Artifact.BinaryURL),
-		AgentBinarySHA256:       utils.ShellQuote(strings.TrimSpace(p.config.Runtime.NodeAgent.Artifact.BinarySHA256)),
+		AgentBinaryURL:          utils.ShellQuote(p.config.CloudPlane.NodeAgent.BinaryURL),
 		DockerDaemonJSONBase64:  utils.ShellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
-		EgressProxyEnabledShell: utils.ShellQuote(strconv.FormatBool(proxy.Enabled)),
-		EgressProxyEnabledYAML:  strconv.FormatBool(proxy.Enabled),
-		EgressProxyEndpoint:     utils.ShellQuote(strings.TrimSpace(proxy.Endpoint)),
-		NoProxyValue:            utils.ShellQuote(strings.Join(proxy.NoProxy, ",")),
-		BootstrapToken:          utils.ShellQuote(strings.TrimSpace(p.config.Runtime.NodeAgent.Auth.BootstrapToken)),
+		EgressProxyEnabledShell: utils.ShellQuote(strconv.FormatBool(egressProxyEnabled)),
+		EgressProxyEnabledYAML:  strconv.FormatBool(egressProxyEnabled),
+		EgressProxyEndpoint:     utils.ShellQuote(strings.TrimSpace(proxy.EgressProxyEndpoint)),
+		NoProxyValue:            utils.ShellQuote(strings.Join(runtimeNodeNoProxy, ",")),
+		BootstrapToken:          utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.NodeAgent.BootstrapToken)),
 		BootstrapLog:            utils.ShellQuote("/var/log/mini-cloud-runtime-node-bootstrap.log"),
 		MetadataBase:            utils.ShellQuote("http://metadata.tencentyun.com/latest/meta-data"),
 		InstanceName:            utils.ShellQuote(instanceName),
-		ConnectEndpoint:         utils.ShellQuote(strings.TrimRight(p.config.Runtime.NodeAgent.ConnectEndpoint, "/")),
-		PlatformName:            utils.ShellQuote(p.config.Runtime.PlaneIdentity.Name),
-		Provider:                utils.ShellQuote(p.config.Runtime.Infrastructure.Provider),
-		Region:                  utils.ShellQuote(p.config.Runtime.Infrastructure.Location.RegionID),
+		ConnectEndpoint:         utils.ShellQuote(strings.TrimRight(p.config.CloudPlane.NodeAgent.ConnectEndpoint, "/")),
+		PlatformName:            utils.ShellQuote(p.config.CloudPlane.Plane.Name),
+		Provider:                utils.ShellQuote(p.config.CloudPlane.Infrastructure.Provider),
+		Region:                  utils.ShellQuote(p.config.CloudPlane.Infrastructure.RegionID),
 		InstanceType:            utils.ShellQuote(capacity.instanceType),
 		CPUMilli:                capacity.cpuMilli,
 		MemoryMi:                capacity.memoryMi,
-		HeartbeatInterval:       utils.ShellQuote(strconv.Itoa(p.config.Runtime.NodeAgent.Defaults.HeartbeatIntervalSeconds) + "s"),
-		WorkInterval:            utils.ShellQuote(strconv.Itoa(p.config.Runtime.NodeAgent.Defaults.WorkIntervalSeconds) + "s"),
-		HostPortMin:             p.config.Runtime.NodeAgent.Defaults.HostPortRange.Min,
-		HostPortMax:             p.config.Runtime.NodeAgent.Defaults.HostPortRange.Max,
-		NoProxyItems:            utils.ShellQuoteItems(proxy.NoProxy),
-		WorkloadLogLokiURL:      utils.ShellQuote(strings.TrimSpace(p.config.Runtime.Observability.Logs.LokiURL)),
-		WorkloadLogLokiTenantID: utils.ShellQuote(strings.TrimSpace(p.config.Runtime.Observability.Logs.LokiTenantID)),
-		WorkloadOTLPEndpoint:    utils.ShellQuote(strings.TrimSpace(p.config.Runtime.Observability.Traces.OTLPEndpoint)),
+		HeartbeatInterval:       utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentHeartbeatIntervalSeconds) + "s"),
+		WorkInterval:            utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentWorkIntervalSeconds) + "s"),
+		HostPortMin:             cloudplaneconfig.NodeAgentHostPortMin,
+		HostPortMax:             cloudplaneconfig.NodeAgentHostPortMax,
+		NoProxyItems:            utils.ShellQuoteItems(runtimeNodeNoProxy),
+		WorkloadLogLokiURL:      utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.LokiURL)),
+		WorkloadLogLokiTenantID: utils.ShellQuote(""),
+		WorkloadOTLPEndpoint:    utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.OTLPEndpoint)),
 		NodeAgentBinaryPath:     utils.ShellQuote("/opt/mini-cloud/bin/node-agent"),
 		NodeAgentConfigPath:     utils.ShellQuote("/opt/mini-cloud/node-agent.yaml"),
 	}
