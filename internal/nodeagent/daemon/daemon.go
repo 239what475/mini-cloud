@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -17,62 +18,22 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// Runner 持有 node-agent daemon 主循环运行所需的组件和内存状态。
 type Runner struct {
-	// logger 记录 daemon 生命周期、心跳和执行日志。
-	logger *slog.Logger
-	// cfg 是已校验的 node-agent 配置。
-	cfg agentconfig.Config
-	// controlClient 访问控制面的注册、心跳、任务和上报接口。
-	controlClient *agentclient.Client
-	// containerRuntime 启动、停止和观测本机工作负载容器。
+	logger           *slog.Logger
+	cfg              agentconfig.Config
+	controlClient    *agentclient.Client
 	containerRuntime runtime.Runtime
-	// workloadLogs 管理工作负载日志采集。
-	workloadLogs *workloadlogs.Manager
+	workloadLogs     *workloadlogs.Manager
 
-	// registerMu 串行化进程内注册，避免 heartbeat/work 并发重新注册。
-	registerMu sync.Mutex
-	// mu 保护 nodeID。
-	mu sync.Mutex
-	// nodeID 是本次进程启动后 cloud-plane 返回的稳定节点 ID。
-	nodeID string
-	// resetMu 串行化启动期 runtime reset，避免 heartbeat/work 并发重置。
-	resetMu sync.Mutex
-	// runtimeResetDone 表示本进程拿到当前 nodeID 后已经清理过旧 workload 容器。
+	registerMu       sync.Mutex
+	mu               sync.Mutex
+	nodeID           string
+	resetMu          sync.Mutex
 	runtimeResetDone bool
+	closeOnce        sync.Once
+	closeErr         error
 }
 
-// Run 根据配置创建生产组件，并运行 node-agent daemon 主循环。
-func Run(ctx context.Context, logger *slog.Logger, cfg agentconfig.Config) error {
-	if logger == nil {
-		logger = slog.Default()
-	}
-	client := agentclient.New(agentclient.Config{
-		ServerURL:      cfg.ServerURL,
-		BootstrapToken: cfg.BootstrapToken,
-	})
-	containerRuntime, err := runtime.New(logger, runtime.Config{
-		Type: cfg.Runtime.Type,
-	})
-	if err != nil {
-		return err
-	}
-	workloadLogs, err := workloadlogs.NewManager(logger, workloadlogs.Config{
-		LokiURL:      cfg.WorkloadLogLokiURL,
-		LokiTenantID: cfg.WorkloadLogLokiTenant,
-		PlatformName: cfg.PlatformName,
-		PushTimeout:  cfg.Logs.PushTimeout,
-	}, containerRuntime)
-	if err != nil {
-		if closeErr := containerRuntime.Close(); closeErr != nil {
-			logger.Warn("close runtime after workload log manager setup failed", "error", closeErr)
-		}
-		return err
-	}
-	return NewRunner(logger, cfg, client, containerRuntime, workloadLogs).Run(ctx)
-}
-
-// NewRunner 组装一个使用显式组件的 Runner。
 func NewRunner(
 	logger *slog.Logger,
 	cfg agentconfig.Config,
@@ -92,29 +53,9 @@ func NewRunner(
 	}
 }
 
-// Run 注册当前进程、重置本地 runtime，并运行心跳与任务循环直到上下文取消。
 func (r *Runner) Run(ctx context.Context) error {
-	defer func() {
-		if err := r.controlClient.Close(); err != nil {
-			r.logger.Warn("close node control client failed", "error", err)
-		}
-	}()
-	defer func() {
-		if err := r.containerRuntime.Close(); err != nil {
-			r.logger.Warn("close node runtime failed", "error", err)
-		}
-	}()
-	if r.workloadLogs != nil {
-		defer func() {
-			closeCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.CleanupHard))
-			defer cancel()
-			if err := r.workloadLogs.Close(closeCtx); err != nil {
-				r.logger.Warn("close workload log manager failed", "error", err)
-			}
-		}()
-	}
+	defer r.Close()
 
-	// 后台循环启动前先注册并重置本机 runtime，避免心跳和任务循环并发触发首次注册。
 	if nodeID, err := r.registerNode(ctx); err != nil {
 		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
 	} else if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
@@ -151,7 +92,34 @@ func (r *Runner) Run(ctx context.Context) error {
 	return nil
 }
 
-// runHeartbeatLoop 立即执行一次心跳周期，然后按配置间隔持续发送心跳。
+func (r *Runner) Close() error {
+	r.closeOnce.Do(func() {
+		var errs []error
+		if r.workloadLogs != nil {
+			closeCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.CleanupHard))
+			if err := r.workloadLogs.Close(closeCtx); err != nil {
+				r.logger.Warn("close workload log manager failed", "error", err)
+				errs = append(errs, err)
+			}
+			cancel()
+		}
+		if r.controlClient != nil {
+			if err := r.controlClient.Close(); err != nil {
+				r.logger.Warn("close node control client failed", "error", err)
+				errs = append(errs, err)
+			}
+		}
+		if r.containerRuntime != nil {
+			if err := r.containerRuntime.Close(); err != nil {
+				r.logger.Warn("close node runtime failed", "error", err)
+				errs = append(errs, err)
+			}
+		}
+		r.closeErr = errors.Join(errs...)
+	})
+	return r.closeErr
+}
+
 func (r *Runner) runHeartbeatLoop(ctx context.Context) {
 	r.tryHeartbeatCycle(ctx)
 	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
@@ -166,7 +134,6 @@ func (r *Runner) runHeartbeatLoop(ctx context.Context) {
 	}
 }
 
-// runWorkerLoop 立即执行一次任务周期，然后按配置间隔持续拉取任务。
 func (r *Runner) runWorkerLoop(ctx context.Context) {
 	r.tryWorkCycle(ctx)
 	ticker := time.NewTicker(r.cfg.WorkInterval)
@@ -181,7 +148,6 @@ func (r *Runner) runWorkerLoop(ctx context.Context) {
 	}
 }
 
-// tryHeartbeatCycle 确保节点已注册并发送一次心跳。
 func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
@@ -199,7 +165,6 @@ func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 	}
 }
 
-// tryWorkCycle 确保节点已注册并尝试执行下一项任务。
 func (r *Runner) tryWorkCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
@@ -212,26 +177,40 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 	}
 
 	result, err := work.ExecuteNext(ctx, r.logger, r.controlClient, r.containerRuntime, work.Options{
-		NodeID:               nodeID,
-		NodePrivateIP:        r.cfg.RegisterInput.GetPrivateIp(),
-		HostPortMin:          r.cfg.Runtime.HostPortMin,
-		HostPortMax:          r.cfg.Runtime.HostPortMax,
-		PlatformName:         r.cfg.Work.PlatformName,
-		ReadinessAttempts:    r.cfg.Work.ReadinessAttempts,
-		ReadinessInterval:    r.cfg.Work.ReadinessInterval,
-		ReadinessTimeout:     r.cfg.Work.ReadinessTimeout,
-		RuntimeTimeout:       r.cfg.Timeouts.RuntimeStart,
-		RuntimeStopTimeout:   r.cfg.Timeouts.RuntimeStop,
-		RuntimeLogsTimeout:   r.cfg.Timeouts.RuntimeLogs,
-		PollWorkTimeout:      r.cfg.Timeouts.PollWork,
-		ReportTimeout:        r.cfg.Timeouts.Report,
-		CleanupHardTimeout:   r.cfg.Timeouts.CleanupHard,
-		LogTail:              r.cfg.Work.LogTail,
-		WorkloadLogs:         r.startWorkloadLogs,
-		WorkloadOTLPEndpoint: r.cfg.Work.WorkloadOTLPEndpoint,
-		EgressProxyEnabled:   r.cfg.Network.EgressProxy.Enabled,
-		EgressProxyEndpoint:  r.cfg.Network.EgressProxy.Endpoint,
-		EgressProxyNoProxy:   r.cfg.Network.EgressProxy.NoProxy,
+		Node: work.NodeOptions{
+			ID:        nodeID,
+			PrivateIP: r.cfg.RegisterInput.GetPrivateIp(),
+		},
+		Runtime: work.RuntimeOptions{
+			HostPortMin: r.cfg.Runtime.HostPortMin,
+			HostPortMax: r.cfg.Runtime.HostPortMax,
+		},
+		Readiness: work.ReadinessOptions{
+			Attempts: r.cfg.Work.ReadinessAttempts,
+			Interval: r.cfg.Work.ReadinessInterval,
+			Timeout:  r.cfg.Work.ReadinessTimeout,
+		},
+		Timeouts: work.TimeoutOptions{
+			RuntimeStart: r.cfg.Timeouts.RuntimeStart,
+			RuntimeStop:  r.cfg.Timeouts.RuntimeStop,
+			RuntimeLogs:  r.cfg.Timeouts.RuntimeLogs,
+			PollWork:     r.cfg.Timeouts.PollWork,
+			Report:       r.cfg.Timeouts.Report,
+			CleanupHard:  r.cfg.Timeouts.CleanupHard,
+		},
+		Observability: work.ObservabilityOptions{
+			PlatformName:         r.cfg.Work.PlatformName,
+			WorkloadLogs:         r.startWorkloadLogs,
+			WorkloadOTLPEndpoint: r.cfg.Work.WorkloadOTLPEndpoint,
+			LogTail:              r.cfg.Work.LogTail,
+		},
+		Network: work.NetworkOptions{
+			EgressProxy: work.EgressProxyOptions{
+				Enabled:  r.cfg.Network.EgressProxy.Enabled,
+				Endpoint: r.cfg.Network.EgressProxy.Endpoint,
+				NoProxy:  r.cfg.Network.EgressProxy.NoProxy,
+			},
+		},
 	})
 	if err != nil {
 		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
@@ -265,7 +244,6 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 	}
 }
 
-// ensureNodeRegistration 返回当前进程内节点 ID；没有有效会话时向控制面重新注册。
 func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
 	r.registerMu.Lock()
 	defer r.registerMu.Unlock()
@@ -281,7 +259,6 @@ func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
 	return r.registerNode(ctx)
 }
 
-// registerNode 使用 bootstrap token 注册当前进程，并只在内存中保存 nodeID 和 session token。
 func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.Register))
 	defer cancel()
@@ -307,7 +284,6 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	return registered.GetNodeId(), nil
 }
 
-// sendHeartbeat 尝试统计运行中容器数量并向控制面发送心跳。
 func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	logger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
 	runningContainers := 0
@@ -327,12 +303,9 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 		NodeID:    nodeID,
 	})
 	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.HeartbeatRequest{
-		NodeId:       nodeID,
-		ReportedAt:   timestamppb.New(time.Now().UTC()),
-		AgentVersion: r.cfg.AgentVersion,
-		// 心跳上报的是静态 allocatable 预算：
-		// total - systemReserved - agentReserved - evictionReserved。
-		// 它不是宿主机实时 CPU idle，也不是 /proc/meminfo 的 MemAvailable。
+		NodeId:              nodeID,
+		ReportedAt:          timestamppb.New(time.Now().UTC()),
+		AgentVersion:        r.cfg.AgentVersion,
 		CpuMilliAllocatable: int32(r.cfg.CPUMilliAllocatable),
 		MemoryMiAllocatable: int32(r.cfg.MemoryMiAllocatable),
 		RunningContainers:   int32(runningContainers),
@@ -350,15 +323,10 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	return nil
 }
 
-// heartbeatStatus 返回当前心跳应上报的节点运行态。
-//
-// 当前 node-agent 只在主循环可运行时发送心跳，因此固定上报 ready。
-// draining/offline 由控制面维护；后续接入本机 runtime/node 自检后，再在这里派生 not_ready。
 func (r *Runner) heartbeatStatus() string {
 	return "ready"
 }
 
-// resetRuntimeOnce 在当前进程注册后停止本节点旧 workload 容器，并清理孤儿本地资源。
 func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 	r.resetMu.Lock()
 	defer r.resetMu.Unlock()
@@ -384,7 +352,6 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 	return nil
 }
 
-// handleNodeError 在控制面认为节点会话无效时清除本地注册状态。
 func (r *Runner) handleNodeError(nodeID string, err error) {
 	if agentclient.IsInvalidSession(err) {
 		r.logger.Warn("node session is no longer valid, clearing local state",
@@ -400,7 +367,6 @@ func (r *Runner) handleNodeError(nodeID string, err error) {
 	}
 }
 
-// startWorkloadLogs 在日志管理器存在时启动指定执行的日志采集。
 func (r *Runner) startWorkloadLogs(req workloadlogs.StartRequest) {
 	if r.workloadLogs == nil {
 		return
@@ -408,7 +374,6 @@ func (r *Runner) startWorkloadLogs(req workloadlogs.StartRequest) {
 	r.workloadLogs.Start(req)
 }
 
-// timeout 返回正数超时值；未配置时使用 1 秒兜底。
 func (r *Runner) timeout(value time.Duration) time.Duration {
 	if value > 0 {
 		return value

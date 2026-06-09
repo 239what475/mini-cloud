@@ -1,4 +1,4 @@
-package cloudplane
+package controlplane
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	"log/slog"
 	"strings"
 
-	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
+	"mini-cloud/internal/controlplane/config"
 )
 
 var ErrConfigRequired = errors.New("config is required")
 
 func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
-	fs := flag.NewFlagSet("cloud-plane", flag.ContinueOnError)
+	fs := flag.NewFlagSet("control-plane", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
 		PrintUsage(stderr)
 	}
-	configPath := fs.String("config", "", "path to cloud-plane YAML config file")
+	configPath := fs.String("config", "", "path to control-plane YAML config file")
 
 	if len(args) == 1 && args[0] == "help" {
 		fs.Usage()
@@ -45,7 +45,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	if err != nil {
 		return err
 	}
-	cfg, err := cloudplaneconfig.Load(configPath)
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		return err
 	}
@@ -55,19 +55,19 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	}
 	defer func() {
 		if err := app.Close(); err != nil && logger != nil {
-			logger.Warn("close cloud-plane failed", "error", err)
+			logger.Warn("close control-plane failed", "error", err)
 		}
 	}()
 
-	logger.Info("starting mini-cloud cloud-plane",
+	logger.Info("starting mini-cloud control-plane",
 		"config_path", app.Config.Path,
-		"grpc_addr", app.Config.Server.ListenGRPCAddr,
-		"zone", app.Config.Infrastructure.ZoneID,
+		"http_addr", app.Config.HTTPAddr,
+		"ui_dir", app.Config.UIDir,
 	)
 	return app.Run(ctx)
 }
 
 func PrintUsage(stderr io.Writer) {
 	_, _ = fmt.Fprintln(stderr, "usage:")
-	_, _ = fmt.Fprintln(stderr, "  cloud-plane --config ./cloud-plane.yaml")
+	_, _ = fmt.Fprintln(stderr, "  control-plane --config ./control-plane.yaml")
 }

@@ -228,6 +228,8 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 		WorkInterval:        time.Hour,
 		Timeouts: agentconfig.TimeoutsConfig{
 			RuntimeStart: time.Millisecond,
+			PollWork:     time.Second,
+			Report:       time.Second,
 		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())

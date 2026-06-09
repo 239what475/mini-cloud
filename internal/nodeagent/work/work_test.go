@@ -70,7 +70,7 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	workloadLogs := &fakeWorkloadLogs{}
 	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 	opts := testOptions()
-	opts.WorkloadLogs = workloadLogs.Start
+	opts.Observability.WorkloadLogs = workloadLogs.Start
 	opts.ReadinessWaiter = readinessWaiter
 	containerRuntime := &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
@@ -301,13 +301,21 @@ func testLogger() *slog.Logger {
 // testOptions 返回执行状态机测试使用的基础选项。
 func testOptions() Options {
 	return Options{
-		NodeID:            "node-a",
-		PlatformName:      "test-platform",
-		ReadinessAttempts: 1,
-		ReadinessInterval: time.Millisecond,
-		ReadinessTimeout:  time.Millisecond,
-		RuntimeTimeout:    time.Second,
-		LogTail:           20,
+		Node: NodeOptions{
+			ID: "node-a",
+		},
+		Readiness: ReadinessOptions{
+			Attempts: 1,
+			Interval: time.Millisecond,
+			Timeout:  time.Millisecond,
+		},
+		Timeouts: TimeoutOptions{
+			RuntimeStart: time.Second,
+		},
+		Observability: ObservabilityOptions{
+			PlatformName: "test-platform",
+			LogTail:      20,
+		},
 	}
 }
 

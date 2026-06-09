@@ -10,15 +10,12 @@ import (
 	"strings"
 
 	agentconfig "mini-cloud/internal/nodeagent/config"
-	"mini-cloud/internal/nodeagent/daemon"
 )
 
-// ErrConfigRequired 表示 node-agent CLI 没有收到配置文件路径。
 var ErrConfigRequired = errors.New("config is required")
 
-// RunCLI 解析 node-agent 命令行参数、加载配置，并启动 daemon 主循环。
 func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.Writer) error {
-	configPath, err := parseCLIArgs(args, stderr)
+	configPath, err := ParseConfigPath(args, stderr)
 	if err != nil {
 		return err
 	}
@@ -34,16 +31,26 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		"region", cfg.RegisterInput.GetRegion(),
 	)
 
-	logger.Info("starting node agent loop",
+	app, err := Build(logger, cfg)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := app.Close(); err != nil && logger != nil {
+			logger.Warn("close node-agent failed", "error", err)
+		}
+	}()
+
+	logger.Info("starting mini-cloud node-agent",
 		"server", cfg.ServerURL,
 		"instance_id", cfg.RegisterInput.GetInstanceId(),
 		"heartbeat_interval", cfg.HeartbeatInterval,
 		"work_interval", cfg.WorkInterval,
 	)
-	return daemon.Run(ctx, logger, cfg)
+	return app.Run(ctx)
 }
 
-func parseCLIArgs(args []string, stderr io.Writer) (string, error) {
+func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
 	fs := flag.NewFlagSet("node-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
@@ -70,7 +77,6 @@ func parseCLIArgs(args []string, stderr io.Writer) (string, error) {
 	return strings.TrimSpace(*configPath), nil
 }
 
-// PrintUsage 向 stderr 写入 node-agent 命令行用法。
 func PrintUsage(stderr io.Writer) {
 	_, _ = fmt.Fprintln(stderr, "usage:")
 	_, _ = fmt.Fprintln(stderr, "  node-agent --config ./node-agent.yaml")

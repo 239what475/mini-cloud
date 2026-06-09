@@ -21,6 +21,7 @@ type App struct {
 	Config  config.Config
 	Handler http.Handler
 
+	logger *slog.Logger
 	db     *sql.DB
 	cancel context.CancelFunc
 }
@@ -64,6 +65,7 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	return App{
 		Config:  cfg,
 		Handler: handler,
+		logger:  logger,
 		db:      db,
 		cancel:  cancel,
 	}, nil
@@ -77,4 +79,44 @@ func (a App) Close() error {
 		return nil
 	}
 	return a.db.Close()
+}
+
+func (a App) Run(ctx context.Context) error {
+	server := &http.Server{
+		Addr:    a.Config.HTTPAddr,
+		Handler: a.Handler,
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-errCh:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			if a.logger != nil {
+				a.logger.Warn("control-plane graceful shutdown failed", "error", err)
+			}
+			if closeErr := server.Close(); closeErr != nil {
+				return errors.Join(err, closeErr)
+			}
+			return err
+		}
+		select {
+		case err := <-errCh:
+			if errors.Is(err, http.ErrServerClosed) {
+				return nil
+			}
+			return err
+		default:
+			return nil
+		}
+	}
 }
