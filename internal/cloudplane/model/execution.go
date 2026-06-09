@@ -71,6 +71,16 @@ type PlanResult struct {
 	PlanID string `json:"planID"`
 }
 
+type ExecutionSnapshot struct {
+	PlanID            string    `json:"planID"`
+	ServiceID         string    `json:"serviceID"`
+	ServiceName       string    `json:"serviceName"`
+	ServiceGeneration int64     `json:"serviceGeneration"`
+	Status            string    `json:"status"`
+	LastStatusReason  string    `json:"lastStatusReason"`
+	ObservedAt        time.Time `json:"observedAt"`
+}
+
 type DeletePlanInput struct {
 	ServiceID         string `json:"serviceID"`
 	ServiceGeneration int64  `json:"serviceGeneration"`

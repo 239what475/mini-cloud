@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"strings"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
 	"google.golang.org/grpc"
@@ -68,74 +67,28 @@ func (c *planeClient) Close() error {
 	return c.conn.Close()
 }
 
-func (c *planeClient) Snapshot(ctx context.Context) (cloudplaneapi.SnapshotResponse, error) {
+func (c *planeClient) Snapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
 	resp, err := c.snapshotRPC.GetSnapshot(withAuth(ctx, c.bearerToken), &emptypb.Empty{})
 	if err != nil {
-		return cloudplaneapi.SnapshotResponse{}, classifyRPCError(err)
+		return nil, classifyRPCError(err)
 	}
-	return snapshotFromProto(resp), nil
+	return resp, nil
 }
 
-func (c *planeClient) ApplyExecutionPlan(ctx context.Context, input cloudplaneapi.ExecutionPlanRequest) (cloudplaneapi.ExecutionPlanResponse, error) {
-	resp, err := c.executionRPC.ApplyExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.ApplyExecutionPlanRequest{
-		PlanId:            strings.TrimSpace(input.PlanID),
-		ServiceId:         strings.TrimSpace(input.ServiceID),
-		ServiceName:       strings.TrimSpace(input.ServiceName),
-		ServiceGeneration: input.ServiceGeneration,
-		Image:             strings.TrimSpace(input.Image),
-		Command:           append([]string(nil), input.Command...),
-		Args:              append([]string(nil), input.Args...),
-		Env:               copyStringMap(input.Env),
-		ProjectedFiles:    protoExecutionProjectedFiles(input.ProjectedFiles),
-		ImageCredential:   protoExecutionImageCredential(input.ImageCredential),
-		ContainerPort:     int32(input.ContainerPort),
-		ReadinessPath:     strings.TrimSpace(input.ReadinessPath),
-		InstanceClass:     strings.TrimSpace(input.InstanceClass),
-		Exposure:          strings.TrimSpace(input.Exposure),
-	})
+func (c *planeClient) ApplyExecutionPlan(ctx context.Context, input *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
+	resp, err := c.executionRPC.ApplyExecutionPlan(withAuth(ctx, c.bearerToken), input)
 	if err != nil {
-		return cloudplaneapi.ExecutionPlanResponse{}, classifyRPCError(err)
+		return nil, classifyRPCError(err)
 	}
-	return executionPlanResponseFromProto(resp), nil
+	return resp, nil
 }
 
-func (c *planeClient) DeleteExecutionPlan(ctx context.Context, input cloudplaneapi.DeleteExecutionPlanRequest) error {
-	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), &cloudplanev1.DeleteExecutionPlanRequest{
-		ServiceId:         strings.TrimSpace(input.ServiceID),
-		ServiceGeneration: input.ServiceGeneration,
-		PlanId:            strings.TrimSpace(input.PlanID),
-	})
+func (c *planeClient) DeleteExecutionPlan(ctx context.Context, input *cloudplanev1.DeleteExecutionPlanRequest) error {
+	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), input)
 	if err != nil {
 		return classifyRPCError(err)
 	}
 	return nil
-}
-
-func protoExecutionProjectedFiles(items []cloudplaneapi.ExecutionProjectedFile) []*cloudplanev1.ExecutionProjectedFile {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]*cloudplanev1.ExecutionProjectedFile, 0, len(items))
-	for _, item := range items {
-		out = append(out, &cloudplanev1.ExecutionProjectedFile{
-			MountPath: strings.TrimSpace(item.MountPath),
-			Content:   item.Content,
-			Mode:      item.Mode,
-			Sensitive: item.Sensitive,
-		})
-	}
-	return out
-}
-
-func protoExecutionImageCredential(item *cloudplaneapi.ExecutionImageCredential) *cloudplanev1.ExecutionImageCredential {
-	if item == nil {
-		return nil
-	}
-	return &cloudplanev1.ExecutionImageCredential{
-		Server:   strings.TrimSpace(item.Server),
-		Username: strings.TrimSpace(item.Username),
-		Password: item.Password,
-	}
 }
 
 func resolveTarget(grpcEndpoint string) (string, credentials.TransportCredentials, error) {
@@ -181,159 +134,4 @@ func classifyRPCError(err error) error {
 		Message: st.Message(),
 	}
 	return apiErr
-}
-
-func snapshotFromProto(item *cloudplanev1.PlaneSnapshot) cloudplaneapi.SnapshotResponse {
-	if item == nil {
-		return cloudplaneapi.SnapshotResponse{}
-	}
-	out := cloudplaneapi.SnapshotResponse{}
-	if item.GetPlane() != nil {
-		out.Plane = cloudplaneapi.PlaneSummary{
-			Name:       item.GetPlane().GetName(),
-			Provider:   item.GetPlane().GetProvider(),
-			Region:     item.GetPlane().GetRegion(),
-			Configured: item.GetPlane().GetConfigured(),
-		}
-	}
-	if item.GetHealth() != nil {
-		out.Health = cloudplaneapi.HealthSummary{
-			CheckedAt: item.GetHealth().GetCheckedAt().AsTime(),
-			Service:   item.GetHealth().GetService(),
-			Database:  item.GetHealth().GetDatabase(),
-		}
-	}
-	if item.GetOverview() != nil {
-		out.Overview = cloudplaneapi.OverviewSummary{
-			ServicesTotal:           int(item.GetOverview().GetServicesTotal()),
-			ServicesDeploying:       int(item.GetOverview().GetServicesDeploying()),
-			ServicesRunning:         int(item.GetOverview().GetServicesRunning()),
-			ServicesDegraded:        int(item.GetOverview().GetServicesDegraded()),
-			ServicesFailed:          int(item.GetOverview().GetServicesFailed()),
-			NodesTotal:              int(item.GetOverview().GetNodesTotal()),
-			NodesRegistering:        int(item.GetOverview().GetNodesRegistering()),
-			NodesReady:              int(item.GetOverview().GetNodesReady()),
-			NodesNotReady:           int(item.GetOverview().GetNodesNotReady()),
-			NodesDraining:           int(item.GetOverview().GetNodesDraining()),
-			NodesOffline:            int(item.GetOverview().GetNodesOffline()),
-			ExecutionPlansTotal:     int(item.GetOverview().GetExecutionPlansTotal()),
-			ExecutionPlansPending:   int(item.GetOverview().GetExecutionPlansPending()),
-			ExecutionPlansDeploying: int(item.GetOverview().GetExecutionPlansDeploying()),
-			ExecutionPlansRunning:   int(item.GetOverview().GetExecutionPlansRunning()),
-			ExecutionPlansFailed:    int(item.GetOverview().GetExecutionPlansFailed()),
-		}
-	}
-	if item.GetCapacity() != nil {
-		out.Capacity = cloudplaneapi.CapacitySummary{
-			RuntimeNodesTotal:   int(item.GetCapacity().GetRuntimeNodesTotal()),
-			RuntimeNodesReady:   int(item.GetCapacity().GetRuntimeNodesReady()),
-			CPUMilliTotal:       int(item.GetCapacity().GetCpuMilliTotal()),
-			CPUMilliAllocatable: int(item.GetCapacity().GetCpuMilliAllocatable()),
-			CPUMilliAllocated:   int(item.GetCapacity().GetCpuMilliAllocated()),
-			MemoryMiTotal:       int(item.GetCapacity().GetMemoryMiTotal()),
-			MemoryMiAllocatable: int(item.GetCapacity().GetMemoryMiAllocatable()),
-			MemoryMiAllocated:   int(item.GetCapacity().GetMemoryMiAllocated()),
-		}
-	}
-	if item.GetReliability() != nil {
-		out.Reliability = cloudplaneapi.ReliabilitySummary{
-			AlertsFiring: int(item.GetReliability().GetAlertsFiring()),
-		}
-	}
-	if item.GetRuntimeInventory() != nil {
-		out.Runtime = cloudplaneapi.RuntimeInventory{
-			SyncVersion: item.GetRuntimeInventory().GetSyncVersion(),
-			ObservedAt:  item.GetRuntimeInventory().GetObservedAt().AsTime(),
-			Nodes:       runtimeNodesFromProto(item.GetRuntimeInventory().GetNodes()),
-		}
-	}
-	if item.GetRuntimeConfig() != nil {
-		out.RuntimeConfig = cloudplaneapi.RuntimeConfigSnapshot{
-			ObservedAt:  item.GetRuntimeConfig().GetObservedAt().AsTime(),
-			Fingerprint: item.GetRuntimeConfig().GetFingerprint(),
-		}
-		if item.GetRuntimeConfig().GetSummary() != nil {
-			out.RuntimeConfig.Summary = item.GetRuntimeConfig().GetSummary().AsMap()
-		}
-	}
-	out.Executions = executionSnapshotsFromProto(item.GetExecutions())
-	return out
-}
-
-func executionSnapshotsFromProto(items []*cloudplanev1.PlaneExecutionSnapshot) []cloudplaneapi.ExecutionSnapshot {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]cloudplaneapi.ExecutionSnapshot, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		view := cloudplaneapi.ExecutionSnapshot{
-			PlanID:            item.GetPlanId(),
-			ServiceID:         item.GetServiceId(),
-			ServiceName:       item.GetServiceName(),
-			ServiceGeneration: item.GetServiceGeneration(),
-			Status:            item.GetStatus(),
-			LastStatusReason:  item.GetLastStatusReason(),
-		}
-		if ts := item.GetObservedAt(); ts != nil {
-			view.ObservedAt = ts.AsTime().UTC()
-		}
-		out = append(out, view)
-	}
-	return out
-}
-
-func executionPlanResponseFromProto(item *cloudplanev1.ApplyExecutionPlanResponse) cloudplaneapi.ExecutionPlanResponse {
-	if item == nil {
-		return cloudplaneapi.ExecutionPlanResponse{}
-	}
-	return cloudplaneapi.ExecutionPlanResponse{
-		Action: item.GetAction(),
-		PlanID: item.GetPlanId(),
-	}
-}
-
-func runtimeNodesFromProto(items []*cloudplanev1.PlaneRuntimeNode) []cloudplaneapi.RuntimeNodeView {
-	out := make([]cloudplaneapi.RuntimeNodeView, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		view := cloudplaneapi.RuntimeNodeView{
-			NodeID:              item.GetNodeId(),
-			NodeEpoch:           item.GetNodeEpoch(),
-			Name:                item.GetName(),
-			Provider:            item.GetProvider(),
-			Region:              item.GetRegion(),
-			InstanceID:          item.GetInstanceId(),
-			InstanceType:        item.GetInstanceType(),
-			Status:              item.GetStatus(),
-			Schedulable:         item.GetSchedulable(),
-			CPUMilliTotal:       int(item.GetCpuMilliTotal()),
-			CPUMilliAllocatable: int(item.GetCpuMilliAllocatable()),
-			CPUMilliAllocated:   int(item.GetCpuMilliAllocated()),
-			MemoryMiTotal:       int(item.GetMemoryMiTotal()),
-			MemoryMiAllocatable: int(item.GetMemoryMiAllocatable()),
-			MemoryMiAllocated:   int(item.GetMemoryMiAllocated()),
-		}
-		if ts := item.GetLastHeartbeatAt(); ts != nil {
-			value := ts.AsTime()
-			view.LastHeartbeatAt = &value
-		}
-		out = append(out, view)
-	}
-	return out
-}
-
-func copyStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

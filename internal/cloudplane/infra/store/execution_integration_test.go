@@ -7,7 +7,6 @@ import (
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/testutil"
 )
 
@@ -185,7 +184,7 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 	return runtimeNode
 }
 
-func findExecutionSnapshot(items []cloudplaneapi.ExecutionSnapshot, planID string) *cloudplaneapi.ExecutionSnapshot {
+func findExecutionSnapshot(items []cloudmodel.ExecutionSnapshot, planID string) *cloudmodel.ExecutionSnapshot {
 	for i := range items {
 		if items[i].PlanID == planID {
 			return &items[i]

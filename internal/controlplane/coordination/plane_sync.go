@@ -9,9 +9,11 @@ import (
 	"time"
 
 	"mini-cloud/internal/common/logctx"
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
+	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 var (
@@ -29,13 +31,13 @@ type PlaneSyncer struct {
 }
 
 type planeSyncResult struct {
-	Plane            model.PlaneDetail             `json:"plane"`
-	ObservedProvider string                        `json:"observedProvider"`
-	ObservedRegion   string                        `json:"observedRegion"`
-	HealthCheckedAt  time.Time                     `json:"healthCheckedAt"`
-	SyncedAt         time.Time                     `json:"syncedAt"`
-	Overview         cloudplaneapi.OverviewSummary `json:"overview"`
-	AlertsFiring     int                           `json:"alertsFiring"`
+	Plane            model.PlaneDetail `json:"plane"`
+	ObservedProvider string            `json:"observedProvider"`
+	ObservedRegion   string            `json:"observedRegion"`
+	HealthCheckedAt  time.Time         `json:"healthCheckedAt"`
+	SyncedAt         time.Time         `json:"syncedAt"`
+	Overview         syncOverview      `json:"overview"`
+	AlertsFiring     int               `json:"alertsFiring"`
 }
 
 type planeSyncOutcome struct {
@@ -44,15 +46,13 @@ type planeSyncOutcome struct {
 	Error           string           `json:"error,omitempty"`
 }
 
-type planeSnapshot struct {
-	Plane         cloudplaneapi.PlaneSummary
-	Health        cloudplaneapi.HealthSummary
-	Overview      cloudplaneapi.OverviewSummary
-	Capacity      cloudplaneapi.CapacitySummary
-	Reliability   cloudplaneapi.ReliabilitySummary
-	Runtime       cloudplaneapi.RuntimeInventory
-	RuntimeConfig cloudplaneapi.RuntimeConfigSnapshot
-	Executions    []cloudplaneapi.ExecutionSnapshot
+type syncOverview struct {
+	NodesTotal          int
+	NodesReady          int
+	NodesNotReady       int
+	NodesDraining       int
+	NodesOffline        int
+	ExecutionPlansTotal int
 }
 
 type syncError struct {
@@ -116,7 +116,7 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 		}
 	}()
 
-	snapshotResp, err := client.Snapshot(ctx)
+	snapshot, err := client.Snapshot(ctx)
 	if err != nil {
 		syncErr := &syncError{
 			status:  model.StatusOffline,
@@ -127,18 +127,9 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 		}
 		return planeSyncResult{}, syncErr
 	}
-	snapshot := planeSnapshot{
-		Plane:         snapshotResp.Plane,
-		Health:        snapshotResp.Health,
-		Overview:      snapshotResp.Overview,
-		Capacity:      snapshotResp.Capacity,
-		Reliability:   snapshotResp.Reliability,
-		Runtime:       snapshotResp.Runtime,
-		RuntimeConfig: snapshotResp.RuntimeConfig,
-		Executions:    snapshotResp.Executions,
-	}
+	healthCheckedAt := protoTime(snapshot.GetHealth().GetCheckedAt())
 
-	if err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, snapshot.Health.CheckedAt); err != nil {
+	if err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, healthCheckedAt); err != nil {
 		return planeSyncResult{}, err
 	}
 	syncedAt := s.now()
@@ -146,7 +137,7 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 	if err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          status,
 		Message:         message,
-		LastHeartbeatAt: &snapshot.Health.CheckedAt,
+		LastHeartbeatAt: &healthCheckedAt,
 		LastSyncAt:      &syncedAt,
 	}); err != nil {
 		return planeSyncResult{}, err
@@ -157,7 +148,7 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 	if err := s.store.RecordPlaneRuntimeConfig(ctx, planeID, buildRuntimeConfig(snapshot)); err != nil {
 		return planeSyncResult{}, err
 	}
-	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.Executions); err != nil {
+	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
 		return planeSyncResult{}, err
 	}
 
@@ -168,11 +159,11 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 
 	return planeSyncResult{
 		Plane:            detail,
-		ObservedProvider: snapshot.Plane.Provider,
-		ObservedRegion:   snapshot.Plane.Region,
-		HealthCheckedAt:  snapshot.Health.CheckedAt,
+		ObservedProvider: snapshot.GetPlane().GetProvider(),
+		ObservedRegion:   snapshot.GetPlane().GetRegion(),
+		HealthCheckedAt:  healthCheckedAt,
 		SyncedAt:         syncedAt,
-		Overview:         snapshot.Overview,
+		Overview:         snapshotOverview(snapshot),
 		AlertsFiring:     alertsFiring,
 	}, nil
 }
@@ -238,12 +229,12 @@ func StartPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneS
 	}()
 }
 
-func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []cloudplaneapi.ExecutionSnapshot) error {
+func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot) error {
 	for _, item := range executions {
-		if strings.TrimSpace(item.ServiceID) == "" || item.ServiceGeneration <= 0 {
+		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" || item.GetServiceGeneration() <= 0 {
 			continue
 		}
-		serviceItem, err := s.store.GetService(ctx, item.ServiceID)
+		serviceItem, err := s.store.GetService(ctx, item.GetServiceId())
 		if err != nil {
 			if errors.Is(err, store.ErrServiceNotFound) {
 				continue
@@ -253,19 +244,19 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		if strings.TrimSpace(serviceItem.Status.Observed.AssignedPlaneID) != planeID {
 			continue
 		}
-		if item.ServiceGeneration != serviceItem.Metadata.Generation {
+		if item.GetServiceGeneration() != serviceItem.Metadata.Generation {
 			continue
 		}
 		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
 		if serviceItem.Status.DesiredState == model.DesiredStateDeleted && deleteExecutionPlanComplete(item) {
-			if err := s.store.DeleteServiceForGeneration(ctx, item.ServiceID, item.ServiceGeneration); err != nil &&
+			if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
 				!errors.Is(err, store.ErrServiceNotFound) &&
 				!errors.Is(err, store.ErrServiceGenerationConflict) {
 				return err
 			}
 			continue
 		}
-		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.ServiceID, item.ServiceGeneration, store.UpdateServiceStatusInput{
+		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration(), store.UpdateServiceStatusInput{
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
 			Healthy:            status.Observed.Healthy,
@@ -284,8 +275,8 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 	return nil
 }
 
-func deleteExecutionPlanComplete(item cloudplaneapi.ExecutionSnapshot) bool {
-	return strings.TrimSpace(item.Status) == "superseded"
+func deleteExecutionPlanComplete(item *cloudplanev1.PlaneExecutionSnapshot) bool {
+	return strings.TrimSpace(item.GetStatus()) == "superseded"
 }
 
 type executionDerivedStatus struct {
@@ -293,8 +284,8 @@ type executionDerivedStatus struct {
 	Run      model.RunStatus
 }
 
-func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudplaneapi.ExecutionSnapshot) executionDerivedStatus {
-	now := item.ObservedAt.UTC()
+func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudplanev1.PlaneExecutionSnapshot) executionDerivedStatus {
+	now := protoTime(item.GetObservedAt())
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
@@ -303,7 +294,7 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudpla
 	healthy := false
 	runPhase := model.RunPhaseDispatching
 
-	switch strings.TrimSpace(item.Status) {
+	switch strings.TrimSpace(item.GetStatus()) {
 	case "failed":
 		phase = model.PhaseDegraded
 		runPhase = model.RunPhaseFailed
@@ -315,9 +306,9 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudpla
 		runPhase = model.RunPhaseSuperseded
 	}
 	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
-	runStatus.LatestRunID = item.PlanID
+	runStatus.LatestRunID = item.GetPlanId()
 	if runPhase == model.RunPhaseRunning {
-		runStatus.CurrentRunID = item.PlanID
+		runStatus.CurrentRunID = item.GetPlanId()
 	}
 	runStatus.Phase = runPhase
 	runStatus.Message = message
@@ -325,11 +316,11 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudpla
 
 	return executionDerivedStatus{
 		Observed: model.ServiceObservedStatus{
-			ObservedGeneration: item.ServiceGeneration,
+			ObservedGeneration: item.GetServiceGeneration(),
 			Phase:              phase,
 			Healthy:            healthy,
 			Message:            message,
-			RemoteStatus:       strings.TrimSpace(item.Status),
+			RemoteStatus:       strings.TrimSpace(item.GetStatus()),
 			RemoteMessage:      message,
 			LastReconciledAt:   &now,
 		},
@@ -337,19 +328,19 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item cloudpla
 	}
 }
 
-func executionSnapshotMessage(item cloudplaneapi.ExecutionSnapshot) string {
-	if strings.TrimSpace(item.LastStatusReason) != "" {
-		return item.LastStatusReason
+func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string {
+	if strings.TrimSpace(item.GetLastStatusReason()) != "" {
+		return item.GetLastStatusReason()
 	}
-	switch strings.TrimSpace(item.Status) {
+	switch strings.TrimSpace(item.GetStatus()) {
 	case "failed":
-		return fmt.Sprintf("execution plan %s failed", item.PlanID)
+		return fmt.Sprintf("execution plan %s failed", item.GetPlanId())
 	case "running":
-		return fmt.Sprintf("execution plan %s is running", item.PlanID)
+		return fmt.Sprintf("execution plan %s is running", item.GetPlanId())
 	case "superseded":
-		return fmt.Sprintf("execution plan %s is superseded", item.PlanID)
+		return fmt.Sprintf("execution plan %s is superseded", item.GetPlanId())
 	default:
-		return fmt.Sprintf("execution plan %s is %s", item.PlanID, strings.TrimSpace(item.Status))
+		return fmt.Sprintf("execution plan %s is %s", item.GetPlanId(), strings.TrimSpace(item.GetStatus()))
 	}
 }
 
@@ -364,27 +355,28 @@ func (s *PlaneSyncer) updateFailedPlaneStatus(ctx context.Context, planeID strin
 	return err
 }
 
-func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot planeSnapshot) (string, string, int) {
-	alertsFiring := snapshot.Reliability.AlertsFiring
+func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.PlaneSnapshot) (string, string, int) {
+	overview := snapshotOverview(snapshot)
+	alertsFiring := int(snapshot.GetReliability().GetAlertsFiring())
 
 	issues := make([]string, 0, 3)
-	if snapshot.Health.Service != "" && snapshot.Health.Service != "ok" {
-		issues = append(issues, fmt.Sprintf("remote plane service health is %s", snapshot.Health.Service))
+	if snapshot.GetHealth().GetService() != "" && snapshot.GetHealth().GetService() != "ok" {
+		issues = append(issues, fmt.Sprintf("remote plane service health is %s", snapshot.GetHealth().GetService()))
 	}
-	if snapshot.Health.Database != "" && snapshot.Health.Database != "ok" {
-		issues = append(issues, fmt.Sprintf("remote plane database health is %s", snapshot.Health.Database))
+	if snapshot.GetHealth().GetDatabase() != "" && snapshot.GetHealth().GetDatabase() != "ok" {
+		issues = append(issues, fmt.Sprintf("remote plane database health is %s", snapshot.GetHealth().GetDatabase()))
 	}
-	if !snapshot.Plane.Configured {
+	if !snapshot.GetPlane().GetConfigured() {
 		issues = append(issues, "remote plane config is not fully configured")
 	}
-	if snapshot.Plane.Provider != "" && snapshot.Plane.Provider != planeDetail.Provider {
-		issues = append(issues, fmt.Sprintf("provider mismatch: expected %s but remote reports %s", planeDetail.Provider, snapshot.Plane.Provider))
+	if snapshot.GetPlane().GetProvider() != "" && snapshot.GetPlane().GetProvider() != planeDetail.Provider {
+		issues = append(issues, fmt.Sprintf("provider mismatch: expected %s but remote reports %s", planeDetail.Provider, snapshot.GetPlane().GetProvider()))
 	}
-	if snapshot.Plane.Region != "" && snapshot.Plane.Region != planeDetail.Region {
-		issues = append(issues, fmt.Sprintf("region mismatch: expected %s but remote reports %s", planeDetail.Region, snapshot.Plane.Region))
+	if snapshot.GetPlane().GetRegion() != "" && snapshot.GetPlane().GetRegion() != planeDetail.Region {
+		issues = append(issues, fmt.Sprintf("region mismatch: expected %s but remote reports %s", planeDetail.Region, snapshot.GetPlane().GetRegion()))
 	}
 
-	unhealthyNodes := snapshot.Overview.NodesNotReady + snapshot.Overview.NodesOffline + snapshot.Overview.NodesDraining
+	unhealthyNodes := overview.NodesNotReady + overview.NodesOffline + overview.NodesDraining
 	if unhealthyNodes > 0 {
 		issues = append(issues, fmt.Sprintf("%d node(s) are not ready/offline/draining", unhealthyNodes))
 	}
@@ -394,53 +386,99 @@ func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot planeSnapshot) (s
 
 	if len(issues) == 0 {
 		return model.StatusReady, fmt.Sprintf(
-			"sync healthy: %d nodes, %d services, %d execution plans",
-			snapshot.Overview.NodesTotal,
-			snapshot.Overview.ServicesTotal,
-			snapshot.Overview.ExecutionPlansTotal,
+			"sync healthy: %d nodes, %d execution plans",
+			overview.NodesTotal,
+			overview.ExecutionPlansTotal,
 		), alertsFiring
 	}
 
 	return model.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
 }
 
-func buildRuntimeInventory(snapshot planeSnapshot) store.RecordRuntimeInventoryInput {
+func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRuntimeInventoryInput {
+	runtimeInventory := snapshot.GetRuntimeInventory()
 	out := store.RecordRuntimeInventoryInput{
-		SyncVersion:       snapshot.Runtime.SyncVersion,
-		ObservedAt:        snapshot.Runtime.ObservedAt,
-		NodesTotal:        snapshot.Capacity.RuntimeNodesTotal,
-		NodesReady:        snapshot.Capacity.RuntimeNodesReady,
-		CPUMilliCapacity:  snapshot.Capacity.CPUMilliAllocatable,
-		CPUMilliAllocated: snapshot.Capacity.CPUMilliAllocated,
-		MemoryMiCapacity:  snapshot.Capacity.MemoryMiAllocatable,
-		MemoryMiAllocated: snapshot.Capacity.MemoryMiAllocated,
-		Nodes:             make([]model.RuntimeNode, 0, len(snapshot.Runtime.Nodes)),
+		SyncVersion: runtimeInventory.GetSyncVersion(),
+		ObservedAt:  protoTime(runtimeInventory.GetObservedAt()),
+		Nodes:       make([]model.RuntimeNode, 0, len(runtimeInventory.GetNodes())),
 	}
-	for _, item := range snapshot.Runtime.Nodes {
+	for _, item := range runtimeInventory.GetNodes() {
+		if item == nil {
+			continue
+		}
+		if item.GetStatus() == "ready" {
+			out.NodesReady++
+		}
+		out.NodesTotal++
+		out.CPUMilliCapacity += int(item.GetCpuMilliAllocatable())
+		out.CPUMilliAllocated += int(item.GetCpuMilliAllocated())
+		out.MemoryMiCapacity += int(item.GetMemoryMiAllocatable())
+		out.MemoryMiAllocated += int(item.GetMemoryMiAllocated())
 		out.Nodes = append(out.Nodes, model.RuntimeNode{
-			NodeID:            item.NodeID,
-			NodeEpoch:         item.NodeEpoch,
-			Name:              item.Name,
-			Provider:          item.Provider,
-			Region:            item.Region,
-			InstanceID:        item.InstanceID,
-			InstanceType:      item.InstanceType,
-			Status:            item.Status,
-			Schedulable:       item.Schedulable,
-			CPUMilliCapacity:  item.CPUMilliAllocatable,
-			CPUMilliAllocated: item.CPUMilliAllocated,
-			MemoryMiCapacity:  item.MemoryMiAllocatable,
-			MemoryMiAllocated: item.MemoryMiAllocated,
-			LastHeartbeatAt:   item.LastHeartbeatAt,
+			NodeID:            item.GetNodeId(),
+			NodeEpoch:         item.GetNodeEpoch(),
+			Name:              item.GetName(),
+			Provider:          item.GetProvider(),
+			Region:            item.GetRegion(),
+			InstanceID:        item.GetInstanceId(),
+			InstanceType:      item.GetInstanceType(),
+			Status:            item.GetStatus(),
+			Schedulable:       item.GetSchedulable(),
+			CPUMilliCapacity:  int(item.GetCpuMilliAllocatable()),
+			CPUMilliAllocated: int(item.GetCpuMilliAllocated()),
+			MemoryMiCapacity:  int(item.GetMemoryMiAllocatable()),
+			MemoryMiAllocated: int(item.GetMemoryMiAllocated()),
+			LastHeartbeatAt:   protoTimePtr(item.GetLastHeartbeatAt()),
 		})
 	}
 	return out
 }
 
-func buildRuntimeConfig(snapshot planeSnapshot) store.RecordRuntimeConfigInput {
-	return store.RecordRuntimeConfigInput{
-		ObservedAt:  snapshot.RuntimeConfig.ObservedAt,
-		Fingerprint: snapshot.RuntimeConfig.Fingerprint,
-		Summary:     snapshot.RuntimeConfig.Summary,
+func buildRuntimeConfig(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRuntimeConfigInput {
+	runtimeConfig := snapshot.GetRuntimeConfig()
+	summary := map[string]any{}
+	if runtimeConfig.GetSummary() != nil {
+		summary = runtimeConfig.GetSummary().AsMap()
 	}
+	return store.RecordRuntimeConfigInput{
+		ObservedAt:  protoTime(runtimeConfig.GetObservedAt()),
+		Fingerprint: runtimeConfig.GetFingerprint(),
+		Summary:     summary,
+	}
+}
+
+func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {
+	out := syncOverview{ExecutionPlansTotal: len(snapshot.GetExecutions())}
+	for _, item := range snapshot.GetRuntimeInventory().GetNodes() {
+		if item == nil {
+			continue
+		}
+		out.NodesTotal++
+		switch strings.TrimSpace(item.GetStatus()) {
+		case "ready":
+			out.NodesReady++
+		case "not_ready":
+			out.NodesNotReady++
+		case "draining":
+			out.NodesDraining++
+		case "offline":
+			out.NodesOffline++
+		}
+	}
+	return out
+}
+
+func protoTime(item *timestamppb.Timestamp) time.Time {
+	if item == nil {
+		return time.Time{}
+	}
+	return item.AsTime().UTC()
+}
+
+func protoTimePtr(item *timestamppb.Timestamp) *time.Time {
+	if item == nil {
+		return nil
+	}
+	value := item.AsTime().UTC()
+	return &value
 }

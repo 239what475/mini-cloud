@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
 	"golang.org/x/net/http2"
@@ -51,12 +50,6 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 		Health: &cloudplanev1.PlaneHealth{
 			Service:  "ok",
 			Database: "ok",
-		},
-		Overview: &cloudplanev1.PlaneOverview{
-			ServicesTotal: 7,
-		},
-		Capacity: &cloudplanev1.PlaneCapacity{
-			RuntimeNodesTotal: 2,
 		},
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: 1,
@@ -158,40 +151,40 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Snapshot returned error: %v", err)
 	}
-	if snapshot.Plane.Name != "plane-a" || snapshot.Overview.ServicesTotal != 7 {
+	if snapshot.GetPlane().GetName() != "plane-a" {
 		t.Fatalf("unexpected snapshot: %+v", snapshot)
 	}
-	if snapshot.RuntimeConfig.Fingerprint != "runtime-fp-a" {
-		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.RuntimeConfig)
+	if snapshot.GetRuntimeConfig().GetFingerprint() != "runtime-fp-a" {
+		t.Fatalf("unexpected runtime config fingerprint: %+v", snapshot.GetRuntimeConfig())
 	}
-	if len(snapshot.Executions) != 1 || snapshot.Executions[0].PlanID != "svc-1-g12" || snapshot.Executions[0].Status != "running" {
-		t.Fatalf("unexpected execution snapshots: %+v", snapshot.Executions)
+	if len(snapshot.GetExecutions()) != 1 || snapshot.GetExecutions()[0].GetPlanId() != "svc-1-g12" || snapshot.GetExecutions()[0].GetStatus() != "running" {
+		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())
 	}
 
-	applyResp, err := client.ApplyExecutionPlan(context.Background(), cloudplaneapi.ExecutionPlanRequest{
-		PlanID:            "svc-1-g12",
-		ServiceID:         "svc-1",
+	applyResp, err := client.ApplyExecutionPlan(context.Background(), &cloudplanev1.ApplyExecutionPlanRequest{
+		PlanId:            "svc-1-g12",
+		ServiceId:         "svc-1",
 		ServiceName:       "svc-demo",
 		ServiceGeneration: 12,
 		Image:             "nginx:latest",
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
 		InstanceClass:     "small",
-		ProjectedFiles: []cloudplaneapi.ExecutionProjectedFile{
+		ProjectedFiles: []*cloudplanev1.ExecutionProjectedFile{
 			{MountPath: "/etc/app/config.yaml", Content: "app: demo", Mode: 0444},
 		},
 	})
 	if err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
-	if applyResp.Action != cloudplaneapi.ApplyActionUpdated || applyResp.PlanID != "svc-1-g12" {
+	if applyResp.GetAction() != "updated" || applyResp.GetPlanId() != "svc-1-g12" {
 		t.Fatalf("unexpected execution plan response: %+v", applyResp)
 	}
 
-	if err := client.DeleteExecutionPlan(context.Background(), cloudplaneapi.DeleteExecutionPlanRequest{
-		ServiceID:         "svc-1",
+	if err := client.DeleteExecutionPlan(context.Background(), &cloudplanev1.DeleteExecutionPlanRequest{
+		ServiceId:         "svc-1",
 		ServiceGeneration: 13,
-		PlanID:            "svc-1-delete-g13",
+		PlanId:            "svc-1-delete-g13",
 	}); err != nil {
 		t.Fatalf("DeleteExecutionPlan returned error: %v", err)
 	}

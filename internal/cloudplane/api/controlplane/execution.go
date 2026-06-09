@@ -1,9 +1,11 @@
-package execution
+package controlplane
 
 import (
 	"context"
+	"log/slog"
 	"strings"
 
+	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
@@ -12,7 +14,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
+type ExecutionServer struct {
+	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+
+	logger *slog.Logger
+	store  *store.Store
+	auth   Authenticator
+}
+
+func NewExecutionServer(logger *slog.Logger, stores *store.Store, auth Authenticator) cloudplanev1.ControlPlaneExecutionServiceServer {
+	return &ExecutionServer{logger: logger, store: stores, auth: auth}
+}
+
+func (s *ExecutionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
 	if err := s.auth.Authorize(ctx); err != nil {
 		return nil, err
 	}
@@ -44,6 +58,25 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &cloudplanev1.ApplyExecutionPlanResponse{Action: result.Action, PlanId: result.PlanID}, nil
+}
+
+func (s *ExecutionServer) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
+	if err := s.auth.Authorize(ctx); err != nil {
+		return nil, err
+	}
+	serviceID := strings.TrimSpace(req.GetServiceId())
+	if serviceID == "" {
+		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
+	}
+	deleted, err := s.store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+		ServiceID:         serviceID,
+		ServiceGeneration: req.GetServiceGeneration(),
+		PlanID:            strings.TrimSpace(req.GetPlanId()),
+	})
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: deleted}, nil
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

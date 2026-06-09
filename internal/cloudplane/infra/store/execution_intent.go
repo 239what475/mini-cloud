@@ -11,7 +11,6 @@ import (
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
-	"mini-cloud/internal/contract/cloudplaneapi"
 )
 
 // ErrExecutionNotFound 表示 execution intent 记录不存在。
@@ -324,7 +323,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 	return items, nil
 }
 
-func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.ExecutionSnapshot, error) {
+func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudmodel.ExecutionSnapshot, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH latest_reason AS (
 			SELECT DISTINCT ON (plan_id)
@@ -351,9 +350,9 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.Exe
 	}
 	defer closeRows(rows)
 
-	items := make([]cloudplaneapi.ExecutionSnapshot, 0)
+	items := make([]cloudmodel.ExecutionSnapshot, 0)
 	for rows.Next() {
-		var item cloudplaneapi.ExecutionSnapshot
+		var item cloudmodel.ExecutionSnapshot
 		if err := rows.Scan(
 			&item.PlanID,
 			&item.ServiceID,

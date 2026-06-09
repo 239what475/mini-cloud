@@ -6,8 +6,6 @@ import (
 	"strings"
 
 	cloudplanecontrolapi "mini-cloud/internal/cloudplane/api/controlplane"
-	cloudplaneexecutionapi "mini-cloud/internal/cloudplane/api/controlplane/execution"
-	cloudplanesnapshotapi "mini-cloud/internal/cloudplane/api/controlplane/snapshot"
 	cloudplaneagentapi "mini-cloud/internal/cloudplane/api/nodeagent"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
@@ -22,9 +20,9 @@ func NewGRPCServer(opts Options, logger *slog.Logger, db *sql.DB, stores *store.
 	// controlPlaneAuth 校验 control-plane 到 cloud-plane 的内部 southbound 调用身份。
 	controlPlaneAuth := cloudplanecontrolapi.NewAuthenticator(opts.Config.ControlPlane.Auth.BearerToken)
 	// snapshotService 承载 control-plane 拉取 cloud-plane 快照的内部 API。
-	snapshotService := cloudplanesnapshotapi.NewServer(logger, db, stores, opts.Config, controlPlaneAuth)
+	snapshotService := cloudplanecontrolapi.NewSnapshotServer(logger, db, stores, opts.Config, controlPlaneAuth)
 	// executionService 只接收 control-plane 已经决定好的执行计划，不保存 service lifecycle truth。
-	executionService := cloudplaneexecutionapi.NewServer(logger, stores, controlPlaneAuth)
+	executionService := cloudplanecontrolapi.NewExecutionServer(logger, stores, controlPlaneAuth)
 	// agentService 承载 node-agent 注册、心跳、拉取 work item 和上报 execution 的内部 API。
 	agentService := cloudplaneagentapi.NewServer(
 		logger,

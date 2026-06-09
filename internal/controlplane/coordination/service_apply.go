@@ -10,9 +10,9 @@ import (
 
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/common/util"
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
+	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 )
 
 var (
@@ -90,8 +90,8 @@ func (s *serviceApplier) ApplyService(ctx context.Context, planeID string, servi
 
 	return applyResult{
 		PlaneID: planeID,
-		Action:  accepted.Action,
-		PlanID:  accepted.PlanID,
+		Action:  accepted.GetAction(),
+		PlanID:  accepted.GetPlanId(),
 	}, nil
 }
 
@@ -133,31 +133,31 @@ func (s *serviceApplier) DeleteService(ctx context.Context, planeID string, inpu
 	requestCtx, cancel := context.WithTimeout(ctx, defaultDeleteServiceTimeout)
 	defer cancel()
 
-	if err := client.DeleteExecutionPlan(requestCtx, cloudplaneapi.DeleteExecutionPlanRequest{
-		ServiceID:         input.ServiceID,
+	if err := client.DeleteExecutionPlan(requestCtx, &cloudplanev1.DeleteExecutionPlanRequest{
+		ServiceId:         input.ServiceID,
 		ServiceGeneration: input.ServiceGeneration,
-		PlanID:            input.PlanID,
+		PlanId:            input.PlanID,
 	}); err != nil {
 		return fmt.Errorf("delete execution plan: %w", err)
 	}
 	return nil
 }
 
-func executionPlanRequest(service model.Service, defaultRegion string) (cloudplaneapi.ExecutionPlanRequest, error) {
+func executionPlanRequest(service model.Service, defaultRegion string) (*cloudplanev1.ApplyExecutionPlanRequest, error) {
 	if strings.TrimSpace(service.Metadata.ID) == "" {
-		return cloudplaneapi.ExecutionPlanRequest{}, errServiceIDRequired
+		return nil, errServiceIDRequired
 	}
 	if strings.TrimSpace(defaultRegion) == "" {
-		return cloudplaneapi.ExecutionPlanRequest{}, errRegionRequired
+		return nil, errRegionRequired
 	}
 
 	env := cloneEnvMap(service.Spec.Env)
 	for key, value := range service.Spec.SecretEnv {
 		env[key] = value
 	}
-	return cloudplaneapi.ExecutionPlanRequest{
-		PlanID:            fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation),
-		ServiceID:         service.Metadata.ID,
+	return &cloudplanev1.ApplyExecutionPlanRequest{
+		PlanId:            fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation),
+		ServiceId:         service.Metadata.ID,
 		ServiceName:       service.Metadata.Name,
 		ServiceGeneration: service.Metadata.Generation,
 		Image:             service.Spec.Image,
@@ -166,18 +166,18 @@ func executionPlanRequest(service model.Service, defaultRegion string) (cloudpla
 		Env:               env,
 		ProjectedFiles:    executionProjectedFiles(service.Spec.Files),
 		ImageCredential:   executionImageCredential(service.Spec.RegistryCredential),
-		ContainerPort:     service.Spec.DefaultPort,
+		ContainerPort:     int32(service.Spec.DefaultPort),
 		ReadinessPath:     service.Spec.ReadinessPath,
 		InstanceClass:     service.Spec.InstanceClass,
 		Exposure:          service.Spec.Exposure,
 	}, nil
 }
 
-func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplaneapi.ExecutionImageCredential {
+func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplanev1.ExecutionImageCredential {
 	if input == nil {
 		return nil
 	}
-	return &cloudplaneapi.ExecutionImageCredential{
+	return &cloudplanev1.ExecutionImageCredential{
 		Server:   input.Server,
 		Username: input.Username,
 		Password: input.Password,
@@ -195,10 +195,10 @@ func cloneEnvMap(input map[string]string) map[string]string {
 	return out
 }
 
-func executionProjectedFiles(files []projectedfile.File) []cloudplaneapi.ExecutionProjectedFile {
-	out := make([]cloudplaneapi.ExecutionProjectedFile, 0, len(files))
+func executionProjectedFiles(files []projectedfile.File) []*cloudplanev1.ExecutionProjectedFile {
+	out := make([]*cloudplanev1.ExecutionProjectedFile, 0, len(files))
 	for _, item := range projectedfile.CloneFiles(files) {
-		out = append(out, cloudplaneapi.ExecutionProjectedFile{
+		out = append(out, &cloudplanev1.ExecutionProjectedFile{
 			MountPath: item.MountPath,
 			Content:   item.Content,
 			Mode:      item.Mode,

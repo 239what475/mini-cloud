@@ -5,8 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/contract/cloudplaneapi"
 	"mini-cloud/internal/controlplane/model"
+	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
@@ -17,20 +20,21 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 		},
 	}
 
-	readyStatus, readyMessage, readyAlerts := derivePlaneStatus(planeDetail, planeSnapshot{
-		Plane: cloudplaneapi.PlaneSummary{
+	readyStatus, readyMessage, readyAlerts := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
+		Plane: &cloudplanev1.PlaneSummary{
 			Configured: true,
 			Provider:   "aliyun",
 			Region:     "cn-beijing",
 		},
-		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:          1,
-			ServicesTotal:       2,
-			ExecutionPlansTotal: 3,
-			NodesReady:          1,
-			NodesNotReady:       0,
-			NodesOffline:        0,
-			NodesDraining:       0,
+		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
+			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+				{Status: "ready"},
+			},
+		},
+		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
+			{PlanId: "plan-a"},
+			{PlanId: "plan-b"},
+			{PlanId: "plan-c"},
 		},
 	})
 	if readyStatus != model.StatusReady {
@@ -43,22 +47,25 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 		t.Fatalf("ready message = %q", readyMessage)
 	}
 
-	degradedStatus, degradedMessage, degradedAlerts := derivePlaneStatus(planeDetail, planeSnapshot{
-		Plane: cloudplaneapi.PlaneSummary{
+	degradedStatus, degradedMessage, degradedAlerts := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
+		Plane: &cloudplanev1.PlaneSummary{
 			Configured: true,
 			Provider:   "tencent",
 			Region:     "ap-beijing",
 		},
-		Health: cloudplaneapi.HealthSummary{
+		Health: &cloudplanev1.PlaneHealth{
 			Service: "degraded",
 		},
-		Overview: cloudplaneapi.OverviewSummary{
-			NodesTotal:          2,
-			NodesReady:          1,
-			NodesNotReady:       1,
-			ExecutionPlansTotal: 1,
+		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
+			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+				{Status: "ready"},
+				{Status: "not_ready"},
+			},
 		},
-		Reliability: cloudplaneapi.ReliabilitySummary{
+		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
+			{PlanId: "plan-a"},
+		},
+		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: 1,
 		},
 	})
@@ -75,15 +82,19 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 
 func TestBuildRuntimeConfigUsesObservedSnapshot(t *testing.T) {
 	observedAt := time.Now().UTC()
-	input := buildRuntimeConfig(planeSnapshot{
-		RuntimeConfig: cloudplaneapi.RuntimeConfigSnapshot{
-			ObservedAt:  observedAt,
+	summary, err := structpb.NewStruct(map[string]any{
+		"provider": map[string]any{
+			"name": "aliyun",
+		},
+	})
+	if err != nil {
+		t.Fatalf("build summary: %v", err)
+	}
+	input := buildRuntimeConfig(&cloudplanev1.PlaneSnapshot{
+		RuntimeConfig: &cloudplanev1.PlaneRuntimeConfig{
+			ObservedAt:  timestamppb.New(observedAt),
 			Fingerprint: "runtime-fingerprint",
-			Summary: map[string]any{
-				"provider": map[string]any{
-					"name": "aliyun",
-				},
-			},
+			Summary:     summary,
 		},
 	})
 
@@ -111,12 +122,12 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 		},
 	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
-		PlanID:            "svc-api-g2",
-		ServiceID:         "svc-api",
+	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+		PlanId:            "svc-api-g2",
+		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "running",
-		ObservedAt:        observedAt,
+		ObservedAt:        timestamppb.New(observedAt),
 	})
 
 	if status.Observed.Phase != model.PhaseReady || !status.Observed.Healthy {
@@ -142,12 +153,12 @@ func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *te
 		},
 	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
-		PlanID:            "svc-api-g2",
-		ServiceID:         "svc-api",
+	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+		PlanId:            "svc-api-g2",
+		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "failed",
-		ObservedAt:        observedAt,
+		ObservedAt:        timestamppb.New(observedAt),
 	})
 
 	if status.Observed.Phase != model.PhaseDegraded || status.Observed.Healthy {
@@ -173,12 +184,12 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 		},
 	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, cloudplaneapi.ExecutionSnapshot{
-		PlanID:            "svc-api-g2",
-		ServiceID:         "svc-api",
+	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+		PlanId:            "svc-api-g2",
+		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "deploying",
-		ObservedAt:        observedAt,
+		ObservedAt:        timestamppb.New(observedAt),
 	})
 
 	if status.Observed.Phase != model.PhaseProgressing || status.Observed.Healthy {
