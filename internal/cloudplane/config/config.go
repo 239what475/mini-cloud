@@ -88,9 +88,8 @@ func (c RuntimeProvisioningConfig) ParseProviderSpec(target any) error {
 }
 
 type IngressConfig struct {
-	BaseDomain         string   `yaml:"baseDomain"`
-	CaddyConfigPath    string   `yaml:"caddyConfigPath"`
-	CaddyReloadCommand []string `yaml:"caddyReloadCommand"`
+	BaseDomain    string `yaml:"baseDomain"`
+	CaddyAdminURL string `yaml:"caddyAdminURL"`
 }
 
 type ObservabilityConfig struct {
@@ -137,8 +136,7 @@ func (c *Config) normalize() {
 	c.RuntimeProvisioning.RegistryMirrors = trimStringList(c.RuntimeProvisioning.RegistryMirrors)
 	c.RuntimeProvisioning.EgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.EgressProxyEndpoint)
 	c.Ingress.BaseDomain = strings.Trim(strings.TrimSpace(c.Ingress.BaseDomain), ".")
-	c.Ingress.CaddyConfigPath = strings.TrimSpace(c.Ingress.CaddyConfigPath)
-	c.Ingress.CaddyReloadCommand = trimStringList(c.Ingress.CaddyReloadCommand)
+	c.Ingress.CaddyAdminURL = strings.TrimSpace(c.Ingress.CaddyAdminURL)
 	c.Observability.LokiURL = strings.TrimSpace(c.Observability.LokiURL)
 	c.Observability.OTLPEndpoint = strings.TrimSpace(c.Observability.OTLPEndpoint)
 }
@@ -187,11 +185,11 @@ func (c Config) Validate() error {
 		}
 	}
 	if strings.TrimSpace(c.Ingress.BaseDomain) != "" {
-		if strings.TrimSpace(c.Ingress.CaddyConfigPath) == "" {
-			return fmt.Errorf("ingress.caddyConfigPath is required when ingress is enabled")
+		if strings.TrimSpace(c.Ingress.CaddyAdminURL) == "" {
+			return fmt.Errorf("ingress.caddyAdminURL is required when ingress is enabled")
 		}
-		if len(c.Ingress.CaddyReloadCommand) == 0 {
-			return fmt.Errorf("ingress.caddyReloadCommand is required when ingress is enabled")
+		if err := validateCaddyAdminURL(c.Ingress.CaddyAdminURL); err != nil {
+			return err
 		}
 	}
 	if strings.TrimSpace(c.NodeAgent.BinaryURL) == "" {
@@ -222,6 +220,28 @@ func validateProxyEndpoint(value string) error {
 	}
 	if parsed.Host == "" {
 		return fmt.Errorf("runtimeProvisioning.egressProxyEndpoint must include host")
+	}
+	return nil
+}
+
+func validateCaddyAdminURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return fmt.Errorf("parse ingress.caddyAdminURL: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("ingress.caddyAdminURL must use http or https")
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("ingress.caddyAdminURL must include host")
+	}
+	if parsed.Port() == "" {
+		return fmt.Errorf("ingress.caddyAdminURL must include port")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	ip := net.ParseIP(host)
+	if host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return fmt.Errorf("ingress.caddyAdminURL must point to localhost")
 	}
 	return nil
 }

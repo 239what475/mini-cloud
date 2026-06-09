@@ -8,7 +8,7 @@ v7 起 ingress/egress 数据面统一外置：
 
 - Caddy 作为 ingress reverse proxy，接收 CDN/用户回源流量并反代到 `node.privateIP:hostPort`。
 - Tinyproxy 作为 egress forward proxy，承接动态 node bootstrap、Docker daemon 和 workload HTTP(S) 出公网。
-- cloud-plane 只生成并应用 Caddy 配置，不内嵌 Caddy，也不承载业务 HTTP 流量。
+- cloud-plane 通过 Caddy Admin API 应用结构化 JSON 配置，不内嵌 Caddy，也不承载业务 HTTP 流量。
 
 配置模型已经收敛为单文件：
 
@@ -43,7 +43,7 @@ v7 起 ingress/egress 数据面统一外置：
 - 配置文件：
   - `/etc/mini-cloud/cloud-plane/cloud-plane.yaml`
   - `/etc/mini-cloud/cloud-plane/node-agent.yaml`
-  - `/etc/mini-cloud/ingress/Caddyfile`
+  - `/etc/mini-cloud/ingress/Caddyfile.bootstrap`
 - systemd 单元：
   - `/etc/systemd/system/mini-cloud-cloud-plane.service`
   - `/etc/systemd/system/mini-cloud-node-agent.service`
@@ -93,12 +93,12 @@ cloud-plane 尚未正式发布，数据库 schema 以 `00001_init_schema.sql` �
 
 如果 `cloud-plane.yaml` 中配置了 `ingress.baseDomain` 或 `runtimeProvisioning.egressProxyEndpoint`，需要先在 platform host 上准备外置数据面：
 
-- Caddy：监听固定地址 `0.0.0.0:80`，并让 `ingress.caddyReloadCommand` 可以成功 reload 当前 Caddyfile。
+- Caddy：监听固定 HTTP 地址 `0.0.0.0:80`，Admin API 只监听本机 `127.0.0.1:2019`，并让 `ingress.caddyAdminURL` 指向该本机地址。
 - Tinyproxy：监听 `runtimeProvisioning.egressProxyEndpoint` 中的端口，只允许 node 私网网段访问。
 
 Terraform lab 会自动安装并启动这两个组件。手工部署时必须自行安装，否则 public service 入口和 node 出公网代理都不会生效。
 
-如果沿用示例 `caddyReloadCommand: ["docker", "exec", "mini-cloud-caddy", ...]`，`minicloud` 用户必须能访问 Docker socket。示例 systemd 单元通过 `SupplementaryGroups=docker` 表达这个权限；生产环境也可以改成受限的 `systemctl reload caddy` 或专用 sudoers 命令，但必须保证 cloud-plane 能写 `ingress.caddyConfigPath` 并触发 reload。
+cloud-plane 不需要写 Caddyfile，也不需要 Docker socket 权限。外置 Caddy 只需要一个静态 bootstrap 配置用于启动 Admin API；后续 public service 路由由 cloud-plane 通过 `/load` 下发。
 
 ### 2. 构建 Linux 二进制
 
@@ -129,7 +129,16 @@ sudo install -m 0755 dist/release/linux-amd64/node-agent /opt/mini-cloud/cloud-p
 sudo install -m 0755 /tmp/start-agent.sh /opt/mini-cloud/cloud-plane/bin/start-agent.sh
 sudo install -o minicloud -g minicloud -m 0640 deploy/cloud-plane/cloud-plane.yaml /etc/mini-cloud/cloud-plane/cloud-plane.yaml
 sudo install -o minicloud -g minicloud -m 0640 deploy/cloud-plane/node-agent.yaml /etc/mini-cloud/cloud-plane/node-agent.yaml
-sudo install -o minicloud -g minicloud -m 0644 /dev/null /etc/mini-cloud/ingress/Caddyfile
+sudo tee /etc/mini-cloud/ingress/Caddyfile.bootstrap >/dev/null <<'EOF'
+{
+  auto_https off
+  admin 127.0.0.1:2019
+}
+
+:80 {
+  respond "mini-cloud ingress is waiting for cloud-plane routes" 404
+}
+EOF
 ```
 
 ### 5. 安装并启动 systemd 单元

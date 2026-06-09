@@ -1,4 +1,4 @@
-// Package caddy 将 cloud-plane ingress 路由快照应用到外置 Caddy。
+// Package caddy applies cloud-plane ingress routes to an external Caddy process.
 package caddy
 
 import (
@@ -6,199 +6,221 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
-	"net"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
-// Config 描述外置 Caddy 的配置文件和 reload 命令。
+const requestTimeout = 15 * time.Second
+
 type Config struct {
-	// ListenHTTPAddr 是 Caddy HTTP 入口监听地址。
 	ListenHTTPAddr string
-	// ConfigPath 是 cloud-plane 写入的 Caddyfile 路径。
-	ConfigPath string
-	// ReloadCommand 是写入 Caddyfile 后执行的 reload 命令及参数。
-	ReloadCommand []string
+	AdminURL       string
 }
 
-// Sink 把路由快照渲染成 Caddyfile，并在内容需要应用时 reload 外置 Caddy。
 type Sink struct {
-	// logger 记录 Caddyfile 应用结果。
-	logger *slog.Logger
-	// cfg 是已校验的 Caddy sink 配置。
-	cfg Config
-	// lastAppliedFingerprint 记录上一次成功 reload 的 Caddyfile 指纹；reload 失败时下一轮会继续重试。
+	logger                 *slog.Logger
+	cfg                    Config
+	httpClient             *http.Client
 	lastAppliedFingerprint string
 }
 
-// NewSink 构造外置 Caddy sink。
-// 参数说明：logger 记录 Caddy 应用日志；cfg 提供 Caddyfile 路径和 reload 命令。
 func NewSink(logger *slog.Logger, cfg Config) *Sink {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Sink{logger: logger, cfg: cfg}
+	return &Sink{
+		logger:     logger,
+		cfg:        cfg,
+		httpClient: &http.Client{Timeout: requestTimeout},
+	}
 }
 
-// Apply 渲染当前 public service 路由快照，必要时写入 Caddyfile 并 reload 外置 Caddy。
-// 参数说明：ctx 控制文件写入和 reload 命令生命周期；routes 是当前应发布的入口路由。
 func (s *Sink) Apply(ctx context.Context, routes []cloudmodel.Route) error {
-	// 将路由渲染成完整 Caddyfile；即使没有 route，也会生成一个受控的默认 404 配置。
-	content, err := RenderCaddyfile(s.cfg.ListenHTTPAddr, routes)
+	config, err := buildConfig(s.cfg.ListenHTTPAddr, s.cfg.AdminURL, routes)
 	if err != nil {
 		return err
 	}
-	// 只有配置内容变化时才写文件；若上轮写入但 reload 失败，下面的 fingerprint 判断会继续重试 reload。
-	changed, err := writeFileIfChanged(s.cfg.ConfigPath, []byte(content))
+	body, err := json.Marshal(config)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode caddy config: %w", err)
 	}
-	fingerprint := contentFingerprint([]byte(content))
-	if !changed && fingerprint == s.lastAppliedFingerprint {
+	fingerprint := contentFingerprint(body)
+	if fingerprint == s.lastAppliedFingerprint {
 		return nil
 	}
-	// Caddyfile 更新或尚未成功应用时，执行用户配置的外置 reload 命令。
-	if err := runReloadCommand(ctx, s.cfg.ReloadCommand); err != nil {
+	if err := s.load(ctx, body); err != nil {
 		return err
 	}
 	s.lastAppliedFingerprint = fingerprint
-	s.logger.Info("cloud-plane applied ingress caddy config", "routes", len(routes), "config_path", s.cfg.ConfigPath)
+	s.logger.Info("cloud-plane applied ingress caddy config", "routes", len(routes), "admin_url", s.cfg.AdminURL)
 	return nil
 }
 
-// RenderCaddyfile 将 ingress 路由渲染成外置 Caddy 使用的 Caddyfile。
-// 参数说明：listenHTTPAddr 是 Caddy HTTP 监听地址；routes 是 host 到 backend 的发布规则。
-func RenderCaddyfile(listenHTTPAddr string, routes []cloudmodel.Route) (string, error) {
-	host, port, err := net.SplitHostPort(strings.TrimSpace(listenHTTPAddr))
+func (s *Sink) load(ctx context.Context, body []byte) error {
+	adminURL, err := parseAdminURL(s.cfg.AdminURL)
 	if err != nil {
-		return "", fmt.Errorf("parse caddy listen HTTP addr: %w", err)
+		return err
 	}
-	if strings.TrimSpace(port) == "" {
-		return "", fmt.Errorf("caddy listen HTTP addr must include port")
+	loadURL := adminURL.JoinPath("load")
+	reqCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, loadURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create caddy load request: %w", err)
 	}
-	bind := strings.TrimSpace(host)
-	var out bytes.Buffer
-	out.WriteString("{\n")
-	out.WriteString("\tauto_https off\n")
-	out.WriteString("\tadmin localhost:2019\n")
-	out.WriteString("}\n\n")
-	if len(routes) == 0 {
-		fmt.Fprintf(&out, ":%s {\n", port)
-		writeBindIfNeeded(&out, bind)
-		out.WriteString("\trespond \"mini-cloud ingress has no public routes\" 404\n")
-		out.WriteString("}\n")
-		return out.String(), nil
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("load caddy config: %w", err)
 	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("load caddy config: status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	return nil
+}
+
+type caddyConfig struct {
+	Admin caddyAdmin `json:"admin"`
+	Apps  caddyApps  `json:"apps"`
+}
+
+type caddyAdmin struct {
+	Listen string `json:"listen"`
+}
+
+type caddyApps struct {
+	HTTP caddyHTTPApp `json:"http"`
+}
+
+type caddyHTTPApp struct {
+	Servers map[string]caddyHTTPServer `json:"servers"`
+}
+
+type caddyHTTPServer struct {
+	Listen         []string         `json:"listen"`
+	AutomaticHTTPS automaticHTTPS   `json:"automatic_https"`
+	Routes         []caddyHTTPRoute `json:"routes"`
+}
+
+type automaticHTTPS struct {
+	Disable bool `json:"disable"`
+}
+
+type caddyHTTPRoute struct {
+	Match  []caddyHTTPMatcher `json:"match,omitempty"`
+	Handle []caddyHTTPHandler `json:"handle"`
+}
+
+type caddyHTTPMatcher struct {
+	Host []string `json:"host,omitempty"`
+}
+
+type caddyHTTPHandler struct {
+	Handler    string          `json:"handler"`
+	StatusCode int             `json:"status_code,omitempty"`
+	Body       string          `json:"body,omitempty"`
+	Upstreams  []caddyUpstream `json:"upstreams,omitempty"`
+}
+
+type caddyUpstream struct {
+	Dial string `json:"dial"`
+}
+
+func buildConfig(listenHTTPAddr string, adminURL string, routes []cloudmodel.Route) (caddyConfig, error) {
+	listenHTTPAddr = strings.TrimSpace(listenHTTPAddr)
+	if listenHTTPAddr == "" {
+		return caddyConfig{}, fmt.Errorf("caddy listen HTTP address is required")
+	}
+	parsedAdminURL, err := parseAdminURL(adminURL)
+	if err != nil {
+		return caddyConfig{}, err
+	}
+	caddyRoutes := make([]caddyHTTPRoute, 0, len(routes)+1)
 	for _, route := range routes {
 		host := strings.TrimSpace(route.Host)
 		if host == "" {
 			continue
 		}
-		fmt.Fprintf(&out, "http://%s:%s {\n", host, port)
-		writeBindIfNeeded(&out, bind)
-		if len(route.Backends) == 0 {
-			out.WriteString("\trespond \"service backend is not ready\" 503\n")
-		} else {
-			out.WriteString("\treverse_proxy")
+		handler := serviceUnavailableHandler()
+		if len(route.Backends) > 0 {
+			upstreams := make([]caddyUpstream, 0, len(route.Backends))
 			for _, backend := range route.Backends {
-				fmt.Fprintf(&out, " %s", backend)
+				backend = strings.TrimSpace(backend)
+				if backend == "" {
+					continue
+				}
+				upstreams = append(upstreams, caddyUpstream{Dial: backend})
 			}
-			out.WriteString("\n")
+			if len(upstreams) > 0 {
+				handler = caddyHTTPHandler{Handler: "reverse_proxy", Upstreams: upstreams}
+			}
 		}
-		out.WriteString("}\n\n")
+		caddyRoutes = append(caddyRoutes, caddyHTTPRoute{
+			Match:  []caddyHTTPMatcher{{Host: []string{host}}},
+			Handle: []caddyHTTPHandler{handler},
+		})
 	}
-	return out.String(), nil
+	caddyRoutes = append(caddyRoutes, caddyHTTPRoute{Handle: []caddyHTTPHandler{notFoundHandler()}})
+	return caddyConfig{
+		Admin: caddyAdmin{Listen: parsedAdminURL.Host},
+		Apps: caddyApps{
+			HTTP: caddyHTTPApp{
+				Servers: map[string]caddyHTTPServer{
+					"mini_cloud_ingress": {
+						Listen:         []string{listenHTTPAddr},
+						AutomaticHTTPS: automaticHTTPS{Disable: true},
+						Routes:         caddyRoutes,
+					},
+				},
+			},
+		},
+	}, nil
 }
 
-// writeBindIfNeeded 在监听地址不是通配地址时写入 Caddy bind 指令。
-func writeBindIfNeeded(out *bytes.Buffer, bind string) {
-	if bind == "" || bind == "0.0.0.0" || bind == "::" || bind == "[::]" {
-		return
+func serviceUnavailableHandler() caddyHTTPHandler {
+	return caddyHTTPHandler{
+		Handler:    "static_response",
+		StatusCode: http.StatusServiceUnavailable,
+		Body:       "service backend is not ready",
 	}
-	fmt.Fprintf(out, "\tbind %s\n", strings.Trim(bind, "[]"))
 }
 
-// writeFileIfChanged 原子写入配置文件，并返回内容是否发生变化。
-func writeFileIfChanged(path string, content []byte) (bool, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false, fmt.Errorf("caddy config path is required")
+func notFoundHandler() caddyHTTPHandler {
+	return caddyHTTPHandler{
+		Handler:    "static_response",
+		StatusCode: http.StatusNotFound,
+		Body:       "mini-cloud ingress route not found",
 	}
-	current, err := os.ReadFile(path)
-	if err == nil && bytes.Equal(current, content) {
-		return false, nil
-	}
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("read caddy config %q: %w", path, err)
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return false, fmt.Errorf("create caddy config dir: %w", err)
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), ".caddyfile-*")
+}
+
+func parseAdminURL(value string) (*url.URL, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return false, fmt.Errorf("create temp caddy config: %w", err)
+		return nil, fmt.Errorf("parse caddy admin URL: %w", err)
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmp.Write(content); err != nil {
-		_ = tmp.Close()
-		return false, fmt.Errorf("write temp caddy config: %w", err)
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("caddy admin URL must use http or https")
 	}
-	if err := tmp.Chmod(0o644); err != nil {
-		_ = tmp.Close()
-		return false, fmt.Errorf("chmod temp caddy config: %w", err)
+	if parsed.Host == "" {
+		return nil, fmt.Errorf("caddy admin URL must include host")
 	}
-	if err := tmp.Close(); err != nil {
-		return false, fmt.Errorf("close temp caddy config: %w", err)
+	if parsed.Port() == "" {
+		return nil, fmt.Errorf("caddy admin URL must include port")
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return false, fmt.Errorf("replace caddy config: %w", err)
-	}
-	return true, nil
+	return parsed, nil
 }
 
-// runReloadCommand 执行外置 Caddy reload 命令。
-func runReloadCommand(ctx context.Context, command []string) error {
-	command = trimCommand(command)
-	if len(command) == 0 {
-		return fmt.Errorf("caddy reload command is required")
-	}
-	reloadCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(reloadCtx, command[0], command[1:]...)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		if errors.Is(reloadCtx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("reload caddy timed out: %s", strings.TrimSpace(string(output)))
-		}
-		return fmt.Errorf("reload caddy: %w: %s", err, strings.TrimSpace(string(output)))
-	}
-	return nil
-}
-
-// contentFingerprint 为已渲染 Caddyfile 生成指纹，用于判断该内容是否已经成功 reload。
 func contentFingerprint(content []byte) string {
 	sum := sha256.Sum256(content)
 	return hex.EncodeToString(sum[:])
-}
-
-// trimCommand 清理 reload 命令中的空白参数。
-func trimCommand(command []string) []string {
-	out := make([]string, 0, len(command))
-	for _, item := range command {
-		trimmed := strings.TrimSpace(item)
-		if trimmed == "" {
-			continue
-		}
-		out = append(out, trimmed)
-	}
-	return out
 }

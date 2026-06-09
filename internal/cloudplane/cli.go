@@ -102,11 +102,10 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	)
 	// Store 聚合所有数据库访问方法，供 gRPC 服务和 reconciler 共享同一份本地状态。
 	stores := store.New(db)
-	// ingressController 只生成路由快照；Caddyfile 渲染、文件写入和 reload 由 infra sink 完成。
+	// ingressController 只生成路由快照；Caddy Admin API 调用由 infra sink 完成。
 	ingressController := cloudplaneingress.NewController(logger, stores, cfg, caddyingress.NewSink(logger, caddyingress.Config{
 		ListenHTTPAddr: cloudplaneconfig.CaddyListenHTTPAddr,
-		ConfigPath:     cfg.Ingress.CaddyConfigPath,
-		ReloadCommand:  cfg.Ingress.CaddyReloadCommand,
+		AdminURL:       cfg.Ingress.CaddyAdminURL,
 	}))
 	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 node 缩容。
 	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController, cfg)

@@ -38,17 +38,7 @@ runtimeProvisioning:
 
 ingress:
   baseDomain: apps.example.com
-  caddyConfigPath: /etc/mini-cloud/ingress/Caddyfile
-  caddyReloadCommand:
-    - docker
-    - exec
-    - mini-cloud-caddy
-    - caddy
-    - reload
-    - --config
-    - /etc/caddy/Caddyfile
-    - --adapter
-    - caddyfile
+  caddyAdminURL: http://127.0.0.1:2019
 
 observability:
   lokiURL: ""

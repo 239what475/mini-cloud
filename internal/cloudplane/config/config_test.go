@@ -192,6 +192,31 @@ func TestValidateRequiresNodeProvisioningInstanceType(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresCaddyAdminURLWhenIngressEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := Config{
+		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
+		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		NodeAgent: NodeAgentConfig{
+			ConnectEndpoint: "10.0.0.10:18081",
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
+		},
+		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{
+			InstanceType: "ecs.u1-c1m1.large",
+			ProviderSpec: map[string]any{"imageId": "m-test"},
+		},
+		Ingress: IngressConfig{BaseDomain: "apps.example.test"},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate error = nil, want caddy admin URL requirement")
+	}
+}
+
 // TestParseProviderSpec 验证 providerSpec 可以严格解析到 provider 专属结构。
 func TestParseProviderSpec(t *testing.T) {
 	t.Parallel()

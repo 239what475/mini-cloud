@@ -37,7 +37,7 @@ type Controller struct {
 	store storeReader
 	// cfg 是已校验的 cloud-plane 配置。
 	cfg cloudplaneconfig.Config
-	// sink 应用路由快照，具体实现可以是 Caddyfile、远端 API 或 no-op。
+	// sink 应用路由快照，具体实现可以是 Caddy Admin API、其它远端 API 或 no-op。
 	sink routeSink
 }
 
@@ -65,7 +65,7 @@ func (c *Controller) ReconcileOnce(ctx context.Context) error {
 	if c.sink == nil {
 		return fmt.Errorf("ingress sink is required when ingress is enabled")
 	}
-	// 将路由快照交给下游实现；例如 Caddy sink 会渲染 Caddyfile、原子写文件并按需 reload。
+	// 将路由快照交给下游实现；例如 Caddy sink 会通过 Admin API 加载结构化配置。
 	if err := c.sink.Apply(ctx, routes); err != nil {
 		return err
 	}
