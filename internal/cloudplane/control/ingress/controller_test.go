@@ -5,8 +5,7 @@ import (
 	"testing"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // TestBuildRoutesPublishesOnlyPublicReadyBackends 验证 ingress 只发布 public service 且只包含 ready node backend。
@@ -14,13 +13,13 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
-		sources: []domainingress.RouteSource{
+		sources: []cloudmodel.RouteSource{
 			{ServiceName: "api", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
 			{ServiceName: "api", NodeID: "node-offline", HostPort: 30081, HasBackend: true},
 		},
-		nodes: map[string]node.Node{
-			"node-ready":   {ID: "node-ready", PrivateIP: "10.0.1.20", Status: node.StatusReady},
-			"node-offline": {ID: "node-offline", PrivateIP: "10.0.1.21", Status: node.StatusOffline},
+		nodes: map[string]cloudmodel.Node{
+			"node-ready":   {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
+			"node-offline": {ID: "node-offline", PrivateIP: "10.0.1.21", Status: cloudmodel.StatusOffline},
 		},
 	}
 	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil)
@@ -45,10 +44,10 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
-		sources: []domainingress.RouteSource{
+		sources: []cloudmodel.RouteSource{
 			{ServiceName: "api"},
 		},
-		nodes: map[string]node.Node{},
+		nodes: map[string]cloudmodel.Node{},
 	}
 	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil)
 
@@ -72,11 +71,11 @@ func TestBuildRoutesUsesSingleManagedServiceHost(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
-		sources: []domainingress.RouteSource{
+		sources: []cloudmodel.RouteSource{
 			{ServiceName: "Sub2 API", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
 		},
-		nodes: map[string]node.Node{
-			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: node.StatusReady},
+		nodes: map[string]cloudmodel.Node{
+			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
 		},
 	}
 	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil)
@@ -109,28 +108,28 @@ func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 
 // fakeStore 是 ingress controller 单测使用的只读状态集合。
 type fakeStore struct {
-	sources []domainingress.RouteSource
-	nodes   map[string]node.Node
+	sources []cloudmodel.RouteSource
+	nodes   map[string]cloudmodel.Node
 }
 
 // ListIngressRouteSources 返回预设 ingress route source 列表。
-func (f *fakeStore) ListIngressRouteSources(context.Context) ([]domainingress.RouteSource, error) {
+func (f *fakeStore) ListIngressRouteSources(context.Context) ([]cloudmodel.RouteSource, error) {
 	return f.sources, nil
 }
 
 // GetNode 返回预设 node。
-func (f *fakeStore) GetNode(_ context.Context, id string) (node.Node, error) {
+func (f *fakeStore) GetNode(_ context.Context, id string) (cloudmodel.Node, error) {
 	return f.nodes[id], nil
 }
 
 // fakeSink 记录 Apply 调用次数。
 type fakeSink struct {
 	calls  int
-	routes []domainingress.Route
+	routes []cloudmodel.Route
 }
 
 // Apply 记录路由快照。
-func (f *fakeSink) Apply(_ context.Context, routes []domainingress.Route) error {
+func (f *fakeSink) Apply(_ context.Context, routes []cloudmodel.Route) error {
 	f.calls++
 	f.routes = routes
 	return nil

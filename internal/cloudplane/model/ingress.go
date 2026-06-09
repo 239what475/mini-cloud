@@ -1,5 +1,5 @@
 // Package ingress 定义 cloud-plane 外置入口数据面的领域对象。
-package ingress
+package model
 
 // Route 表示一个 public service 当前应发布到 ingress 数据面的路由。
 type Route struct {

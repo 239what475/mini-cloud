@@ -9,9 +9,9 @@ import (
 	"time"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	"mini-cloud/internal/cloudplane/domain/execution"
 	infraruntimepool "mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 type Service struct {
@@ -91,8 +91,8 @@ func (s *Service) ReconcileScaleInOnce(ctx context.Context) error {
 	// 本轮不缩容，避免删除刚为调度缺口创建、但还没来得及产生 execution 的 runtime node。
 	unsettled, err := s.store.HasExecutionIntentsWithStatuses(
 		ctx,
-		execution.StatusPending,
-		execution.StatusDeploying,
+		cloudmodel.StatusPending,
+		cloudmodel.StatusDeploying,
 	)
 	if err != nil {
 		return err

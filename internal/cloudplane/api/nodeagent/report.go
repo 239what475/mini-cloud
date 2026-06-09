@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
@@ -49,7 +49,7 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 	}
 
 	// 写入 execution 结果；该 store 事务边界方法会在同一事务内推进 execution intent 和 node allocation。
-	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, execution.ReportInput{
+	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
 		Status:                input.Status,
 		Reason:                input.Reason,
 		ContainerID:           input.ContainerID,
@@ -77,7 +77,7 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 
 // protoExecutionRecord 将 cloud-plane execution 记录转换为 node-agent protobuf ack。
 // 参数说明：item 是本次上报后持久化的 execution 记录。
-func protoExecutionRecord(item execution.Record) *nodeagentv1.ExecutionRecord {
+func protoExecutionRecord(item cloudmodel.Record) *nodeagentv1.ExecutionRecord {
 	// 时间字段统一转成 protobuf Timestamp；FinishedAt 允许为空。
 	return &nodeagentv1.ExecutionRecord{
 		// 身份字段用于 node-agent 关联本次 ack 对应的 execution plan/node。

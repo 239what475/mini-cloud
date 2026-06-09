@@ -11,23 +11,22 @@ import (
 	"strings"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // storeReader 定义 ingress controller 构造 route snapshot 需要的本地状态读取能力。
 type storeReader interface {
 	// ListIngressRouteSources 汇总当前 public service 的 running execution 后端。
-	ListIngressRouteSources(context.Context) ([]domainingress.RouteSource, error)
+	ListIngressRouteSources(context.Context) ([]cloudmodel.RouteSource, error)
 	// GetNode 按节点 ID 读取节点。
-	GetNode(context.Context, string) (node.Node, error)
+	GetNode(context.Context, string) (cloudmodel.Node, error)
 }
 
 // routeSink 定义外置 ingress 数据面应用路由快照的能力。
 type routeSink interface {
 	// Apply 将本轮路由快照应用到具体 ingress 数据面实现。
-	Apply(context.Context, []domainingress.Route) error
+	Apply(context.Context, []cloudmodel.Route) error
 }
 
 // Controller 负责把本地 service 运行态转换为外置 ingress 路由快照。
@@ -76,7 +75,7 @@ func (c *Controller) ReconcileOnce(ctx context.Context) error {
 
 // buildRoutes 根据 public service 当前 running execution 构造 ingress 路由。
 // 参数说明：ctx 控制本地 store 查询生命周期。
-func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, error) {
+func (c *Controller) buildRoutes(ctx context.Context) ([]cloudmodel.Route, error) {
 	sources, err := c.store.ListIngressRouteSources(ctx)
 	if err != nil {
 		return nil, err
@@ -104,7 +103,7 @@ func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, er
 		}
 		// 离线、draining 或 not_ready 节点上的历史 running execution 不应继续进入入口配置。
 		// schedulable 只控制是否接收新调度，不代表已有 backend 不可服务，因此这里不按它过滤。
-		if nodeItem.Status != node.StatusReady {
+		if nodeItem.Status != cloudmodel.StatusReady {
 			continue
 		}
 		privateIP := strings.TrimSpace(nodeItem.PrivateIP)
@@ -114,10 +113,10 @@ func (c *Controller) buildRoutes(ctx context.Context) ([]domainingress.Route, er
 		backendsByService[serviceName] = append(backendsByService[serviceName], net.JoinHostPort(privateIP, fmt.Sprintf("%d", source.HostPort)))
 	}
 
-	routes := make([]domainingress.Route, 0, len(serviceNames))
+	routes := make([]cloudmodel.Route, 0, len(serviceNames))
 	for _, serviceName := range serviceNames {
 		backends := backendsByService[serviceName]
-		routes = append(routes, domainingress.Route{Host: c.managedHost(serviceName), Backends: backends})
+		routes = append(routes, cloudmodel.Route{Host: c.managedHost(serviceName), Backends: backends})
 	}
 	return routes, nil
 }

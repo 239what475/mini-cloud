@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	cloudexecution "mini-cloud/internal/cloudplane/domain/execution"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
@@ -16,7 +16,7 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 	if err := s.auth.Authorize(ctx); err != nil {
 		return nil, err
 	}
-	input := cloudexecution.PlanInput{
+	input := cloudmodel.PlanInput{
 		PlanID:            strings.TrimSpace(req.GetPlanId()),
 		ServiceID:         strings.TrimSpace(req.GetServiceId()),
 		ServiceName:       strings.TrimSpace(req.GetServiceName()),
@@ -32,7 +32,7 @@ func (s *Server) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.Apply
 		Exposure:          strings.TrimSpace(req.GetExposure()),
 	}
 	if cred := req.GetImageCredential(); cred != nil {
-		input.ImageCredential = &cloudexecution.ImageCredential{
+		input.ImageCredential = &cloudmodel.ImageCredential{
 			Server:   strings.TrimSpace(cred.GetServer()),
 			Username: strings.TrimSpace(cred.GetUsername()),
 			Password: cred.GetPassword(),

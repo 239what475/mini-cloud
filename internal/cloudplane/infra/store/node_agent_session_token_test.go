@@ -7,8 +7,8 @@ import (
 	"time"
 
 	cloudplaneidentity "mini-cloud/internal/cloudplane/control/identity"
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/testutil"
 )
 
@@ -18,7 +18,7 @@ func TestIssueNodeAgentSessionTokenReplacesPreviousToken(t *testing.T) {
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	// 先注册 runtime node，后续 session token 都绑定到该 node。
-	registered, err := db.Store.RegisterNode(context.Background(), node.RegisterInput{
+	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "runtime-node-token-test",
@@ -76,7 +76,7 @@ func TestIssueNodeAgentSessionTokenExpires(t *testing.T) {
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	// 先注册 runtime node，作为 token 绑定对象。
-	registered, err := db.Store.RegisterNode(context.Background(), node.RegisterInput{
+	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "runtime-node-token-expiry-test",

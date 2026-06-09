@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
@@ -37,7 +37,7 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	registered, err := s.store.RegisterNode(ctx, node.RegisterInput{
+	registered, err := s.store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      input.Provider,
 		Region:        input.Region,
 		Name:          input.Name,

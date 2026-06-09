@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // TestRenderCaddyfileBuildsReverseProxyRoute 验证外置 Caddy 配置包含 host 站点和私网 backend。
 func TestRenderCaddyfileBuildsReverseProxyRoute(t *testing.T) {
-	content, err := RenderCaddyfile("0.0.0.0:8080", []domainingress.Route{{
+	content, err := RenderCaddyfile("0.0.0.0:8080", []cloudmodel.Route{{
 		Host:     "api.team.apps.example.test",
 		Backends: []string{"10.0.1.20:32768", "10.0.1.21:32769"},
 	}})
@@ -31,7 +31,7 @@ func TestRenderCaddyfileBuildsReverseProxyRoute(t *testing.T) {
 
 // TestRenderCaddyfileUses503ForRouteWithoutBackends 验证 public service 没有 ready backend 时返回受控 503。
 func TestRenderCaddyfileUses503ForRouteWithoutBackends(t *testing.T) {
-	content, err := RenderCaddyfile("0.0.0.0:80", []domainingress.Route{{Host: "api.team.apps.example.test"}})
+	content, err := RenderCaddyfile("0.0.0.0:80", []cloudmodel.Route{{Host: "api.team.apps.example.test"}})
 	if err != nil {
 		t.Fatalf("RenderCaddyfile returned error: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestSinkSkipsReloadAfterSuccessfulUnchangedApply(t *testing.T) {
 		ConfigPath:     configPath,
 		ReloadCommand:  []string{"bash", "-c", "echo reload >> \"$1\"", "_", reloadLog},
 	})
-	routes := []domainingress.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
+	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
 	if err := sink.Apply(context.Background(), routes); err != nil {
 		t.Fatalf("first Apply returned error: %v", err)
@@ -82,7 +82,7 @@ func TestSinkRetriesReloadAfterFailure(t *testing.T) {
 		ConfigPath:     configPath,
 		ReloadCommand:  []string{"bash", "-c", "echo fail >> \"$1\"; exit 1", "_", reloadLog},
 	})
-	routes := []domainingress.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
+	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
 	if err := sink.Apply(context.Background(), routes); err == nil {
 		t.Fatal("first Apply returned nil error, want reload failure")

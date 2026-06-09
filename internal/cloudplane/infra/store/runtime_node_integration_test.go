@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/testutil"
 )
 
@@ -43,7 +42,7 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after terminating returned error: %v", err)
 	}
-	if drainedNode.Status != node.StatusDraining || drainedNode.Schedulable {
+	if drainedNode.Status != cloudmodel.StatusDraining || drainedNode.Schedulable {
 		t.Fatalf("backing node after terminating = status %s schedulable %v, want draining false", drainedNode.Status, drainedNode.Schedulable)
 	}
 	// 如果进程在 provider 删除前重启，terminating 记录必须还能被后续轮次重新扫描并推进。
@@ -75,18 +74,18 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after deleted returned error: %v", err)
 	}
-	if offlineNode.Status != node.StatusOffline || offlineNode.Schedulable {
+	if offlineNode.Status != cloudmodel.StatusOffline || offlineNode.Schedulable {
 		t.Fatalf("backing node after delete = status %s schedulable %v, want offline false", offlineNode.Status, offlineNode.Schedulable)
 	}
 
 	// 删除后的最后几次 node-agent 心跳不能把 node 重新打开调度。
-	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, backingNode.ID, node.HeartbeatInput{
+	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, backingNode.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   0,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat after deleted returned error: %v", err)
 	}
@@ -94,7 +93,7 @@ func TestIntegrationRuntimeNodeScaleInLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after deleted heartbeat returned error: %v", err)
 	}
-	if afterHeartbeat.Status != node.StatusOffline || afterHeartbeat.Schedulable {
+	if afterHeartbeat.Status != cloudmodel.StatusOffline || afterHeartbeat.Schedulable {
 		t.Fatalf("deleted runtime node heartbeat revived backing node: status %s schedulable %v", afterHeartbeat.Status, afterHeartbeat.Schedulable)
 	}
 }
@@ -128,7 +127,7 @@ func TestIntegrationRuntimeNodeScaleInSkipsUnsettledExecutionIntents(t *testing.
 	_, _ = seedReadyRuntimeNode(t, ctx, db.Store, "scale-in-unsettled", "i-scale-in-unsettled")
 	seedPendingExecutionIntent(t, ctx, db)
 
-	hasUnsettled, err := db.Store.HasExecutionIntentsWithStatuses(ctx, execution.StatusPending, execution.StatusDeploying)
+	hasUnsettled, err := db.Store.HasExecutionIntentsWithStatuses(ctx, cloudmodel.StatusPending, cloudmodel.StatusDeploying)
 	if err != nil {
 		t.Fatalf("HasExecutionIntentsWithStatuses returned error: %v", err)
 	}
@@ -141,10 +140,10 @@ func TestIntegrationRuntimeNodeScaleInSkipsUnsettledExecutionIntents(t *testing.
 func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 	CreateRuntimeNodeIntent(context.Context, runtimepool.CreateIntentInput) (runtimepool.Record, error)
 	BindRuntimeNodeProvisioned(context.Context, string, string, string, string, string, time.Time) (runtimepool.Record, error)
-	RegisterNode(context.Context, node.RegisterInput) (node.Node, error)
-	RecordNodeHeartbeat(context.Context, string, node.HeartbeatInput) (node.HeartbeatSummary, time.Time, error)
+	RegisterNode(context.Context, cloudmodel.RegisterInput) (cloudmodel.Node, error)
+	RecordNodeHeartbeat(context.Context, string, cloudmodel.HeartbeatInput) (cloudmodel.HeartbeatSummary, time.Time, error)
 	ListRuntimeNodesByStatuses(context.Context, ...string) ([]runtimepool.Record, error)
-}, name string, instanceID string) (runtimepool.Record, node.Node) {
+}, name string, instanceID string) (runtimepool.Record, cloudmodel.Node) {
 	t.Helper()
 
 	runtimeNode, err := store.CreateRuntimeNodeIntent(ctx, runtimepool.CreateIntentInput{
@@ -170,7 +169,7 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 		t.Fatalf("BindRuntimeNodeProvisioned returned error: %v", err)
 	}
 
-	backingNode, err := store.RegisterNode(ctx, node.RegisterInput{
+	backingNode, err := store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          name,
@@ -185,18 +184,18 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
 
-	if _, _, err := store.RecordNodeHeartbeat(ctx, backingNode.ID, node.HeartbeatInput{
+	if _, _, err := store.RecordNodeHeartbeat(ctx, backingNode.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   0,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
 
-	runtimeNodes, err := store.ListRuntimeNodesByStatuses(ctx, node.StatusReady)
+	runtimeNodes, err := store.ListRuntimeNodesByStatuses(ctx, cloudmodel.StatusReady)
 	if err != nil {
 		t.Fatalf("ListRuntimeNodesByStatuses returned error: %v", err)
 	}
@@ -204,7 +203,7 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 	if !ok {
 		t.Fatalf("runtime node %s missing from ListRuntimeNodes result: %+v", runtimeNode.ID, runtimeNodes)
 	}
-	if readyRuntimeNode.Status != node.StatusReady || readyRuntimeNode.NodeID != backingNode.ID {
+	if readyRuntimeNode.Status != cloudmodel.StatusReady || readyRuntimeNode.NodeID != backingNode.ID {
 		t.Fatalf("runtime node after heartbeat = status %s nodeID %s, want ready %s", readyRuntimeNode.Status, readyRuntimeNode.NodeID, backingNode.ID)
 	}
 	return readyRuntimeNode, backingNode
@@ -214,7 +213,7 @@ func seedReadyRuntimeNode(t *testing.T, ctx context.Context, store interface {
 func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, nodeID string) {
 	t.Helper()
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            "svc-scale-in-active-g1",
 		ServiceID:         "svc-scale-in-active",
 		ServiceName:       "scale-in-active",
@@ -240,7 +239,7 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 func seedPendingExecutionIntent(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
 	t.Helper()
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            "svc-scale-in-pending-g1",
 		ServiceID:         "svc-scale-in-pending",
 		ServiceName:       "scale-in-pending",

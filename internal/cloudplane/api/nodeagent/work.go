@@ -5,7 +5,7 @@ import (
 	"maps"
 	"strings"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
@@ -38,7 +38,7 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 
 // protoWorkItem 将 cloud-plane execution work item 转换为 node-agent protobuf 响应。
 // 参数说明：item 是分配给某个 node-agent 的待执行任务；nil 表示暂无任务。
-func protoWorkItem(item *execution.WorkItem) *nodeagentv1.WorkItem {
+func protoWorkItem(item *cloudmodel.WorkItem) *nodeagentv1.WorkItem {
 	// nil work item 映射为 nil protobuf message，让 PollWork 表达“当前无任务”。
 	if item == nil {
 		return nil

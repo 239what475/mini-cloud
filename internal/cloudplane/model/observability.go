@@ -1,5 +1,5 @@
 // Package observability 定义 cloud-plane 概览、可靠性输入信号和告警快照。
-package observability
+package model
 
 import (
 	"fmt"

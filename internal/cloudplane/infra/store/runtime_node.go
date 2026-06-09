@@ -8,9 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // ErrRuntimeNodeNotFound 表示 runtime node 记录不存在。
@@ -242,7 +241,7 @@ func (s *Store) CountActiveExecutionsByNode(ctx context.Context, nodeID string) 
 		FROM execution_intents
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
-	`, nodeID, execution.StatusDeploying, execution.StatusRunning).Scan(&count); err != nil {
+	`, nodeID, cloudmodel.StatusDeploying, cloudmodel.StatusRunning).Scan(&count); err != nil {
 		return 0, fmt.Errorf("count active executions by node: %w", err)
 	}
 	return count, nil
@@ -294,7 +293,7 @@ func (s *Store) GetRuntimeNodeScaleOutCandidate(ctx context.Context, nodeNamePre
 		FROM pending
 		CROSS JOIN capacity
 		CROSS JOIN provisioning
-	`, execution.WorkActionRun, execution.StatusPending, node.StatusReady, runtimepool.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
+	`, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusReady, runtimepool.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
 		&candidate.PlanID,
 		&candidate.ServiceID,
 		&candidate.CPUMilli,
@@ -366,7 +365,7 @@ func (s *Store) MarkRuntimeNodeTerminating(ctx context.Context, runtimeNodeID st
 	if current.Status == runtimepool.StatusTerminating {
 		return current, true, nil
 	}
-	if current.Status != node.StatusReady || strings.TrimSpace(current.InstanceID) == "" || strings.TrimSpace(current.NodeID) == "" {
+	if current.Status != cloudmodel.StatusReady || strings.TrimSpace(current.InstanceID) == "" || strings.TrimSpace(current.NodeID) == "" {
 		return current, false, nil
 	}
 
@@ -390,7 +389,7 @@ func (s *Store) MarkRuntimeNodeTerminating(ctx context.Context, runtimeNodeID st
 		FROM execution_intents
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
-	`, current.NodeID, execution.StatusDeploying, execution.StatusRunning).Scan(&activeCount); err != nil {
+	`, current.NodeID, cloudmodel.StatusDeploying, cloudmodel.StatusRunning).Scan(&activeCount); err != nil {
 		return runtimepool.Record{}, false, fmt.Errorf("count active executions before runtime node terminating: %w", err)
 	}
 	if activeCount > 0 {
@@ -404,7 +403,7 @@ func (s *Store) MarkRuntimeNodeTerminating(ctx context.Context, runtimeNodeID st
 			schedulable = FALSE,
 			updated_at = now()
 		WHERE id = $1
-	`, current.NodeID, node.StatusDraining); err != nil {
+	`, current.NodeID, cloudmodel.StatusDraining); err != nil {
 		return runtimepool.Record{}, false, fmt.Errorf("mark backing node draining for runtime node terminating: %w", err)
 	}
 
@@ -470,7 +469,7 @@ func (s *Store) MarkRuntimeNodeDeleted(ctx context.Context, runtimeNodeID string
 				schedulable = FALSE,
 				updated_at = now()
 			WHERE id = $1
-		`, current.NodeID, node.StatusOffline); err != nil {
+		`, current.NodeID, cloudmodel.StatusOffline); err != nil {
 			return runtimepool.Record{}, fmt.Errorf("mark runtime node backing node offline: %w", err)
 		}
 	}
@@ -549,7 +548,7 @@ func syncRuntimeNodeReadyTx(ctx context.Context, tx *sql.Tx, provider string, in
 		instanceID,
 		instanceName,
 		nodeID,
-		node.StatusReady,
+		cloudmodel.StatusReady,
 		"runtime node registered back and reported a ready heartbeat",
 		observedAt.UTC(),
 		runtimepool.StatusProvisioning,

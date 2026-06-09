@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // Config 描述外置 Caddy 的配置文件和 reload 命令。
@@ -50,7 +50,7 @@ func NewSink(logger *slog.Logger, cfg Config) *Sink {
 
 // Apply 渲染当前 public service 路由快照，必要时写入 Caddyfile 并 reload 外置 Caddy。
 // 参数说明：ctx 控制文件写入和 reload 命令生命周期；routes 是当前应发布的入口路由。
-func (s *Sink) Apply(ctx context.Context, routes []domainingress.Route) error {
+func (s *Sink) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	// 将路由渲染成完整 Caddyfile；即使没有 route，也会生成一个受控的默认 404 配置。
 	content, err := RenderCaddyfile(s.cfg.ListenHTTPAddr, routes)
 	if err != nil {
@@ -76,7 +76,7 @@ func (s *Sink) Apply(ctx context.Context, routes []domainingress.Route) error {
 
 // RenderCaddyfile 将 ingress 路由渲染成外置 Caddy 使用的 Caddyfile。
 // 参数说明：listenHTTPAddr 是 Caddy HTTP 监听地址；routes 是 host 到 backend 的发布规则。
-func RenderCaddyfile(listenHTTPAddr string, routes []domainingress.Route) (string, error) {
+func RenderCaddyfile(listenHTTPAddr string, routes []cloudmodel.Route) (string, error) {
 	host, port, err := net.SplitHostPort(strings.TrimSpace(listenHTTPAddr))
 	if err != nil {
 		return "", fmt.Errorf("parse caddy listen HTTP addr: %w", err)

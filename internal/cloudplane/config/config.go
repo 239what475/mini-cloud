@@ -179,7 +179,7 @@ type cloudPlaneObservabilityConfig struct {
 	Traces cloudPlaneObservabilityTracesConfig `yaml:"traces"`
 }
 
-// cloudPlaneObservabilityLogsConfig 对应 YAML 中的 observability.logs 配置段。
+// cloudPlaneObservabilityLogsConfig 对应 YAML 中的 cloudmodel.logs 配置段。
 type cloudPlaneObservabilityLogsConfig struct {
 	// LokiURL 是 workload 日志推送到 Loki 的入口。
 	LokiURL string `yaml:"lokiURL"`
@@ -187,7 +187,7 @@ type cloudPlaneObservabilityLogsConfig struct {
 	LokiTenantID string `yaml:"lokiTenantID"`
 }
 
-// cloudPlaneObservabilityTracesConfig 对应 YAML 中的 observability.traces 配置段。
+// cloudPlaneObservabilityTracesConfig 对应 YAML 中的 cloudmodel.traces 配置段。
 type cloudPlaneObservabilityTracesConfig struct {
 	// OTLPEndpoint 是 workload OTLP 上报入口。
 	OTLPEndpoint string `yaml:"otlpEndpoint"`

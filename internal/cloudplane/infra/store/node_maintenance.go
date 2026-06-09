@@ -7,8 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // ErrHeartbeatStaleAfterInvalid 表示 stale heartbeat 判定窗口非法。
@@ -16,25 +15,25 @@ var ErrHeartbeatStaleAfterInvalid = errors.New("staleAfter must be greater than 
 
 // UpdateStaleNodeHeartbeatState 将已有心跳但超时的非 offline/draining 节点标记为 offline，并失败化受影响 workload。
 // 参数说明：ctx 控制数据库请求生命周期；staleAfter 是心跳超时窗口。
-func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter time.Duration) (node.HeartbeatReconcileResult, error) {
+func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter time.Duration) (cloudmodel.HeartbeatReconcileResult, error) {
 	// 复杂流程说明：周期性检查 heartbeat，把超时 node 推进到 offline。
 	// 每个节点按最近心跳时间和当前状态判断，避免重复写入相同状态。
 	if staleAfter <= 0 {
-		return node.HeartbeatReconcileResult{}, ErrHeartbeatStaleAfterInvalid
+		return cloudmodel.HeartbeatReconcileResult{}, ErrHeartbeatStaleAfterInvalid
 	}
 
 	// cutoffTime 之前最后心跳的节点会被视为 stale。
 	cutoffTime := time.Now().UTC().Add(-staleAfter)
-	result := node.HeartbeatReconcileResult{
+	result := cloudmodel.HeartbeatReconcileResult{
 		StaleAfterSeconds:  int(staleAfter / time.Second),
 		CutoffTime:         cutoffTime,
-		NodesMarkedOffline: []node.Node{},
-		ImpactedPlans:      []node.ReconcileImpact{},
+		NodesMarkedOffline: []cloudmodel.Node{},
+		ImpactedPlans:      []cloudmodel.ReconcileImpact{},
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return node.HeartbeatReconcileResult{}, fmt.Errorf("begin reconcile stale heartbeats tx: %w", err)
+		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("begin reconcile stale heartbeats tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
@@ -69,29 +68,29 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		  AND status <> $3
 		ORDER BY last_heartbeat_at ASC, id ASC
 		FOR UPDATE
-	`, cutoffTime, node.StatusOffline, node.StatusDraining)
+	`, cutoffTime, cloudmodel.StatusOffline, cloudmodel.StatusDraining)
 	if err != nil {
-		return node.HeartbeatReconcileResult{}, fmt.Errorf("query stale nodes: %w", err)
+		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("query stale nodes: %w", err)
 	}
 
 	// 先读完 stale node 列表并关闭 rows，再对每个节点执行更新。
-	var staleNodes []node.Node
+	var staleNodes []cloudmodel.Node
 	for rows.Next() {
 		item, scanErr := scanNode(rows)
 		if scanErr != nil {
 			closeRows(rows)
-			return node.HeartbeatReconcileResult{}, fmt.Errorf("scan stale node: %w", scanErr)
+			return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("scan stale node: %w", scanErr)
 		}
 		staleNodes = append(staleNodes, item)
 	}
 	// rows.Err 捕获迭代过程中延迟暴露的数据库错误。
 	if err := rows.Err(); err != nil {
 		closeRows(rows)
-		return node.HeartbeatReconcileResult{}, fmt.Errorf("iterate stale nodes: %w", err)
+		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("iterate stale nodes: %w", err)
 	}
 	// 后续会继续执行查询，先显式关闭当前 rows。
 	if err := rows.Close(); err != nil {
-		return node.HeartbeatReconcileResult{}, fmt.Errorf("close stale node rows: %w", err)
+		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("close stale node rows: %w", err)
 	}
 
 	// 逐个处理 stale node，并收集其影响到的 execution plan。
@@ -124,11 +123,11 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 				last_heartbeat_at,
 				created_at,
 				updated_at
-		`, staleNode.ID, node.StatusOffline)
+		`, staleNode.ID, cloudmodel.StatusOffline)
 
 		updatedNode, err := scanNode(updatedRow)
 		if err != nil {
-			return node.HeartbeatReconcileResult{}, fmt.Errorf("mark stale node offline: %w", err)
+			return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("mark stale node offline: %w", err)
 		}
 		result.NodesMarkedOffline = append(result.NodesMarkedOffline, updatedNode)
 
@@ -141,10 +140,10 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 
 		impactedIntents, err := failExecutionIntentsForOfflineNode(ctx, tx, staleNode, reason)
 		if err != nil {
-			return node.HeartbeatReconcileResult{}, err
+			return cloudmodel.HeartbeatReconcileResult{}, err
 		}
 		for _, item := range impactedIntents {
-			result.ImpactedPlans = append(result.ImpactedPlans, node.ReconcileImpact{
+			result.ImpactedPlans = append(result.ImpactedPlans, cloudmodel.ReconcileImpact{
 				NodeID:      staleNode.ID,
 				NodeName:    staleNode.Name,
 				PlanID:      item.PlanID,
@@ -156,7 +155,7 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 	}
 
 	if err := tx.Commit(); err != nil {
-		return node.HeartbeatReconcileResult{}, fmt.Errorf("commit reconcile stale heartbeats tx: %w", err)
+		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("commit reconcile stale heartbeats tx: %w", err)
 	}
 
 	// 返回本轮被标记 offline 的节点和被失败化的 execution plan 摘要。
@@ -172,7 +171,7 @@ type impactedExecutionIntent struct {
 	MemoryMiRequest int
 }
 
-func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode node.Node, reason string) ([]impactedExecutionIntent, error) {
+func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode cloudmodel.Node, reason string) ([]impactedExecutionIntent, error) {
 	intentRows, err := tx.QueryContext(ctx, `
 		SELECT
 			id,
@@ -186,7 +185,7 @@ func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNo
 		  AND status IN ($2, $3, $4)
 		ORDER BY updated_at ASC, id ASC
 		FOR UPDATE
-	`, staleNode.ID, execution.StatusPending, execution.StatusDeploying, execution.StatusRunning)
+	`, staleNode.ID, cloudmodel.StatusPending, cloudmodel.StatusDeploying, cloudmodel.StatusRunning)
 	if err != nil {
 		return nil, fmt.Errorf("query impacted execution intents: %w", err)
 	}
@@ -213,7 +212,7 @@ func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNo
 				finished_at = COALESCE(finished_at, now()),
 				updated_at = now()
 			WHERE id = $1
-		`, item.ID, execution.StatusFailed, reason); err != nil {
+		`, item.ID, cloudmodel.StatusFailed, reason); err != nil {
 			return nil, fmt.Errorf("mark execution intent failed during node offline reconcile: %w", err)
 		}
 		if err := freeNodeAllocation(ctx, tx, staleNode.ID, item.CPUMilliRequest, item.MemoryMiRequest); err != nil {

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/logctx"
 	"mini-cloud/internal/contract/cloudplaneapi"
 )
@@ -114,7 +114,7 @@ func (s *Server) collectSnapshot(ctx context.Context) (cloudplaneapi.SnapshotRes
 
 // buildRuntimeInventory 构建 control-plane 同步用的 runtime node 清单。
 // 参数说明：observedAt 是本次快照观测时间；nodes 是 cloud-plane 本地全部 node 记录。
-func buildRuntimeInventory(observedAt time.Time, nodes []node.Node) cloudplaneapi.RuntimeInventory {
+func buildRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) cloudplaneapi.RuntimeInventory {
 	// 默认 syncVersion 使用本次观测时间，确保即使没有 runtime node 也返回可比较的版本值。
 	out := cloudplaneapi.RuntimeInventory{
 		SyncVersion: observedAt.UTC().UnixMicro(),
@@ -159,12 +159,12 @@ func buildRuntimeInventory(observedAt time.Time, nodes []node.Node) cloudplaneap
 
 // summarizeCapacity 汇总 control-plane 同步用的 runtime node 容量视图。
 // 参数说明：nodes 是 cloud-plane 本地全部 node 记录。
-func summarizeCapacity(nodes []node.Node) cloudplaneapi.CapacitySummary {
+func summarizeCapacity(nodes []cloudmodel.Node) cloudplaneapi.CapacitySummary {
 	// 从空汇总开始，逐个累加 runtime node 的容量和分配量。
 	out := cloudplaneapi.CapacitySummary{}
 	for _, item := range nodes {
 		out.RuntimeNodesTotal++
-		if item.Status == node.StatusReady {
+		if item.Status == cloudmodel.StatusReady {
 			out.RuntimeNodesReady++
 		}
 		// total/allocatable/allocated 都按 cloud-plane 当前 node 记录直接求和。

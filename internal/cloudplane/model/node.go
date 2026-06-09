@@ -1,5 +1,5 @@
 // Package node 定义 cloud-plane 视角下的节点注册、心跳和健康状态模型。
-package node
+package model
 
 import (
 	"errors"
@@ -249,7 +249,7 @@ func (in HeartbeatInput) Validate() error {
 		return ErrInvalidRunningContainers
 	}
 	// 心跳状态必须属于 node 状态机。
-	if !IsStatus(in.Status) {
+	if !IsNodeStatus(in.Status) {
 		return ErrInvalidStatus
 	}
 	// 通过领域校验后，调用方才适合进入心跳持久化流程。
@@ -257,7 +257,7 @@ func (in HeartbeatInput) Validate() error {
 }
 
 // IsStatus 判断节点状态是否属于当前允许值。
-func IsStatus(status string) bool {
+func IsNodeStatus(status string) bool {
 	switch status {
 	case StatusRegistering, StatusReady, StatusNotReady, StatusDraining, StatusOffline:
 		return true

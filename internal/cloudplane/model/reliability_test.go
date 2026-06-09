@@ -1,4 +1,4 @@
-package observability
+package model
 
 import (
 	"testing"

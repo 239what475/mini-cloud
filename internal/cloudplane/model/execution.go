@@ -1,5 +1,5 @@
 // Package execution 定义 node-agent 执行 execution work item 的领域模型。
-package execution
+package model
 
 import (
 	"errors"
@@ -235,7 +235,7 @@ type ReportAck struct {
 }
 
 // IsStatus 判断 execution 状态是否属于当前允许值。
-func IsStatus(status string) bool {
+func IsExecutionStatus(status string) bool {
 	switch status {
 	case StatusDeploying, StatusRunning, StatusSuperseded, StatusFailed:
 		return true
@@ -267,7 +267,7 @@ func IsWorkAction(action string) bool {
 // Validate 校验 node-agent execution 上报是否满足领域约束。
 func (in ReportInput) Validate() error {
 	// node-agent 上报的状态必须在 execution 状态机允许集合内。
-	if !IsStatus(in.Status) {
+	if !IsExecutionStatus(in.Status) {
 		return ErrExecutionStatusInvalid
 	}
 	// reason 是每次上报的可读说明，running/failed 等状态都要求携带。

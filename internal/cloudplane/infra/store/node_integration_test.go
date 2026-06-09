@@ -6,8 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/testutil"
 )
 
@@ -17,7 +16,7 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	// 注册一个 runtime node，初始 allocated 为 0。
-	registered, err := db.Store.RegisterNode(context.Background(), node.RegisterInput{
+	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "runtime-node-a",
@@ -43,13 +42,13 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	}
 
 	// 心跳只上报 allocatable，不应该覆盖已有 allocated。
-	_, _, err = db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, node.HeartbeatInput{
+	_, _, err = db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   0,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	})
 	if err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
@@ -72,18 +71,18 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	if refreshed.MemoryMiAllocatable != 3584 {
 		t.Fatalf("memory_mi_allocatable = %d, want 3584", refreshed.MemoryMiAllocatable)
 	}
-	if refreshed.Status != node.StatusReady {
-		t.Fatalf("status = %s, want %s", refreshed.Status, node.StatusReady)
+	if refreshed.Status != cloudmodel.StatusReady {
+		t.Fatalf("status = %s, want %s", refreshed.Status, cloudmodel.StatusReady)
 	}
 }
 
 // TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchanged 验证库存未变时 updated_at 不推进。
 func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchanged(t *testing.T) {
-	// 使用真实测试数据库验证库存字段不变时 node.updated_at 不推进。
+	// 使用真实测试数据库验证库存字段不变时 cloudmodel.updated_at 不推进。
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	// 注册一个 runtime node，作为两次 heartbeat 的目标。
-	registered, err := db.Store.RegisterNode(context.Background(), node.RegisterInput{
+	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "runtime-node-stable",
@@ -100,13 +99,13 @@ func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchan
 
 	// 第一次 heartbeat 建立 last_heartbeat_at 和 node 摘要。
 	firstReportedAt := time.Now().UTC()
-	if _, _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, node.HeartbeatInput{
+	if _, _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          firstReportedAt,
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   1,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("first RecordNodeHeartbeat returned error: %v", err)
 	}
@@ -121,13 +120,13 @@ func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchan
 	time.Sleep(10 * time.Millisecond)
 
 	// 第二次 heartbeat 只推进 reportedAt，库存字段保持完全一致。
-	if _, _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, node.HeartbeatInput{
+	if _, _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          firstReportedAt.Add(30 * time.Second),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   1,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("second RecordNodeHeartbeat returned error: %v", err)
 	}
@@ -156,7 +155,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	registered, err := db.Store.RegisterNode(ctx, node.RegisterInput{
+	registered, err := db.Store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          "runtime-node-stale",
@@ -170,18 +169,18 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
-	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, registered.ID, node.HeartbeatInput{
+	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, registered.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
 		RunningContainers:   0,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, execution.PlanInput{
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            "svc-stale-g1",
 		ServiceID:         "svc-stale",
 		ServiceName:       "stale-web",
@@ -202,8 +201,8 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if work == nil {
 		t.Fatal("CreateExecutionClaim returned nil work item")
 	}
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, execution.ReportInput{
-		Status:        execution.StatusRunning,
+	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, cloudmodel.ReportInput{
+		Status:        cloudmodel.StatusRunning,
 		Reason:        "execution is healthy",
 		ContainerID:   "ctr-stale-0",
 		ContainerName: work.ContainerName,
@@ -246,7 +245,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetNode after stale reconcile returned error: %v", err)
 	}
-	if offlineNode.Status != node.StatusOffline || offlineNode.Schedulable {
+	if offlineNode.Status != cloudmodel.StatusOffline || offlineNode.Schedulable {
 		t.Fatalf("node after stale reconcile = status %s schedulable %v, want offline false", offlineNode.Status, offlineNode.Schedulable)
 	}
 	if offlineNode.CPUMilliAllocated != 0 || offlineNode.MemoryMiAllocated != 0 {
@@ -271,7 +270,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 			continue
 		}
 		found = true
-		if item.Status != execution.StatusFailed {
+		if item.Status != cloudmodel.StatusFailed {
 			t.Fatalf("execution snapshot = %+v, want failed status", item)
 		}
 		if !strings.Contains(item.LastStatusReason, "marked offline") {

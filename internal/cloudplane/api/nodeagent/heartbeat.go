@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/contract/nodeagentapi"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 
@@ -42,7 +42,7 @@ func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.Heartbea
 	}
 
 	// 写入心跳摘要，同时更新 node 的 allocatable 容量和最新状态。
-	summary, receivedAt, err := s.store.RecordNodeHeartbeat(ctx, nodeID, node.HeartbeatInput{
+	summary, receivedAt, err := s.store.RecordNodeHeartbeat(ctx, nodeID, cloudmodel.HeartbeatInput{
 		ReportedAt:          input.ReportedAt,
 		AgentVersion:        input.AgentVersion,
 		CPUMilliAllocatable: input.CPUMilliAllocatable,

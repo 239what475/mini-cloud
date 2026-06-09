@@ -10,10 +10,9 @@ import (
 	"time"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
-	"mini-cloud/internal/cloudplane/domain/execution"
-	"mini-cloud/internal/cloudplane/domain/node"
 	"mini-cloud/internal/cloudplane/infra/runtimepool"
 	"mini-cloud/internal/cloudplane/infra/store"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/testutil"
 )
 
@@ -168,7 +167,7 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 
 func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store, name string, class string) {
 	t.Helper()
-	if _, err := stores.ApplyExecutionPlan(ctx, execution.PlanInput{
+	if _, err := stores.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            name + "-g1",
 		ServiceID:         name,
 		ServiceName:       name,
@@ -185,7 +184,7 @@ func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store
 
 func seedReadyNode(t *testing.T, ctx context.Context, stores *store.Store, name string, cpuMilli int, memoryMi int) {
 	t.Helper()
-	nodeItem, err := stores.RegisterNode(ctx, node.RegisterInput{
+	nodeItem, err := stores.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          name,
@@ -198,13 +197,13 @@ func seedReadyNode(t *testing.T, ctx context.Context, stores *store.Store, name 
 	if err != nil {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
-	_, _, err = stores.RecordNodeHeartbeat(ctx, nodeItem.ID, node.HeartbeatInput{
+	_, _, err = stores.RecordNodeHeartbeat(ctx, nodeItem.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: cpuMilli,
 		MemoryMiAllocatable: memoryMi,
 		RunningContainers:   0,
-		Status:              node.StatusReady,
+		Status:              cloudmodel.StatusReady,
 	})
 	if err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)

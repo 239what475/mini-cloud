@@ -76,28 +76,28 @@ func protoRuntimeInventory(item cloudplaneapi.RuntimeInventory) *cloudplanev1.Pl
 		Nodes:       make([]*cloudplanev1.PlaneRuntimeNode, 0, len(item.Nodes)),
 	}
 	// 逐个转换 runtime node；该循环只做字段映射，不改变调度或容量计算结果。
-	for _, node := range item.Nodes {
+	for _, nodeItem := range item.Nodes {
 		// protoNode 保留 control-plane 调度所需的身份、状态、调度开关和容量字段。
 		protoNode := &cloudplanev1.PlaneRuntimeNode{
-			NodeId:              node.NodeID,
-			NodeEpoch:           node.NodeEpoch,
-			Name:                node.Name,
-			Provider:            node.Provider,
-			Region:              node.Region,
-			InstanceId:          node.InstanceID,
-			InstanceType:        node.InstanceType,
-			Status:              node.Status,
-			Schedulable:         node.Schedulable,
-			CpuMilliTotal:       int32(node.CPUMilliTotal),
-			CpuMilliAllocatable: int32(node.CPUMilliAllocatable),
-			CpuMilliAllocated:   int32(node.CPUMilliAllocated),
-			MemoryMiTotal:       int32(node.MemoryMiTotal),
-			MemoryMiAllocatable: int32(node.MemoryMiAllocatable),
-			MemoryMiAllocated:   int32(node.MemoryMiAllocated),
+			NodeId:              nodeItem.NodeID,
+			NodeEpoch:           nodeItem.NodeEpoch,
+			Name:                nodeItem.Name,
+			Provider:            nodeItem.Provider,
+			Region:              nodeItem.Region,
+			InstanceId:          nodeItem.InstanceID,
+			InstanceType:        nodeItem.InstanceType,
+			Status:              nodeItem.Status,
+			Schedulable:         nodeItem.Schedulable,
+			CpuMilliTotal:       int32(nodeItem.CPUMilliTotal),
+			CpuMilliAllocatable: int32(nodeItem.CPUMilliAllocatable),
+			CpuMilliAllocated:   int32(nodeItem.CPUMilliAllocated),
+			MemoryMiTotal:       int32(nodeItem.MemoryMiTotal),
+			MemoryMiAllocatable: int32(nodeItem.MemoryMiAllocatable),
+			MemoryMiAllocated:   int32(nodeItem.MemoryMiAllocated),
 		}
 		// LastHeartbeatAt 在领域模型中可为空；只有存在心跳时间时才设置 protobuf 字段。
-		if node.LastHeartbeatAt != nil {
-			protoNode.LastHeartbeatAt = controlplane.ProtoTimestamp(*node.LastHeartbeatAt)
+		if nodeItem.LastHeartbeatAt != nil {
+			protoNode.LastHeartbeatAt = controlplane.ProtoTimestamp(*nodeItem.LastHeartbeatAt)
 		}
 		// 不在转换层排序，只保持上游传入的 runtime node 顺序。
 		out.Nodes = append(out.Nodes, protoNode)

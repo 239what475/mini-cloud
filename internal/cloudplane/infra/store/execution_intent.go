@@ -9,9 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/cloudplane/domain/execution"
-	domainingress "mini-cloud/internal/cloudplane/domain/ingress"
-	"mini-cloud/internal/cloudplane/domain/node"
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/common/projectedfile"
 	"mini-cloud/internal/contract/cloudplaneapi"
 )
@@ -19,34 +17,34 @@ import (
 // ErrExecutionNotFound 表示 execution intent 记录不存在。
 var ErrExecutionNotFound = errors.New("execution not found")
 
-func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInput) (execution.PlanResult, error) {
+func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInput) (cloudmodel.PlanResult, error) {
 	if err := input.Validate(); err != nil {
-		return execution.PlanResult{}, err
+		return cloudmodel.PlanResult{}, err
 	}
 	cpuMilliRequest, memoryMiRequest, err := intentResourceRequest(input.InstanceClass)
 	if err != nil {
-		return execution.PlanResult{}, err
+		return cloudmodel.PlanResult{}, err
 	}
 	commandJSON, err := marshalJSON(input.Command, []string{})
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("marshal execution command: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("marshal execution command: %w", err)
 	}
 	argsJSON, err := marshalJSON(input.Args, []string{})
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("marshal execution args: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("marshal execution args: %w", err)
 	}
 	envJSON, err := marshalJSON(input.Env, map[string]string{})
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("marshal execution env: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("marshal execution env: %w", err)
 	}
 	projectedFilesJSON, err := marshalJSON(projectedfile.CloneFiles(input.ProjectedFiles), []projectedfile.File{})
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("marshal execution projected files: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("marshal execution projected files: %w", err)
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("begin apply execution plan tx: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("begin apply execution plan tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -60,14 +58,14 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 		WHERE service_id = $1
 		  AND plan_id <> $4
 		  AND status IN ($5, $6)
-	`, input.ServiceID, execution.StatusSuperseded, "superseded by a newer execution plan", input.PlanID, execution.StatusPending, execution.StatusDeploying); err != nil {
-		return execution.PlanResult{}, fmt.Errorf("supersede old execution intents: %w", err)
+	`, input.ServiceID, cloudmodel.StatusSuperseded, "superseded by a newer execution plan", input.PlanID, cloudmodel.StatusPending, cloudmodel.StatusDeploying); err != nil {
+		return cloudmodel.PlanResult{}, fmt.Errorf("supersede old execution intents: %w", err)
 	}
 
-	action := execution.PlanActionUpdated
+	action := cloudmodel.PlanActionUpdated
 	id, err := newID("exe")
 	if err != nil {
-		return execution.PlanResult{}, err
+		return cloudmodel.PlanResult{}, err
 	}
 	result, err := tx.ExecContext(ctx, `
 			INSERT INTO execution_intents (
@@ -115,7 +113,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 				updated_at = now()
 		`,
 		id,
-		execution.WorkActionRun,
+		cloudmodel.WorkActionRun,
 		input.PlanID,
 		input.ServiceID,
 		input.ServiceName,
@@ -133,26 +131,26 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input execution.PlanInpu
 		input.ReadinessPath,
 		cpuMilliRequest,
 		memoryMiRequest,
-		execution.StatusPending,
+		cloudmodel.StatusPending,
 		"execution plan accepted",
 	)
 	if err != nil {
-		return execution.PlanResult{}, fmt.Errorf("upsert execution intent: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("upsert execution intent: %w", err)
 	}
 	rows, err := result.RowsAffected()
 	if err != nil {
-		return execution.PlanResult{}, err
+		return cloudmodel.PlanResult{}, err
 	}
 	if rows > 0 {
-		action = execution.PlanActionCreated
+		action = cloudmodel.PlanActionCreated
 	}
 	if err := tx.Commit(); err != nil {
-		return execution.PlanResult{}, fmt.Errorf("commit apply execution plan tx: %w", err)
+		return cloudmodel.PlanResult{}, fmt.Errorf("commit apply execution plan tx: %w", err)
 	}
-	return execution.PlanResult{Action: action, PlanID: input.PlanID}, nil
+	return cloudmodel.PlanResult{Action: action, PlanID: input.PlanID}, nil
 }
 
-func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execution.DeletePlanInput) (bool, error) {
+func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudmodel.DeletePlanInput) (bool, error) {
 	if err := input.Validate(); err != nil {
 		return false, err
 	}
@@ -169,7 +167,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 		WHERE service_id = $1
 		  AND plan_id = $2
 		  AND work_action = $3
-	`, input.ServiceID, input.PlanID, execution.WorkActionDelete).Scan(&existingDeleteCount); err != nil {
+	`, input.ServiceID, input.PlanID, cloudmodel.WorkActionDelete).Scan(&existingDeleteCount); err != nil {
 		return false, fmt.Errorf("count existing delete execution plan: %w", err)
 	}
 
@@ -183,7 +181,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 		WHERE service_id = $1
 		  AND work_action = $6
 		  AND status = $4
-	`, input.ServiceID, execution.StatusSuperseded, "service deletion requested before execution started", execution.StatusPending, execution.StatusDeploying, execution.WorkActionRun); err != nil {
+	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
 		return false, fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
 	}
 
@@ -210,7 +208,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 			updated_at = now()
 		FROM locked
 		WHERE execution_intents.id = locked.id
-	`, input.ServiceID, execution.WorkActionDelete, input.PlanID, input.ServiceGeneration, execution.StatusPending, "service deletion requested by control-plane", execution.WorkActionRun, execution.StatusRunning)
+	`, input.ServiceID, cloudmodel.WorkActionDelete, input.PlanID, input.ServiceGeneration, cloudmodel.StatusPending, "service deletion requested by control-plane", cloudmodel.WorkActionRun, cloudmodel.StatusRunning)
 	if err != nil {
 		return false, fmt.Errorf("mark running execution intents for delete: %w", err)
 	}
@@ -226,7 +224,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 			WHERE service_id = $1
 			  AND work_action = $2
 			  AND status IN ($3, $4)
-		`, input.ServiceID, execution.WorkActionRun, execution.StatusDeploying, execution.StatusRunning).Scan(&activeRunCount); err != nil {
+		`, input.ServiceID, cloudmodel.WorkActionRun, cloudmodel.StatusDeploying, cloudmodel.StatusRunning).Scan(&activeRunCount); err != nil {
 			return false, fmt.Errorf("count active run execution intents for delete: %w", err)
 		}
 		if activeRunCount > 0 || existingDeleteCount > 0 {
@@ -262,7 +260,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 			)
 			VALUES ($1, $2, $3, $4, $5, $6, '', '[]'::jsonb, '[]'::jsonb, '{}'::jsonb, '[]'::jsonb, 1, '/', 1, 1, $7, $8, now())
 			ON CONFLICT (plan_id) DO NOTHING
-		`, id, execution.WorkActionDelete, input.PlanID, input.ServiceID, input.ServiceID, input.ServiceGeneration, execution.StatusSuperseded, "service deletion had no running execution intents")
+		`, id, cloudmodel.WorkActionDelete, input.PlanID, input.ServiceID, input.ServiceID, input.ServiceGeneration, cloudmodel.StatusSuperseded, "service deletion had no running execution intents")
 		if err != nil {
 			return false, fmt.Errorf("record empty delete execution plan: %w", err)
 		}
@@ -277,7 +275,7 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input execut
 	return rows > 0, nil
 }
 
-func (s *Store) ListIngressRouteSources(ctx context.Context) ([]domainingress.RouteSource, error) {
+func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.RouteSource, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		WITH latest_plan AS (
 			SELECT DISTINCT ON (service_id)
@@ -302,15 +300,15 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]domainingress.Ro
 		   AND e.host_port > 0
 		WHERE p.service_exposure = 'public'
 		ORDER BY p.service_name ASC, p.plan_id ASC, e.id ASC
-	`, execution.StatusRunning, execution.StatusSuperseded)
+	`, cloudmodel.StatusRunning, cloudmodel.StatusSuperseded)
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}
 	defer closeRows(rows)
 
-	items := make([]domainingress.RouteSource, 0)
+	items := make([]cloudmodel.RouteSource, 0)
 	for rows.Next() {
-		var item domainingress.RouteSource
+		var item cloudmodel.RouteSource
 		var nodeID sql.NullString
 		if err := rows.Scan(&item.ServiceName, &nodeID, &item.HostPort, &item.HasBackend); err != nil {
 			return nil, fmt.Errorf("scan ingress route source: %w", err)
@@ -375,7 +373,7 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudplaneapi.Exe
 	return items, nil
 }
 
-func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execution.WorkItem, error) {
+func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloudmodel.WorkItem, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin execution claim tx: %w", err)
@@ -399,11 +397,11 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		}
 		return nil, fmt.Errorf("load node for execution claim: %w", err)
 	}
-	if nodeStatus != node.StatusReady {
+	if nodeStatus != cloudmodel.StatusReady {
 		return nil, nil
 	}
 
-	var work execution.WorkItem
+	var work cloudmodel.WorkItem
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
@@ -454,10 +452,10 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
 	`,
-		execution.StatusPending,
-		execution.WorkActionDelete,
+		cloudmodel.StatusPending,
+		cloudmodel.WorkActionDelete,
 		nodeID,
-		execution.WorkActionRun,
+		cloudmodel.WorkActionRun,
 		schedulable,
 		cpuMilliAllocatable-cpuMilliAllocated,
 		memoryMiAllocatable-memoryMiAllocated,
@@ -491,12 +489,12 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 		}
 		return nil, fmt.Errorf("load claimable execution intent: %w", err)
 	}
-	work.Action = execution.NormalizeWorkAction(work.Action)
+	work.Action = cloudmodel.NormalizeWorkAction(work.Action)
 	work.NodeID = nodeID
 	if storedNodeID.Valid {
 		work.NodeID = storedNodeID.String
 	}
-	if work.Action == execution.WorkActionDelete {
+	if work.Action == cloudmodel.WorkActionDelete {
 		startedAt := time.Now().UTC()
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE execution_intents
@@ -506,7 +504,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 				started_at = $4,
 				updated_at = now()
 			WHERE id = $1
-		`, work.ExecutionID, execution.StatusDeploying, fmt.Sprintf("agent on node %s claimed delete execution intent", nodeID), startedAt); err != nil {
+		`, work.ExecutionID, cloudmodel.StatusDeploying, fmt.Sprintf("agent on node %s claimed delete execution intent", nodeID), startedAt); err != nil {
 			return nil, fmt.Errorf("mark delete execution intent deploying: %w", err)
 		}
 		if err := tx.Commit(); err != nil {
@@ -528,7 +526,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	}
 	work.ProjectedFiles = projectedfile.CloneFiles(work.ProjectedFiles)
 	if credentialServer.Valid {
-		work.ImageCredential = &execution.ImageCredential{
+		work.ImageCredential = &cloudmodel.ImageCredential{
 			Server:   credentialServer.String,
 			Username: credentialUsername.String,
 			Password: credentialPassword.String,
@@ -552,7 +550,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 			started_at = $6,
 			updated_at = now()
 		WHERE id = $1
-	`, work.ExecutionID, nodeID, work.ContainerName, execution.StatusDeploying, fmt.Sprintf("agent on node %s claimed execution intent", nodeID), startedAt); err != nil {
+	`, work.ExecutionID, nodeID, work.ContainerName, cloudmodel.StatusDeploying, fmt.Sprintf("agent on node %s claimed execution intent", nodeID), startedAt); err != nil {
 		return nil, fmt.Errorf("mark execution intent deploying: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
@@ -571,33 +569,33 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*execu
 	return &work, nil
 }
 
-func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string, executionID string, input execution.ReportInput) (execution.ReportAck, *execution.PlanResult, any, error) {
+func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string, executionID string, input cloudmodel.ReportInput) (cloudmodel.ReportAck, *cloudmodel.PlanResult, any, error) {
 	if err := input.Validate(); err != nil {
-		return execution.ReportAck{}, nil, nil, err
+		return cloudmodel.ReportAck{}, nil, nil, err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return execution.ReportAck{}, nil, nil, fmt.Errorf("begin report execution intent tx: %w", err)
+		return cloudmodel.ReportAck{}, nil, nil, fmt.Errorf("begin report execution intent tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	current, cpuMilliRequest, memoryMiRequest, err := loadExecutionIntentRecord(ctx, tx, nodeID, executionID)
 	if err != nil {
-		return execution.ReportAck{}, nil, nil, err
+		return cloudmodel.ReportAck{}, nil, nil, err
 	}
-	if current.Status != execution.StatusDeploying {
+	if current.Status != cloudmodel.StatusDeploying {
 		if current.Status == input.Status {
-			return execution.ReportAck{Execution: current, ObservedAt: time.Now().UTC()}, nil, nil, nil
+			return cloudmodel.ReportAck{Execution: current, ObservedAt: time.Now().UTC()}, nil, nil, nil
 		}
-		return execution.ReportAck{}, nil, nil, fmt.Errorf("execution %s is already %s and cannot transition to %s", executionID, current.Status, input.Status)
+		return cloudmodel.ReportAck{}, nil, nil, fmt.Errorf("execution %s is already %s and cannot transition to %s", executionID, current.Status, input.Status)
 	}
 
 	observedAt := time.Now().UTC()
 	var finishedAt sql.NullTime
-	if input.Status == execution.StatusFailed || input.Status == execution.StatusSuperseded {
+	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSuperseded {
 		finishedAt = sql.NullTime{Time: observedAt, Valid: true}
 	}
-	var updated execution.Record
+	var updated cloudmodel.Record
 	err = tx.QueryRowContext(ctx, `
 		UPDATE execution_intents
 		SET
@@ -628,26 +626,26 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 		&updated.UpdatedAt,
 	)
 	if err != nil {
-		return execution.ReportAck{}, nil, nil, fmt.Errorf("update execution intent report: %w", err)
+		return cloudmodel.ReportAck{}, nil, nil, fmt.Errorf("update execution intent report: %w", err)
 	}
-	if input.Status == execution.StatusFailed || input.Status == execution.StatusSuperseded {
+	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSuperseded {
 		if err := freeNodeAllocation(ctx, tx, nodeID, cpuMilliRequest, memoryMiRequest); err != nil {
-			return execution.ReportAck{}, nil, nil, err
+			return cloudmodel.ReportAck{}, nil, nil, err
 		}
 	}
 	if input.SupersededExecutionID != "" {
 		if err := supersedeExecutionIntent(ctx, tx, nodeID, input.SupersededExecutionID, "superseded by replacement execution"); err != nil {
-			return execution.ReportAck{}, nil, nil, err
+			return cloudmodel.ReportAck{}, nil, nil, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return execution.ReportAck{}, nil, nil, fmt.Errorf("commit report execution intent tx: %w", err)
+		return cloudmodel.ReportAck{}, nil, nil, fmt.Errorf("commit report execution intent tx: %w", err)
 	}
-	return execution.ReportAck{Execution: updated, ObservedAt: observedAt}, nil, nil, nil
+	return cloudmodel.ReportAck{Execution: updated, ObservedAt: observedAt}, nil, nil, nil
 }
 
-func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, executionID string) (execution.Record, int, int, error) {
-	var current execution.Record
+func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, executionID string) (cloudmodel.Record, int, int, error) {
+	var current cloudmodel.Record
 	var cpuMilliRequest int
 	var memoryMiRequest int
 	err := tx.QueryRowContext(ctx, `
@@ -677,15 +675,15 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return execution.Record{}, 0, 0, ErrExecutionNotFound
+			return cloudmodel.Record{}, 0, 0, ErrExecutionNotFound
 		}
-		return execution.Record{}, 0, 0, fmt.Errorf("load execution intent: %w", err)
+		return cloudmodel.Record{}, 0, 0, fmt.Errorf("load execution intent: %w", err)
 	}
 	return current, cpuMilliRequest, memoryMiRequest, nil
 }
 
-func loadRunningIntentForServiceOnNode(ctx context.Context, tx *sql.Tx, serviceID string, planID string, nodeID string) (*execution.SupersededExecution, error) {
-	var item execution.SupersededExecution
+func loadRunningIntentForServiceOnNode(ctx context.Context, tx *sql.Tx, serviceID string, planID string, nodeID string) (*cloudmodel.SupersededExecution, error) {
+	var item cloudmodel.SupersededExecution
 	err := tx.QueryRowContext(ctx, `
 		SELECT plan_id, id, container_id, container_name
 		FROM execution_intents
@@ -696,7 +694,7 @@ func loadRunningIntentForServiceOnNode(ctx context.Context, tx *sql.Tx, serviceI
 		ORDER BY created_at DESC, id DESC
 		LIMIT 1
 		FOR UPDATE
-	`, serviceID, planID, nodeID, execution.StatusRunning).Scan(&item.PlanID, &item.ExecutionID, &item.ContainerID, &item.ContainerName)
+	`, serviceID, planID, nodeID, cloudmodel.StatusRunning).Scan(&item.PlanID, &item.ExecutionID, &item.ContainerID, &item.ContainerName)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
@@ -714,7 +712,7 @@ func supersedeExecutionIntent(ctx context.Context, tx *sql.Tx, nodeID string, ex
 		}
 		return err
 	}
-	if current.Status != execution.StatusRunning && current.Status != execution.StatusDeploying {
+	if current.Status != cloudmodel.StatusRunning && current.Status != cloudmodel.StatusDeploying {
 		return nil
 	}
 	finishedAt := time.Now().UTC()
@@ -726,7 +724,7 @@ func supersedeExecutionIntent(ctx context.Context, tx *sql.Tx, nodeID string, ex
 			finished_at = $4,
 			updated_at = now()
 		WHERE id = $1
-	`, executionID, execution.StatusSuperseded, reason, finishedAt); err != nil {
+	`, executionID, cloudmodel.StatusSuperseded, reason, finishedAt); err != nil {
 		return fmt.Errorf("supersede execution intent: %w", err)
 	}
 	return freeNodeAllocation(ctx, tx, nodeID, cpuMilliRequest, memoryMiRequest)
@@ -768,21 +766,21 @@ func normalizeExecutionExposure(value string) string {
 	}
 }
 
-func imageCredentialServer(item *execution.ImageCredential) string {
+func imageCredentialServer(item *cloudmodel.ImageCredential) string {
 	if item == nil {
 		return ""
 	}
 	return item.Server
 }
 
-func imageCredentialUsername(item *execution.ImageCredential) string {
+func imageCredentialUsername(item *cloudmodel.ImageCredential) string {
 	if item == nil {
 		return ""
 	}
 	return item.Username
 }
 
-func imageCredentialPassword(item *execution.ImageCredential) string {
+func imageCredentialPassword(item *cloudmodel.ImageCredential) string {
 	if item == nil {
 		return ""
 	}
