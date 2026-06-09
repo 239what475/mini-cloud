@@ -7,40 +7,37 @@ CREATE TABLE IF NOT EXISTS nodes (
     provider TEXT NOT NULL,
     region TEXT NOT NULL,
     name TEXT NOT NULL,
-    private_ip TEXT NOT NULL,
+    private_ip TEXT NOT NULL DEFAULT '',
     public_ip TEXT NOT NULL DEFAULT '',
-    instance_id TEXT NOT NULL,
+    instance_id TEXT NULL,
     instance_type TEXT NOT NULL,
-    cpu_milli_total INTEGER NOT NULL CHECK (cpu_milli_total > 0),
-    memory_mi_total INTEGER NOT NULL CHECK (memory_mi_total > 0),
+    cpu_milli_total INTEGER NOT NULL DEFAULT 0 CHECK (cpu_milli_total >= 0),
+    memory_mi_total INTEGER NOT NULL DEFAULT 0 CHECK (memory_mi_total >= 0),
     cpu_milli_allocatable INTEGER NOT NULL DEFAULT 0 CHECK (cpu_milli_allocatable >= 0),
     memory_mi_allocatable INTEGER NOT NULL DEFAULT 0 CHECK (memory_mi_allocatable >= 0),
     cpu_milli_allocated INTEGER NOT NULL DEFAULT 0 CHECK (cpu_milli_allocated >= 0),
     memory_mi_allocated INTEGER NOT NULL DEFAULT 0 CHECK (memory_mi_allocated >= 0),
     status TEXT NOT NULL,
+    status_reason TEXT NOT NULL DEFAULT '',
     schedulable BOOLEAN NOT NULL DEFAULT TRUE,
     last_heartbeat_at TIMESTAMPTZ NULL,
+    session_token_prefix TEXT NOT NULL DEFAULT '',
+    session_token_hash TEXT NULL UNIQUE,
+    session_last_used_at TIMESTAMPTZ NULL,
+    session_expires_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (provider, instance_id)
 );
 
-CREATE TABLE IF NOT EXISTS node_agent_session_tokens (
-    id TEXT PRIMARY KEY,
-    node_id TEXT NOT NULL UNIQUE REFERENCES nodes(id) ON DELETE CASCADE,
-    token_prefix TEXT NOT NULL,
-    token_hash TEXT NOT NULL UNIQUE,
-    last_used_at TIMESTAMPTZ NULL,
-    expires_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+CREATE INDEX IF NOT EXISTS idx_nodes_status_created_at
+    ON nodes (status, created_at ASC, id ASC);
 
-CREATE INDEX IF NOT EXISTS idx_node_agent_session_tokens_last_used_at
-    ON node_agent_session_tokens (last_used_at);
+CREATE INDEX IF NOT EXISTS idx_nodes_session_last_used_at
+    ON nodes (session_last_used_at);
 
-CREATE INDEX IF NOT EXISTS idx_node_agent_session_tokens_expires_at
-    ON node_agent_session_tokens (expires_at);
+CREATE INDEX IF NOT EXISTS idx_nodes_session_expires_at
+    ON nodes (session_expires_at);
 
 CREATE TABLE IF NOT EXISTS execution_intents (
     id TEXT PRIMARY KEY,
@@ -81,32 +78,6 @@ CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at
 CREATE INDEX IF NOT EXISTS idx_execution_intents_service_status
     ON execution_intents (service_id, status, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS runtime_nodes (
-    id TEXT PRIMARY KEY,
-    provider TEXT NOT NULL,
-    region TEXT NOT NULL,
-    instance_id TEXT NULL,
-    instance_name TEXT NOT NULL,
-    instance_type TEXT NOT NULL,
-    node_id TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL,
-    status_reason TEXT NOT NULL DEFAULT '',
-    provisioned_at TIMESTAMPTZ NOT NULL,
-    ready_at TIMESTAMPTZ NULL,
-    last_synced_at TIMESTAMPTZ NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (provider, instance_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_runtime_nodes_created_at
-    ON runtime_nodes (created_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS idx_runtime_nodes_status_created_at
-    ON runtime_nodes (status, created_at DESC, id DESC);
-
 -- +goose Down
-DROP TABLE IF EXISTS runtime_nodes;
 DROP TABLE IF EXISTS execution_intents;
-DROP TABLE IF EXISTS node_agent_session_tokens;
 DROP TABLE IF EXISTS nodes;

@@ -79,7 +79,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		CPUMilliAllocated: 1500,
 		MemoryMiCapacity:  8192,
 		MemoryMiAllocated: 2048,
-		Nodes: []model.RuntimeNode{
+		Nodes: []model.PlaneNode{
 			{
 				NodeID:            "node-a",
 				NodeEpoch:         1,

@@ -249,7 +249,7 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 		return nil, status.Error(codes.InvalidArgument, "executionID is required")
 	}
 
-	ack, _, _, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
+	ack, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
 		Status:                req.GetStatus(),
 		Reason:                req.GetReason(),
 		ContainerID:           req.GetContainerId(),

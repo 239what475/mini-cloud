@@ -8,7 +8,7 @@ import (
 
 // ShellQuote 把普通字符串转换成 shell 双引号字面量，返回值包含首尾双引号。
 //
-// 使用场景只限 runtime node bootstrap 模板里的两类位置：
+// 使用场景只限 node bootstrap 模板里的两类位置：
 //  1. shell 变量赋值，例如 AGENT_BINARY_URL={{.AgentBinaryURL}}；
 //  2. 未引用 heredoc 中的 YAML 标量，例如 url: {{.ConnectEndpoint}}。
 //
@@ -55,7 +55,7 @@ func ShellQuoteItems(items []string) []string {
 	return out
 }
 
-// BuildDockerDaemonJSON 生成 runtime node Docker daemon 配置。
+// BuildDockerDaemonJSON 生成 node Docker daemon 配置。
 // 参数说明：mirrors 是要写入 registry-mirrors 的镜像源列表。
 func BuildDockerDaemonJSON(mirrors []string) (string, error) {
 	type dockerDaemonConfig struct {
@@ -85,7 +85,7 @@ const (
 	TagValueManagedBy = "mini-cloud"
 )
 
-// BuildOwnershipTags 构建 runtime node 云资源的标准 ownership 标签。
+// BuildOwnershipTags 构建 node 云资源的标准 ownership 标签。
 // 参数说明：platformName 是平台名称。
 func BuildOwnershipTags(platformName string) map[string]string {
 	return map[string]string{

@@ -337,7 +337,7 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 	})
 }
 
-// injectEgressProxyEnv 向 workload 环境变量注入 runtime node 的统一 HTTP/HTTPS 出口代理。
+// injectEgressProxyEnv 向 workload 环境变量注入 node 的统一 HTTP/HTTPS 出口代理。
 func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string {
 	if !opts.EgressProxyEnabled || strings.TrimSpace(opts.EgressProxyEndpoint) == "" {
 		return env

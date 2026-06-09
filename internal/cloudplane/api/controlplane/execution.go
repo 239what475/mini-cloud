@@ -53,11 +53,11 @@ func (s *ExecutionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 		}
 	}
 
-	result, err := s.store.ApplyExecutionPlan(ctx, input)
+	planID, err := s.store.ApplyExecutionPlan(ctx, input)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.ApplyExecutionPlanResponse{Action: result.Action, PlanId: result.PlanID}, nil
+	return &cloudplanev1.ApplyExecutionPlanResponse{Action: "accepted", PlanId: planID}, nil
 }
 
 func (s *ExecutionServer) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
@@ -68,15 +68,14 @@ func (s *ExecutionServer) DeleteExecutionPlan(ctx context.Context, req *cloudpla
 	if serviceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
-	deleted, err := s.store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+	if err := s.store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
 		ServiceID:         serviceID,
 		ServiceGeneration: req.GetServiceGeneration(),
 		PlanID:            strings.TrimSpace(req.GetPlanId()),
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: deleted}, nil
+	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: true}, nil
 }
 
 func cloneStringMap(input map[string]string) map[string]string {

@@ -1,10 +1,10 @@
-package runtimepool
+package nodeprovider
 
 import (
 	"context"
 )
 
-// CreateRequest 描述 cloud-plane 需要 runtime driver 在云厂商侧创建的 runtime node。
+// CreateRequest 描述 cloud-plane 需要 node provider driver 在云厂商侧创建的 node。
 type CreateRequest struct {
 	// Name 是要创建的云主机名称。
 	Name string
@@ -16,7 +16,7 @@ type CreateRequest struct {
 	MemoryMi int
 }
 
-// CreateResult 描述 runtime driver 创建 runtime node 后返回的可持久化信息。
+// CreateResult 描述 node provider driver 创建 node 后返回的可持久化信息。
 type CreateResult struct {
 	// InstanceID 表示 instance 的唯一标识。
 	InstanceID string `json:"instanceID"`
@@ -26,13 +26,13 @@ type CreateResult struct {
 	InstanceType string `json:"instanceType"`
 }
 
-// DeleteRequest 描述 cloud-plane 需要 runtime driver 在云厂商侧删除的 runtime node。
+// DeleteRequest 描述 cloud-plane 需要 node provider driver 在云厂商侧删除的 node。
 type DeleteRequest struct {
 	// InstanceID 表示要删除的云实例唯一标识。
 	InstanceID string
 }
 
-// Node 表示 runtime driver 从当前云厂商账号和地域中看到的云侧节点实例。
+// Node 表示 node provider driver 从当前云厂商账号和地域中看到的云侧节点实例。
 type Node struct {
 	// InstanceID 表示 instance 的唯一标识。
 	InstanceID string `json:"instanceID"`
@@ -44,8 +44,8 @@ type Node struct {
 	Tags map[string]string `json:"tags"`
 }
 
-// RuntimeDriver 是 cloud-plane 与具体云厂商 runtime node 生命周期能力之间的边界。
-type RuntimeDriver interface {
+// Driver 是 cloud-plane 与具体云厂商 node 生命周期能力之间的边界。
+type Driver interface {
 	Create(ctx context.Context, request CreateRequest) (CreateResult, error)
 	List(ctx context.Context) ([]Node, error)
 	Delete(ctx context.Context, request DeleteRequest) error

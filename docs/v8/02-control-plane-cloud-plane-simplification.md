@@ -40,10 +40,10 @@ control-plane
   管全局 service、resource、调度、状态
 
 aliyun cloud-plane
-  管阿里云上的 runtime nodes 和 node-agents
+  管阿里云上的 nodes 和 node-agents
 
 tencent cloud-plane
-  管腾讯云上的 runtime nodes 和 node-agents
+  管腾讯云上的 nodes 和 node-agents
 ```
 
 cloud-plane 不是无状态代理。它应该保存 plane-local runtime state。
@@ -76,7 +76,7 @@ cloud-plane 是某个云平台/地域的执行控制器，负责：
 - node capacity and runtime inventory
 - execution claim / dispatch
 - execution result report
-- provider runtime node scale out / scale in
+- provider node scale out / scale in
 - plane-local ingress route publishing
 
 cloud-plane 可以有状态，但状态必须是 plane-local state。
@@ -374,13 +374,13 @@ mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service
 ### 阶段 4：切掉 cloud-plane service lifecycle
 
 - cloud-plane 不再写入 service desired / revision / deployment 表。
-- cloud-plane baseline schema 只保留 node、execution intent、runtime node、ingress route、provider-local state。
+- cloud-plane baseline schema 只保留 node、execution intent、ingress route、provider-local state。
 - 旧 cloud-plane service lifecycle Go 包和 store 文件已删除。
 
 ### 阶段 5：清理 schema
 
 - cloud-plane 初始 schema 已移除旧 `services`、`revisions`、`deployments`、`service_desired`、`placement_decisions`、`deployment_executions`、`config_sets`、`secret_sets`、`registry_credentials` 等旧表。
-- runtime node scale-in / node offline / ingress 均基于 execution intent 和 node/runtime-node state。
+- node scale-in / node offline / ingress 均基于 execution intent 和 node state。
 
 ## 验收标准
 
@@ -394,4 +394,4 @@ mini-cloud v8 是 CaaS demo，不提供多副本 scaling 语义。一个 service
 - Web 可以只读 control-plane 得到完整 service 状态。
 - 多 cloud-plane 调度仍可工作。
 - service spec、execution plan、cloud-plane 和 node-agent API 不暴露 replicas。
-- 阿里云和腾讯云 plane 的差异限制在 provider driver、runtime node inventory 和 plane-local execution dispatch。
+- 阿里云和腾讯云 plane 的差异限制在 provider driver、node inventory 和 plane-local execution dispatch。

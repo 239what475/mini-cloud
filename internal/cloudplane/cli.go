@@ -13,7 +13,7 @@ import (
 	cloudplanecontrol "mini-cloud/internal/cloudplane/control"
 	cloudplaneingress "mini-cloud/internal/cloudplane/control/ingress"
 	caddyingress "mini-cloud/internal/cloudplane/infra/ingress/caddy"
-	runtimepoolcloud "mini-cloud/internal/cloudplane/infra/runtimepool/cloud"
+	nodeprovidercloud "mini-cloud/internal/cloudplane/infra/nodeprovider/cloud"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudplanemigrations "mini-cloud/internal/cloudplane/infra/store/migrations"
 	"mini-cloud/internal/common/util"
@@ -68,8 +68,8 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		return err
 	}
 
-	// 根据配置中的云厂商运行时参数创建 runtime driver，用于创建和盘点 runtime node 云资源。
-	driver, err := runtimepoolcloud.NewRuntimeDriver(cfg)
+	// 根据配置中的云厂商运行时参数创建 node provider driver，用于创建和盘点 node 云资源。
+	driver, err := nodeprovidercloud.NewDriver(cfg)
 	if err != nil {
 		return err
 	}
@@ -108,7 +108,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 		ConfigPath:     cfg.Ingress.CaddyConfigPath,
 		ReloadCommand:  cfg.Ingress.CaddyReloadCommand,
 	}))
-	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 runtime node 缩容。
+	// reconcilerManager 负责 cloud-plane 本地后台收敛循环，例如 node 心跳巡检、ingress 发布和 node 缩容。
 	reconcilerManager := cloudplanecontrol.NewManager(logger, stores, driver, ingressController, cfg)
 	// gRPC server 是 cloud-plane 对 control-plane 和 node-agent 暴露的唯一进程入口。
 	grpcServer := cloudplaneapi.NewGRPCServer(cfg, logger, db, stores)

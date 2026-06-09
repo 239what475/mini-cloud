@@ -56,7 +56,7 @@ type RuntimeConfigSnapshot struct {
 	UpdatedAt   time.Time      `json:"updatedAt"`
 }
 
-type RuntimeNode struct {
+type PlaneNode struct {
 	PlaneID           string     `json:"planeID"`
 	NodeID            string     `json:"nodeID"`
 	NodeEpoch         int64      `json:"nodeEpoch"`

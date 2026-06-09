@@ -201,7 +201,7 @@ func (p *serviceControllerPlane) ApplyExecutionPlan(_ context.Context, req *clou
 	defer p.mu.Unlock()
 	p.apply = append(p.apply, req)
 	return &cloudplanev1.ApplyExecutionPlanResponse{
-		Action: "updated",
+		Action: "accepted",
 		PlanId: req.GetPlanId(),
 	}, nil
 }

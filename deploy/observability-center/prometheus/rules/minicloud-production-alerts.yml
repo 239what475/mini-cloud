@@ -37,11 +37,11 @@ groups:
           summary: "存在卡住的 deployment"
           description: "plane {{ $labels.plane }} 上至少有一个 deployment 长时间停留在非终态。"
 
-      - alert: MiniCloudRuntimeNodeBootstrapStuck
-        expr: sum by (plane) (minicloud_runtime_nodes_bootstrap_stuck) > 0
+      - alert: MiniCloudNodeBootstrapStuck
+        expr: sum by (plane) (minicloud_nodes_bootstrap_stuck) > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "存在长时间未完成 bootstrap 的 runtime node"
-          description: "plane {{ $labels.plane }} 上至少有一个 runtime node 超时仍在 provisioning。"
+          summary: "存在长时间未完成 bootstrap 的 node"
+          description: "plane {{ $labels.plane }} 上至少有一个 node 超时仍在 provisioning。"

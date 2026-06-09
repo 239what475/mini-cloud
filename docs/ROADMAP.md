@@ -227,7 +227,7 @@
     - `cloud-plane`
     - 开源 `gateway`
     - 小 `node`
-    - 按需扩出来的更多 `runtime node`
+    - 按需扩出来的更多 `node`
 - `cloud-plane`
   的 northbound 管理接口收成：
   - `gRPC + grpc-gateway`

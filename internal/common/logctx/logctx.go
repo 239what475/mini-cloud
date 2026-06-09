@@ -11,14 +11,13 @@ import (
 const HeaderRequestID = "X-Request-ID"
 
 type Fields struct {
-	PlaneID       string
-	RequestID     string
-	ServiceID     string
-	DeploymentID  string
-	PlanID        string
-	NodeID        string
-	RuntimeNodeID string
-	ExecutionID   string
+	PlaneID      string
+	RequestID    string
+	ServiceID    string
+	DeploymentID string
+	PlanID       string
+	NodeID       string
+	ExecutionID  string
 }
 
 type fieldsKey struct{}
@@ -91,7 +90,6 @@ func (f Fields) Attrs() []any {
 	appendIfNotEmpty("deployment_id", f.DeploymentID)
 	appendIfNotEmpty("plan_id", f.PlanID)
 	appendIfNotEmpty("node_id", f.NodeID)
-	appendIfNotEmpty("runtime_node_id", f.RuntimeNodeID)
 	appendIfNotEmpty("execution_id", f.ExecutionID)
 	return out
 }
@@ -114,9 +112,6 @@ func (f Fields) merge(update Fields) Fields {
 	}
 	if value := strings.TrimSpace(update.NodeID); value != "" {
 		f.NodeID = value
-	}
-	if value := strings.TrimSpace(update.RuntimeNodeID); value != "" {
-		f.RuntimeNodeID = value
 	}
 	if value := strings.TrimSpace(update.ExecutionID); value != "" {
 		f.ExecutionID = value

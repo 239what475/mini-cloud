@@ -15,14 +15,14 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	// 使用真实测试数据库验证 heartbeat 不会用 allocatable 反推 allocated。
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	// 注册一个 runtime node，初始 allocated 为 0。
+	// 注册一个 node，初始 allocated 为 0。
 	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Name:          "runtime-node-a",
+		Name:          "node-a",
 		PrivateIP:     "10.0.0.10",
 		PublicIP:      "203.0.113.10",
-		InstanceID:    "i-runtime-node-a",
+		InstanceID:    "i-node-a",
 		InstanceType:  "ecs.u1-c1m2.large",
 		CPUMilliTotal: 2000,
 		MemoryMiTotal: 4096,
@@ -81,14 +81,14 @@ func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchan
 	// 使用真实测试数据库验证库存字段不变时 cloudmodel.updated_at 不推进。
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	// 注册一个 runtime node，作为两次 heartbeat 的目标。
+	// 注册一个 node，作为两次 heartbeat 的目标。
 	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Name:          "runtime-node-stable",
+		Name:          "node-stable",
 		PrivateIP:     "10.0.0.11",
 		PublicIP:      "203.0.113.11",
-		InstanceID:    "i-runtime-node-stable",
+		InstanceID:    "i-node-stable",
 		InstanceType:  "ecs.u1-c1m2.large",
 		CPUMilliTotal: 2000,
 		MemoryMiTotal: 4096,
@@ -158,10 +158,10 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	registered, err := db.Store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Name:          "runtime-node-stale",
+		Name:          "node-stale",
 		PrivateIP:     "10.0.0.12",
 		PublicIP:      "203.0.113.12",
-		InstanceID:    "i-runtime-node-stale",
+		InstanceID:    "i-node-stale",
 		InstanceType:  "ecs.u1-c1m2.large",
 		CPUMilliTotal: 2000,
 		MemoryMiTotal: 4096,
@@ -201,7 +201,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	if work == nil {
 		t.Fatal("CreateExecutionClaim returned nil work item")
 	}
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, cloudmodel.ReportInput{
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, cloudmodel.ReportInput{
 		Status:        cloudmodel.StatusRunning,
 		Reason:        "execution is healthy",
 		ContainerID:   "ctr-stale-0",

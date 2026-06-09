@@ -400,7 +400,7 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 	out := store.RecordRuntimeInventoryInput{
 		SyncVersion: runtimeInventory.GetSyncVersion(),
 		ObservedAt:  protoTime(runtimeInventory.GetObservedAt()),
-		Nodes:       make([]model.RuntimeNode, 0, len(runtimeInventory.GetNodes())),
+		Nodes:       make([]model.PlaneNode, 0, len(runtimeInventory.GetNodes())),
 	}
 	for _, item := range runtimeInventory.GetNodes() {
 		if item == nil {
@@ -414,7 +414,7 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 		out.CPUMilliAllocated += int(item.GetCpuMilliAllocated())
 		out.MemoryMiCapacity += int(item.GetMemoryMiAllocatable())
 		out.MemoryMiAllocated += int(item.GetMemoryMiAllocated())
-		out.Nodes = append(out.Nodes, model.RuntimeNode{
+		out.Nodes = append(out.Nodes, model.PlaneNode{
 			NodeID:            item.GetNodeId(),
 			NodeEpoch:         item.GetNodeEpoch(),
 			Name:              item.GetName(),

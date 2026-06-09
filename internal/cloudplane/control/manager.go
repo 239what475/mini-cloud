@@ -10,7 +10,7 @@ import (
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	"mini-cloud/internal/cloudplane/control/nodepool"
-	"mini-cloud/internal/cloudplane/infra/runtimepool"
+	"mini-cloud/internal/cloudplane/infra/nodeprovider"
 	"mini-cloud/internal/cloudplane/infra/store"
 )
 
@@ -44,8 +44,8 @@ type Manager struct {
 }
 
 // NewManager 构造 cloud-plane 后台收敛管理器。
-// 参数说明：logger 记录后台循环日志；stores 提供本地状态访问；driver 操作云厂商 runtime node；ingress 发布外置入口路由。
-func NewManager(logger *slog.Logger, stores *store.Store, driver runtimepool.RuntimeDriver, ingress ingressReconciler, cfg cloudplaneconfig.Config) *Manager {
+// 参数说明：logger 记录后台循环日志；stores 提供本地状态访问；driver 操作云厂商 node；ingress 发布外置入口路由。
+func NewManager(logger *slog.Logger, stores *store.Store, driver nodeprovider.Driver, ingress ingressReconciler, cfg cloudplaneconfig.Config) *Manager {
 	// Manager 只保存 execution/node/ingress 需要的控制器；service lifecycle truth 已迁回 control-plane。
 	return &Manager{
 		logger: logger,
@@ -65,8 +65,8 @@ func (m *Manager) Start(ctx context.Context) {
 	m.startLoop(ctx, "node-health", nodeHealthInterval, m.reconcileNodeHealthOnce)
 	// ingress 循环把当前 running backends 发布到外置入口数据面；未启用 ingress 时该循环是 no-op。
 	m.startLoop(ctx, "ingress", fastReconcileInterval, m.reconcileIngressOnce)
-	// runtime-node-pool 循环把弹性 runtime node 池收敛到当前 execution 需求。
-	m.startLoop(ctx, "runtime-node-pool", fastReconcileInterval, m.nodePool.ReconcileOnce)
+	// node-pool 循环把弹性 node 池收敛到当前 execution 需求。
+	m.startLoop(ctx, "node-pool", fastReconcileInterval, m.nodePool.ReconcileOnce)
 }
 
 // Wait 等待已启动的后台控制循环退出。

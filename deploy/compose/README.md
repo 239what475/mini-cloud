@@ -206,7 +206,7 @@ Grafana 默认地址：
 
 - `MiniCloudPlaneOffline`
 - `MiniCloudDeploymentRolloutStuck`
-- `MiniCloudRuntimeNodeBootstrapStuck`
+- `MiniCloudNodeBootstrapStuck`
 
 其中要注意一件事：
 
@@ -224,7 +224,7 @@ Grafana 默认地址：
 开始把三类事件信号切到长期 counter：
 
 - `minicloud_deployment_rollout_outcomes_total`
-- `minicloud_runtime_node_bootstrap_events_total`
+- `minicloud_node_bootstrap_events_total`
 
 这样 `Prometheus`
 就可以直接用：
@@ -282,10 +282,10 @@ sum(increase(minicloud_deployment_rollout_outcomes_total{result="success"}[24h])
 clamp_min(sum(increase(minicloud_deployment_rollout_outcomes_total{result="total"}[24h])), 1)
 ```
 
-最近 30 分钟 runtime node bootstrap 成功率：
+最近 30 分钟 node bootstrap 成功率：
 
 ```promql
-sum(increase(minicloud_runtime_node_bootstrap_events_total{result="ready"}[30m]))
+sum(increase(minicloud_node_bootstrap_events_total{result="ready"}[30m]))
 /
-clamp_min(sum(increase(minicloud_runtime_node_bootstrap_events_total{result="started"}[30m])), 1)
+clamp_min(sum(increase(minicloud_node_bootstrap_events_total{result="started"}[30m])), 1)
 ```

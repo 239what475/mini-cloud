@@ -70,15 +70,15 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		return nil, fmt.Errorf("%w: %v", errDatabaseUnavailable, err)
 	}
 
-	reliability, err := s.store.GetPlatformReliabilitySnapshot(ctx)
+	alertSignal, err := s.store.GetAlertSignal(ctx)
 	if err != nil {
-		logger.Error("load cloud-plane reliability for snapshot failed", "error", err)
-		return nil, fmt.Errorf("load platform reliability: %w", err)
+		logger.Error("load cloud-plane alert signal for snapshot failed", "error", err)
+		return nil, fmt.Errorf("load alert signal: %w", err)
 	}
 
 	nodes, err := s.store.ListNodes(ctx)
 	if err != nil {
-		logger.Error("load runtime nodes for snapshot failed", "error", err)
+		logger.Error("load nodes for snapshot failed", "error", err)
 		return nil, fmt.Errorf("load nodes: %w", err)
 	}
 
@@ -94,13 +94,6 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		return nil, fmt.Errorf("build runtime config snapshot: %w", err)
 	}
 
-	alertsFiring := 0
-	for _, alert := range reliability.Alerts {
-		if alert.State == "firing" {
-			alertsFiring++
-		}
-	}
-
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:       s.config.Plane.Name,
@@ -114,7 +107,7 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 			Database:  "ok",
 		},
 		Reliability: &cloudplanev1.PlaneReliability{
-			AlertsFiring: int32(alertsFiring),
+			AlertsFiring: int32(alertSignal.AlertsFiring),
 		},
 		RuntimeInventory: protoRuntimeInventory(checkedAt, nodes),
 		RuntimeConfig:    runtimeConfig,

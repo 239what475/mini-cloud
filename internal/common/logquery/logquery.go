@@ -57,17 +57,16 @@ type QueryInput struct {
 }
 
 type Filters struct {
-	Component     string
-	PlatformName  string
-	PlaneID       string
-	ServiceID     string
-	DeploymentID  string
-	NodeID        string
-	RuntimeNodeID string
-	ExecutionID   string
-	RequestID     string
-	Level         string
-	Contains      string
+	Component    string
+	PlatformName string
+	PlaneID      string
+	ServiceID    string
+	DeploymentID string
+	NodeID       string
+	ExecutionID  string
+	RequestID    string
+	Level        string
+	Contains     string
 }
 
 type Result struct {
@@ -290,7 +289,6 @@ func buildLogQL(filters Filters) string {
 	appendParsedFilter(&builder, "service_id", filters.ServiceID)
 	appendParsedFilter(&builder, "deployment_id", filters.DeploymentID)
 	appendParsedFilter(&builder, "node_id", filters.NodeID)
-	appendParsedFilter(&builder, "runtime_node_id", filters.RuntimeNodeID)
 	appendParsedFilter(&builder, "execution_id", filters.ExecutionID)
 	appendParsedFilter(&builder, "request_id", filters.RequestID)
 	appendParsedFilter(&builder, "level", strings.ToUpper(strings.TrimSpace(filters.Level)))

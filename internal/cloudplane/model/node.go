@@ -9,6 +9,8 @@ import (
 )
 
 const (
+	// StatusProvisioning 表示 cloud-plane 正在为 pending workload 创建云主机，node-agent 尚未注册。
+	StatusProvisioning = "provisioning"
 	// StatusRegistering 表示 node-agent 已开始注册但尚未 ready。
 	StatusRegistering = "registering"
 	// StatusReady 表示 node 从健康状态上已 ready；是否可调度还需结合 schedulable 和资源余量判断。
@@ -19,6 +21,8 @@ const (
 	StatusDraining = "draining"
 	// StatusOffline 表示 node 心跳超时或被判定离线。
 	StatusOffline = "offline"
+	// StatusDeleted 表示底层云主机已删除，node 只保留历史状态。
+	StatusDeleted = "deleted"
 )
 
 var (
@@ -53,10 +57,10 @@ var (
 	// ErrInvalidRunningContainers 表示运行中容器数量不能为负数。
 	ErrInvalidRunningContainers = errors.New("runningContainers must be greater than or equal to 0")
 	// ErrInvalidStatus 表示节点状态不属于允许集合。
-	ErrInvalidStatus = errors.New("status must be one of registering, ready, not_ready, draining, offline")
+	ErrInvalidStatus = errors.New("status must be one of provisioning, registering, ready, not_ready, draining, offline, deleted")
 )
 
-// Node 描述 cloud-plane 管理的 runtime node 状态。
+// Node 描述一台 cloud-plane 可用于运行 workload 的机器。
 type Node struct {
 	// ID 是 node 记录的唯一标识。
 	ID string `json:"id"`
@@ -88,6 +92,8 @@ type Node struct {
 	MemoryMiAllocated int `json:"memoryMiAllocated"`
 	// Status 是 node 当前状态。
 	Status string `json:"status"`
+	// StatusReason 记录状态变化或失败原因。
+	StatusReason string `json:"statusReason"`
 	// Schedulable 表示节点是否允许接受新的 workload 调度。
 	Schedulable bool `json:"schedulable"`
 	// LastHeartbeatAt 是 cloud-plane 最近一次接收到该 node 心跳的时间。
@@ -96,6 +102,37 @@ type Node struct {
 	CreatedAt time.Time `json:"createdAt"`
 	// UpdatedAt 是资源最近更新时间。
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ProvisioningInput 是 cloud-plane 自动扩容时创建 node 记录所需的输入。
+type ProvisioningInput struct {
+	// Provider 表示云厂商标识。
+	Provider string
+	// Region 是 node 所在地域。
+	Region string
+	// Name 是将要创建的云主机名称。
+	Name string
+	// InstanceType 是云厂商实例规格。
+	InstanceType string
+	// StatusReason 记录创建该 node 的原因。
+	StatusReason string
+}
+
+// Validate 校验 provisioning node 输入。
+func (in ProvisioningInput) Validate() error {
+	if strings.TrimSpace(in.Provider) == "" {
+		return ErrProviderRequired
+	}
+	if strings.TrimSpace(in.Region) == "" {
+		return ErrRegionRequired
+	}
+	if strings.TrimSpace(in.Name) == "" {
+		return ErrNodeNameRequired
+	}
+	if strings.TrimSpace(in.InstanceType) == "" {
+		return ErrInstanceTypeRequired
+	}
+	return nil
 }
 
 // HeartbeatSummary 是 node-agent 最近一次心跳上报摘要。
@@ -170,7 +207,7 @@ func (in RegisterInput) Validate() error {
 	if strings.TrimSpace(in.Provider) == "" {
 		return ErrProviderRequired
 	}
-	// region 用于 scheduler 按 service region 过滤 runtime node。
+	// region 用于后续按地域排查和扩容。
 	if strings.TrimSpace(in.Region) == "" {
 		return ErrRegionRequired
 	}
@@ -194,7 +231,7 @@ func (in RegisterInput) Validate() error {
 	if strings.TrimSpace(in.InstanceID) == "" {
 		return ErrInstanceIDRequired
 	}
-	// instanceType 用于平台视图和 runtime node 规格排查。
+	// instanceType 用于平台视图和节点规格排查。
 	if strings.TrimSpace(in.InstanceType) == "" {
 		return ErrInstanceTypeRequired
 	}
@@ -259,7 +296,7 @@ func (in HeartbeatInput) Validate() error {
 // IsStatus 判断节点状态是否属于当前允许值。
 func IsNodeStatus(status string) bool {
 	switch status {
-	case StatusRegistering, StatusReady, StatusNotReady, StatusDraining, StatusOffline:
+	case StatusProvisioning, StatusRegistering, StatusReady, StatusNotReady, StatusDraining, StatusOffline, StatusDeleted:
 		return true
 	default:
 		return false

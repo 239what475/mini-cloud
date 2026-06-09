@@ -42,9 +42,6 @@ var (
 )
 
 const (
-	PlanActionCreated = "created"
-	PlanActionUpdated = "updated"
-
 	WorkActionRun    = "run"
 	WorkActionDelete = "delete"
 )
@@ -64,11 +61,6 @@ type PlanInput struct {
 	ReadinessPath     string               `json:"readinessPath"`
 	InstanceClass     string               `json:"instanceClass"`
 	Exposure          string               `json:"exposure"`
-}
-
-type PlanResult struct {
-	Action string `json:"action"`
-	PlanID string `json:"planID"`
 }
 
 type ExecutionSnapshot struct {

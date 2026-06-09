@@ -13,11 +13,11 @@ groups:
           /
           clamp_min(sum(minicloud_slo_window_events{id="worker-readiness",result="total"}), 1)
 
-      - record: minicloud:runtime_node_bootstrap_success_30m:global_ratio
+      - record: minicloud:node_bootstrap_success_30m:global_ratio
         expr: |
-          sum(increase(minicloud_runtime_node_bootstrap_events_total{result="ready"}[30m]))
+          sum(increase(minicloud_node_bootstrap_events_total{result="ready"}[30m]))
           /
-          clamp_min(sum(increase(minicloud_runtime_node_bootstrap_events_total{result="started"}[30m])), 1)
+          clamp_min(sum(increase(minicloud_node_bootstrap_events_total{result="started"}[30m])), 1)
 
   - name: minicloud-alerts
     rules:
@@ -39,11 +39,11 @@ groups:
           summary: "mini-cloud 存在长时间卡住的 deployment"
           description: "{{ $labels.job }} / {{ $labels.instance }} 上至少有一个 deployment 长时间停留在非终态。"
 
-      - alert: MiniCloudRuntimeNodeBootstrapStuck
-        expr: minicloud_runtime_nodes_bootstrap_stuck > 0
+      - alert: MiniCloudNodeBootstrapStuck
+        expr: minicloud_nodes_bootstrap_stuck > 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "mini-cloud 存在长时间未完成 bootstrap 的 runtime node"
-          description: "{{ $labels.job }} / {{ $labels.instance }} 上至少有一个 runtime node 超过阈值仍停留在 provisioning。"
+          summary: "mini-cloud 存在长时间未完成 bootstrap 的 node"
+          description: "{{ $labels.job }} / {{ $labels.instance }} 上至少有一个 node 超过阈值仍停留在 provisioning。"

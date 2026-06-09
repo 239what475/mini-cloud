@@ -18,7 +18,7 @@ type RecordRuntimeInventoryInput struct {
 	CPUMilliAllocated int
 	MemoryMiCapacity  int
 	MemoryMiAllocated int
-	Nodes             []model.RuntimeNode
+	Nodes             []model.PlaneNode
 }
 
 func (in RecordRuntimeInventoryInput) resolvedObservedAt(now time.Time) time.Time {
@@ -87,14 +87,14 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 		return fmt.Errorf("update plane last inventory version: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM fleet_plane_runtime_nodes WHERE plane_id = $1`, planeID); err != nil {
-		return fmt.Errorf("delete previous plane runtime nodes: %w", err)
+	if _, err := tx.ExecContext(ctx, `DELETE FROM fleet_plane_nodes WHERE plane_id = $1`, planeID); err != nil {
+		return fmt.Errorf("delete previous plane nodes: %w", err)
 	}
 
 	for _, item := range input.Nodes {
 		lastHeartbeatAt := nullTime(item.LastHeartbeatAt)
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO fleet_plane_runtime_nodes (
+			INSERT INTO fleet_plane_nodes (
 				plane_id,
 				node_id,
 				node_epoch,
@@ -131,7 +131,7 @@ func (s *Store) ReplacePlaneRuntimeInventory(ctx context.Context, planeID string
 			lastHeartbeatAt,
 			observedAt,
 		); err != nil {
-			return fmt.Errorf("insert plane runtime node: %w", err)
+			return fmt.Errorf("insert plane node: %w", err)
 		}
 	}
 

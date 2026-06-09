@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
 // ErrNodeAgentSessionTokenNotFound 表示 node-agent session token 不存在、为空或已过期。
@@ -27,7 +29,6 @@ type NodeAgentSessionTokenRecord struct {
 // UpsertNodeAgentSessionToken 写入或轮换 node-agent session token 元数据和 token hash。
 // 参数说明：ctx 控制数据库请求生命周期；record 是由 node-agent control 层生成好的持久化字段。
 func (s *Store) UpsertNodeAgentSessionToken(ctx context.Context, record NodeAgentSessionTokenRecord) error {
-	// store 只持久化 hash/prefix，不生成明文 session token。
 	if strings.TrimSpace(record.NodeID) == "" {
 		return ErrNodeNotFound
 	}
@@ -38,31 +39,28 @@ func (s *Store) UpsertNodeAgentSessionToken(ctx context.Context, record NodeAgen
 		return errors.New("node agent session token prefix is required")
 	}
 
-	// INSERT 路径需要新 ID；ON CONFLICT UPDATE 路径不会使用该 ID。
-	id, err := newID("nas")
-	if err != nil {
-		return err
+	var expiresAt any
+	if record.ExpiresAt != nil && !record.ExpiresAt.IsZero() {
+		expiresAt = record.ExpiresAt.UTC()
 	}
 
-	// 每个 node 只保留一个 session token；重复签发会覆盖旧 token 并清空 last_used_at。
-	if _, err := s.db.ExecContext(ctx, `
-		INSERT INTO node_agent_session_tokens (
-			id,
-			node_id,
-			token_prefix,
-			token_hash,
-			expires_at
-		)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (node_id) DO UPDATE
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE nodes
 		SET
-			token_prefix = EXCLUDED.token_prefix,
-			token_hash = EXCLUDED.token_hash,
-			expires_at = EXCLUDED.expires_at,
-			last_used_at = NULL,
+			session_token_prefix = $2,
+			session_token_hash = $3,
+			session_expires_at = $4,
+			session_last_used_at = NULL,
 			updated_at = now()
-	`, id, strings.TrimSpace(record.NodeID), strings.TrimSpace(record.TokenPrefix), strings.TrimSpace(record.TokenHash), nullableTime(record.ExpiresAt)); err != nil {
+		WHERE id = $1
+	`, strings.TrimSpace(record.NodeID), strings.TrimSpace(record.TokenPrefix), strings.TrimSpace(record.TokenHash), expiresAt)
+	if err != nil {
 		return fmt.Errorf("upsert node agent session token: %w", err)
+	}
+	if affected, err := result.RowsAffected(); err != nil {
+		return fmt.Errorf("read node agent session token update result: %w", err)
+	} else if affected == 0 {
+		return ErrNodeNotFound
 	}
 	return nil
 }
@@ -76,17 +74,17 @@ func (s *Store) ResolveNodeAgentSessionTokenByHash(ctx context.Context, tokenHas
 		return "", ErrNodeAgentSessionTokenNotFound
 	}
 
-	// 命中未过期 token 后刷新 last_used_at，并返回绑定的 node_id。
 	var nodeID string
 	err := s.db.QueryRowContext(ctx, `
-		UPDATE node_agent_session_tokens
+		UPDATE nodes
 		SET
-			last_used_at = now(),
+			session_last_used_at = now(),
 			updated_at = now()
-		WHERE token_hash = $1
-		  AND (expires_at IS NULL OR expires_at > now())
-		RETURNING node_id
-	`, trimmed).Scan(&nodeID)
+		WHERE session_token_hash = $1
+		  AND (session_expires_at IS NULL OR session_expires_at > now())
+		  AND status <> $2
+		RETURNING id
+	`, trimmed, cloudmodel.StatusDeleted).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// 未命中 hash 或 token 已过期时都返回同一个认证失败错误。

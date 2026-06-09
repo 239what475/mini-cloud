@@ -58,7 +58,6 @@ Web 当前主要由 `web/src/App.tsx` 驱动。
 - platform service accounts
 - logs
 - inventory
-- runtime node pools
 - planes
 - plane registration / sync / capacity snapshots
 - direct control deploy
@@ -135,7 +134,6 @@ minicloud --token "$MINICLOUD_ADMIN_TOKEN" service list
 minicloud config-set apply -f config-set.yaml
 minicloud secret-set apply -f secret-set.yaml
 minicloud service apply -f service.yaml
-minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 ```
 
 设计约定：
@@ -169,7 +167,6 @@ minicloud runtime-node-pool apply -f runtime-node-pool.yaml
 ### 控制面运维级
 
 - `plane`
-- `runtime-node-pool`
 - `inventory`
 - `incident`
 - `service-account`
@@ -299,22 +296,6 @@ minicloud plane capacity-snapshot list <plane>
 
 `plane apply` 创建或更新 plane 连接配置，`plane.yaml` 必须包含 `southboundToken`。plane 状态和 runtime inventory 由 control-plane 后台同步循环刷新，不提供手动 sync / operation API。
 
-### Runtime Node Pool
-
-```bash
-minicloud runtime-node-pool list
-minicloud runtime-node-pool get <plane>
-minicloud runtime-node-pool apply -f runtime-node-pool.yaml
-minicloud runtime-node-pool delete <plane>
-```
-
-映射：
-
-- `GET /api/v1/control/runtime-node-pools`
-- `GET /api/v1/control/planes/{planeID}/runtime-node-pool`
-- `PUT /api/v1/control/planes/{planeID}/runtime-node-pool`
-- `DELETE /api/v1/control/planes/{planeID}/runtime-node-pool`
-
 ### Inventory
 
 ```bash
@@ -417,7 +398,7 @@ minicloud plane delete
 验收标准：
 
 - 能完成当前 demo 保留的破坏性运维操作。
-- 不为 CLI 单独补已删除的 runtime-node-pool / incident / plane operation API。
+- 不为 CLI 单独补已删除的 incident / plane operation API。
 
 ### 阶段 4：CLI 完善和文档收敛
 
@@ -444,6 +425,6 @@ minicloud plane delete
 
 - `service retry` 是否应该保留；当前 router 没有 `/actions/retry`。
 - `service rollback` 不进入 v8 核心能力；需要恢复旧版本时重新 apply 旧 spec。
-- `node drain` 不进入当前 control-plane API；runtime node 维护由 cloud-plane 内部能力处理，不提供 control-plane plane operation API。
+- `node drain` 不进入当前 control-plane API；node 维护由 cloud-plane 内部能力处理，不提供 control-plane plane operation API。
 
 这些缺口不阻塞 v8 文档，但会影响 CLI 写操作实现顺序。

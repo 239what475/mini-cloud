@@ -19,7 +19,7 @@ const (
 	NodeAgentWorkIntervalSeconds      = 5
 	NodeAgentHostPortMin              = 30000
 	NodeAgentHostPortMax              = 60999
-	RuntimeNodeNameSuffix             = "-runtime-node"
+	NodeNameSuffix                    = "-node"
 	CaddyListenHTTPAddr               = "0.0.0.0:80"
 )
 

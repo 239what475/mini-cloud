@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS fleet_plane_runtime_inventory_states (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS fleet_plane_runtime_nodes (
+CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
     plane_id TEXT NOT NULL REFERENCES fleet_planes(id) ON DELETE CASCADE,
     node_id TEXT NOT NULL,
     node_epoch BIGINT NOT NULL DEFAULT 1,
@@ -117,8 +117,8 @@ CREATE TABLE IF NOT EXISTS fleet_plane_runtime_nodes (
     PRIMARY KEY (plane_id, node_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fleet_plane_runtime_nodes_plane_status
-    ON fleet_plane_runtime_nodes (plane_id, status, schedulable);
+CREATE INDEX IF NOT EXISTS idx_fleet_plane_nodes_plane_status
+    ON fleet_plane_nodes (plane_id, status, schedulable);
 
 CREATE TABLE IF NOT EXISTS fleet_plane_runtime_config_states (
     plane_id TEXT PRIMARY KEY REFERENCES fleet_planes(id) ON DELETE CASCADE,
@@ -130,8 +130,8 @@ CREATE TABLE IF NOT EXISTS fleet_plane_runtime_config_states (
 
 -- +goose Down
 DROP TABLE IF EXISTS fleet_plane_runtime_config_states;
-DROP INDEX IF EXISTS idx_fleet_plane_runtime_nodes_plane_status;
-DROP TABLE IF EXISTS fleet_plane_runtime_nodes;
+DROP INDEX IF EXISTS idx_fleet_plane_nodes_plane_status;
+DROP TABLE IF EXISTS fleet_plane_nodes;
 DROP TABLE IF EXISTS fleet_plane_runtime_inventory_states;
 DROP INDEX IF EXISTS idx_fleet_services_created_at;
 DROP TABLE IF EXISTS fleet_services;

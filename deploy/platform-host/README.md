@@ -74,8 +74,8 @@
 
 v7 当前架构要求 ingress/egress 数据面都外置：
 
-- Caddy 负责 `CDN / 用户 -> runtime node privateIP:hostPort`。
-- Tinyproxy 负责 `runtime node -> Internet`。
+- Caddy 负责 `CDN / 用户 -> node privateIP:hostPort`。
+- Tinyproxy 负责 `node -> Internet`。
 - cloud-plane 只生成 Caddyfile 并执行 reload，不内嵌 Caddy。
 
 本目录里的 Postgres compose 只覆盖共享数据库资产；真实 v7 platform host 还必须通过 Terraform lab 或手工 systemd/docker 步骤安装并启动 Caddy/Tinyproxy。

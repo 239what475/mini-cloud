@@ -14,7 +14,7 @@ import (
 func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	runtimeNode := seedReadyNode(t, ctx, db, "runtime-node-plan-inputs", "i-runtime-node-plan-inputs")
+	node := seedReadyNode(t, ctx, db, "node-plan-inputs", "i-node-plan-inputs")
 
 	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            "svc-demo-g1",
@@ -38,7 +38,7 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
 
-	work, err := db.Store.CreateExecutionClaim(ctx, runtimeNode.ID)
+	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim returned error: %v", err)
 	}
@@ -66,7 +66,7 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	runtimeNode := seedReadyNode(t, ctx, db, "runtime-node-delete", "i-runtime-node-delete")
+	node := seedReadyNode(t, ctx, db, "node-delete", "i-node-delete")
 
 	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
 		PlanID:            "svc-delete-g1",
@@ -82,7 +82,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
 
-	runWork, err := db.Store.CreateExecutionClaim(ctx, runtimeNode.ID)
+	runWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim(run) returned error: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	if runWork.Action != cloudmodel.WorkActionRun {
 		t.Fatalf("run action = %q, want %q", runWork.Action, cloudmodel.WorkActionRun)
 	}
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNode.ID, runWork.ExecutionID, cloudmodel.ReportInput{
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, runWork.ExecutionID, cloudmodel.ReportInput{
 		Status:        cloudmodel.StatusRunning,
 		Reason:        "execution is healthy",
 		ContainerID:   "ctr-delete-0",
@@ -102,19 +102,15 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("UpdateExecutionFromNodeReport(running) returned error: %v", err)
 	}
 
-	deleted, err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
 		ServiceID:         "svc-delete",
 		ServiceGeneration: 2,
 		PlanID:            "svc-delete-delete-g2",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
 	}
-	if !deleted {
-		t.Fatalf("DeleteExecutionPlansForService deleted = false, want true")
-	}
 
-	deleteWork, err := db.Store.CreateExecutionClaim(ctx, runtimeNode.ID)
+	deleteWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim(delete) returned error: %v", err)
 	}
@@ -124,14 +120,14 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	if deleteWork.Action != cloudmodel.WorkActionDelete {
 		t.Fatalf("delete action = %q, want %q", deleteWork.Action, cloudmodel.WorkActionDelete)
 	}
-	if deleteWork.NodeID != runtimeNode.ID {
-		t.Fatalf("delete nodeID = %q, want original node %q", deleteWork.NodeID, runtimeNode.ID)
+	if deleteWork.NodeID != node.ID {
+		t.Fatalf("delete nodeID = %q, want original node %q", deleteWork.NodeID, node.ID)
 	}
 	if deleteWork.ContainerID != "ctr-delete-0" || deleteWork.ContainerName != runWork.ContainerName || deleteWork.HostPort != 18080 {
 		t.Fatalf("delete work runtime fields = containerID %q containerName %q hostPort %d", deleteWork.ContainerID, deleteWork.ContainerName, deleteWork.HostPort)
 	}
 
-	if _, _, _, err := db.Store.UpdateExecutionFromNodeReport(ctx, runtimeNode.ID, deleteWork.ExecutionID, cloudmodel.ReportInput{
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, deleteWork.ExecutionID, cloudmodel.ReportInput{
 		Status:        cloudmodel.StatusSuperseded,
 		Reason:        "service deletion stopped container",
 		ContainerID:   deleteWork.ContainerID,
@@ -157,7 +153,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, name string, instanceID string) cloudmodel.Node {
 	t.Helper()
 
-	runtimeNode, err := db.Store.RegisterNode(ctx, cloudmodel.RegisterInput{
+	node, err := db.Store.RegisterNode(ctx, cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
 		Name:          name,
@@ -171,7 +167,7 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 	if err != nil {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
-	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, runtimeNode.ID, cloudmodel.HeartbeatInput{
+	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
 		ReportedAt:          time.Now().UTC(),
 		AgentVersion:        "test-agent",
 		CPUMilliAllocatable: 1500,
@@ -181,7 +177,7 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
-	return runtimeNode
+	return node
 }
 
 func findExecutionSnapshot(items []cloudmodel.ExecutionSnapshot, planID string) *cloudmodel.ExecutionSnapshot {

@@ -82,7 +82,7 @@ func (s *stubControlPlaneSouthbound) ApplyExecutionPlan(ctx context.Context, req
 		s.t.Fatalf("unexpected plan id: %q", req.GetPlanId())
 	}
 	return &cloudplanev1.ApplyExecutionPlanResponse{
-		Action: "updated",
+		Action: "accepted",
 		PlanId: req.GetPlanId(),
 	}, nil
 }
@@ -177,7 +177,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
-	if applyResp.GetAction() != "updated" || applyResp.GetPlanId() != "svc-1-g12" {
+	if applyResp.GetAction() != "accepted" || applyResp.GetPlanId() != "svc-1-g12" {
 		t.Fatalf("unexpected execution plan response: %+v", applyResp)
 	}
 

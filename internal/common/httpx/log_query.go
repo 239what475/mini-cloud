@@ -55,17 +55,16 @@ func ParseLogQueryInput(r *http.Request) (logquery.QueryInput, error) {
 	}
 
 	filters := logquery.Filters{
-		Component:     strings.TrimSpace(query.Get("component")),
-		PlatformName:  strings.TrimSpace(query.Get("platformName")),
-		PlaneID:       strings.TrimSpace(query.Get("planeID")),
-		ServiceID:     strings.TrimSpace(query.Get("serviceID")),
-		DeploymentID:  strings.TrimSpace(query.Get("deploymentID")),
-		NodeID:        strings.TrimSpace(query.Get("nodeID")),
-		RuntimeNodeID: strings.TrimSpace(query.Get("runtimeNodeID")),
-		ExecutionID:   strings.TrimSpace(query.Get("executionID")),
-		RequestID:     strings.TrimSpace(query.Get("requestID")),
-		Level:         strings.TrimSpace(query.Get("level")),
-		Contains:      strings.TrimSpace(query.Get("contains")),
+		Component:    strings.TrimSpace(query.Get("component")),
+		PlatformName: strings.TrimSpace(query.Get("platformName")),
+		PlaneID:      strings.TrimSpace(query.Get("planeID")),
+		ServiceID:    strings.TrimSpace(query.Get("serviceID")),
+		DeploymentID: strings.TrimSpace(query.Get("deploymentID")),
+		NodeID:       strings.TrimSpace(query.Get("nodeID")),
+		ExecutionID:  strings.TrimSpace(query.Get("executionID")),
+		RequestID:    strings.TrimSpace(query.Get("requestID")),
+		Level:        strings.TrimSpace(query.Get("level")),
+		Contains:     strings.TrimSpace(query.Get("contains")),
 	}
 
 	return logquery.QueryInput{

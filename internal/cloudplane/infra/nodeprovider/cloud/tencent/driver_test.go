@@ -66,25 +66,25 @@ func TestParseRuntimeConfigRequiresTencentFields(t *testing.T) {
 	}
 }
 
-// TestBuildRuntimeNodeUserDataDoesNotTraceBootstrapToken 验证 tencent user-data 不通过 xtrace 暴露 bootstrap token，并限制配置文件权限。
-func TestBuildRuntimeNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
+// TestBuildNodeUserDataDoesNotTraceBootstrapToken 验证 tencent user-data 不通过 xtrace 暴露 bootstrap token，并限制配置文件权限。
+func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	t.Parallel()
 
 	// 使用最小 driver 配置构造 user-data，不触发真实腾讯云 SDK 调用。
-	driver := runtimeDriver{
+	driver := providerDriver{
 		config: RuntimeConfig{
 			CloudPlane: testRuntimeConfig(nil),
 		},
 	}
 
 	// 生成 user-data 后先解 base64，检查脚本内容安全属性。
-	script, err := driver.buildRuntimeNodeUserData("runtime-node-a", instanceTypeCapacity{
+	script, err := driver.buildNodeUserData("node-a", instanceTypeCapacity{
 		instanceType: "S5.MEDIUM4",
 		cpuMilli:     2000,
 		memoryMi:     4096,
 	})
 	if err != nil {
-		t.Fatalf("buildRuntimeNodeUserData returned error: %v", err)
+		t.Fatalf("buildNodeUserData returned error: %v", err)
 	}
 	decodedScript, err := base64.StdEncoding.DecodeString(script)
 	if err != nil {
@@ -93,17 +93,17 @@ func TestBuildRuntimeNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	script = string(decodedScript)
 	// user-data 不能开启 xtrace，否则 bootstrap token 可能出现在 cloud-init 日志。
 	if strings.Contains(script, "set -x") || strings.Contains(script, "set -eux") {
-		t.Fatalf("runtime node user-data enables xtrace")
+		t.Fatalf("node user-data enables xtrace")
 	}
 	// node-agent 配置包含 bootstrap token，文件权限必须限制为 owner 可读写。
 	if !strings.Contains(script, "chmod 0600 \"$INSTALL_ROOT/node-agent.yaml\"") {
-		t.Fatalf("runtime node user-data does not restrict node-agent.yaml permissions")
+		t.Fatalf("node user-data does not restrict node-agent.yaml permissions")
 	}
 	if !strings.Contains(script, "http://metadata.tencentyun.com/latest/meta-data") || !strings.Contains(script, "local-ipv4") {
-		t.Fatalf("tencent runtime node user-data does not contain tencent metadata flow")
+		t.Fatalf("tencent node user-data does not contain tencent metadata flow")
 	}
 	if strings.Contains(script, "100.100.100.200") || strings.Contains(script, "X-aliyun-ecs-metadata-token") {
-		t.Fatalf("tencent runtime node user-data contains aliyun metadata flow")
+		t.Fatalf("tencent node user-data contains aliyun metadata flow")
 	}
 	cmd := exec.Command("bash", "-n")
 	cmd.Stdin = strings.NewReader(script)
@@ -112,9 +112,9 @@ func TestBuildRuntimeNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	}
 }
 
-// TestBuildRuntimeNodeHostName 验证 tencent runtime node hostname 长度限制。
-func TestBuildRuntimeNodeHostName(t *testing.T) {
-	got := buildRuntimeNodeHostName("mini-cloud-runtime-node-super-long-host-name-for-tencent-provider-test")
+// TestBuildNodeHostName 验证 tencent node hostname 长度限制。
+func TestBuildNodeHostName(t *testing.T) {
+	got := buildNodeHostName("mini-cloud-node-super-long-host-name-for-tencent-provider-test")
 	if len(got) > 60 {
 		t.Fatalf("host name length = %d, want <= 60", len(got))
 	}

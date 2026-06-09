@@ -17,13 +17,13 @@ func TestIssueNodeAgentSessionTokenReplacesPreviousToken(t *testing.T) {
 	// 使用真实测试数据库验证 session token 的唯一有效 token 语义。
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	// 先注册 runtime node，后续 session token 都绑定到该 node。
+	// 先注册 node，后续 session token 都绑定到该 node。
 	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Name:          "runtime-node-token-test",
+		Name:          "node-token-test",
 		PrivateIP:     "10.0.0.21",
-		InstanceID:    "i-runtime-node-token-test",
+		InstanceID:    "i-node-token-test",
 		InstanceType:  "ecs.u1-c1m1.large",
 		CPUMilliTotal: 2000,
 		MemoryMiTotal: 4096,
@@ -75,13 +75,13 @@ func TestIssueNodeAgentSessionTokenExpires(t *testing.T) {
 	// 使用真实测试数据库验证过期 token 不可解析。
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	// 先注册 runtime node，作为 token 绑定对象。
+	// 先注册 node，作为 token 绑定对象。
 	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
 		Provider:      "aliyun",
 		Region:        "cn-beijing",
-		Name:          "runtime-node-token-expiry-test",
+		Name:          "node-token-expiry-test",
 		PrivateIP:     "10.0.0.22",
-		InstanceID:    "i-runtime-node-token-expiry-test",
+		InstanceID:    "i-node-token-expiry-test",
 		InstanceType:  "ecs.u1-c1m1.large",
 		CPUMilliTotal: 2000,
 		MemoryMiTotal: 4096,

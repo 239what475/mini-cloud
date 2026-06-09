@@ -41,34 +41,16 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 
 	// 锁定所有心跳过期、尚未 offline/draining 的节点。
 	rows, err := tx.QueryContext(ctx, `
-		SELECT
-			id,
-			provider,
-			region,
-			name,
-			private_ip,
-			public_ip,
-			instance_id,
-			instance_type,
-			cpu_milli_total,
-			memory_mi_total,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			cpu_milli_allocated,
-			memory_mi_allocated,
-			status,
-			schedulable,
-			last_heartbeat_at,
-			created_at,
-			updated_at
+		SELECT `+nodeSelectColumns+`
 		FROM nodes
 		WHERE last_heartbeat_at IS NOT NULL
 		  AND last_heartbeat_at < $1
 		  AND status <> $2
 		  AND status <> $3
+		  AND status <> $4
 		ORDER BY last_heartbeat_at ASC, id ASC
 		FOR UPDATE
-	`, cutoffTime, cloudmodel.StatusOffline, cloudmodel.StatusDraining)
+	`, cutoffTime, cloudmodel.StatusOffline, cloudmodel.StatusDraining, cloudmodel.StatusDeleted)
 	if err != nil {
 		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("query stale nodes: %w", err)
 	}
@@ -100,30 +82,12 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 			UPDATE nodes
 			SET
 				status = $2,
+				status_reason = $3,
 				schedulable = FALSE,
 				updated_at = now()
 			WHERE id = $1
-			RETURNING
-				id,
-				provider,
-				region,
-				name,
-				private_ip,
-				public_ip,
-				instance_id,
-				instance_type,
-				cpu_milli_total,
-				memory_mi_total,
-				cpu_milli_allocatable,
-				memory_mi_allocatable,
-				cpu_milli_allocated,
-				memory_mi_allocated,
-				status,
-				schedulable,
-				last_heartbeat_at,
-				created_at,
-				updated_at
-		`, staleNode.ID, cloudmodel.StatusOffline)
+			RETURNING `+nodeSelectColumns+`
+		`, staleNode.ID, cloudmodel.StatusOffline, "node heartbeat timed out")
 
 		updatedNode, err := scanNode(updatedRow)
 		if err != nil {

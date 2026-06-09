@@ -85,7 +85,7 @@ func TestValidateAcceptsHTTPNodeAgentConnectEndpoint(t *testing.T) {
 func TestValidateRejectsLocalProvider(t *testing.T) {
 	t.Parallel()
 
-	// local provider 已从 cloud-plane runtime driver 中移除，配置校验必须拒绝。
+	// local provider 已从 cloud-plane node provider driver 中移除，配置校验必须拒绝。
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
@@ -164,14 +164,14 @@ func TestValidateRequiresRuntimeProvisioningProviderSpec(t *testing.T) {
 		Infrastructure:      InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
 		RuntimeProvisioning: RuntimeProvisioningConfig{InstanceType: "ecs.u1-c1m1.large"},
 	}
-	// runtime driver 必须依赖 providerSpec 构造，因此缺失时校验失败。
+	// node provider driver 必须依赖 providerSpec 构造，因此缺失时校验失败。
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate error = nil, want runtime provisioning providerSpec requirement")
 	}
 }
 
-// TestValidateRequiresRuntimeProvisioningInstanceType 验证 runtime node pool 必须声明公共实例规格。
-func TestValidateRequiresRuntimeProvisioningInstanceType(t *testing.T) {
+// TestValidateRequiresNodeProvisioningInstanceType 验证 node pool 必须声明公共实例规格。
+func TestValidateRequiresNodeProvisioningInstanceType(t *testing.T) {
 	t.Parallel()
 
 	cfg := Config{

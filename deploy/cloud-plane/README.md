@@ -7,7 +7,7 @@ cloud-plane 只监听内部 gRPC 地址，只注册 `ControlPlaneSnapshotService
 v7 起 ingress/egress 数据面统一外置：
 
 - Caddy 作为 ingress reverse proxy，接收 CDN/用户回源流量并反代到 `node.privateIP:hostPort`。
-- Tinyproxy 作为 egress forward proxy，承接 runtime node bootstrap、Docker daemon 和 workload HTTP(S) 出公网。
+- Tinyproxy 作为 egress forward proxy，承接动态 node bootstrap、Docker daemon 和 workload HTTP(S) 出公网。
 - cloud-plane 只生成并应用 Caddy 配置，不内嵌 Caddy，也不承载业务 HTTP 流量。
 
 配置模型已经收敛为单文件：
@@ -81,7 +81,7 @@ cp deploy/cloud-plane/systemd/mini-cloud-node-agent.service.example /tmp/mini-cl
   - `nodeAgent.binaryUrl`
   - `infrastructure.*`
   - `runtimeProvisioning.*`
-    - runtime node hostPort 范围固定为 `30000-60999`，必须和安全组放行范围一致。
+    - node hostPort 范围固定为 `30000-60999`，必须和安全组放行范围一致。
   - `ingress.*`
   - `observability.*`
 - `node-agent.yaml`
@@ -94,9 +94,9 @@ cloud-plane 尚未正式发布，数据库 schema 以 `00001_init_schema.sql` �
 如果 `cloud-plane.yaml` 中配置了 `ingress.baseDomain` 或 `runtimeProvisioning.egressProxyEndpoint`，需要先在 platform host 上准备外置数据面：
 
 - Caddy：监听固定地址 `0.0.0.0:80`，并让 `ingress.caddyReloadCommand` 可以成功 reload 当前 Caddyfile。
-- Tinyproxy：监听 `runtimeProvisioning.egressProxyEndpoint` 中的端口，只允许 runtime node 私网网段访问。
+- Tinyproxy：监听 `runtimeProvisioning.egressProxyEndpoint` 中的端口，只允许 node 私网网段访问。
 
-Terraform lab 会自动安装并启动这两个组件。手工部署时必须自行安装，否则 public service 入口和 runtime node 出公网代理都不会生效。
+Terraform lab 会自动安装并启动这两个组件。手工部署时必须自行安装，否则 public service 入口和 node 出公网代理都不会生效。
 
 如果沿用示例 `caddyReloadCommand: ["docker", "exec", "mini-cloud-caddy", ...]`，`minicloud` 用户必须能访问 Docker socket。示例 systemd 单元通过 `SupplementaryGroups=docker` 表达这个权限；生产环境也可以改成受限的 `systemctl reload caddy` 或专用 sudoers 命令，但必须保证 cloud-plane 能写 `ingress.caddyConfigPath` 并触发 reload。
 
@@ -155,15 +155,15 @@ bash -c '</dev/tcp/127.0.0.1/18081'
 
 首次注册到 control-plane 时，control-plane 通过配置中的 `controlPlane.bearerToken` 访问 cloud-plane 的 `ControlPlaneSnapshotService、ControlPlaneExecutionService`。
 
-## runtime scale-out 的关系
+## node scale-out 的关系
 
 这组长期运行资产只负责：
 
 - 启动 cloud-plane
 - 启动首个固定 node-agent
-- 提供 node-agent 连接、下载和 runtime node bootstrap 默认参数
+- 提供 node-agent 连接、下载和动态 node bootstrap 默认参数
 
-cloud-plane 固定启用云上动态扩容，不再支持手动扩容模式。`cloud-plane.yaml` 必须填写 `runtimeProvisioning.instanceType` 和 `runtimeProvisioning.providerSpec`；`instanceType` 是 runtime node pool 的公共规格，`providerSpec` 只保留 provider 专属创建参数。
+cloud-plane 固定启用云上动态扩容，不再支持手动扩容模式。`cloud-plane.yaml` 必须填写 `runtimeProvisioning.instanceType` 和 `runtimeProvisioning.providerSpec`；`instanceType` 是动态 node 的公共规格，`providerSpec` 只保留 provider 专属创建参数。
 
 ## 这组文件刻意不做什么
 

@@ -5,9 +5,9 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
-	"mini-cloud/internal/cloudplane/infra/runtimepool"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,22 +20,97 @@ var (
 	ErrNodeProviderInstanceAlreadyExists    = errors.New("node with this provider and instanceID already exists")
 )
 
-// RegisterNode 创建或刷新 node-agent 注册的节点记录。
-// 参数说明：ctx 控制数据库请求生命周期；input 是 node-agent 上报的注册信息。
-func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput) (cloudmodel.Node, error) {
-	// 复杂流程说明：node 注册既可能创建新 node，也可能刷新已有 node-agent 记录。
-	// 注册只创建或刷新 node 静态记录；runtime node ready 同步由后续 ready heartbeat 推进。
+const nodeSelectColumns = `
+	id,
+	provider,
+	region,
+	name,
+	private_ip,
+	public_ip,
+	instance_id,
+	instance_type,
+	cpu_milli_total,
+	memory_mi_total,
+	cpu_milli_allocatable,
+	memory_mi_allocatable,
+	cpu_milli_allocated,
+	memory_mi_allocated,
+	status,
+	status_reason,
+	schedulable,
+	last_heartbeat_at,
+	created_at,
+	updated_at
+`
+
+func (s *Store) CreateProvisioningNode(ctx context.Context, input cloudmodel.ProvisioningInput) (cloudmodel.Node, error) {
 	if err := input.Validate(); err != nil {
 		return cloudmodel.Node{}, err
 	}
-
-	// INSERT 路径需要新 node ID；冲突更新路径会保留原 ID。
 	id, err := newID("node")
 	if err != nil {
 		return cloudmodel.Node{}, err
 	}
 
-	// 同一台底层实例重复注册时，不新建第二个 node，而是刷新静态信息。
+	row := s.db.QueryRowContext(ctx, `
+		INSERT INTO nodes (
+			id,
+			provider,
+			region,
+			name,
+			instance_type,
+			status,
+			status_reason,
+			schedulable
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, FALSE)
+		RETURNING `+nodeSelectColumns+`
+	`, id, input.Provider, input.Region, input.Name, input.InstanceType, cloudmodel.StatusProvisioning, input.StatusReason)
+
+	item, err := scanNode(row)
+	if err != nil {
+		return cloudmodel.Node{}, fmt.Errorf("create provisioning node: %w", err)
+	}
+	return item, nil
+}
+
+func (s *Store) BindProvisionedNode(ctx context.Context, nodeID string, instanceID string, instanceName string, instanceType string, reason string, observedAt time.Time) (cloudmodel.Node, error) {
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+	row := s.db.QueryRowContext(ctx, `
+		UPDATE nodes
+		SET
+			instance_id = NULLIF($2, ''),
+			name = $3,
+			instance_type = $4,
+			status_reason = $5,
+			updated_at = $6
+		WHERE id = $1
+		  AND status = $7
+		RETURNING `+nodeSelectColumns+`
+	`, nodeID, strings.TrimSpace(instanceID), strings.TrimSpace(instanceName), strings.TrimSpace(instanceType), reason, observedAt.UTC(), cloudmodel.StatusProvisioning)
+
+	item, err := scanNode(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return cloudmodel.Node{}, ErrNodeNotFound
+		}
+		return cloudmodel.Node{}, fmt.Errorf("bind provisioned node: %w", err)
+	}
+	return item, nil
+}
+
+func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput) (cloudmodel.Node, error) {
+	if err := input.Validate(); err != nil {
+		return cloudmodel.Node{}, err
+	}
+
+	id, err := newID("node")
+	if err != nil {
+		return cloudmodel.Node{}, err
+	}
+
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO nodes (
 			id,
@@ -53,9 +128,10 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 			cpu_milli_allocated,
 			memory_mi_allocated,
 			status,
+			status_reason,
 			schedulable
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 0, 0, 0, 0, $11, TRUE)
+		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, 0, 0, 0, 0, $11, '', TRUE)
 		ON CONFLICT (provider, instance_id) DO UPDATE
 		SET
 			region = EXCLUDED.region,
@@ -65,27 +141,20 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 			instance_type = EXCLUDED.instance_type,
 			cpu_milli_total = EXCLUDED.cpu_milli_total,
 			memory_mi_total = EXCLUDED.memory_mi_total,
+			status = CASE
+				WHEN nodes.status IN ($12, $13) THEN nodes.status
+				ELSE $11
+			END,
+			status_reason = CASE
+				WHEN nodes.status IN ($12, $13) THEN nodes.status_reason
+				ELSE ''
+			END,
+			schedulable = CASE
+				WHEN nodes.status IN ($12, $13) THEN FALSE
+				ELSE TRUE
+			END,
 			updated_at = now()
-		RETURNING
-			id,
-			provider,
-			region,
-			name,
-			private_ip,
-			public_ip,
-			instance_id,
-			instance_type,
-			cpu_milli_total,
-			memory_mi_total,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			cpu_milli_allocated,
-			memory_mi_allocated,
-			status,
-			schedulable,
-			last_heartbeat_at,
-			created_at,
-			updated_at
+		RETURNING `+nodeSelectColumns+`
 	`,
 		id,
 		input.Provider,
@@ -98,44 +167,23 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 		input.CPUMilliTotal,
 		input.MemoryMiTotal,
 		cloudmodel.StatusRegistering,
+		cloudmodel.StatusDraining,
+		cloudmodel.StatusDeleted,
 	)
 
 	registered, err := scanNode(row)
 	if err != nil {
 		if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
-			// provider/instanceID 唯一冲突转为领域错误，避免泄漏数据库错误码。
 			return cloudmodel.Node{}, ErrNodeProviderInstanceAlreadyExists
 		}
 		return cloudmodel.Node{}, fmt.Errorf("register node: %w", err)
 	}
-
 	return registered, nil
 }
 
-// ListNodes 列出 cloud-plane 当前记录的所有 node。
-// 参数说明：ctx 控制数据库请求生命周期。
 func (s *Store) ListNodes(ctx context.Context) ([]cloudmodel.Node, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT
-			id,
-			provider,
-			region,
-			name,
-			private_ip,
-			public_ip,
-			instance_id,
-			instance_type,
-			cpu_milli_total,
-			memory_mi_total,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			cpu_milli_allocated,
-			memory_mi_allocated,
-			status,
-			schedulable,
-			last_heartbeat_at,
-			created_at,
-			updated_at
+		SELECT `+nodeSelectColumns+`
 		FROM nodes
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -158,59 +206,58 @@ func (s *Store) ListNodes(ctx context.Context) ([]cloudmodel.Node, error) {
 	return items, nil
 }
 
-// RecordNodeHeartbeat 记录 node heartbeat。
-// 参数说明：ctx 控制数据库请求生命周期；nodeID 是 node 唯一标识；input 是 node-agent 上报的心跳摘要。
+func (s *Store) ListNodesByStatuses(ctx context.Context, statuses ...string) ([]cloudmodel.Node, error) {
+	if len(statuses) == 0 {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+nodeSelectColumns+`
+		FROM nodes
+		WHERE status = ANY($1::text[])
+		ORDER BY created_at ASC, id ASC
+	`, statuses)
+	if err != nil {
+		return nil, fmt.Errorf("query nodes by statuses: %w", err)
+	}
+	defer closeRows(rows)
+
+	items := make([]cloudmodel.Node, 0)
+	for rows.Next() {
+		item, err := scanNode(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan node by statuses: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate nodes by statuses: %w", err)
+	}
+	return items, nil
+}
+
 func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cloudmodel.HeartbeatInput) (cloudmodel.HeartbeatSummary, time.Time, error) {
-	// 复杂流程说明：heartbeat 同时更新容量、状态、版本和可调度性。
-	// 写入后会刷新 nodes 表摘要，并在 ready 且可调度时同步 runtime node ready 状态。
 	if err := input.Validate(); err != nil {
 		return cloudmodel.HeartbeatSummary{}, time.Time{}, err
 	}
 
-	// 一次心跳刷新 nodes 表里的最新摘要，并在 ready 时推进 runtime node 状态。
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("begin heartbeat tx: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	var cpuTotal int
 	var memoryTotal int
-	var cpuAllocated int
-	var memoryAllocated int
 	var currentStatus string
-	var schedulable bool
-	var provider string
-	var instanceID string
-	var name string
-	// 读取节点当前容量、分配量、状态和调度开关，用于校验和状态合成。
-	err = tx.QueryRowContext(ctx, `
-		SELECT provider, instance_id, name, cpu_milli_total, memory_mi_total, cpu_milli_allocated, memory_mi_allocated, status, schedulable
+	if err := tx.QueryRowContext(ctx, `
+		SELECT cpu_milli_total, memory_mi_total, status
 		FROM nodes
 		WHERE id = $1
-	`, nodeID).Scan(&provider, &instanceID, &name, &cpuTotal, &memoryTotal, &cpuAllocated, &memoryAllocated, &currentStatus, &schedulable)
-	if err != nil {
+	`, nodeID).Scan(&cpuTotal, &memoryTotal, &currentStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// 心跳引用未知 node 时返回 not found。
 			return cloudmodel.HeartbeatSummary{}, time.Time{}, ErrNodeNotFound
 		}
 		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("load node capacity: %w", err)
-	}
-
-	// 如果 backing runtime node 已经进入回收状态，后续心跳只能刷新摘要，不能把 node 重新打开调度。
-	var runtimeNodeStatus sql.NullString
-	err = tx.QueryRowContext(ctx, `
-		SELECT status
-		FROM runtime_nodes
-		WHERE provider = $1
-		  AND instance_id = $2
-		ORDER BY created_at DESC, id DESC
-		LIMIT 1
-	`, provider, instanceID).Scan(&runtimeNodeStatus)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("load runtime node lifecycle for heartbeat: %w", err)
 	}
 
 	if input.CPUMilliAllocatable > cpuTotal {
@@ -221,47 +268,25 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cl
 	}
 
 	reportedAt := input.ReportedAt.UTC()
-	// lastHeartbeatAt 更适合记录“控制面什么时候真正收到这次心跳”。
 	receivedAt := time.Now().UTC()
-	// node-agent 上报的是静态 allocatable 预算，不是实时 free。
-	// 因此这里只刷新节点可调度上限，不再用 total-allocatable 反推 allocated；
-	// allocated 只能来自调度/执行占用，systemReserved、agentReserved、evictionReserved
-	// 都属于不可调度预算，不应该被混入业务负载已分配量。
 	nextStatus := input.Status
-	nextSchedulable := schedulable
-
-	// draining 是平台管理员显式打开的维护状态，
-	// 后续 heartbeat 只能继续刷新资源摘要和时间戳，不能把它覆盖掉。
+	nextSchedulable := input.Status == cloudmodel.StatusReady
 	switch currentStatus {
 	case cloudmodel.StatusDraining:
 		nextStatus = cloudmodel.StatusDraining
 		nextSchedulable = false
-	case cloudmodel.StatusOffline:
-		// offline 是平台按“心跳过期”推导出来的临时状态。
-		// 一旦新 heartbeat 真到了，就允许节点自动恢复成 agent 当前上报的状态。
-		nextStatus = input.Status
-		nextSchedulable = true
-	}
-	// runtime node scale-in 状态优先级高于 node-agent 心跳；
-	// 否则 provider 删除前最后几次心跳可能把 terminating/deleted 节点重新变成可调度。
-	if runtimeNodeStatus.Valid {
-		switch runtimeNodeStatus.String {
-		case runtimepool.StatusTerminating:
-			nextStatus = cloudmodel.StatusDraining
-			nextSchedulable = false
-		case runtimepool.StatusDeleted:
-			nextStatus = cloudmodel.StatusOffline
-			nextSchedulable = false
-		}
+	case cloudmodel.StatusDeleted:
+		nextStatus = cloudmodel.StatusDeleted
+		nextSchedulable = false
 	}
 
-	// nodes 表保留的是当前最新摘要，方便平台页和后续调度直接读取。
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE nodes
 		SET
 			cpu_milli_allocatable = $2,
 			memory_mi_allocatable = $3,
 			status = $4,
+			status_reason = '',
 			schedulable = $5,
 			last_heartbeat_at = $6,
 			updated_at = CASE
@@ -273,64 +298,26 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cl
 				ELSE updated_at
 			END
 		WHERE id = $1
-	`,
-		nodeID,
-		input.CPUMilliAllocatable,
-		input.MemoryMiAllocatable,
-		nextStatus,
-		nextSchedulable,
-		receivedAt,
-	); err != nil {
+	`, nodeID, input.CPUMilliAllocatable, input.MemoryMiAllocatable, nextStatus, nextSchedulable, receivedAt); err != nil {
 		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("update node summary from heartbeat: %w", err)
-	}
-
-	if nextStatus == cloudmodel.StatusReady && nextSchedulable {
-		// ready 且可调度时同步 runtime node ready 状态，唤醒 provider 扩容链路。
-		if _, err := syncRuntimeNodeReadyTx(ctx, tx, provider, instanceID, name, nodeID, receivedAt); err != nil {
-			return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("sync runtime node from heartbeat: %w", err)
-		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("commit heartbeat tx: %w", err)
 	}
-
-	// 返回本次心跳摘要和控制面接收时间。
 	return cloudmodel.HeartbeatSummary{
 		ReportedAt:          reportedAt,
 		AgentVersion:        input.AgentVersion,
 		CPUMilliAllocatable: input.CPUMilliAllocatable,
 		MemoryMiAllocatable: input.MemoryMiAllocatable,
 		RunningContainers:   input.RunningContainers,
-		Status:              input.Status,
+		Status:              nextStatus,
 	}, receivedAt, nil
 }
 
-// GetNode 按 node ID 查询节点。
-// 参数说明：ctx 控制数据库请求生命周期；nodeID 是 node 唯一标识。
 func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, error) {
-	// 按主键读取 node 完整字段。
 	row := s.db.QueryRowContext(ctx, `
-		SELECT
-			id,
-			provider,
-			region,
-			name,
-			private_ip,
-			public_ip,
-			instance_id,
-			instance_type,
-			cpu_milli_total,
-			memory_mi_total,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			cpu_milli_allocated,
-			memory_mi_allocated,
-			status,
-			schedulable,
-			last_heartbeat_at,
-			created_at,
-			updated_at
+		SELECT `+nodeSelectColumns+`
 		FROM nodes
 		WHERE id = $1
 	`, nodeID)
@@ -338,64 +325,18 @@ func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, er
 	item, err := scanNode(row)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// 数据库无行时转换为 store 领域错误。
 			return cloudmodel.Node{}, ErrNodeNotFound
 		}
 		return cloudmodel.Node{}, fmt.Errorf("query node: %w", err)
 	}
-
 	return item, nil
 }
 
-// GetNodeByProviderInstance 按 provider 和云实例 ID 查询节点。
-// 参数说明：ctx 控制数据库请求生命周期；provider 是云厂商名称；instanceID 是云厂商实例 ID。
-func (s *Store) GetNodeByProviderInstance(ctx context.Context, provider string, instanceID string) (cloudmodel.Node, error) {
-	// provider + instance_id 是云实例到 node 的唯一定位键。
-	row := s.db.QueryRowContext(ctx, `
-		SELECT
-			id,
-			provider,
-			region,
-			name,
-			private_ip,
-			public_ip,
-			instance_id,
-			instance_type,
-			cpu_milli_total,
-			memory_mi_total,
-			cpu_milli_allocatable,
-			memory_mi_allocatable,
-			cpu_milli_allocated,
-			memory_mi_allocated,
-			status,
-			schedulable,
-			last_heartbeat_at,
-			created_at,
-			updated_at
-		FROM nodes
-		WHERE provider = $1 AND instance_id = $2
-	`, provider, instanceID)
-
-	item, err := scanNode(row)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// 数据库无行时转换为 store 领域错误。
-			return cloudmodel.Node{}, ErrNodeNotFound
-		}
-		return cloudmodel.Node{}, fmt.Errorf("query node by provider and instance: %w", err)
-	}
-
-	return item, nil
-}
-
-// scanNode 从 SQL 扫描器读取一行数据并组装领域对象。
-// 参数说明：scanner 是当前数据库查询结果行扫描器。
 func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, error) {
-	// last_heartbeat_at 允许为空，使用 NullTime 扫描。
 	var item cloudmodel.Node
+	var instanceID sql.NullString
 	var lastHeartbeatAt sql.NullTime
 
-	// 扫描顺序必须和 node SELECT/RETURNING 字段顺序一致。
 	err := scanner.Scan(
 		&item.ID,
 		&item.Provider,
@@ -403,7 +344,7 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, er
 		&item.Name,
 		&item.PrivateIP,
 		&item.PublicIP,
-		&item.InstanceID,
+		&instanceID,
 		&item.InstanceType,
 		&item.CPUMilliTotal,
 		&item.MemoryMiTotal,
@@ -412,6 +353,7 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, er
 		&item.CPUMilliAllocated,
 		&item.MemoryMiAllocated,
 		&item.Status,
+		&item.StatusReason,
 		&item.Schedulable,
 		&lastHeartbeatAt,
 		&item.CreatedAt,
@@ -420,11 +362,11 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, er
 	if err != nil {
 		return cloudmodel.Node{}, err
 	}
-
-	// 有心跳时间时转换为指针字段。
+	if instanceID.Valid {
+		item.InstanceID = instanceID.String
+	}
 	if lastHeartbeatAt.Valid {
 		item.LastHeartbeatAt = &lastHeartbeatAt.Time
 	}
-
 	return item, nil
 }
