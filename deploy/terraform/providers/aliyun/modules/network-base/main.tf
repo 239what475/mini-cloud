@@ -146,6 +146,18 @@ resource "alicloud_security_group_rule" "platform_proxy_from_runtime" {
   description              = "egress proxy from runtime security group"
 }
 
+resource "alicloud_security_group_rule" "platform_artifacts_from_runtime" {
+  security_group_id        = alicloud_security_group.platform.id
+  type                     = "ingress"
+  ip_protocol              = "tcp"
+  port_range               = "${var.artifact_http_port}/${var.artifact_http_port}"
+  source_security_group_id = alicloud_security_group.runtime.id
+  priority                 = 1
+  policy                   = "accept"
+  nic_type                 = "intranet"
+  description              = "node-agent artifact server from runtime security group"
+}
+
 resource "alicloud_security_group_rule" "runtime_host_ports_from_platform" {
   security_group_id        = alicloud_security_group.runtime.id
   type                     = "ingress"
@@ -194,6 +206,18 @@ resource "alicloud_security_group_rule" "runtime_egress_proxy" {
   description       = "runtime to egress proxy"
 }
 
+resource "alicloud_security_group_rule" "runtime_egress_artifacts" {
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "tcp"
+  port_range        = "${var.artifact_http_port}/${var.artifact_http_port}"
+  cidr_ip           = var.vswitch_cidr_block
+  priority          = 1
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to node-agent artifact server"
+}
+
 resource "alicloud_security_group_rule" "runtime_egress_metadata_aliyun" {
   security_group_id = alicloud_security_group.runtime.id
   type              = "egress"
@@ -216,6 +240,18 @@ resource "alicloud_security_group_rule" "runtime_egress_metadata_link_local" {
   policy            = "accept"
   nic_type          = "intranet"
   description       = "runtime to link-local metadata"
+}
+
+resource "alicloud_security_group_rule" "runtime_egress_internal_https_link_local" {
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "tcp"
+  port_range        = "443/443"
+  cidr_ip           = "169.254.0.0/16"
+  priority          = 1
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to internal mirrors and object storage"
 }
 
 resource "alicloud_security_group_rule" "runtime_egress_default_drop" {

@@ -26,8 +26,9 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
 		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
-			InstanceType: "S5.MEDIUM4",
-			ProviderSpec: spec,
+			InstanceType:                "S5.MEDIUM4",
+			WorkloadEgressProxyEndpoint: "http://10.0.0.10:3128",
+			ProviderSpec:                spec,
 		},
 	}
 }
@@ -104,6 +105,12 @@ func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	}
 	if strings.Contains(script, "100.100.100.200") || strings.Contains(script, "X-aliyun-ecs-metadata-token") {
 		t.Fatalf("tencent node user-data contains aliyun metadata flow")
+	}
+	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "docker.service.d/mini-cloud-egress-proxy.conf") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
+		t.Fatalf("tencent node user-data applies workload proxy to bootstrap, docker daemon, or node-agent process")
+	}
+	if !strings.Contains(script, "endpoint: \"http://10.0.0.10:3128\"") {
+		t.Fatalf("tencent node user-data does not pass workload egress proxy to node-agent config")
 	}
 	cmd := exec.Command("bash", "-n")
 	cmd.Stdin = strings.NewReader(script)

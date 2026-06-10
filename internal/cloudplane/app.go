@@ -54,8 +54,10 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 	)
 	stores := store.New(db)
 	ingressController := cloudplaneingress.NewController(logger, stores, cfg, caddyingress.NewSink(logger, caddyingress.Config{
-		ListenHTTPAddr: cloudplaneconfig.CaddyListenHTTPAddr,
-		AdminURL:       cfg.Ingress.CaddyAdminURL,
+		ListenHTTPAddr:       cloudplaneconfig.CaddyListenHTTPAddr,
+		ArtifactListenAddr:   cloudplaneconfig.CaddyArtifactListenAddr,
+		ArtifactDocumentRoot: cloudplaneconfig.CaddyArtifactRoot,
+		AdminURL:             cfg.Ingress.CaddyAdminURL,
 	}))
 
 	return App{

@@ -1,8 +1,6 @@
 locals {
   platform_instance_name = var.platform_instance_name != "" ? var.platform_instance_name : var.platform_name
   eip_name               = var.eip_name != "" ? var.eip_name : "${var.platform_name}-eip"
-  user_data_checksum     = sha256(var.user_data)
-
   common_tags = {
     "managed-by"             = "mini-cloud"
     "mini-cloud/platform"    = var.platform_name
@@ -13,10 +11,6 @@ locals {
   platform_tags = merge(local.common_tags, {
     "mini-cloud/role" = "platform"
   })
-}
-
-resource "terraform_data" "platform_bootstrap" {
-  triggers_replace = local.user_data_checksum
 }
 
 resource "alicloud_instance" "platform" {
@@ -32,14 +26,7 @@ resource "alicloud_instance" "platform" {
   internet_max_bandwidth_out = 0
   system_disk_category       = var.system_disk_category
   system_disk_size           = var.system_disk_size
-  user_data                  = var.user_data
   tags                       = local.platform_tags
-
-  lifecycle {
-    // cloud-init 只会在实例首启时处理 user_data，
-    // 所以脚本内容一旦变化，就必须重建 ECS 才能真正重新执行。
-    replace_triggered_by = [terraform_data.platform_bootstrap]
-  }
 }
 
 resource "alicloud_eip_address" "platform" {

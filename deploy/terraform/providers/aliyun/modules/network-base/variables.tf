@@ -79,6 +79,11 @@ variable "egress_proxy_port" {
   default = 3128
 }
 
+variable "artifact_http_port" {
+  type    = number
+  default = 18082
+}
+
 variable "runtime_host_port_min" {
   type    = number
   default = 30000

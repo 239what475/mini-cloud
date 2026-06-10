@@ -3,7 +3,7 @@ variable "provider_name" {
 
   validation {
     condition     = contains(["aliyun", "tencent"], lower(trimspace(var.provider_name)))
-    error_message = "provider_name 只能是 aliyun 或 tencent。"
+    error_message = "provider_name must be aliyun or tencent."
   }
 }
 
@@ -11,12 +11,49 @@ variable "platform_name" {
   type = string
 }
 
+variable "platform_mode" {
+  type    = string
+  default = "managed_cvm"
+
+  validation {
+    condition     = contains(["managed_cvm", "existing_lighthouse"], lower(trimspace(var.platform_mode)))
+    error_message = "platform_mode must be managed_cvm or existing_lighthouse."
+  }
+}
+
+variable "existing_lighthouse_public_ip" {
+  type    = string
+  default = ""
+}
+
+variable "existing_lighthouse_private_ip" {
+  type    = string
+  default = ""
+}
+
+variable "existing_lighthouse_instance_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_lighthouse_ssh_host" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ccn_id" {
+  type    = string
+  default = ""
+}
+
 variable "environment" {
-  type = string
+  type    = string
+  default = "lab"
 }
 
 variable "owner" {
-  type = string
+  type    = string
+  default = "operator"
 }
 
 variable "vpc_name" {
@@ -56,7 +93,7 @@ variable "ingress_cidrs" {
 
 variable "cloud_plane_grpc_port" {
   type    = number
-  default = 8080
+  default = 18081
 }
 
 variable "ingress_http_port" {
@@ -69,13 +106,18 @@ variable "egress_proxy_port" {
   default = 3128
 }
 
+variable "artifact_http_port" {
+  type    = number
+  default = 18082
+}
+
 variable "runtime_host_port_min" {
   type    = number
   default = 30000
 
   validation {
     condition     = var.runtime_host_port_min >= 1 && var.runtime_host_port_min <= 65535
-    error_message = "runtime_host_port_min 必须是 1 到 65535 之间的 TCP 端口。"
+    error_message = "runtime_host_port_min must be between 1 and 65535."
   }
 }
 
@@ -85,36 +127,8 @@ variable "runtime_host_port_max" {
 
   validation {
     condition     = var.runtime_host_port_max >= 1 && var.runtime_host_port_max <= 65535
-    error_message = "runtime_host_port_max 必须是 1 到 65535 之间的 TCP 端口。"
+    error_message = "runtime_host_port_max must be between 1 and 65535."
   }
-}
-
-variable "ingress_base_domain" {
-  type    = string
-  default = "apps.example.test"
-}
-
-variable "install_root" {
-  type    = string
-  default = "/opt/mini-cloud"
-}
-
-variable "admin_token" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "control_plane_southbound_token" {
-  type      = string
-  default   = ""
-  sensitive = true
-}
-
-variable "node_agent_bootstrap_token" {
-  type      = string
-  default   = ""
-  sensitive = true
 }
 
 variable "ssh_public_key" {
@@ -127,123 +141,21 @@ variable "ssh_public_key_path" {
   default = ""
 }
 
-variable "trust_auth_proxy_headers" {
-  type    = bool
-  default = false
-}
-
-variable "cloud_plane_binary_url" {
-  type = string
-
-  validation {
-    condition     = startswith(var.cloud_plane_binary_url, "https://") || startswith(var.cloud_plane_binary_url, "http://")
-    error_message = "cloud_plane_binary_url 必须是可下载的 http(s) 地址。"
-  }
-}
-
-variable "cloud_plane_binary_sha256" {
-  type    = string
-  default = ""
-}
-
-variable "agent_binary_url" {
-  type = string
-
-  validation {
-    condition     = startswith(var.agent_binary_url, "https://") || startswith(var.agent_binary_url, "http://")
-    error_message = "agent_binary_url 必须是可下载的 http(s) 地址。"
-  }
-}
-
-variable "agent_binary_sha256" {
-  type    = string
-  default = ""
-}
-
-
-variable "workload_log_loki_url" {
-  type    = string
-  default = ""
-}
-
-variable "workload_log_loki_tenant_id" {
-  type    = string
-  default = ""
-}
-
-variable "workload_otlp_endpoint" {
-  type    = string
-  default = ""
-}
-
-variable "image_pull_registry_mirror" {
-  type    = string
-  default = ""
-}
-
-variable "runtime_node_heartbeat_interval_seconds" {
-  type    = number
-  default = 15
-}
-
-variable "runtime_node_work_interval_seconds" {
-  type    = number
-  default = 5
-}
-
-variable "platform_node_system_reserved_cpu_milli" {
-  type    = number
-  default = 1000
-}
-
-variable "platform_node_system_reserved_memory_mi" {
-  type    = number
-  default = 1024
-}
-
 variable "aliyun" {
   type = object({
-    region_id                         = optional(string, "")
-    zone_id                           = optional(string, "")
-    platform_role_policy_names        = optional(list(string), ["AliyunECSFullAccess", "AliyunVPCFullAccess"])
-    platform_instance_name            = optional(string, "")
-    instance_type                     = optional(string, "")
-    image_id                          = optional(string, "")
-    system_disk_category              = optional(string, "cloud_essd")
-    system_disk_size                  = optional(number, 40)
-    eip_name                          = optional(string, "")
-    eip_bandwidth                     = optional(number, 5)
-    eip_internet_charge_type          = optional(string, "PayByTraffic")
-    runtime_node_instance_type        = optional(string, "")
-    runtime_node_image_id             = optional(string, "")
-    runtime_node_system_disk_category = optional(string, "")
-    runtime_node_system_disk_size     = optional(number, 0)
+    region_id                  = optional(string, "")
+    zone_id                    = optional(string, "")
+    platform_role_policy_names = optional(list(string), ["AliyunECSFullAccess", "AliyunVPCFullAccess"])
+    platform_instance_name     = optional(string, "")
+    instance_type              = optional(string, "")
+    image_id                   = optional(string, "")
+    system_disk_category       = optional(string, "cloud_essd")
+    system_disk_size           = optional(number, 40)
+    eip_name                   = optional(string, "")
+    eip_bandwidth              = optional(number, 5)
+    eip_internet_charge_type   = optional(string, "PayByTraffic")
   })
   default = {}
-
-  validation {
-    condition = var.aliyun.runtime_node_instance_type == "" || contains([
-      "ecs.e-c1m1.large",
-      "ecs.e-c1m2.large",
-      "ecs.e-c1m4.large",
-      "ecs.e-c1m2.xlarge",
-      "ecs.e-c1m4.xlarge",
-      "ecs.e-c1m2.2xlarge",
-      "ecs.u1-c1m1.large",
-      "ecs.u1-c1m2.large",
-      "ecs.u1-c1m2.xlarge",
-      "ecs.u1-c1m2.2xlarge",
-      "ecs.u2a-c1m1.large",
-      "ecs.u2a-c1m2.large",
-      "ecs.u2a-c1m2.xlarge",
-      "ecs.u2a-c1m2.2xlarge",
-      "ecs.u2i-c1m1.large",
-      "ecs.u2i-c1m2.large",
-      "ecs.u2i-c1m2.xlarge",
-      "ecs.u2i-c1m2.2xlarge"
-    ], var.aliyun.runtime_node_instance_type)
-    error_message = "aliyun.runtime_node_instance_type 必须落在当前教学允许的实例规格集合内，或者留空复用 platform 主机规格。"
-  }
 }
 
 variable "tencent" {
@@ -256,15 +168,10 @@ variable "tencent" {
     image_id                       = optional(string, "")
     system_disk_type               = optional(string, "CLOUD_PREMIUM")
     system_disk_size               = optional(number, 50)
-    user_data_replace_on_change    = optional(bool, false)
     eip_name                       = optional(string, "")
     eip_type                       = optional(string, "EIP")
     eip_internet_charge_type       = optional(string, "TRAFFIC_POSTPAID_BY_HOUR")
     eip_internet_max_bandwidth_out = optional(number, 5)
-    runtime_node_instance_type     = optional(string, "")
-    runtime_node_image_id          = optional(string, "")
-    runtime_node_system_disk_type  = optional(string, "")
-    runtime_node_system_disk_size  = optional(number, 0)
   })
   default = {}
 }

@@ -2,12 +2,12 @@
 
 ## 当前入口模型
 
-cloud-plane 只监听内部 gRPC 地址，只注册 `ControlPlaneSnapshotService、ControlPlaneExecutionService` 和 `NodeAgentService`。它不提供 northbound HTTP API、grpc-gateway、静态 UI、`/api/healthz`、`/metrics` 或 node-agent 二进制下载入口。
+cloud-plane 只监听内部 gRPC 地址，只注册 `ControlPlaneSnapshotService、ControlPlaneExecutionService` 和 `NodeAgentService`。它不提供 northbound HTTP API、grpc-gateway、静态 UI、`/api/healthz` 或 `/metrics`。
 
 v7 起 ingress/egress 数据面统一外置：
 
 - Caddy 作为 ingress reverse proxy，接收 CDN/用户回源流量并反代到 `node.privateIP:hostPort`。
-- Tinyproxy 作为 egress forward proxy，承接动态 node bootstrap、Docker daemon 和 workload HTTP(S) 出公网。
+- Tinyproxy 作为 workload egress forward proxy，承接业务容器 HTTP(S) 出网。动态 node bootstrap 依赖云厂商 apt 源、入口机 artifact server 和 Docker registry mirror，不通过 Tinyproxy。
 - cloud-plane 通过 Caddy Admin API 应用结构化 JSON 配置，不内嵌 Caddy，也不承载业务 HTTP 流量。
 
 配置模型已经收敛为单文件：
@@ -91,10 +91,10 @@ cloud-plane 尚未正式发布，数据库 schema 以 `00001_init_schema.sql` �
 
 ### 1.1 准备外置数据面
 
-如果 `cloud-plane.yaml` 中配置了 `ingress.baseDomain` 或 `runtimeProvisioning.egressProxyEndpoint`，需要先在 platform host 上准备外置数据面：
+如果 `cloud-plane.yaml` 中配置了 `ingress.baseDomain` 或 `runtimeProvisioning.workloadEgressProxyEndpoint`，需要先在 platform host 上准备外置数据面：
 
 - Caddy：监听固定 HTTP 地址 `0.0.0.0:80`，Admin API 只监听本机 `127.0.0.1:2019`，并让 `ingress.caddyAdminURL` 指向该本机地址。
-- Tinyproxy：监听 `runtimeProvisioning.egressProxyEndpoint` 中的端口，只允许 node 私网网段访问。
+- Tinyproxy：监听 `runtimeProvisioning.workloadEgressProxyEndpoint` 中的端口，只允许 node 私网网段访问。
 
 Terraform lab 会自动安装并启动这两个组件。手工部署时必须自行安装，否则 public service 入口和 node 出公网代理都不会生效。
 

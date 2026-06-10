@@ -15,22 +15,19 @@ locals {
 }
 
 resource "tencentcloud_instance" "platform" {
-  instance_name           = local.platform_instance_name
-  availability_zone       = var.zone_id
-  image_id                = var.image_id
-  instance_type           = var.instance_type
-  instance_charge_type    = "POSTPAID_BY_HOUR"
-  vpc_id                  = var.vpc_id
-  subnet_id               = var.subnet_id
-  orderly_security_groups = var.security_group_ids
-  key_ids                 = var.key_ids
-  system_disk_type        = var.system_disk_type
-  system_disk_size        = var.system_disk_size
-  user_data_raw           = var.user_data
-
-  internet_max_bandwidth_out  = 0
-  allocate_public_ip          = false
-  user_data_replace_on_change = var.user_data_replace_on_change
+  instance_name              = local.platform_instance_name
+  availability_zone          = var.zone_id
+  image_id                   = var.image_id
+  instance_type              = var.instance_type
+  instance_charge_type       = "POSTPAID_BY_HOUR"
+  vpc_id                     = var.vpc_id
+  subnet_id                  = var.subnet_id
+  orderly_security_groups    = var.security_group_ids
+  key_ids                    = var.key_ids
+  system_disk_type           = var.system_disk_type
+  system_disk_size           = var.system_disk_size
+  internet_max_bandwidth_out = 0
+  allocate_public_ip         = false
 
   cam_role_name = var.cam_role_name
 

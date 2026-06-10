@@ -10,6 +10,11 @@ variable "platform_name" {
   type = string
 }
 
+variable "create_platform_host_resources" {
+  type    = bool
+  default = true
+}
+
 variable "environment" {
   type = string
 }
@@ -53,6 +58,11 @@ variable "ingress_cidrs" {
   type = list(string)
 }
 
+variable "platform_private_cidrs" {
+  type    = list(string)
+  default = []
+}
+
 variable "cloud_plane_grpc_port" {
   type    = number
   default = 8080
@@ -66,6 +76,11 @@ variable "ingress_http_port" {
 variable "egress_proxy_port" {
   type    = number
   default = 3128
+}
+
+variable "artifact_http_port" {
+  type    = number
+  default = 18082
 }
 
 variable "runtime_host_port_min" {

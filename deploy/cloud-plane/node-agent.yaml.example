@@ -29,7 +29,7 @@ runtime:
 network:
   egressProxy:
     # 固定本机 node-agent 默认不注入代理。
-    # 动态 node 会由 cloud-plane 根据 runtimeProvisioning.egressProxy* 生成该段配置。
+    # 动态 node 会由 cloud-plane 根据 runtimeProvisioning.workloadEgressProxyEndpoint 生成该段配置。
     enabled: false
     endpoint: ""
     noProxy: []

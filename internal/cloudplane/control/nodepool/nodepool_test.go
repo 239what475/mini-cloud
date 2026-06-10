@@ -2,6 +2,8 @@ package nodepool
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
@@ -83,6 +85,31 @@ func TestScaleOutSkipsWhenNodeAlreadyProvisioning(t *testing.T) {
 	}
 }
 
+func TestScaleOutIgnoresProvisioningNodeForDifferentInstanceType(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeDriver{}
+	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+
+	if _, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		Name:         "demo-node-legacy",
+		InstanceType: "ecs.legacy",
+		StatusReason: "stale provisioning node from previous runtime config",
+	}); err != nil {
+		t.Fatalf("CreateProvisioningNode returned error: %v", err)
+	}
+	seedPendingExecution(t, ctx, db.Store, "scale-out-new-runtime-config", "small")
+
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.createRequests) != 1 {
+		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
+	}
+}
+
 func TestScaleOutMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
@@ -108,6 +135,74 @@ func TestScaleOutMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	if len(items) != 1 || items[0].StatusReason == "" {
 		t.Fatalf("unexpected deleted nodes: %+v", items)
 	}
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	if len(snapshots) != 1 || snapshots[0].Status != cloudmodel.StatusFailed {
+		t.Fatalf("execution snapshots = %+v, want failed", snapshots)
+	}
+	if len(driver.createRequests) != 1 {
+		t.Fatalf("create requests after failed reconcile = %d, want 1", len(driver.createRequests))
+	}
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("second ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.createRequests) != 1 {
+		t.Fatalf("create requests after second reconcile = %d, want no retry", len(driver.createRequests))
+	}
+}
+
+func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingExecution(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeDriver{}
+	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	planID := "stale-provisioning-g1"
+
+	seedPendingExecution(t, ctx, db.Store, "stale-provisioning", "small")
+	nodeName := "demo-node-" + planHashSuffix(planID)
+	node, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		Name:         nodeName,
+		InstanceType: "ecs.demo",
+		StatusReason: "test stale provisioning node",
+	})
+	if err != nil {
+		t.Fatalf("CreateProvisioningNode returned error: %v", err)
+	}
+	if _, err := db.Store.BindProvisionedNode(ctx, node.ID, "i-stale-provisioning", nodeName, "ecs.demo", "test provisioned", time.Now().UTC().Add(-provisioningNodeTimeout-time.Minute)); err != nil {
+		t.Fatalf("BindProvisionedNode returned error: %v", err)
+	}
+	if _, err := db.DB.ExecContext(ctx, `
+		UPDATE nodes
+		SET updated_at = $2
+		WHERE id = $1
+	`, node.ID, time.Now().UTC().Add(-provisioningNodeTimeout-time.Minute)); err != nil {
+		t.Fatalf("seed stale provisioning updated_at: %v", err)
+	}
+
+	if err := service.ReconcileOnce(ctx); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if len(driver.deleteRequests) != 1 || driver.deleteRequests[0].InstanceID != "i-stale-provisioning" {
+		t.Fatalf("delete requests = %+v, want stale provisioning node deletion", driver.deleteRequests)
+	}
+	deleted, err := db.Store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("GetNode returned error: %v", err)
+	}
+	if deleted.Status != cloudmodel.StatusDeleted {
+		t.Fatalf("node status = %q, want deleted", deleted.Status)
+	}
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	if len(snapshots) != 1 || snapshots[0].Status != cloudmodel.StatusFailed {
+		t.Fatalf("execution snapshots = %+v, want failed", snapshots)
+	}
 }
 
 func TestReconcileDeletesIdleNode(t *testing.T) {
@@ -131,6 +226,11 @@ func TestReconcileDeletesIdleNode(t *testing.T) {
 	if len(items) != 1 || items[0].ID != node.ID {
 		t.Fatalf("deleted nodes = %+v, want %s", items, node.ID)
 	}
+}
+
+func planHashSuffix(planID string) string {
+	sum := md5.Sum([]byte(planID))
+	return hex.EncodeToString(sum[:])[:10]
 }
 
 func TestReconcileKeepsIdleFixedNode(t *testing.T) {

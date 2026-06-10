@@ -21,8 +21,10 @@ import (
 const requestTimeout = 15 * time.Second
 
 type Config struct {
-	ListenHTTPAddr string
-	AdminURL       string
+	ListenHTTPAddr       string
+	ArtifactListenAddr   string
+	ArtifactDocumentRoot string
+	AdminURL             string
 }
 
 type Sink struct {
@@ -44,7 +46,7 @@ func NewSink(logger *slog.Logger, cfg Config) *Sink {
 }
 
 func (s *Sink) Apply(ctx context.Context, routes []cloudmodel.Route) error {
-	config, err := buildConfig(s.cfg.ListenHTTPAddr, s.cfg.AdminURL, routes)
+	config, err := buildConfig(s.cfg.ListenHTTPAddr, s.cfg.ArtifactListenAddr, s.cfg.ArtifactDocumentRoot, s.cfg.AdminURL, routes)
 	if err != nil {
 		return err
 	}
@@ -129,6 +131,7 @@ type caddyHTTPHandler struct {
 	Handler    string          `json:"handler"`
 	StatusCode int             `json:"status_code,omitempty"`
 	Body       string          `json:"body,omitempty"`
+	Root       string          `json:"root,omitempty"`
 	Upstreams  []caddyUpstream `json:"upstreams,omitempty"`
 }
 
@@ -136,10 +139,18 @@ type caddyUpstream struct {
 	Dial string `json:"dial"`
 }
 
-func buildConfig(listenHTTPAddr string, adminURL string, routes []cloudmodel.Route) (caddyConfig, error) {
+func buildConfig(listenHTTPAddr string, artifactListenAddr string, artifactDocumentRoot string, adminURL string, routes []cloudmodel.Route) (caddyConfig, error) {
 	listenHTTPAddr = strings.TrimSpace(listenHTTPAddr)
 	if listenHTTPAddr == "" {
 		return caddyConfig{}, fmt.Errorf("caddy listen HTTP address is required")
+	}
+	artifactListenAddr = strings.TrimSpace(artifactListenAddr)
+	if artifactListenAddr == "" {
+		return caddyConfig{}, fmt.Errorf("caddy artifact listen address is required")
+	}
+	artifactDocumentRoot = strings.TrimSpace(artifactDocumentRoot)
+	if artifactDocumentRoot == "" {
+		return caddyConfig{}, fmt.Errorf("caddy artifact document root is required")
 	}
 	parsedAdminURL, err := parseAdminURL(adminURL)
 	if err != nil {
@@ -180,6 +191,16 @@ func buildConfig(listenHTTPAddr string, adminURL string, routes []cloudmodel.Rou
 						Listen:         []string{listenHTTPAddr},
 						AutomaticHTTPS: automaticHTTPS{Disable: true},
 						Routes:         caddyRoutes,
+					},
+					"mini_cloud_artifacts": {
+						Listen:         []string{artifactListenAddr},
+						AutomaticHTTPS: automaticHTTPS{Disable: true},
+						Routes: []caddyHTTPRoute{{
+							Handle: []caddyHTTPHandler{{
+								Handler: "file_server",
+								Root:    artifactDocumentRoot,
+							}},
+						}},
 					},
 				},
 			},

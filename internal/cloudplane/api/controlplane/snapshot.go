@@ -112,6 +112,9 @@ func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloud
 
 	var maxUpdatedAt time.Time
 	for _, item := range nodes {
+		if item.Status == cloudmodel.StatusDeleted {
+			continue
+		}
 		if item.UpdatedAt.After(maxUpdatedAt) {
 			maxUpdatedAt = item.UpdatedAt
 		}

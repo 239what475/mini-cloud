@@ -53,6 +53,29 @@ func TestCreateReconcilesServiceToAssignment(t *testing.T) {
 	}
 }
 
+func TestCreateAllowsDegradedPlane(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-degraded", planeServer.endpoint)
+	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusDegraded, Message: "alert firing"}); err != nil {
+		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	}
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store)
+
+	service, err := controller.Create(ctx, createInput(planeItem.ID, "degraded-web", "Degraded Web", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if service.Status.Observed.AssignedPlaneID != planeItem.ID {
+		t.Fatalf("assigned plane = %q, want %s", service.Status.Observed.AssignedPlaneID, planeItem.ID)
+	}
+	if len(planeServer.applyRequests()) != 1 {
+		t.Fatalf("apply requests = %d, want 1", len(planeServer.applyRequests()))
+	}
+}
+
 func TestUpdateReusesCurrentAssignment(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)

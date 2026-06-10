@@ -315,34 +315,34 @@ var nodeBootstrapTemplate string
 
 // nodeBootstrapData 是渲染阿里云 node bootstrap 模板所需的数据。
 type nodeBootstrapData struct {
-	InstallRoot             string
-	AgentBinaryURL          string
-	DockerDaemonJSONBase64  string
-	EgressProxyEnabledShell string
-	EgressProxyEnabledYAML  string
-	EgressProxyEndpoint     string
-	NoProxyValue            string
-	BootstrapToken          string
-	BootstrapLog            string
-	MetadataBase            string
-	InstanceName            string
-	ConnectEndpoint         string
-	PlatformName            string
-	Provider                string
-	Region                  string
-	InstanceType            string
-	CPUMilli                int
-	MemoryMi                int
-	HeartbeatInterval       string
-	WorkInterval            string
-	HostPortMin             int
-	HostPortMax             int
-	NoProxyItems            []string
-	WorkloadLogLokiURL      string
-	WorkloadLogLokiTenantID string
-	WorkloadOTLPEndpoint    string
-	NodeAgentBinaryPath     string
-	NodeAgentConfigPath     string
+	InstallRoot                     string
+	AgentBinaryURL                  string
+	DockerDaemonJSONBase64          string
+	WorkloadEgressProxyEnabledShell string
+	WorkloadEgressProxyEnabledYAML  string
+	WorkloadEgressProxyEndpoint     string
+	NoProxyValue                    string
+	BootstrapToken                  string
+	BootstrapLog                    string
+	MetadataBase                    string
+	InstanceName                    string
+	ConnectEndpoint                 string
+	PlatformName                    string
+	Provider                        string
+	Region                          string
+	InstanceType                    string
+	CPUMilli                        int
+	MemoryMi                        int
+	HeartbeatInterval               string
+	WorkInterval                    string
+	HostPortMin                     int
+	HostPortMax                     int
+	NoProxyItems                    []string
+	WorkloadLogLokiURL              string
+	WorkloadLogLokiTenantID         string
+	WorkloadOTLPEndpoint            string
+	NodeAgentBinaryPath             string
+	NodeAgentConfigPath             string
 }
 
 // buildNodeUserData 渲染阿里云 node 首次启动时执行的 user-data 脚本。
@@ -354,38 +354,38 @@ func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanc
 		return "", err
 	}
 
-	// proxy 配置既要写入 shell 环境，也要写入 node-agent YAML；两处使用同一份输入。
 	proxy := p.config.CloudPlane.RuntimeProvisioning
-	egressProxyEnabled := strings.TrimSpace(proxy.EgressProxyEndpoint) != ""
+	workloadEgressProxyEndpoint := strings.TrimSpace(proxy.WorkloadEgressProxyEndpoint)
+	workloadEgressProxyEnabled := workloadEgressProxyEndpoint != ""
 	data := nodeBootstrapData{
-		InstallRoot:             utils.ShellQuote("/opt/mini-cloud"),
-		AgentBinaryURL:          utils.ShellQuote(p.config.CloudPlane.NodeAgent.BinaryURL),
-		DockerDaemonJSONBase64:  utils.ShellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
-		EgressProxyEnabledShell: utils.ShellQuote(strconv.FormatBool(egressProxyEnabled)),
-		EgressProxyEnabledYAML:  strconv.FormatBool(egressProxyEnabled),
-		EgressProxyEndpoint:     utils.ShellQuote(strings.TrimSpace(proxy.EgressProxyEndpoint)),
-		NoProxyValue:            utils.ShellQuote(strings.Join(nodeNoProxy, ",")),
-		BootstrapToken:          utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.NodeAgent.BootstrapToken)),
-		BootstrapLog:            utils.ShellQuote("/var/log/mini-cloud-node-bootstrap.log"),
-		MetadataBase:            utils.ShellQuote("http://100.100.100.200/latest"),
-		InstanceName:            utils.ShellQuote(instanceName),
-		ConnectEndpoint:         utils.ShellQuote(strings.TrimRight(p.config.CloudPlane.NodeAgent.ConnectEndpoint, "/")),
-		PlatformName:            utils.ShellQuote(p.config.CloudPlane.Plane.Name),
-		Provider:                utils.ShellQuote(p.config.CloudPlane.Infrastructure.Provider),
-		Region:                  utils.ShellQuote(p.config.CloudPlane.Infrastructure.RegionID),
-		InstanceType:            utils.ShellQuote(capacity.instanceType),
-		CPUMilli:                capacity.cpuMilli,
-		MemoryMi:                capacity.memoryMi,
-		HeartbeatInterval:       utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentHeartbeatIntervalSeconds) + "s"),
-		WorkInterval:            utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentWorkIntervalSeconds) + "s"),
-		HostPortMin:             cloudplaneconfig.NodeAgentHostPortMin,
-		HostPortMax:             cloudplaneconfig.NodeAgentHostPortMax,
-		NoProxyItems:            utils.ShellQuoteItems(nodeNoProxy),
-		WorkloadLogLokiURL:      utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.LokiURL)),
-		WorkloadLogLokiTenantID: utils.ShellQuote(""),
-		WorkloadOTLPEndpoint:    utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.OTLPEndpoint)),
-		NodeAgentBinaryPath:     utils.ShellQuote("/opt/mini-cloud/bin/node-agent"),
-		NodeAgentConfigPath:     utils.ShellQuote("/opt/mini-cloud/node-agent.yaml"),
+		InstallRoot:                     utils.ShellQuote("/opt/mini-cloud"),
+		AgentBinaryURL:                  utils.ShellQuote(p.config.CloudPlane.NodeAgent.BinaryURL),
+		DockerDaemonJSONBase64:          utils.ShellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
+		WorkloadEgressProxyEnabledShell: utils.ShellQuote(strconv.FormatBool(workloadEgressProxyEnabled)),
+		WorkloadEgressProxyEnabledYAML:  strconv.FormatBool(workloadEgressProxyEnabled),
+		WorkloadEgressProxyEndpoint:     utils.ShellQuote(workloadEgressProxyEndpoint),
+		NoProxyValue:                    utils.ShellQuote(strings.Join(nodeNoProxy, ",")),
+		BootstrapToken:                  utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.NodeAgent.BootstrapToken)),
+		BootstrapLog:                    utils.ShellQuote("/var/log/mini-cloud-node-bootstrap.log"),
+		MetadataBase:                    utils.ShellQuote("http://100.100.100.200/latest"),
+		InstanceName:                    utils.ShellQuote(instanceName),
+		ConnectEndpoint:                 utils.ShellQuote(strings.TrimRight(p.config.CloudPlane.NodeAgent.ConnectEndpoint, "/")),
+		PlatformName:                    utils.ShellQuote(p.config.CloudPlane.Plane.Name),
+		Provider:                        utils.ShellQuote(p.config.CloudPlane.Infrastructure.Provider),
+		Region:                          utils.ShellQuote(p.config.CloudPlane.Infrastructure.RegionID),
+		InstanceType:                    utils.ShellQuote(capacity.instanceType),
+		CPUMilli:                        capacity.cpuMilli,
+		MemoryMi:                        capacity.memoryMi,
+		HeartbeatInterval:               utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentHeartbeatIntervalSeconds) + "s"),
+		WorkInterval:                    utils.ShellQuote(strconv.Itoa(cloudplaneconfig.NodeAgentWorkIntervalSeconds) + "s"),
+		HostPortMin:                     cloudplaneconfig.NodeAgentHostPortMin,
+		HostPortMax:                     cloudplaneconfig.NodeAgentHostPortMax,
+		NoProxyItems:                    utils.ShellQuoteItems(nodeNoProxy),
+		WorkloadLogLokiURL:              utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.LokiURL)),
+		WorkloadLogLokiTenantID:         utils.ShellQuote(""),
+		WorkloadOTLPEndpoint:            utils.ShellQuote(strings.TrimSpace(p.config.CloudPlane.Observability.OTLPEndpoint)),
+		NodeAgentBinaryPath:             utils.ShellQuote("/opt/mini-cloud/bin/node-agent"),
+		NodeAgentConfigPath:             utils.ShellQuote("/opt/mini-cloud/node-agent.yaml"),
 	}
 
 	// 模板文件是独立 shell 脚本，Go 只负责渲染变量，不再逐行拼接脚本。

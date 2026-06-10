@@ -23,11 +23,11 @@ output "subnet_name" {
 }
 
 output "platform_security_group_id" {
-  value = tencentcloud_security_group.platform.id
+  value = var.create_platform_host_resources ? tencentcloud_security_group.platform[0].id : ""
 }
 
 output "platform_security_group_name" {
-  value = tencentcloud_security_group.platform.name
+  value = var.create_platform_host_resources ? tencentcloud_security_group.platform[0].name : ""
 }
 
 output "runtime_security_group_id" {
@@ -47,9 +47,9 @@ output "platform_key_name" {
 }
 
 output "platform_role_name" {
-  value = tencentcloud_cam_role.platform.name
+  value = var.create_platform_host_resources ? tencentcloud_cam_role.platform[0].name : ""
 }
 
 output "platform_role_id" {
-  value = tencentcloud_cam_role.platform.id
+  value = var.create_platform_host_resources ? tencentcloud_cam_role.platform[0].id : ""
 }

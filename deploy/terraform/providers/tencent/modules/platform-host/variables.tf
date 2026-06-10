@@ -61,16 +61,6 @@ variable "cam_role_name" {
   type = string
 }
 
-variable "user_data" {
-  type    = string
-  default = ""
-}
-
-variable "user_data_replace_on_change" {
-  type    = bool
-  default = false
-}
-
 variable "eip_name" {
   type    = string
   default = ""

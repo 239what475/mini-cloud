@@ -159,7 +159,9 @@
   - [deploy/compose](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/compose)
     - 本地依赖与观测辅助栈
   - [deploy/terraform](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/terraform)
-    - 真实云环境底座与实验引导
+    - 真实云基础设施底座
+  - `deploy/lab`
+    - 真实云 lab 的 bootstrap、install 和 destroy 脚本
 - [Makefile](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/Makefile)
   - 项目级检查、二进制构建和 proto 生成入口
 - `scripts/`
@@ -276,33 +278,28 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 | 生成 proto 代码 | `make proto` | 低 | `buf generate` |
 | 想验证 v5/08 的身份授权主链 | `cd projects/mini-cloud/tests && go run . local-identity` | 中 | 唯一身份场景；真实 `Authelia -> auth bridge -> cloud-plane`；角色绑定、项目成员、platform/project service account、本地服务创建 |
 | 想验证 v5/07 的本地观测链 | `cd projects/mini-cloud/tests && go run . local-observability` | 中 | 本地 workload 日志、Prometheus 指标、Tempo trace |
-| 想验收真实阿里云旧实验链 | `cd projects/mini-cloud/tests && go run .` | 最高 | `公网 IP 探测 -> terraform apply -> cloud-init lab install -> 平台 API -> scale-out -> teardown -> inventory verify -> terraform destroy` |
+| 想拉起真实云 lab | `deploy/lab/bootstrap.sh` + `deploy/lab/install.sh` | 最高 | 创建云底座，通过 SSH 安装 `control-plane` 和 `cloud-plane` |
 
 真实云环境回收现在明确是：
 
-- 先由测试程序显式调用 `POST /api/v1/platform/teardown`
-- 等 `cloud-plane` 自己把 runtime inventory 收敛到空
-- 再由测试程序直接用 provider API 回读：
-  - 当前平台名下
-    的 runtime
-    是否已经为 `0`
-- 再执行 `terraform destroy`
+- `deploy/lab/destroy.sh`
+  先通过云厂商 CLI 清理当前平台名下的 runtime 节点
+- 再执行
+  `terraform destroy`
+  删除 Terraform 管理的平台机、网络、安全组、密钥和角色
 
 也就是说，
 `terraform destroy`
-不再内嵌调用平台 `teardown` 的 hook；
+不再内嵌平台安装、teardown 或 runtime cleanup hook；
 真正的 destroy
 入口现在是：
 
-- `teardown -> inventory verify -> terraform destroy`
+- `deploy/lab/destroy.sh`
 
-如果显式 `teardown`
-失败，
-或者 provider
-回读发现还有 runtime
-实例残留，
-测试会直接终止，
-不会继续删底层基础设施。
+Terraform 只管理真实云底座。
+平台进程安装、更新和销毁前 runtime 清理由
+`deploy/lab`
+脚本负责。
 
 如果只是：
 
@@ -337,34 +334,22 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 只有当改动真的碰到：
 
 - Terraform 平台底座
-- 远端旧 `cloud-init` 实验安装链
+- 远端 lab 安装脚本
 - 真实阿里云资源生命周期
 
 才需要跑：
 
-- `cd projects/mini-cloud/tests && go run .`
+- `terraform -chdir=deploy/terraform/lab fmt -check`
+- `bash -n deploy/lab/*.sh`
 
 要注意：
 
-- 这条真实阿里云链路仍然是旧的
-  Terraform + `cloud-init`
-  lab 路径
-- 它适合继续验证：
-  - provider API
-  - runtime scale-out
-  - teardown / destroy
-- 但它已经不是
-  `v6/11`
-  开始推荐的长期运行部署方式
-- `v6/11`
-  的正式方向是：
-  - `control-plane`
-    分开部署
-  - `cloud-plane`
-    分开部署
-  - `node-agent`
-    分开部署
-  - 再通过显式注册建联
+- 当前环境通常不能直接跑真实云 E2E。
+- 真实 lab 的完整顺序是：
+  - `deploy/lab/bootstrap.sh`
+  - 上传或提供 release 二进制 URL
+  - `deploy/lab/install.sh`
+  - `deploy/lab/destroy.sh`
 
 相关背景和章节说明再回头看：
 
@@ -386,4 +371,6 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 - `tests`
   子模块负责真实集成场景
 - Terraform
-  负责真实云底座和销毁链路
+  只负责真实云底座
+- `deploy/lab`
+  负责编排 lab 安装和销毁

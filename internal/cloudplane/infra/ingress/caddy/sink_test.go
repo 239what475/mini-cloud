@@ -12,7 +12,7 @@ import (
 )
 
 func TestBuildConfigBuildsReverseProxyRoute(t *testing.T) {
-	config, err := buildConfig("0.0.0.0:80", "http://127.0.0.1:2019", []cloudmodel.Route{{
+	config, err := buildConfig("0.0.0.0:80", "0.0.0.0:18082", "/opt/mini-cloud/artifacts", "http://127.0.0.1:2019", []cloudmodel.Route{{
 		Host:     "api.team.apps.example.test",
 		Backends: []string{"10.0.1.20:32768", "10.0.1.21:32769"},
 	}})
@@ -44,10 +44,18 @@ func TestBuildConfigBuildsReverseProxyRoute(t *testing.T) {
 	if len(handler.Upstreams) != 2 || handler.Upstreams[0].Dial != "10.0.1.20:32768" || handler.Upstreams[1].Dial != "10.0.1.21:32769" {
 		t.Fatalf("upstreams = %+v, want both backends", handler.Upstreams)
 	}
+	artifactServer := config.Apps.HTTP.Servers["mini_cloud_artifacts"]
+	if len(artifactServer.Listen) != 1 || artifactServer.Listen[0] != "0.0.0.0:18082" {
+		t.Fatalf("artifact listen = %+v, want 0.0.0.0:18082", artifactServer.Listen)
+	}
+	artifactHandler := artifactServer.Routes[0].Handle[0]
+	if artifactHandler.Handler != "file_server" || artifactHandler.Root != "/opt/mini-cloud/artifacts" {
+		t.Fatalf("artifact handler = %+v, want file_server rooted at artifacts dir", artifactHandler)
+	}
 }
 
 func TestBuildConfigUses503ForRouteWithoutBackends(t *testing.T) {
-	config, err := buildConfig("0.0.0.0:80", "http://127.0.0.1:2019", []cloudmodel.Route{{Host: "api.team.apps.example.test"}})
+	config, err := buildConfig("0.0.0.0:80", "0.0.0.0:18082", "/opt/mini-cloud/artifacts", "http://127.0.0.1:2019", []cloudmodel.Route{{Host: "api.team.apps.example.test"}})
 	if err != nil {
 		t.Fatalf("BuildConfig returned error: %v", err)
 	}
@@ -78,7 +86,7 @@ func TestSinkSkipsLoadAfterSuccessfulUnchangedApply(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", AdminURL: server.URL})
+	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", ArtifactListenAddr: "0.0.0.0:18082", ArtifactDocumentRoot: "/opt/mini-cloud/artifacts", AdminURL: server.URL})
 	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
 	if err := sink.Apply(context.Background(), routes); err != nil {
@@ -106,7 +114,7 @@ func TestSinkRetriesLoadAfterFailure(t *testing.T) {
 	}))
 	defer server.Close()
 
-	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", AdminURL: server.URL})
+	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", ArtifactListenAddr: "0.0.0.0:18082", ArtifactDocumentRoot: "/opt/mini-cloud/artifacts", AdminURL: server.URL})
 	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
 	if err := sink.Apply(context.Background(), routes); err == nil {

@@ -406,8 +406,10 @@ func (s *Store) GetNodeScaleOutCandidate(ctx context.Context, nodeNamePrefix str
 		provisioning AS (
 			SELECT EXISTS (
 				SELECT 1
-				FROM nodes
+				FROM nodes, pending
 				WHERE status = $4
+				  AND name = $5 || '-' || lower(substr(md5(pending.plan_id), 1, 10))
+				  AND instance_type = $6
 			) AS has_provisioning
 		)
 		SELECT

@@ -14,6 +14,8 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
+const provisioningNodeTimeout = 10 * time.Minute
+
 type Service struct {
 	// logger 记录 node 池收敛过程中的单节点失败。
 	logger *slog.Logger
@@ -37,6 +39,9 @@ func (s *Service) ReconcileOnce(ctx context.Context) error {
 		return nil
 	}
 	if err := s.reconcileTerminatingNodes(ctx); err != nil {
+		return err
+	}
+	if err := s.reconcileStaleProvisioningNodes(ctx); err != nil {
 		return err
 	}
 	scaledOut, err := s.reconcileCapacityShortage(ctx)
@@ -76,13 +81,15 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 		MemoryMi:    candidate.MemoryMi,
 	})
 	if err != nil {
+		reason := "provider node creation failed: " + err.Error()
 		_, cleanupErr := s.store.MarkNodeDeleted(
 			ctx,
 			node.ID,
-			"provider node creation failed: "+err.Error(),
+			reason,
 			time.Now().UTC(),
 		)
-		return false, errors.Join(err, cleanupErr)
+		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
+		return false, errors.Join(err, cleanupErr, failErr)
 	}
 	_, err = s.store.BindProvisionedNode(
 		ctx,
@@ -94,6 +101,46 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 		time.Now().UTC(),
 	)
 	return err == nil, err
+}
+
+func (s *Service) reconcileStaleProvisioningNodes(ctx context.Context) error {
+	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
+	if err != nil {
+		return err
+	}
+	cutoff := time.Now().UTC().Add(-provisioningNodeTimeout)
+	nodeNamePrefix := s.config.Plane.Name + cloudplaneconfig.NodeNameSuffix
+	var joinedErr error
+	for _, item := range items {
+		if item.UpdatedAt.After(cutoff) {
+			continue
+		}
+		if err := s.reconcileStaleProvisioningNode(ctx, nodeNamePrefix, item); err != nil {
+			joinedErr = errors.Join(joinedErr, err)
+			s.logger.Warn("stale provisioning node cleanup failed",
+				"node_id", item.ID,
+				"node_name", item.Name,
+				"instance_id", item.InstanceID,
+				"error", err,
+			)
+		}
+	}
+	return joinedErr
+}
+
+func (s *Service) reconcileStaleProvisioningNode(ctx context.Context, nodeNamePrefix string, item cloudmodel.Node) error {
+	if item.Status != cloudmodel.StatusProvisioning || !item.Elastic {
+		return nil
+	}
+	reason := "runtime node did not register before provisioning timeout"
+	if strings.TrimSpace(item.InstanceID) != "" {
+		if err := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: item.InstanceID}); err != nil {
+			return err
+		}
+	}
+	_, nodeErr := s.store.MarkNodeDeleted(ctx, item.ID, reason, time.Now().UTC())
+	planErr := s.store.MarkPendingExecutionFailedForProvisioningNode(ctx, nodeNamePrefix, item.Name, reason)
+	return errors.Join(nodeErr, planErr)
 }
 
 func (s *Service) reconcileTerminatingNodes(ctx context.Context) error {

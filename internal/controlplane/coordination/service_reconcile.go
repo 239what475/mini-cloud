@@ -139,7 +139,7 @@ func (c *ServiceController) targetPlaneID(ctx context.Context, serviceItem model
 	if !planeDetail.Registration.Registered {
 		return "", errPlaneApplyNotRegistered
 	}
-	if planeDetail.Status.Status != model.StatusReady {
+	if planeDetail.Status.Status == model.StatusOffline {
 		return "", fmt.Errorf("%w: current status is %s", errPlaneNotReady, planeDetail.Status.Status)
 	}
 	return planeID, nil

@@ -1,4 +1,5 @@
 provider_name = "aliyun"
+platform_mode = "managed_cvm"
 platform_name = "mini-cloud-v3-lab"
 environment   = "lab"
 owner         = "student"
@@ -21,24 +22,27 @@ ingress_cidrs = [
   "203.0.113.10/32"
 ]
 
-# public service 默认入口域名为：
-# <service>.<project>.<ingress_base_domain>
-ingress_base_domain = "apps.example.test"
-
 # 这里填本机 SSH 公钥路径。
 # Terraform 会读取这把公钥，并自动在云侧创建登录密钥对。
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
-# admin_token 默认自动生成。
-# 如果你想固定成自己指定的值，再取消下面这一行的注释。
-# admin_token = "replace-with-a-strong-admin-token"
+# Terraform 只负责创建真实云底座，不负责安装 mini-cloud 进程。
+# 底座创建后，用 deploy/lab/install.sh 通过 SSH 安装 control-plane 和 cloud-plane。
+# 入口机不运行 node-agent；runtime node 会从入口机内网 artifact server 下载 node-agent。
 
-# cloud_plane_binary_url / agent_binary_url
-# 默认不写在这个主 tfvars 里。
-# 如果需要真实云主机自动下载安装二进制，
-# 请先用 `make build-release` 构建 release 产物，
-# 再把二进制上传到你自己的对象存储或制品仓库，
-# 最后在 terraform.binary.auto.tfvars.json 中填入下载 URL 和 SHA256。
+# 复用腾讯云轻量应用服务器作为入口机时，改成：
+#
+# provider_name = "tencent"
+# platform_mode = "existing_lighthouse"
+# existing_lighthouse_instance_id = "lhins-xxxxxxxx"
+# existing_lighthouse_public_ip   = "203.0.113.10"
+# existing_lighthouse_private_ip  = "10.1.0.6"
+# existing_lighthouse_ssh_host    = "myserver"
+# existing_ccn_id                 = "ccn-xxxxxxxx"
+#
+# Terraform 会创建 runtime CVM VPC、安全组和密钥，并把 runtime VPC 关联到已有 CCN。
+# deploy/lab/bootstrap.sh 会把 Lighthouse 关联到同一个 CCN。
+# 注意 vpc_cidr_block/subnet_cidr_block 不要和 Lighthouse 私网 CIDR 冲突。
 
 aliyun = {
   region_id     = "cn-beijing"
@@ -56,7 +60,3 @@ aliyun = {
 #   instance_type = "S5.MEDIUM4"
 #   image_id      = "img-xxxxxxxx"
 # }
-#
-# 留空时，image_pull_registry_mirror 会按 provider_name 自动选默认值：
-# aliyun 走 https://docker.m.daocloud.io
-# tencent 走 https://mirror.ccs.tencentyun.com

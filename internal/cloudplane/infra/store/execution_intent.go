@@ -319,6 +319,51 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudmodel.Execut
 	return items, nil
 }
 
+func (s *Store) MarkExecutionPlanFailed(ctx context.Context, planID string, reason string) error {
+	if planID == "" {
+		return cloudmodel.ErrPlanIDRequired
+	}
+	if reason == "" {
+		return cloudmodel.ErrReasonRequired
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE execution_intents
+		SET
+			status = $2,
+			status_reason = $3,
+			finished_at = COALESCE(finished_at, now()),
+			updated_at = now()
+		WHERE plan_id = $1
+		  AND status = $4
+	`, planID, cloudmodel.StatusFailed, reason, cloudmodel.StatusPending); err != nil {
+		return fmt.Errorf("mark execution plan failed: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) MarkPendingExecutionFailedForProvisioningNode(ctx context.Context, nodeNamePrefix string, nodeName string, reason string) error {
+	if nodeNamePrefix == "" || nodeName == "" {
+		return cloudmodel.ErrNodeNameRequired
+	}
+	if reason == "" {
+		return cloudmodel.ErrReasonRequired
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE execution_intents
+		SET
+			status = $4,
+			status_reason = $5,
+			finished_at = COALESCE(finished_at, now()),
+			updated_at = now()
+		WHERE work_action = $1
+		  AND status = $2
+		  AND $3 = $6 || '-' || lower(substr(md5(plan_id), 1, 10))
+	`, cloudmodel.WorkActionRun, cloudmodel.StatusPending, nodeName, cloudmodel.StatusFailed, reason, nodeNamePrefix); err != nil {
+		return fmt.Errorf("mark pending execution failed for provisioning node: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloudmodel.WorkItem, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

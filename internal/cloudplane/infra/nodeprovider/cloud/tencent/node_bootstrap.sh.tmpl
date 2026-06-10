@@ -4,8 +4,8 @@ set -euo pipefail
 INSTALL_ROOT={{.InstallRoot}}
 AGENT_BINARY_URL={{.AgentBinaryURL}}
 DOCKER_DAEMON_JSON_BASE64={{.DockerDaemonJSONBase64}}
-EGRESS_PROXY_ENABLED={{.EgressProxyEnabledShell}}
-EGRESS_PROXY_ENDPOINT={{.EgressProxyEndpoint}}
+WORKLOAD_EGRESS_PROXY_ENABLED={{.WorkloadEgressProxyEnabledShell}}
+WORKLOAD_EGRESS_PROXY_ENDPOINT={{.WorkloadEgressProxyEndpoint}}
 NO_PROXY_VALUE={{.NoProxyValue}}
 NODE_AGENT_BOOTSTRAP_TOKEN={{.BootstrapToken}}
 BOOTSTRAP_LOG={{.BootstrapLog}}
@@ -14,43 +14,6 @@ METADATA_BASE={{.MetadataBase}}
 log() {
   printf '[mini-cloud node agent bootstrap] %s\n' "$1" | tee -a "$BOOTSTRAP_LOG"
 }
-
-configure_proxy_env() {
-  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
-    return 0
-  fi
-  export HTTP_PROXY="$EGRESS_PROXY_ENDPOINT"
-  export HTTPS_PROXY="$EGRESS_PROXY_ENDPOINT"
-  export NO_PROXY="$NO_PROXY_VALUE"
-  export http_proxy="$HTTP_PROXY"
-  export https_proxy="$HTTPS_PROXY"
-  export no_proxy="$NO_PROXY"
-}
-
-write_apt_proxy_if_needed() {
-  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
-    return 0
-  fi
-  cat >/etc/apt/apt.conf.d/99-mini-cloud-egress-proxy <<EOF_APT_PROXY
-Acquire::http::Proxy "$EGRESS_PROXY_ENDPOINT";
-Acquire::https::Proxy "$EGRESS_PROXY_ENDPOINT";
-EOF_APT_PROXY
-}
-
-write_docker_proxy_if_needed() {
-  if [[ "$EGRESS_PROXY_ENABLED" != "true" ]]; then
-    return 0
-  fi
-  install -d -m 0755 /etc/systemd/system/docker.service.d
-  cat >/etc/systemd/system/docker.service.d/mini-cloud-egress-proxy.conf <<EOF_DOCKER_PROXY
-[Service]
-Environment="HTTP_PROXY=$EGRESS_PROXY_ENDPOINT"
-Environment="HTTPS_PROXY=$EGRESS_PROXY_ENDPOINT"
-Environment="NO_PROXY=$NO_PROXY_VALUE"
-EOF_DOCKER_PROXY
-}
-
-configure_proxy_env
 
 metadata_get() {
   local path="$1"
@@ -63,7 +26,6 @@ if ! command -v apt-get >/dev/null 2>&1; then
 fi
 
 export DEBIAN_FRONTEND=noninteractive
-write_apt_proxy_if_needed
 apt-get update
 apt-get install -y curl ca-certificates
 
@@ -80,13 +42,11 @@ if [[ -n "$DOCKER_DAEMON_JSON_BASE64" ]]; then
   printf '%s' "$DOCKER_DAEMON_JSON_BASE64" | base64 -d >/etc/docker/daemon.json
 fi
 
-write_docker_proxy_if_needed
-
 systemctl daemon-reload || true
 systemctl enable --now docker
 systemctl restart docker
 
-log "download node-agent binary from $AGENT_BINARY_URL"
+log "download node-agent binary"
 curl -fsSL "$AGENT_BINARY_URL" -o "$INSTALL_ROOT/bin/node-agent"
 chmod 0755 "$INSTALL_ROOT/bin/node-agent"
 
@@ -125,8 +85,8 @@ runtime:
     max: {{.HostPortMax}}
 network:
   egressProxy:
-    enabled: {{.EgressProxyEnabledYAML}}
-    endpoint: {{.EgressProxyEndpoint}}
+    enabled: {{.WorkloadEgressProxyEnabledYAML}}
+    endpoint: {{.WorkloadEgressProxyEndpoint}}
     noProxy:
 {{range .NoProxyItems}}      - {{.}}
 {{end}}observability:
@@ -143,20 +103,6 @@ exec {{.NodeAgentBinaryPath}} --config {{.NodeAgentConfigPath}}
 EOF_AGENT_START
 chmod 0755 "$INSTALL_ROOT/bin/start-agent.sh"
 
-install -d -m 0755 /etc/mini-cloud/node-agent
-if [[ "$EGRESS_PROXY_ENABLED" == "true" ]]; then
-  cat >/etc/mini-cloud/node-agent/proxy.env <<EOF_NODE_AGENT_PROXY_ENV
-HTTP_PROXY=$EGRESS_PROXY_ENDPOINT
-HTTPS_PROXY=$EGRESS_PROXY_ENDPOINT
-NO_PROXY=$NO_PROXY_VALUE
-http_proxy=$EGRESS_PROXY_ENDPOINT
-https_proxy=$EGRESS_PROXY_ENDPOINT
-no_proxy=$NO_PROXY_VALUE
-EOF_NODE_AGENT_PROXY_ENV
-else
-  rm -f /etc/mini-cloud/node-agent/proxy.env
-fi
-
 cat >/etc/systemd/system/mini-cloud-node-agent.service <<EOF_SYSTEMD
 [Unit]
 Description=mini-cloud node agent
@@ -165,7 +111,6 @@ Wants=network-online.target docker.service
 
 [Service]
 Type=simple
-EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env
 ExecStart=/opt/mini-cloud/bin/start-agent.sh
 Restart=always
 RestartSec=5

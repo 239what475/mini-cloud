@@ -19,6 +19,8 @@ const (
 	NodeAgentHostPortMax              = 60999
 	NodeNameSuffix                    = "-node"
 	CaddyListenHTTPAddr               = "0.0.0.0:80"
+	CaddyArtifactListenAddr           = "0.0.0.0:18082"
+	CaddyArtifactRoot                 = "/opt/mini-cloud/artifacts"
 )
 
 type Config struct {
@@ -63,10 +65,10 @@ type InfrastructureConfig struct {
 }
 
 type RuntimeProvisioningConfig struct {
-	InstanceType        string         `yaml:"instanceType"`
-	RegistryMirrors     []string       `yaml:"registryMirrors"`
-	EgressProxyEndpoint string         `yaml:"egressProxyEndpoint"`
-	ProviderSpec        map[string]any `yaml:"providerSpec"`
+	InstanceType                string         `yaml:"instanceType"`
+	RegistryMirrors             []string       `yaml:"registryMirrors"`
+	WorkloadEgressProxyEndpoint string         `yaml:"workloadEgressProxyEndpoint"`
+	ProviderSpec                map[string]any `yaml:"providerSpec"`
 }
 
 func (c RuntimeProvisioningConfig) ParseProviderSpec(target any) error {
@@ -132,7 +134,7 @@ func (c *Config) normalize() {
 	c.NodeAgent.BinaryURL = strings.TrimSpace(c.NodeAgent.BinaryURL)
 	c.RuntimeProvisioning.InstanceType = strings.TrimSpace(c.RuntimeProvisioning.InstanceType)
 	c.RuntimeProvisioning.RegistryMirrors = trimStringList(c.RuntimeProvisioning.RegistryMirrors)
-	c.RuntimeProvisioning.EgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.EgressProxyEndpoint)
+	c.RuntimeProvisioning.WorkloadEgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint)
 	c.Ingress.BaseDomain = strings.Trim(strings.TrimSpace(c.Ingress.BaseDomain), ".")
 	c.Ingress.CaddyAdminURL = strings.TrimSpace(c.Ingress.CaddyAdminURL)
 	c.Observability.LokiURL = strings.TrimSpace(c.Observability.LokiURL)
@@ -177,8 +179,8 @@ func (c Config) Validate() error {
 	if len(c.RuntimeProvisioning.ProviderSpec) == 0 {
 		return fmt.Errorf("runtimeProvisioning.providerSpec is required")
 	}
-	if strings.TrimSpace(c.RuntimeProvisioning.EgressProxyEndpoint) != "" {
-		if err := validateProxyEndpoint(c.RuntimeProvisioning.EgressProxyEndpoint); err != nil {
+	if strings.TrimSpace(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint) != "" {
+		if err := validateProxyEndpoint(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint); err != nil {
 			return err
 		}
 	}
@@ -211,13 +213,13 @@ func trimStringList(values []string) []string {
 func validateProxyEndpoint(value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return fmt.Errorf("parse runtimeProvisioning.egressProxyEndpoint: %w", err)
+		return fmt.Errorf("parse runtimeProvisioning.workloadEgressProxyEndpoint: %w", err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("runtimeProvisioning.egressProxyEndpoint must use http or https")
+		return fmt.Errorf("runtimeProvisioning.workloadEgressProxyEndpoint must use http or https")
 	}
 	if parsed.Host == "" {
-		return fmt.Errorf("runtimeProvisioning.egressProxyEndpoint must include host")
+		return fmt.Errorf("runtimeProvisioning.workloadEgressProxyEndpoint must include host")
 	}
 	return nil
 }

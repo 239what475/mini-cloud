@@ -77,10 +77,6 @@ variable "system_disk_size" {
   default = 40
 }
 
-variable "user_data" {
-  type = string
-}
-
 variable "eip_name" {
   type    = string
   default = ""

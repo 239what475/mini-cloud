@@ -14,7 +14,7 @@ controlPlane:
 nodeAgent:
   connectEndpoint: replace-with-platform-private-ip:18081
   bootstrapToken: replace-with-node-agent-bootstrap-token
-  binaryUrl: https://replace-with-artifact-host/node-agent-linux-amd64
+  binaryUrl: http://replace-with-platform-private-ip:18082/node-agent-linux-amd64
 
 infrastructure:
   provider: aliyun
@@ -25,7 +25,7 @@ runtimeProvisioning:
   instanceType: ecs.u1-c1m1.large
   registryMirrors:
     - https://docker.m.daocloud.io
-  egressProxyEndpoint: http://replace-with-platform-private-ip:3128
+  workloadEgressProxyEndpoint: http://replace-with-platform-private-ip:3128
   providerSpec:
     imageId: replace-with-image-id
     keyPairName: replace-with-key-pair-name
