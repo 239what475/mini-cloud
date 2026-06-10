@@ -143,25 +143,13 @@
 - `internal/contract/`
   - 进程间契约和内部接口适配
 - `deploy/`
-  - 部署与实验环境相关文件
-  - [deploy/control-plane](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/control-plane)
-    - `control-plane`
-      单活部署与恢复资产
-  - [deploy/cloud-plane](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/cloud-plane)
-    - `cloud-plane`
-      长期运行部署资产
-      和首个固定
-      `node agent`
-      接入资产
-  - [deploy/platform-host](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/platform-host)
-    - shared host
-      基础设施资产
+  - 当前可维护的部署与实验环境入口
   - [deploy/compose](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/compose)
-    - 本地依赖与观测辅助栈
+    - 本地开发和集成测试依赖
   - [deploy/terraform](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/deploy/terraform)
     - 真实云基础设施底座
   - `deploy/lab`
-    - 真实云 lab 的 bootstrap、install 和 destroy 脚本
+    - 真实云 lab 的 `labctl` 配置和说明
 - [Makefile](/home/what/myproject/swe-tools-learn-etcd/projects/mini-cloud/Makefile)
   - 项目级检查、二进制构建和 proto 生成入口
 - `scripts/`
@@ -238,17 +226,12 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
   - 起本地 `Postgres`
   - 跑 store / API 集成测试
   - 自动清理测试数据库环境
-- `./scripts/smoke.sh`
-  - 起本地 `Postgres`
-  - 启动 `cloud-plane`
-  - 跑一条从节点注册到 workload 运行的主链 smoke
-  - 自动清理测试现场
 - `make build-release`
   - 构建
     `control-plane`、
     `cloud-plane`
     和
-    `agent`
+    `node-agent`
     的 release 二进制
   - 默认输出到
     `dist/release/linux-amd64/`
@@ -261,9 +244,6 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
     的唯一一条本地身份与授权集成场景
   - 真实 `Authelia -> auth bridge -> cloud-plane`
     认证链
-- `cd projects/mini-cloud/tests && go run . local-observability`
-  - `v5/07`
-    的本地观测链集成场景
 
 ## 按场景选择入口
 
@@ -273,16 +253,14 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 | --- | --- | --- | --- |
 | 日常开发快速回归 | `make check` | 最低 | 编译、单测、`vet`、`staticcheck`、lint、web build |
 | 改数据库 / store / API | `./scripts/test-integration.sh` | 低 | 真实 `Postgres` 集成 |
-| 改最核心发布主链 | `./scripts/smoke.sh` | 低 | 从节点注册到 workload 运行的最小主链 |
 | 构建长期运行二进制 | `make build-release` | 低 | `control-plane`、`cloud-plane`、`node-agent` release 输出 |
 | 生成 proto 代码 | `make proto` | 低 | `buf generate` |
 | 想验证 v5/08 的身份授权主链 | `cd projects/mini-cloud/tests && go run . local-identity` | 中 | 唯一身份场景；真实 `Authelia -> auth bridge -> cloud-plane`；角色绑定、项目成员、platform/project service account、本地服务创建 |
-| 想验证 v5/07 的本地观测链 | `cd projects/mini-cloud/tests && go run . local-observability` | 中 | 本地 workload 日志、Prometheus 指标、Tempo trace |
-| 想拉起真实云 lab | `deploy/lab/bootstrap.sh` + `deploy/lab/install.sh` | 最高 | 创建云底座，通过 SSH 安装 `control-plane` 和 `cloud-plane` |
+| 想拉起真实云 lab | `go run ./cmd/labctl bootstrap` + `go run ./cmd/labctl install` | 最高 | 创建云底座，通过 SSH 安装 `control-plane` 和 `cloud-plane` |
 
 真实云环境回收现在明确是：
 
-- `deploy/lab/destroy.sh`
+- `go run ./cmd/labctl destroy --config deploy/lab/lab.yaml`
   先通过云厂商 CLI 清理当前平台名下的 runtime 节点
 - 再执行
   `terraform destroy`
@@ -294,12 +272,12 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 真正的 destroy
 入口现在是：
 
-- `deploy/lab/destroy.sh`
+- `go run ./cmd/labctl destroy --config deploy/lab/lab.yaml`
 
 Terraform 只管理真实云底座。
 平台进程安装、更新和销毁前 runtime 清理由
-`deploy/lab`
-脚本负责。
+`labctl`
+负责。
 
 如果只是：
 
@@ -320,36 +298,26 @@ Terraform 只管理真实云底座。
 
 - `./scripts/test-integration.sh`
 
-如果改动已经影响到：
-
-- 调度
-- workload update / revision
-- runtime
-- deployment 状态机
-
-再补：
-
-- `./scripts/smoke.sh`
-
 只有当改动真的碰到：
 
 - Terraform 平台底座
-- 远端 lab 安装脚本
+- lab 安装编排
 - 真实阿里云资源生命周期
 
 才需要跑：
 
 - `terraform -chdir=deploy/terraform/lab fmt -check`
-- `bash -n deploy/lab/*.sh`
+- `go test ./cmd/labctl ./internal/lab`
 
 要注意：
 
 - 当前环境通常不能直接跑真实云 E2E。
 - 真实 lab 的完整顺序是：
-  - `deploy/lab/bootstrap.sh`
-  - 上传或提供 release 二进制 URL
-  - `deploy/lab/install.sh`
-  - `deploy/lab/destroy.sh`
+  - `cp deploy/lab/lab.yaml.example deploy/lab/lab.yaml`
+  - `go run ./cmd/labctl bootstrap --config deploy/lab/lab.yaml`
+  - `make build-release`
+  - `go run ./cmd/labctl install --config deploy/lab/lab.yaml`
+  - `go run ./cmd/labctl destroy --config deploy/lab/lab.yaml`
 
 相关背景和章节说明再回头看：
 
@@ -366,8 +334,6 @@ Terraform 只管理真实云底座。
   负责可持续维护的工程动作
 - `scripts/test-integration.sh`
   负责需要本地数据库编排的集成测试
-- `scripts/smoke.sh`
-  负责需要启动服务和 runtime 容器的主链 smoke
 - `tests`
   子模块负责真实集成场景
 - Terraform

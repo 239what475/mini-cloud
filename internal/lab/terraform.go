@@ -1,0 +1,110 @@
+package lab
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
+)
+
+type terraformValue[T any] struct {
+	Value T `json:"value"`
+}
+
+type TerraformOutput struct {
+	Provider            terraformValue[string]         `json:"provider"`
+	PlatformMode        terraformValue[string]         `json:"platform_mode"`
+	Platform            terraformValue[PlatformOutput] `json:"platform"`
+	Network             terraformValue[NetworkOutput]  `json:"network"`
+	CCN                 terraformValue[*CCNOutput]     `json:"ccn"`
+	RuntimeProviderSpec terraformValue[map[string]any] `json:"runtime_provider_spec"`
+	InstallEnv          terraformValue[InstallEnv]     `json:"install_env"`
+}
+
+type PlatformOutput struct {
+	Name         string `json:"name"`
+	InstanceID   string `json:"instance_id"`
+	PublicIP     string `json:"public_ip"`
+	PrivateIP    string `json:"private_ip"`
+	SSHHost      string `json:"ssh_host"`
+	InstanceType string `json:"instance_type"`
+	ImageID      string `json:"image_id"`
+	KeyName      string `json:"key_name"`
+	RoleName     string `json:"role_name"`
+	GRPCEndpoint string `json:"cloud_plane_endpoint"`
+}
+
+type NetworkOutput struct {
+	SubnetCIDRBlock      string `json:"subnet_cidr_block"`
+	CloudPlaneGRPCPort   int    `json:"cloud_plane_grpc_port"`
+	IngressHTTPPort      int    `json:"ingress_http_port"`
+	EgressProxyPort      int    `json:"egress_proxy_port"`
+	ArtifactHTTPPort     int    `json:"artifact_http_port"`
+	RuntimeHostPortMin   int    `json:"runtime_host_port_min"`
+	RuntimeHostPortMax   int    `json:"runtime_host_port_max"`
+	RuntimeSecurityGroup string `json:"runtime_security_group_id"`
+}
+
+type CCNOutput struct {
+	ID          string `json:"id"`
+	AttachedVPC string `json:"attached_vpc"`
+}
+
+type InstallEnv struct {
+	Provider               string `json:"provider"`
+	PlatformName           string `json:"platform_name"`
+	PlatformInstanceID     string `json:"platform_instance_id"`
+	PlatformPublicIP       string `json:"platform_public_ip"`
+	PlatformPrivateIP      string `json:"platform_private_ip"`
+	PlatformSSHHost        string `json:"platform_ssh_host"`
+	RegionID               string `json:"region_id"`
+	ZoneID                 string `json:"zone_id"`
+	CloudPlaneGRPCPort     int    `json:"cloud_plane_grpc_port"`
+	IngressHTTPPort        int    `json:"ingress_http_port"`
+	EgressProxyPort        int    `json:"egress_proxy_port"`
+	ArtifactHTTPPort       int    `json:"artifact_http_port"`
+	SubnetCIDRBlock        string `json:"subnet_cidr_block"`
+	RuntimeSecurityGroupID string `json:"runtime_security_group_id"`
+}
+
+func (r *Runner) terraform(ctx context.Context, args ...string) error {
+	full := append([]string{"-chdir=" + r.cfg.Terraform.Dir}, args...)
+	return runInteractive(ctx, "terraform", full...)
+}
+
+func (r *Runner) terraformOutput(ctx context.Context) (TerraformOutput, error) {
+	data, err := runOutput(ctx, "terraform", "-chdir="+r.cfg.Terraform.Dir, "output", "-json")
+	if err != nil {
+		return TerraformOutput{}, err
+	}
+	var out TerraformOutput
+	if err := json.Unmarshal(data, &out); err != nil {
+		return TerraformOutput{}, fmt.Errorf("parse terraform output: %w", err)
+	}
+	return out, nil
+}
+
+func (o TerraformOutput) ProviderName() string {
+	return strings.ToLower(strings.TrimSpace(o.Provider.Value))
+}
+
+func (o TerraformOutput) PlatformModeName() string {
+	return strings.ToLower(strings.TrimSpace(o.PlatformMode.Value))
+}
+
+func (o TerraformOutput) RegionID() string {
+	return strings.TrimSpace(o.InstallEnv.Value.RegionID)
+}
+
+func (o TerraformOutput) platformHost() string {
+	if host := strings.TrimSpace(o.Platform.Value.SSHHost); host != "" {
+		return host
+	}
+	if host := strings.TrimSpace(o.InstallEnv.Value.PlatformSSHHost); host != "" {
+		return host
+	}
+	if ip := strings.TrimSpace(o.Platform.Value.PublicIP); ip != "" {
+		return "root@" + ip
+	}
+	return ""
+}

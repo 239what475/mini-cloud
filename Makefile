@@ -6,7 +6,6 @@
 # 会启动数据库、服务进程或 runtime 容器的流程不放在这里。
 # 那类流程属于环境编排测试，入口放在 scripts/ 下，例如：
 # - ./scripts/test-integration.sh
-# - ./scripts/smoke.sh
 
 # 使用 bash 是因为 check 目标里会用到 [[ ... ]]、pipefail 等 bash 行为。
 SHELL := /bin/bash

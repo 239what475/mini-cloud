@@ -1,0 +1,39 @@
+server:
+  listenGRPCAddr: {{printf "%q" .ListenGRPCAddr}}
+
+database:
+  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
+
+plane:
+  name: {{printf "%q" .PlaneName}}
+
+controlPlane:
+  bearerToken: {{printf "%q" .SouthboundToken}}
+
+nodeAgent:
+  connectEndpoint: {{printf "%q" .NodeAgentConnectEndpoint}}
+  bootstrapToken: {{printf "%q" .NodeAgentBootstrapToken}}
+  binaryUrl: {{printf "%q" .NodeAgentBinaryURL}}
+
+infrastructure:
+  provider: {{printf "%q" .Provider}}
+  regionId: {{printf "%q" .RegionID}}
+  zoneId: {{printf "%q" .ZoneID}}
+
+runtimeProvisioning:
+  instanceType: {{printf "%q" .InstanceType}}
+  registryMirrors:
+{{- range .RegistryMirrors}}
+    - {{printf "%q" .}}
+{{- end}}
+  workloadEgressProxyEndpoint: {{printf "%q" .WorkloadEgressProxyEndpoint}}
+  providerSpec:
+{{.ProviderSpecYAML}}
+
+ingress:
+  baseDomain: {{printf "%q" .IngressBaseDomain}}
+  caddyAdminURL: http://127.0.0.1:2019
+
+observability:
+  lokiURL: {{printf "%q" .LokiURL}}
+  otlpEndpoint: {{printf "%q" .OTLPEndpoint}}

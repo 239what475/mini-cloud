@@ -1,0 +1,245 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_ROOT={{printf "%q" .InstallRoot}}
+INGRESS_HTTP_PORT={{.IngressHTTPPort}}
+EGRESS_PROXY_PORT={{.EgressProxyPort}}
+ARTIFACT_HTTP_PORT={{.ArtifactHTTPPort}}
+SUBNET_CIDR_BLOCK={{printf "%q" .SubnetCIDRBlock}}
+REGISTRY_MIRROR={{printf "%q" .RegistryMirror}}
+CONTROL_PLANE_HTTP_PORT={{printf "%q" .ControlPlaneHTTPPort}}
+CLOUD_PLANE_GRPC_PORT={{.CloudPlaneGRPCPort}}
+
+BOOTSTRAP_LOG="$INSTALL_ROOT/install.log"
+CONTROL_PLANE_CONFIG_DIR=/etc/mini-cloud/control-plane
+CLOUD_PLANE_CONFIG_DIR=/etc/mini-cloud/cloud-plane
+POSTGRES_IMAGE="docker.io/library/postgres:17"
+CADDY_IMAGE="docker.io/library/caddy:2"
+
+cleanup() {
+  rm -f \
+    /tmp/mini-cloud-control-plane \
+    /tmp/mini-cloud-cloud-plane \
+    /tmp/mini-cloud-node-agent \
+    /tmp/mini-cloud-control-plane.yaml \
+    /tmp/mini-cloud-cloud-plane.yaml \
+    /tmp/mini-cloud-provider.env
+}
+trap cleanup EXIT
+
+log() {
+  install -d -m 0755 "$INSTALL_ROOT"
+  printf '[mini-cloud install] %s\n' "$*" | tee -a "$BOOTSTRAP_LOG"
+}
+
+docker_pull_with_retry() {
+  local image="$1"
+  for attempt in 1 2 3 4 5; do
+    if timeout 600 docker pull "$image"; then
+      return 0
+    fi
+    log "docker pull $image failed on attempt $attempt; retrying"
+    sleep 10
+  done
+  return 1
+}
+
+install_packages() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    log "this installer expects a Debian/Ubuntu image with apt-get"
+    exit 1
+  fi
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y curl ca-certificates tinyproxy
+  if ! command -v docker >/dev/null 2>&1; then
+    apt-get install -y docker.io
+  fi
+}
+
+configure_docker() {
+  if [[ -z "$REGISTRY_MIRROR" ]]; then
+    return
+  fi
+  install -d -m 0755 /etc/docker
+  cat >/etc/docker/daemon.json <<EOF
+{
+  "registry-mirrors": ["$REGISTRY_MIRROR"]
+}
+EOF
+}
+
+ensure_tinyproxy() {
+  cat >/etc/tinyproxy/tinyproxy.conf <<EOF
+User tinyproxy
+Group tinyproxy
+Port $EGRESS_PROXY_PORT
+Listen 0.0.0.0
+Timeout 600
+DefaultErrorFile "/usr/share/tinyproxy/default.html"
+StatFile "/usr/share/tinyproxy/stats.html"
+LogFile "/var/log/tinyproxy/tinyproxy.log"
+LogLevel Info
+PidFile "/run/tinyproxy/tinyproxy.pid"
+MaxClients 100
+Allow 127.0.0.1
+Allow $SUBNET_CIDR_BLOCK
+ViaProxyName "mini-cloud-egress-proxy"
+EOF
+  systemctl enable --now tinyproxy
+  systemctl restart tinyproxy
+}
+
+ensure_caddy() {
+  install -d -m 0755 /etc/mini-cloud/ingress "$INSTALL_ROOT/artifacts"
+  cat >/etc/mini-cloud/ingress/Caddyfile <<EOF
+{
+  auto_https off
+  admin localhost:2019
+}
+
+:$INGRESS_HTTP_PORT {
+  respond "mini-cloud ingress is waiting for cloud-plane routes" 404
+}
+
+:$ARTIFACT_HTTP_PORT {
+  root * $INSTALL_ROOT/artifacts
+  file_server
+}
+EOF
+  if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-caddy; then
+    docker rm -f mini-cloud-caddy >/dev/null
+  fi
+  docker_pull_with_retry "$CADDY_IMAGE"
+  docker run -d --name mini-cloud-caddy --restart unless-stopped --network host -v /etc/mini-cloud/ingress:/etc/caddy:ro -v "$INSTALL_ROOT:$INSTALL_ROOT:ro" "$CADDY_IMAGE"
+}
+
+ensure_postgres() {
+  if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-postgres; then
+    docker start mini-cloud-postgres || true
+  else
+    docker volume create mini-cloud-postgres-data >/dev/null
+    docker_pull_with_retry "$POSTGRES_IMAGE"
+    docker run -d \
+      --name mini-cloud-postgres \
+      --restart unless-stopped \
+      -p 127.0.0.1:5432:5432 \
+      -e POSTGRES_USER=mini_cloud \
+      -e POSTGRES_PASSWORD=mini_cloud \
+      -e POSTGRES_DB=postgres \
+      -v mini-cloud-postgres-data:/var/lib/postgresql/data \
+      "$POSTGRES_IMAGE"
+  fi
+}
+
+wait_for_postgres() {
+  for _ in $(seq 1 60); do
+    if docker exec mini-cloud-postgres pg_isready -h 127.0.0.1 -p 5432 -U mini_cloud -d postgres >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+  docker logs mini-cloud-postgres || true
+  exit 1
+}
+
+ensure_databases() {
+  docker exec -i mini-cloud-postgres psql -U mini_cloud -d postgres <<'SQL'
+SELECT 'CREATE DATABASE mini_cloud_control_plane'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mini_cloud_control_plane')\gexec
+SELECT 'CREATE DATABASE mini_cloud_cloud_plane'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mini_cloud_cloud_plane')\gexec
+SQL
+}
+
+install_binaries() {
+  install -d -m 0755 "$INSTALL_ROOT/bin" "$INSTALL_ROOT/artifacts"
+  install -m 0755 /tmp/mini-cloud-control-plane "$INSTALL_ROOT/bin/control-plane"
+  install -m 0755 /tmp/mini-cloud-cloud-plane "$INSTALL_ROOT/bin/cloud-plane"
+  install -m 0755 /tmp/mini-cloud-node-agent "$INSTALL_ROOT/artifacts/node-agent-linux-amd64"
+}
+
+install_configs() {
+  install -d -m 0755 "$CONTROL_PLANE_CONFIG_DIR" "$CLOUD_PLANE_CONFIG_DIR"
+  install -m 0600 /tmp/mini-cloud-control-plane.yaml "$CONTROL_PLANE_CONFIG_DIR/control-plane.yaml"
+  install -m 0600 /tmp/mini-cloud-cloud-plane.yaml "$CLOUD_PLANE_CONFIG_DIR/cloud-plane.yaml"
+  if [[ -f /tmp/mini-cloud-provider.env ]]; then
+    install -m 0600 /tmp/mini-cloud-provider.env "$CLOUD_PLANE_CONFIG_DIR/provider.env"
+  else
+    rm -f "$CLOUD_PLANE_CONFIG_DIR/provider.env"
+  fi
+}
+
+write_systemd_units() {
+  cat >/etc/systemd/system/mini-cloud-control-plane.service <<EOF
+[Unit]
+Description=mini-cloud control-plane
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_ROOT
+ExecStart=$INSTALL_ROOT/bin/control-plane --config $CONTROL_PLANE_CONFIG_DIR/control-plane.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+  cat >/etc/systemd/system/mini-cloud-cloud-plane.service <<EOF
+[Unit]
+Description=mini-cloud cloud-plane
+After=network-online.target docker.service mini-cloud-control-plane.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_ROOT
+EnvironmentFile=-$CLOUD_PLANE_CONFIG_DIR/provider.env
+ExecStart=$INSTALL_ROOT/bin/cloud-plane --config $CLOUD_PLANE_CONFIG_DIR/cloud-plane.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+wait_for_tcp() {
+  local host="$1"
+  local port="$2"
+  local service="$3"
+  for _ in $(seq 1 60); do
+    if timeout 1 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+  journalctl -u "$service" --no-pager -n 120 || true
+  exit 1
+}
+
+install -d -m 0755 "$INSTALL_ROOT"
+touch "$BOOTSTRAP_LOG"
+install_packages
+configure_docker
+systemctl enable --now docker
+systemctl restart docker
+ensure_tinyproxy
+ensure_caddy
+ensure_postgres
+wait_for_postgres
+ensure_databases
+install_binaries
+install_configs
+write_systemd_units
+systemctl daemon-reload
+systemctl enable mini-cloud-control-plane.service
+systemctl restart mini-cloud-control-plane.service
+wait_for_tcp 127.0.0.1 "$CONTROL_PLANE_HTTP_PORT" mini-cloud-control-plane.service
+systemctl enable mini-cloud-cloud-plane.service
+systemctl restart mini-cloud-cloud-plane.service
+wait_for_tcp 127.0.0.1 "$CLOUD_PLANE_GRPC_PORT" mini-cloud-cloud-plane.service
+log "mini-cloud platform install completed"

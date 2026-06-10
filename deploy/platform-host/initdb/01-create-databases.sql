@@ -1,2 +1,0 @@
-CREATE DATABASE mini_cloud_control_plane;
-CREATE DATABASE mini_cloud_cloud_plane;

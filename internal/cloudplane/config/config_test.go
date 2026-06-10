@@ -326,22 +326,3 @@ infrastructure:
 		t.Fatal("Load error = nil, want legacy cloudPlane block rejection")
 	}
 }
-
-// TestLoadDeployExamples 验证部署示例配置能被当前配置模型加载。
-func TestLoadDeployExamples(t *testing.T) {
-	t.Parallel()
-
-	// 部署示例是用户实际复制的入口，测试确保 aliyun/tencent 两份示例都能被当前配置模型加载。
-	for _, path := range []string{
-		"../../../deploy/cloud-plane/cloud-plane.aliyun.yaml.example",
-		"../../../deploy/cloud-plane/cloud-plane.tencent.yaml.example",
-	} {
-		t.Run(path, func(t *testing.T) {
-			t.Parallel()
-			// 每个子测试只验证配置加载成功，不连接真实云厂商或数据库。
-			if _, err := Load(path); err != nil {
-				t.Fatalf("Load(%q) error: %v", path, err)
-			}
-		})
-	}
-}

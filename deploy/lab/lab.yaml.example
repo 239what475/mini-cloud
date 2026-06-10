@@ -1,0 +1,38 @@
+terraform:
+  dir: deploy/terraform/lab
+  applyArgs: ["-auto-approve"]
+  destroyArgs: ["-auto-approve"]
+
+ssh:
+  host: ""
+  keyPath: ""
+  options: []
+
+install:
+  root: /opt/mini-cloud
+  controlPlaneHTTPAddr: 127.0.0.1:18080
+  ingressBaseDomain: apps.example.com
+  registryMirror: ""
+
+binaries:
+  controlPlane: dist/release/linux-amd64/control-plane
+  cloudPlane: dist/release/linux-amd64/cloud-plane
+  nodeAgent: dist/release/linux-amd64/node-agent
+
+tokens:
+  controlPlaneAdmin: ""
+  controlPlaneSouthbound: ""
+  nodeAgentBootstrap: ""
+
+provider:
+  tencentCredentialFile: ~/.tccli/default.credential
+
+observability:
+  workloadLogLokiURL: ""
+  workloadLogLokiTenantID: ""
+  workloadOTLPEndpoint: ""
+
+dns:
+  domain: ""
+  subdomain: ""
+  value: ""

@@ -27,7 +27,7 @@ ingress_cidrs = [
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
 # Terraform 只负责创建真实云底座，不负责安装 mini-cloud 进程。
-# 底座创建后，用 deploy/lab/install.sh 通过 SSH 安装 control-plane 和 cloud-plane。
+# 底座创建后，用 go run ./cmd/labctl install 通过 SSH 安装 control-plane 和 cloud-plane。
 # 入口机不运行 node-agent；runtime node 会从入口机内网 artifact server 下载 node-agent。
 
 # 复用腾讯云轻量应用服务器作为入口机时，改成：
@@ -41,7 +41,7 @@ ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 # existing_ccn_id                 = "ccn-xxxxxxxx"
 #
 # Terraform 会创建 runtime CVM VPC、安全组和密钥，并把 runtime VPC 关联到已有 CCN。
-# deploy/lab/bootstrap.sh 会把 Lighthouse 关联到同一个 CCN。
+# go run ./cmd/labctl bootstrap 会把 Lighthouse 关联到同一个 CCN。
 # 注意 vpc_cidr_block/subnet_cidr_block 不要和 Lighthouse 私网 CIDR 冲突。
 
 aliyun = {

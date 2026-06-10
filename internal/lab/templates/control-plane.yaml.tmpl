@@ -1,0 +1,23 @@
+server:
+  httpAddr: {{printf "%q" .HTTPAddr}}
+
+ui:
+  dir: {{printf "%q" (printf "%s/web" .InstallRoot)}}
+
+database:
+  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
+
+auth:
+  adminToken: {{printf "%q" .AdminToken}}
+
+sync:
+  planeIntervalSeconds: 30
+
+service:
+  reconcileTimeoutSeconds: 1200
+
+logs:
+  loki:
+    url: {{printf "%q" .LokiURL}}
+    tenantID: {{printf "%q" .LokiTenantID}}
+    queryTimeoutSeconds: 5

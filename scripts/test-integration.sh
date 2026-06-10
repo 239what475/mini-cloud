@@ -17,7 +17,6 @@
 #
 # 注意：
 # - 它会接管 deploy/compose/docker-compose.yml 里的本地 Postgres。
-# - 不要和 scripts/smoke.sh 并行运行，因为两个脚本都会重置同一套 compose 环境。
 set -euo pipefail
 
 # 项目根目录。用脚本自身位置推导，保证从任意目录执行都能回到 mini-cloud 根目录。
@@ -71,8 +70,6 @@ echo "[integration] run Go integration tests"
 MINICLOUD_TEST_DATABASE_URL="postgres://mini_cloud:mini_cloud@127.0.0.1:5432/postgres?sslmode=disable" \
   go test -count=1 \
     ./internal/controlplane/store \
-    ./internal/cloudplane/store \
+    ./internal/cloudplane/infra/store \
     ./internal/cloudplane/api/... \
-    ./internal/controlplane/placement \
-    ./internal/controlplane/api \
-    ./internal/cloudplane/api
+    ./internal/controlplane/api
