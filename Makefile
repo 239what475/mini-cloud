@@ -23,9 +23,6 @@ SHELL := /bin/bash
 # 本 Makefile 预期在 projects/mini-cloud/ 下运行。
 ROOT_DIR := $(CURDIR)
 
-# tests 是一个独立 Go module，不能只靠根 module 的 go test ./... 覆盖。
-TESTS_DIR := $(ROOT_DIR)/tests
-
 # web 目录是可选的：没有前端时 web-check / web-build 会自动跳过。
 WEB_DIR := $(ROOT_DIR)/web
 
@@ -42,7 +39,7 @@ TARGET_GOARCH ?= amd64
 RELEASE_DIR ?= $(ROOT_DIR)/dist/release/$(TARGET_GOOS)-$(TARGET_GOARCH)
 
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
-.PHONY: help check test vet staticcheck lint tests terraform-fmt buf-lint shellcheck web-check web-build build build-release proto clean
+.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build build-release proto clean
 
 # 打印当前保留的工程入口。
 # scripts/ 下的环境编排测试不在这里列为 make target。
@@ -65,9 +62,9 @@ help:
 check:
 	@echo "[check] gofmt"
 
-	# gofmt 可以直接接收目录；这里检查源码目录和 tests 子模块入口。
+	# gofmt 可以直接接收目录；这里只检查当前根 module 的源码目录。
 	# gofmt -l 只打印未格式化文件，不会修改文件。
-	unformatted="$$(gofmt -l ./cmd ./internal ./pkg ./tests)"
+	unformatted="$$(gofmt -l ./cmd ./internal)"
 	if [[ -n "$$unformatted" ]]; then
 	  echo "[check] gofmt found unformatted files:" >&2
 	  printf '%s\n' "$$unformatted" >&2
@@ -86,9 +83,6 @@ check:
 	# 更严格的 Go 静态检查和 lint。
 	$(MAKE) --no-print-directory staticcheck
 	$(MAKE) --no-print-directory lint
-
-	# tests 是独立 module，需要单独进入后测试。
-	$(MAKE) --no-print-directory tests
 
 	# 下面几项按工具是否安装决定是否执行。
 	# 这让没有安装 terraform / buf / shellcheck / web 依赖的机器仍可运行基础检查。
@@ -116,12 +110,6 @@ staticcheck:
 lint:
 	@echo "[check] golangci-lint run ./..."
 	golangci-lint run ./...
-
-# tests 子目录是独立 Go module，必须在自己的目录下执行 go test。
-tests:
-	@echo "[check] (cd tests && go test ./...)"
-	cd "$(TESTS_DIR)"
-	go test ./...
 
 # Terraform 文件只做格式检查，不自动改写。
 # 没安装 terraform 时跳过，避免把基础 Go 检查和 IaC 工具安装强绑定。

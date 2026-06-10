@@ -199,9 +199,6 @@ make check
 - `go vet ./...`
 - `staticcheck ./...`
 - `golangci-lint run ./...`
-- `tests`
-  子模块
-  `go test ./...`
 - 可选
   `terraform fmt`、
   `buf lint`
@@ -239,11 +236,6 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
   - 通过
     `buf generate`
     生成 proto 代码
-- `cd projects/mini-cloud/tests && go run . local-identity`
-  - `v5/08`
-    的唯一一条本地身份与授权集成场景
-  - 真实 `Authelia -> auth bridge -> cloud-plane`
-    认证链
 
 ## 按场景选择入口
 
@@ -255,7 +247,6 @@ go install honnef.co/go/tools/cmd/staticcheck@latest
 | 改数据库 / store / API | `./scripts/test-integration.sh` | 低 | 真实 `Postgres` 集成 |
 | 构建长期运行二进制 | `make build-release` | 低 | `control-plane`、`cloud-plane`、`node-agent` release 输出 |
 | 生成 proto 代码 | `make proto` | 低 | `buf generate` |
-| 想验证 v5/08 的身份授权主链 | `cd projects/mini-cloud/tests && go run . local-identity` | 中 | 唯一身份场景；真实 `Authelia -> auth bridge -> cloud-plane`；角色绑定、项目成员、platform/project service account、本地服务创建 |
 | 想拉起真实云 lab | `go run ./cmd/labctl bootstrap` + `go run ./cmd/labctl install` | 最高 | 创建云底座，通过 SSH 安装 `control-plane` 和 `cloud-plane` |
 
 真实云环境回收现在明确是：
@@ -334,8 +325,6 @@ Terraform 只管理真实云底座。
   负责可持续维护的工程动作
 - `scripts/test-integration.sh`
   负责需要本地数据库编排的集成测试
-- `tests`
-  子模块负责真实集成场景
 - Terraform
   只负责真实云底座
 - `deploy/lab`
