@@ -72,6 +72,14 @@ func TestCloudPlaneConfigTemplateRendersProviderSpec(t *testing.T) {
 		WorkloadEgressProxyEndpoint: "http://10.0.0.1:3128",
 		ProviderSpecYAML:            "    imageId: img-test\n    subnetId: subnet-test",
 		IngressBaseDomain:           "apps.example.com",
+		IngressPublicOrigin:         "203.0.113.10",
+		FrontDoorEnabled:            true,
+		DNSPodDomain:                "example.com",
+		DNSPodCredential: tencentCredential{
+			SecretID:  "dns-sid",
+			SecretKey: "dns-skey",
+			Token:     "dns-stok",
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +93,16 @@ func TestCloudPlaneConfigTemplateRendersProviderSpec(t *testing.T) {
 	}
 	if strings.Contains(text, "originHost") {
 		t.Fatalf("cloud-plane config should not contain originHost:\n%s", text)
+	}
+	for _, want := range []string{
+		"  publicOrigin: \"203.0.113.10\"",
+		"    enabled: true",
+		"    dnsPodDomain: \"example.com\"",
+		"      secretId: \"dns-sid\"",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("cloud-plane config does not contain %q:\n%s", want, text)
+		}
 	}
 }
 

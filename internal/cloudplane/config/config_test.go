@@ -221,6 +221,46 @@ func TestValidateRequiresCaddyAdminURLWhenIngressEnabled(t *testing.T) {
 	}
 }
 
+func TestValidateRequiresFrontDoorFieldsWhenEnabled(t *testing.T) {
+	t.Parallel()
+
+	cfg := validConfig()
+	cfg.Ingress = IngressConfig{
+		BaseDomain:    "apps.example.com",
+		CaddyAdminURL: "http://127.0.0.1:2019",
+		FrontDoor:     FrontDoorConfig{Enabled: true},
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate error = nil, want frontDoor field requirement")
+	}
+
+	cfg.Ingress.PublicOrigin = "203.0.113.10"
+	cfg.Ingress.FrontDoor.DNSPodDomain = "example.com"
+	cfg.Ingress.FrontDoor.DNSPodCredential = TencentCredentialConfig{SecretID: "sid", SecretKey: "skey"}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate error: %v", err)
+	}
+}
+
+func validConfig() Config {
+	return Config{
+		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
+		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
+		NodeAgent: NodeAgentConfig{
+			ConnectEndpoint: "10.0.0.10:18081",
+			BootstrapToken:  "bootstrap-token",
+			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
+		},
+		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
+		RuntimeProvisioning: RuntimeProvisioningConfig{
+			InstanceType: "ecs.u1-c1m1.large",
+			ProviderSpec: map[string]any{"imageId": "m-test"},
+		},
+	}
+}
+
 // TestParseProviderSpec 验证 providerSpec 可以严格解析到 provider 专属结构。
 func TestParseProviderSpec(t *testing.T) {
 	t.Parallel()

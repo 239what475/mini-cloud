@@ -41,6 +41,16 @@ runtimeProvisioning:
 ingress:
   baseDomain: {{printf "%q" .IngressBaseDomain}}
   caddyAdminURL: http://127.0.0.1:2019
+  publicOrigin: {{printf "%q" .IngressPublicOrigin}}
+  frontDoor:
+    enabled: {{.FrontDoorEnabled}}
+    dnsPodDomain: {{printf "%q" .DNSPodDomain}}
+{{- if .FrontDoorEnabled}}
+    dnsPodCredential:
+      secretId: {{printf "%q" .DNSPodCredential.SecretID}}
+      secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
+      token: {{printf "%q" .DNSPodCredential.Token}}
+{{- end}}
 
 observability:
   lokiURL: {{printf "%q" .LokiURL}}

@@ -97,8 +97,16 @@ func (c RuntimeProvisioningConfig) ParseProviderSpec(target any) error {
 }
 
 type IngressConfig struct {
-	BaseDomain    string `yaml:"baseDomain"`
-	CaddyAdminURL string `yaml:"caddyAdminURL"`
+	BaseDomain    string          `yaml:"baseDomain"`
+	CaddyAdminURL string          `yaml:"caddyAdminURL"`
+	PublicOrigin  string          `yaml:"publicOrigin"`
+	FrontDoor     FrontDoorConfig `yaml:"frontDoor"`
+}
+
+type FrontDoorConfig struct {
+	Enabled          bool                    `yaml:"enabled"`
+	DNSPodDomain     string                  `yaml:"dnsPodDomain"`
+	DNSPodCredential TencentCredentialConfig `yaml:"dnsPodCredential"`
 }
 
 type ObservabilityConfig struct {
@@ -151,6 +159,11 @@ func (c *Config) normalize() {
 	c.RuntimeProvisioning.WorkloadEgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint)
 	c.Ingress.BaseDomain = strings.Trim(strings.TrimSpace(c.Ingress.BaseDomain), ".")
 	c.Ingress.CaddyAdminURL = strings.TrimSpace(c.Ingress.CaddyAdminURL)
+	c.Ingress.PublicOrigin = strings.TrimSpace(c.Ingress.PublicOrigin)
+	c.Ingress.FrontDoor.DNSPodDomain = strings.Trim(strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain), ".")
+	c.Ingress.FrontDoor.DNSPodCredential.SecretID = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretID)
+	c.Ingress.FrontDoor.DNSPodCredential.SecretKey = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretKey)
+	c.Ingress.FrontDoor.DNSPodCredential.Token = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.Token)
 	c.Observability.LokiURL = strings.TrimSpace(c.Observability.LokiURL)
 	c.Observability.OTLPEndpoint = strings.TrimSpace(c.Observability.OTLPEndpoint)
 }
@@ -225,6 +238,25 @@ func (c Config) Validate() error {
 		if err := validateCaddyAdminURL(c.Ingress.CaddyAdminURL); err != nil {
 			return err
 		}
+		if c.Ingress.FrontDoor.Enabled {
+			if strings.TrimSpace(c.Ingress.PublicOrigin) == "" {
+				return fmt.Errorf("ingress.publicOrigin is required when frontDoor is enabled")
+			}
+			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain) == "" {
+				return fmt.Errorf("ingress.frontDoor.dnsPodDomain is required when frontDoor is enabled")
+			}
+			if !domainIsUnder(c.Ingress.BaseDomain, c.Ingress.FrontDoor.DNSPodDomain) {
+				return fmt.Errorf("ingress.baseDomain must be under ingress.frontDoor.dnsPodDomain")
+			}
+			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretID) == "" {
+				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretId is required when frontDoor is enabled")
+			}
+			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretKey) == "" {
+				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretKey is required when frontDoor is enabled")
+			}
+		}
+	} else if c.Ingress.FrontDoor.Enabled {
+		return fmt.Errorf("ingress.baseDomain is required when frontDoor is enabled")
 	}
 	if strings.TrimSpace(c.NodeAgent.BinaryURL) == "" {
 		return fmt.Errorf("nodeAgent.binaryUrl is required")
@@ -320,6 +352,12 @@ func validateCaddyAdminURL(value string) error {
 		return fmt.Errorf("ingress.caddyAdminURL must point to localhost")
 	}
 	return nil
+}
+
+func domainIsUnder(child string, parent string) bool {
+	child = strings.Trim(strings.ToLower(strings.TrimSpace(child)), ".")
+	parent = strings.Trim(strings.ToLower(strings.TrimSpace(parent)), ".")
+	return child == parent || strings.HasSuffix(child, "."+parent)
 }
 
 func validateConnectEndpoint(value string) error {

@@ -22,7 +22,7 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 			"node-offline": {ID: "node-offline", PrivateIP: "10.0.1.21", Status: cloudmodel.StatusOffline},
 		},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil)
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -49,7 +49,7 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 		},
 		nodes: map[string]cloudmodel.Node{},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil)
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -78,7 +78,7 @@ func TestBuildRoutesUsesSingleManagedServiceHost(t *testing.T) {
 			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
 		},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil)
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -97,7 +97,7 @@ func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 	t.Parallel()
 
 	sink := &fakeSink{}
-	controller := NewController(nil, &fakeStore{}, cloudplaneconfig.Config{}, sink)
+	controller := NewController(nil, &fakeStore{}, cloudplaneconfig.Config{}, sink, nil)
 	if err := controller.ReconcileOnce(context.Background()); err != nil {
 		t.Fatalf("ReconcileOnce returned error: %v", err)
 	}
@@ -111,17 +111,21 @@ func TestReconcileOnceAppliesRoutes(t *testing.T) {
 	t.Parallel()
 
 	sink := &fakeSink{}
+	frontDoor := &fakeSink{}
 	stores := &fakeStore{
 		sources: []cloudmodel.RouteSource{{ServiceName: "api"}},
 		nodes:   map[string]cloudmodel.Node{},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink)
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink, frontDoor)
 
 	if err := controller.ReconcileOnce(context.Background()); err != nil {
 		t.Fatalf("ReconcileOnce returned error: %v", err)
 	}
 	if sink.calls != 1 {
 		t.Fatalf("sink calls = %d, want 1", sink.calls)
+	}
+	if frontDoor.calls != 1 {
+		t.Fatalf("frontDoor calls = %d, want 1", frontDoor.calls)
 	}
 }
 

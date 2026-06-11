@@ -11,6 +11,7 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	cloudplanecontrol "mini-cloud/internal/cloudplane/control"
 	cloudplaneingress "mini-cloud/internal/cloudplane/control/ingress"
+	frontdoor "mini-cloud/internal/cloudplane/infra/frontdoor"
 	caddyingress "mini-cloud/internal/cloudplane/infra/ingress/caddy"
 	nodeprovidercloud "mini-cloud/internal/cloudplane/infra/nodeprovider/cloud"
 	"mini-cloud/internal/cloudplane/infra/store"
@@ -53,12 +54,19 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 		"region", cfg.Infrastructure.RegionID,
 	)
 	stores := store.New(db)
+	frontDoorService, err := frontdoor.NewService(logger, cfg)
+	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return App{}, errors.Join(err, closeErr)
+		}
+		return App{}, err
+	}
 	ingressController := cloudplaneingress.NewController(logger, stores, cfg, caddyingress.NewSink(logger, caddyingress.Config{
 		ListenHTTPAddr:       cloudplaneconfig.CaddyListenHTTPAddr,
 		ArtifactListenAddr:   cloudplaneconfig.CaddyArtifactListenAddr,
 		ArtifactDocumentRoot: cloudplaneconfig.CaddyArtifactRoot,
 		AdminURL:             cfg.Ingress.CaddyAdminURL,
-	}))
+	}), frontDoorService)
 
 	return App{
 		Config:  cfg,

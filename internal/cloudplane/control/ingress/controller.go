@@ -37,19 +37,21 @@ type Controller struct {
 	store storeReader
 	// cfg 是已校验的 cloud-plane 配置。
 	cfg cloudplaneconfig.Config
-	// sink 应用 service 路由快照，当前实现是外置 Caddy。
-	sink routeSink
+	// localSink 应用本地代理路由快照，当前实现是外置 Caddy。
+	localSink routeSink
+	// frontDoorSink 应用云厂商 CDN/DNS 入口，未启用时为空。
+	frontDoorSink routeSink
 }
 
 var dnsLabelCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
 // NewController 构造外置 ingress 控制器。
-// 参数说明：logger 记录后台日志；stores 读取本地状态；cfg 提供 ingress 策略；sink 应用 service 路由。
-func NewController(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig.Config, sink routeSink) *Controller {
+// 参数说明：logger 记录后台日志；stores 读取本地状态；cfg 提供 ingress 策略；localSink 应用本地路由；frontDoorSink 应用云入口。
+func NewController(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig.Config, localSink routeSink, frontDoorSink routeSink) *Controller {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Controller{logger: logger, store: stores, cfg: cfg, sink: sink}
+	return &Controller{logger: logger, store: stores, cfg: cfg, localSink: localSink, frontDoorSink: frontDoorSink}
 }
 
 // ReconcileOnce 在启用 ingress 时构建当前 public service 路由快照，并交给外置数据面实现应用。
@@ -64,12 +66,17 @@ func (c *Controller) ReconcileOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// sink 代表本地代理数据面；未注入 sink 是组装错误，直接返回明确错误。
-	if c.sink == nil {
+	// localSink 代表本地代理数据面；未注入 sink 是组装错误，直接返回明确错误。
+	if c.localSink == nil {
 		return fmt.Errorf("ingress sink is required when ingress is enabled")
 	}
-	if err := c.sink.Apply(ctx, routes); err != nil {
+	if err := c.localSink.Apply(ctx, routes); err != nil {
 		return err
+	}
+	if c.frontDoorSink != nil {
+		if err := c.frontDoorSink.Apply(ctx, routes); err != nil {
+			return err
+		}
 	}
 	c.logger.Debug("cloud-plane reconciled ingress routes", "routes", len(routes))
 	return nil

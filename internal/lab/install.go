@@ -41,6 +41,10 @@ type cloudPlaneTemplateData struct {
 	WorkloadEgressProxyEndpoint string
 	ProviderSpecYAML            string
 	IngressBaseDomain           string
+	IngressPublicOrigin         string
+	FrontDoorEnabled            bool
+	DNSPodDomain                string
+	DNSPodCredential            tencentCredential
 	LokiURL                     string
 	OTLPEndpoint                string
 }
@@ -136,16 +140,19 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 	if strings.TrimSpace(specYAML) == "" {
 		specYAML = "    {}"
 	}
-	tencentCredential := tencentCredential{}
-	if provider == "tencent" {
+	tencentProviderCredential := tencentCredential{}
+	dnspodCredential := tencentCredential{}
+	frontDoorEnabled := strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != ""
+	if provider == "tencent" || frontDoorEnabled {
 		var err error
-		tencentCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
+		tencentProviderCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
 		if err != nil {
 			return installFiles{}, err
 		}
-		if strings.TrimSpace(tencentCredential.SecretID) == "" || strings.TrimSpace(tencentCredential.SecretKey) == "" {
+		if strings.TrimSpace(tencentProviderCredential.SecretID) == "" || strings.TrimSpace(tencentProviderCredential.SecretKey) == "" {
 			return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
 		}
+		dnspodCredential = tencentProviderCredential
 	}
 
 	artifactPort := out.Network.Value.ArtifactHTTPPort
@@ -157,6 +164,13 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 	}
 	nodeAgentURL := fmt.Sprintf("http://%s:%d/node-agent-linux-amd64", platformPrivateIP, artifactPort)
 	connectEndpoint := fmt.Sprintf("%s:%d", platformPrivateIP, grpcPort)
+	platformPublicIP := strings.TrimSpace(out.Platform.Value.PublicIP)
+	if platformPublicIP == "" {
+		platformPublicIP = strings.TrimSpace(out.InstallEnv.Value.PlatformPublicIP)
+	}
+	if frontDoorEnabled && platformPublicIP == "" {
+		return installFiles{}, fmt.Errorf("platform public IP is required when ingress frontDoor is enabled")
+	}
 
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
 		HTTPAddr:        r.cfg.Install.ControlPlaneHTTPAddr,
@@ -181,12 +195,16 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 		Provider:                    provider,
 		RegionID:                    out.RegionID(),
 		ZoneID:                      out.InstallEnv.Value.ZoneID,
-		TencentCredential:           tencentCredential,
+		TencentCredential:           tencentProviderCredential,
 		InstanceType:                instanceType,
 		RegistryMirrors:             []string{registryMirror},
 		WorkloadEgressProxyEndpoint: fmt.Sprintf("http://%s:%d", platformPrivateIP, proxyPort),
 		ProviderSpecYAML:            specYAML,
 		IngressBaseDomain:           r.cfg.Install.IngressBaseDomain,
+		IngressPublicOrigin:         platformPublicIP,
+		FrontDoorEnabled:            frontDoorEnabled,
+		DNSPodDomain:                rootDomain(r.cfg.Install.IngressBaseDomain),
+		DNSPodCredential:            dnspodCredential,
 		LokiURL:                     r.cfg.Observability.WorkloadLogLokiURL,
 		OTLPEndpoint:                r.cfg.Observability.WorkloadOTLPEndpoint,
 	})
@@ -289,4 +307,12 @@ func stringFromMap(values map[string]any, key string) string {
 func portFromAddr(addr string) string {
 	parts := strings.Split(addr, ":")
 	return parts[len(parts)-1]
+}
+
+func rootDomain(baseDomain string) string {
+	parts := strings.Split(strings.Trim(strings.TrimSpace(baseDomain), "."), ".")
+	if len(parts) <= 2 {
+		return strings.Join(parts, ".")
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
 }
