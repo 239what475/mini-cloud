@@ -9,39 +9,39 @@ import (
 	"strings"
 )
 
-func (r *Runner) sshArgs() []string {
-	args := make([]string, 0, 2+len(r.cfg.SSH.Options))
-	if key := strings.TrimSpace(r.cfg.SSH.KeyPath); key != "" {
+func sshArgs(cfg SSHConfig) []string {
+	args := make([]string, 0, 2+len(cfg.Options))
+	if key := strings.TrimSpace(cfg.KeyPath); key != "" {
 		args = append(args, "-i", key)
 	}
-	args = append(args, r.cfg.SSH.Options...)
+	args = append(args, cfg.Options...)
 	return args
 }
 
-func (r *Runner) platformHost(out TerraformOutput) (string, error) {
-	if host := strings.TrimSpace(r.cfg.SSH.Host); host != "" {
+func (r *Runner) platformHost(plane Plane, out TerraformOutput) (string, error) {
+	if host := strings.TrimSpace(plane.SSH.Host); host != "" {
 		return host, nil
 	}
 	host := out.platformHost()
 	if host == "" {
-		return "", fmt.Errorf("platform SSH host is missing; set ssh.host in deploy/lab/lab.yaml")
+		return "", fmt.Errorf("platform SSH host is missing for plane %s", plane.Name)
 	}
 	return host, nil
 }
 
-func (r *Runner) scp(ctx context.Context, local string, remote string) error {
-	args := append(r.sshArgs(), local, remote)
+func (r *Runner) scp(ctx context.Context, sshConfig SSHConfig, local string, remote string) error {
+	args := append(sshArgs(sshConfig), local, remote)
 	return runInteractive(ctx, "scp", args...)
 }
 
-func (r *Runner) ssh(ctx context.Context, host string, script []byte) error {
-	args := append(r.sshArgs(), host)
+func (r *Runner) ssh(ctx context.Context, sshConfig SSHConfig, host string, script []byte) error {
+	args := append(sshArgs(sshConfig), host)
 	args = append(args, "if [ \"$(id -u)\" = 0 ]; then bash -s; else sudo -n bash -s; fi")
 	return runInput(ctx, bytes.NewReader(script), "ssh", args...)
 }
 
-func (r *Runner) detectPrivateIP(ctx context.Context, host string) (string, error) {
-	args := append(r.sshArgs(), host, "hostname -I")
+func (r *Runner) detectPrivateIP(ctx context.Context, sshConfig SSHConfig, host string) (string, error) {
+	args := append(sshArgs(sshConfig), host, "hostname -I")
 	data, err := runOutput(ctx, "ssh", args...)
 	if err != nil {
 		return "", err

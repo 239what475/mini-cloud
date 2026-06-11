@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_ROOT={{printf "%q" .InstallRoot}}
+CONTROL_PLANE_HTTP_PORT={{printf "%q" .ControlPlaneHTTPPort}}
+
+BOOTSTRAP_LOG="$INSTALL_ROOT/install.log"
+CONTROL_PLANE_CONFIG_DIR=/etc/mini-cloud/control-plane
+POSTGRES_IMAGE="docker.io/library/postgres:17"
+
+cleanup() {
+  rm -f \
+    /tmp/mini-cloud-control-plane \
+    /tmp/mini-cloud-control-plane.yaml
+}
+trap cleanup EXIT
+
+log() {
+  install -d -m 0755 "$INSTALL_ROOT"
+  printf '[mini-cloud install] %s\n' "$*" | tee -a "$BOOTSTRAP_LOG"
+}
+
+docker_pull_with_retry() {
+  local image="$1"
+  for attempt in 1 2 3 4 5; do
+    if timeout 600 docker pull "$image"; then
+      return 0
+    fi
+    log "docker pull $image failed on attempt $attempt; retrying"
+    sleep 10
+  done
+  return 1
+}
+
+install_packages() {
+  if ! command -v apt-get >/dev/null 2>&1; then
+    log "this installer expects a Debian/Ubuntu image with apt-get"
+    exit 1
+  fi
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y curl ca-certificates
+  if ! command -v docker >/dev/null 2>&1; then
+    apt-get install -y docker.io
+  fi
+}
+
+ensure_postgres() {
+  if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-postgres; then
+    docker start mini-cloud-postgres || true
+  else
+    docker volume create mini-cloud-postgres-data >/dev/null
+    docker_pull_with_retry "$POSTGRES_IMAGE"
+    docker run -d \
+      --name mini-cloud-postgres \
+      --restart unless-stopped \
+      -p 127.0.0.1:5432:5432 \
+      -e POSTGRES_USER=mini_cloud \
+      -e POSTGRES_PASSWORD=mini_cloud \
+      -e POSTGRES_DB=postgres \
+      -v mini-cloud-postgres-data:/var/lib/postgresql/data \
+      "$POSTGRES_IMAGE"
+  fi
+}
+
+wait_for_postgres() {
+  for _ in $(seq 1 60); do
+    if docker exec mini-cloud-postgres pg_isready -h 127.0.0.1 -p 5432 -U mini_cloud -d postgres >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+  docker logs mini-cloud-postgres || true
+  exit 1
+}
+
+ensure_database() {
+  docker exec -i mini-cloud-postgres psql -U mini_cloud -d postgres <<'SQL'
+SELECT 'CREATE DATABASE mini_cloud_control_plane'
+WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'mini_cloud_control_plane')\gexec
+SQL
+}
+
+install_binaries() {
+  install -d -m 0755 "$INSTALL_ROOT/bin"
+  install -m 0755 /tmp/mini-cloud-control-plane "$INSTALL_ROOT/bin/control-plane"
+}
+
+install_configs() {
+  install -d -m 0755 "$CONTROL_PLANE_CONFIG_DIR"
+  install -m 0600 /tmp/mini-cloud-control-plane.yaml "$CONTROL_PLANE_CONFIG_DIR/control-plane.yaml"
+}
+
+write_systemd_unit() {
+  cat >/etc/systemd/system/mini-cloud-control-plane.service <<EOF
+[Unit]
+Description=mini-cloud control-plane
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=$INSTALL_ROOT
+ExecStart=$INSTALL_ROOT/bin/control-plane --config $CONTROL_PLANE_CONFIG_DIR/control-plane.yaml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+}
+
+wait_for_tcp() {
+  local host="$1"
+  local port="$2"
+  local service="$3"
+  for _ in $(seq 1 60); do
+    if timeout 1 bash -c "</dev/tcp/$host/$port" >/dev/null 2>&1; then
+      return
+    fi
+    sleep 2
+  done
+  journalctl -u "$service" --no-pager -n 120 || true
+  exit 1
+}
+
+install -d -m 0755 "$INSTALL_ROOT"
+touch "$BOOTSTRAP_LOG"
+install_packages
+systemctl enable --now docker
+systemctl restart docker
+ensure_postgres
+wait_for_postgres
+ensure_database
+install_binaries
+install_configs
+write_systemd_unit
+systemctl daemon-reload
+systemctl enable mini-cloud-control-plane.service
+systemctl restart mini-cloud-control-plane.service
+wait_for_tcp 127.0.0.1 "$CONTROL_PLANE_HTTP_PORT" mini-cloud-control-plane.service
+log "mini-cloud control-plane install completed"

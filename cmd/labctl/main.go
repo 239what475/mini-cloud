@@ -63,5 +63,7 @@ func printUsage() {
 Usage:
   labctl bootstrap [--config deploy/lab/lab.yaml]
   labctl install   [--config deploy/lab/lab.yaml]
-  labctl destroy   [--config deploy/lab/lab.yaml]`)
+  labctl destroy   [--config deploy/lab/lab.yaml]
+
+The lab config contains one control-plane and one or more cloud-plane entries.`)
 }

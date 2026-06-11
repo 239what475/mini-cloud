@@ -3,15 +3,15 @@ set -euo pipefail
 
 INSTALL_ROOT={{printf "%q" .InstallRoot}}
 
-systemctl disable --now mini-cloud-cloud-plane.service mini-cloud-control-plane.service 2>/dev/null || true
-rm -f /etc/systemd/system/mini-cloud-cloud-plane.service /etc/systemd/system/mini-cloud-control-plane.service
+systemctl disable --now mini-cloud-control-plane.service 2>/dev/null || true
+rm -f /etc/systemd/system/mini-cloud-control-plane.service
 systemctl daemon-reload
 
 if command -v docker >/dev/null 2>&1; then
-  if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-caddy; then docker rm -f mini-cloud-caddy >/dev/null; fi
   if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-postgres; then docker rm -f mini-cloud-postgres >/dev/null; fi
   if docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -qx mini-cloud-postgres-data; then docker volume rm mini-cloud-postgres-data >/dev/null; fi
 fi
 
-systemctl disable --now tinyproxy 2>/dev/null || true
-rm -rf /etc/mini-cloud "$INSTALL_ROOT"
+rm -rf /etc/mini-cloud/control-plane "$INSTALL_ROOT/bin/control-plane" "$INSTALL_ROOT/web"
+rmdir /etc/mini-cloud 2>/dev/null || true
+rmdir "$INSTALL_ROOT/bin" "$INSTALL_ROOT" 2>/dev/null || true

@@ -17,14 +17,17 @@ import (
 
 type tencentCDNAPI interface {
 	AddCdnDomainWithContext(context.Context, *cdn.AddCdnDomainRequest) (*cdn.AddCdnDomainResponse, error)
+	CreateVerifyRecordWithContext(context.Context, *cdn.CreateVerifyRecordRequest) (*cdn.CreateVerifyRecordResponse, error)
 	DescribeDomainsWithContext(context.Context, *cdn.DescribeDomainsRequest) (*cdn.DescribeDomainsResponse, error)
 	StopCdnDomainWithContext(context.Context, *cdn.StopCdnDomainRequest) (*cdn.StopCdnDomainResponse, error)
 	DeleteCdnDomainWithContext(context.Context, *cdn.DeleteCdnDomainRequest) (*cdn.DeleteCdnDomainResponse, error)
+	VerifyDomainRecordWithContext(context.Context, *cdn.VerifyDomainRecordRequest) (*cdn.VerifyDomainRecordResponse, error)
 }
 
 type tencentCDNClient struct {
-	client tencentCDNAPI
-	origin string
+	client       tencentCDNAPI
+	origin       string
+	dnsPodDomain string
 }
 
 func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error) {
@@ -39,7 +42,7 @@ func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error)
 	if err != nil {
 		return nil, fmt.Errorf("create Tencent CDN client: %w", err)
 	}
-	return &tencentCDNClient{client: client, origin: cfg.Ingress.PublicOrigin}, nil
+	return &tencentCDNClient{client: client, origin: cfg.Ingress.PublicOrigin, dnsPodDomain: cfg.Ingress.FrontDoor.DNSPodDomain}, nil
 }
 
 func (c *tencentCDNClient) ListDomains(ctx context.Context, baseDomain string) ([]CDNDomain, error) {
@@ -68,7 +71,45 @@ func (c *tencentCDNClient) ListDomains(ctx context.Context, baseDomain string) (
 	return domains, nil
 }
 
-func (c *tencentCDNClient) PrepareDomain(context.Context, string, dnsClient) error {
+func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) error {
+	host = cleanDomain(host)
+	if host == "" {
+		return nil
+	}
+	domain, err := c.getDomain(ctx, host)
+	if err != nil {
+		return err
+	}
+	if domain.Host != "" {
+		return nil
+	}
+	recordReq := cdn.NewCreateVerifyRecordRequest()
+	recordReq.Domain = tccommon.StringPtr(host)
+	recordResp, err := c.client.CreateVerifyRecordWithContext(ctx, recordReq)
+	if err != nil {
+		return err
+	}
+	if recordResp == nil || recordResp.Response == nil || recordResp.Response.SubDomain == nil || recordResp.Response.Record == nil || recordResp.Response.RecordType == nil {
+		return fmt.Errorf("Tencent CDN verify record response is incomplete")
+	}
+	verifyHost := cleanDomain(*recordResp.Response.SubDomain + "." + c.dnsPodDomain)
+	if err := dns.EnsureRecord(ctx, verifyHost, *recordResp.Response.RecordType, *recordResp.Response.Record); err != nil {
+		return err
+	}
+	verifyType := "dns"
+	verifyReq := cdn.NewVerifyDomainRecordRequest()
+	verifyReq.Domain = tccommon.StringPtr(host)
+	verifyReq.VerifyType = tccommon.StringPtr(verifyType)
+	verifyResp, err := c.client.VerifyDomainRecordWithContext(ctx, verifyReq)
+	if err != nil {
+		if isTencentVerifyPending(err) {
+			return fmt.Errorf("Tencent CDN domain verification is pending")
+		}
+		return err
+	}
+	if verifyResp == nil || verifyResp.Response == nil || verifyResp.Response.Result == nil || !*verifyResp.Response.Result {
+		return fmt.Errorf("Tencent CDN domain verification is pending")
+	}
 	return nil
 }
 
@@ -109,6 +150,10 @@ func (c *tencentCDNClient) DeleteDomain(ctx context.Context, host string) error 
 		return err
 	}
 	return nil
+}
+
+func (c *tencentCDNClient) OwnsCNAME(value string) bool {
+	return strings.HasSuffix(trimCNAME(value), ".cdn.dnsv1.com")
 }
 
 func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (CDNDomain, error) {
@@ -180,4 +225,17 @@ func isTencentPending(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "deploying") || strings.Contains(message, "processing") || strings.Contains(message, "busy")
+}
+
+func isTencentVerifyPending(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sdkErr *sdkerrors.TencentCloudSDKError
+	if errors.As(err, &sdkErr) {
+		code := strings.ToLower(sdkErr.GetCode())
+		return strings.Contains(code, "txtrecordvaluenotmatch") || strings.Contains(code, "operationtoooften")
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "txt record") || strings.Contains(message, "too often")
 }

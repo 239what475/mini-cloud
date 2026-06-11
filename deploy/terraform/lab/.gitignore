@@ -4,5 +4,5 @@ terraform.tfstate.*
 crash.log
 *.tfplan
 tfplan
-terraform.tfvars
+*.tfvars
 *.auto.tfvars.json

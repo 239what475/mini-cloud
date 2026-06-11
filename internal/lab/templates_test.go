@@ -5,21 +5,27 @@ import (
 	"testing"
 )
 
-func TestRemoteInstallTemplateRendersDockerFormats(t *testing.T) {
-	rendered, err := renderTemplate("remote-install.sh.tmpl", remoteInstallTemplateData{
+func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
+	control, err := renderTemplate("remote-control-plane-install.sh.tmpl", remoteControlPlaneInstallTemplateData{
 		InstallRoot:          "/opt/mini-cloud",
-		IngressHTTPPort:      80,
-		EgressProxyPort:      3128,
-		ArtifactHTTPPort:     18082,
-		SubnetCIDRBlock:      "10.1.0.0/24",
-		RegistryMirror:       "https://mirror.example",
 		ControlPlaneHTTPPort: "18080",
-		CloudPlaneGRPCPort:   18081,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(rendered)
+	cloud, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneInstallTemplateData{
+		InstallRoot:        "/opt/mini-cloud",
+		IngressHTTPPort:    80,
+		EgressProxyPort:    3128,
+		ArtifactHTTPPort:   18082,
+		SubnetCIDRBlock:    "10.1.0.0/24",
+		RegistryMirror:     "https://mirror.example",
+		CloudPlaneGRPCPort: 18081,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(control) + "\n" + string(cloud)
 	for _, want := range []string{
 		"docker ps -a --format '{{.Names}}'",
 		"root * $INSTALL_ROOT/artifacts",
@@ -31,17 +37,24 @@ func TestRemoteInstallTemplateRendersDockerFormats(t *testing.T) {
 }
 
 func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
-	rendered, err := renderTemplate("remote-uninstall.sh.tmpl", struct {
+	control, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
 		InstallRoot string
 	}{InstallRoot: "/opt/mini-cloud"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(rendered)
+	cloud, err := renderTemplate("remote-cloud-plane-uninstall.sh.tmpl", struct {
+		InstallRoot    string
+		RemovePostgres bool
+	}{InstallRoot: "/opt/mini-cloud", RemovePostgres: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(control) + "\n" + string(cloud)
 	for _, want := range []string{
 		"docker ps -a --format '{{.Names}}'",
 		"docker volume ls --format '{{.Name}}'",
-		`rm -rf /etc/mini-cloud "$INSTALL_ROOT"`,
+		`rm -rf /etc/mini-cloud/cloud-plane`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("rendered template does not contain %q", want)

@@ -16,72 +16,71 @@ type aliyunInstancesResponse struct {
 }
 
 func (r *Runner) Destroy(ctx context.Context) error {
-	out, hasOutput, err := r.tryTerraformOutput(ctx)
-	if err != nil {
-		return err
-	}
-	platformUninstalled := false
-	if hasOutput {
-		switch out.ProviderName() {
-		case "aliyun":
-			if out.PlatformModeName() == "existing_ecs" {
-				host, err := r.platformHost(out)
-				if err != nil {
-					return err
-				}
-				if err := r.uninstallPlatform(ctx, host); err != nil {
-					return err
-				}
-				platformUninstalled = true
-			}
-			if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
+	for _, plane := range r.cfg.Planes {
+		fmt.Printf("[mini-cloud lab] destroy plane %s (%s)\n", plane.Name, plane.Provider)
+		if err := r.terraform(ctx, plane, "init"); err != nil {
+			return err
+		}
+		if err := r.selectTerraformWorkspace(ctx, plane); err != nil {
+			return err
+		}
+		out, hasOutput, err := r.tryTerraformOutput(ctx, plane)
+		if err != nil {
+			return err
+		}
+		if hasOutput {
+			if err := r.uninstallCloudPlane(ctx, plane, out); err != nil {
 				return err
 			}
-			if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
+		} else if strings.TrimSpace(plane.SSH.Host) != "" {
+			if err := r.uninstallCloudPlaneAtHost(ctx, plane.SSH, plane.SSH.Host, r.controlPlaneHost() != plane.SSH.Host); err != nil {
 				return err
-			}
-		case "tencent":
-			if out.PlatformModeName() == "existing_lighthouse" {
-				host, err := r.platformHost(out)
-				if err != nil {
-					return err
-				}
-				if err := r.uninstallPlatform(ctx, host); err != nil {
-					return err
-				}
-				platformUninstalled = true
-			}
-			if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
-				return err
-			}
-			if err := r.deleteTencentRuntimeNodes(ctx, out); err != nil {
-				return err
-			}
-			if out.PlatformModeName() == "existing_lighthouse" {
-				if err := r.deleteLighthouseFirewallRules(ctx, out); err != nil {
-					return err
-				}
-				if err := r.detachLighthouseCCN(ctx, out); err != nil {
-					return err
-				}
 			}
 		}
-	}
-	if !platformUninstalled && strings.TrimSpace(r.cfg.SSH.Host) != "" {
-		if err := r.uninstallPlatform(ctx, r.cfg.SSH.Host); err != nil {
+		if hasOutput {
+			if err := r.destroyPlaneCloudResources(ctx, plane, out); err != nil {
+				return err
+			}
+		} else if err := r.deleteServiceFrontDoorsWithoutTerraform(ctx, plane); err != nil {
+			return err
+		}
+		if err := r.terraform(ctx, plane, r.terraformDestroyArgs(plane)...); err != nil {
 			return err
 		}
 	}
-	if !hasOutput {
-		if err := r.deleteServiceFrontDoorsWithoutTerraform(ctx); err != nil {
-			return err
-		}
-	}
-	return r.terraform(ctx, append([]string{"destroy"}, r.cfg.Terraform.DestroyArgs...)...)
+	return r.uninstallControlPlane(ctx)
 }
 
-func (r *Runner) tryTerraformOutput(ctx context.Context) (TerraformOutput, bool, error) {
-	out, err := r.terraformOutput(ctx)
+func (r *Runner) destroyPlaneCloudResources(ctx context.Context, plane Plane, out TerraformOutput) error {
+	switch out.ProviderName() {
+	case "aliyun":
+		if err := r.deleteServiceFrontDoors(ctx, plane, out); err != nil {
+			return err
+		}
+		if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
+			return err
+		}
+	case "tencent":
+		if err := r.deleteServiceFrontDoors(ctx, plane, out); err != nil {
+			return err
+		}
+		if err := r.deleteTencentRuntimeNodes(ctx, out); err != nil {
+			return err
+		}
+		if out.PlatformModeName() == "existing_lighthouse" {
+			if err := r.deleteLighthouseFirewallRules(ctx, out); err != nil {
+				return err
+			}
+			if err := r.detachLighthouseCCN(ctx, out); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (r *Runner) tryTerraformOutput(ctx context.Context, plane Plane) (TerraformOutput, bool, error) {
+	out, err := r.terraformOutput(ctx, plane)
 	if err == nil {
 		if out.ProviderName() == "" {
 			return TerraformOutput{}, false, nil
@@ -89,6 +88,43 @@ func (r *Runner) tryTerraformOutput(ctx context.Context) (TerraformOutput, bool,
 		return out, true, nil
 	}
 	return TerraformOutput{}, false, nil
+}
+
+func (r *Runner) uninstallCloudPlane(ctx context.Context, plane Plane, out TerraformOutput) error {
+	host, err := r.platformHost(plane, out)
+	if err != nil {
+		return err
+	}
+	return r.uninstallCloudPlaneAtHost(ctx, plane.SSH, host, r.controlPlaneHost() != host)
+}
+
+func (r *Runner) uninstallCloudPlaneAtHost(ctx context.Context, sshConfig SSHConfig, host string, removePostgres bool) error {
+	script, err := renderTemplate("remote-cloud-plane-uninstall.sh.tmpl", struct {
+		InstallRoot    string
+		RemovePostgres bool
+	}{InstallRoot: r.cfg.Install.Root, RemovePostgres: removePostgres})
+	if err != nil {
+		return fmt.Errorf("render remote cloud-plane uninstall script: %w", err)
+	}
+	return r.ssh(ctx, sshConfig, host, script)
+}
+
+func (r *Runner) uninstallControlPlane(ctx context.Context) error {
+	host := r.controlPlaneHost()
+	if host == "" {
+		return nil
+	}
+	script, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
+		InstallRoot string
+	}{InstallRoot: r.cfg.Install.Root})
+	if err != nil {
+		return fmt.Errorf("render remote control-plane uninstall script: %w", err)
+	}
+	return r.ssh(ctx, r.cfg.ControlPlane.SSH, host, script)
+}
+
+func (r *Runner) controlPlaneHost() string {
+	return strings.TrimSpace(r.cfg.ControlPlane.SSH.Host)
 }
 
 func (r *Runner) deleteAliyunRuntimeNodes(ctx context.Context, out TerraformOutput) error {
@@ -127,14 +163,4 @@ func (r *Runner) aliyunRuntimeNodeIDs(ctx context.Context, out TerraformOutput) 
 		}
 	}
 	return ids, nil
-}
-
-func (r *Runner) uninstallPlatform(ctx context.Context, host string) error {
-	script, err := renderTemplate("remote-uninstall.sh.tmpl", struct {
-		InstallRoot string
-	}{InstallRoot: r.cfg.Install.Root})
-	if err != nil {
-		return fmt.Errorf("render remote uninstall script: %w", err)
-	}
-	return r.ssh(ctx, host, script)
 }

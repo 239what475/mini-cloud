@@ -11,18 +11,21 @@ import (
 )
 
 type Config struct {
-	Path          string          `yaml:"-"`
-	Terraform     TerraformConfig `yaml:"terraform"`
-	SSH           SSHConfig       `yaml:"ssh"`
-	Install       InstallConfig   `yaml:"install"`
-	Binaries      BinaryConfig    `yaml:"binaries"`
-	Tokens        TokenConfig     `yaml:"tokens"`
-	Provider      ProviderConfig  `yaml:"provider"`
-	Observability Observability   `yaml:"observability"`
+	Path          string         `yaml:"-"`
+	ControlPlane  ControlPlane   `yaml:"controlPlane"`
+	Planes        []Plane        `yaml:"planes"`
+	SSH           SSHConfig      `yaml:"ssh"`
+	Install       InstallConfig  `yaml:"install"`
+	Binaries      BinaryConfig   `yaml:"binaries"`
+	Tokens        TokenConfig    `yaml:"tokens"`
+	Provider      ProviderConfig `yaml:"provider"`
+	Observability Observability  `yaml:"observability"`
 }
 
 type TerraformConfig struct {
 	Dir         string   `yaml:"dir"`
+	Workspace   string   `yaml:"workspace"`
+	VarFile     string   `yaml:"varFile"`
 	ApplyArgs   []string `yaml:"applyArgs"`
 	DestroyArgs []string `yaml:"destroyArgs"`
 }
@@ -33,11 +36,24 @@ type SSHConfig struct {
 	Options []string `yaml:"options"`
 }
 
+type ControlPlane struct {
+	SSH            SSHConfig `yaml:"ssh"`
+	ListenHTTPAddr string    `yaml:"listenHTTPAddr"`
+	URL            string    `yaml:"url"`
+}
+
+type Plane struct {
+	Name           string          `yaml:"name"`
+	Provider       string          `yaml:"provider"`
+	SSH            SSHConfig       `yaml:"ssh"`
+	Terraform      TerraformConfig `yaml:"terraform"`
+	RegistryMirror string          `yaml:"registryMirror"`
+}
+
 type InstallConfig struct {
-	Root                 string `yaml:"root"`
-	ControlPlaneHTTPAddr string `yaml:"controlPlaneHTTPAddr"`
-	IngressBaseDomain    string `yaml:"ingressBaseDomain"`
-	RegistryMirror       string `yaml:"registryMirror"`
+	Root              string `yaml:"root"`
+	IngressBaseDomain string `yaml:"ingressBaseDomain"`
+	RegistryMirror    string `yaml:"registryMirror"`
 }
 
 type BinaryConfig struct {
@@ -87,17 +103,11 @@ func LoadConfig(path string) (Config, error) {
 }
 
 func (c *Config) applyDefaults() {
-	c.Terraform.Dir = defaultString(c.Terraform.Dir, "deploy/terraform/lab")
-	if c.Terraform.ApplyArgs == nil {
-		c.Terraform.ApplyArgs = []string{"-auto-approve"}
-	}
-	if c.Terraform.DestroyArgs == nil {
-		c.Terraform.DestroyArgs = []string{"-auto-approve"}
-	}
-
 	c.Install.Root = defaultString(c.Install.Root, "/opt/mini-cloud")
-	c.Install.ControlPlaneHTTPAddr = defaultString(c.Install.ControlPlaneHTTPAddr, "127.0.0.1:18080")
 	c.Install.IngressBaseDomain = strings.Trim(strings.TrimSpace(c.Install.IngressBaseDomain), ".")
+	c.ControlPlane.ListenHTTPAddr = defaultString(c.ControlPlane.ListenHTTPAddr, "0.0.0.0:18080")
+	c.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(c.ControlPlane.URL), "/")
+	c.ControlPlane.SSH.applyDefaults(c.SSH)
 
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")
@@ -109,6 +119,23 @@ func (c *Config) applyDefaults() {
 	c.Tokens.ControlPlaneAdmin = strings.TrimSpace(c.Tokens.ControlPlaneAdmin)
 	c.Tokens.ControlPlaneSouthbound = strings.TrimSpace(c.Tokens.ControlPlaneSouthbound)
 	c.Tokens.NodeAgentBootstrap = strings.TrimSpace(c.Tokens.NodeAgentBootstrap)
+
+	for i := range c.Planes {
+		plane := &c.Planes[i]
+		plane.Name = strings.TrimSpace(plane.Name)
+		plane.Provider = strings.ToLower(strings.TrimSpace(plane.Provider))
+		plane.RegistryMirror = strings.TrimSpace(plane.RegistryMirror)
+		plane.SSH.applyDefaults(c.SSH)
+		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/lab")
+		plane.Terraform.Workspace = defaultString(plane.Terraform.Workspace, plane.Name)
+		plane.Terraform.VarFile = absolutePath(expandHome(plane.Terraform.VarFile))
+		if plane.Terraform.ApplyArgs == nil {
+			plane.Terraform.ApplyArgs = []string{"-auto-approve"}
+		}
+		if plane.Terraform.DestroyArgs == nil {
+			plane.Terraform.DestroyArgs = []string{"-auto-approve"}
+		}
+	}
 }
 
 func expandHome(path string) string {
@@ -122,12 +149,68 @@ func expandHome(path string) string {
 	return path
 }
 
+func absolutePath(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	return absolute
+}
+
+func (s *SSHConfig) applyDefaults(parent SSHConfig) {
+	s.Host = defaultString(s.Host, parent.Host)
+	s.KeyPath = defaultString(s.KeyPath, parent.KeyPath)
+	if len(s.Options) == 0 {
+		s.Options = append([]string(nil), parent.Options...)
+	}
+}
+
 func (c Config) validateBase() error {
-	if strings.TrimSpace(c.Terraform.Dir) == "" {
-		return fmt.Errorf("terraform.dir is required")
+	if strings.TrimSpace(c.ControlPlane.SSH.Host) == "" {
+		return fmt.Errorf("controlPlane.ssh.host is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.URL) == "" {
+		return fmt.Errorf("controlPlane.url is required")
 	}
 	if strings.TrimSpace(c.Install.Root) == "" {
 		return fmt.Errorf("install.root is required")
+	}
+	if len(c.Planes) == 0 {
+		return fmt.Errorf("planes is required")
+	}
+	seen := map[string]bool{}
+	planeHosts := map[string]string{}
+	for _, plane := range c.Planes {
+		if strings.TrimSpace(plane.Name) == "" {
+			return fmt.Errorf("planes.name is required")
+		}
+		if seen[plane.Name] {
+			return fmt.Errorf("duplicate plane name %q", plane.Name)
+		}
+		seen[plane.Name] = true
+		if plane.Provider != "aliyun" && plane.Provider != "tencent" {
+			return fmt.Errorf("plane %q provider must be aliyun or tencent", plane.Name)
+		}
+		if strings.TrimSpace(plane.SSH.Host) == "" {
+			return fmt.Errorf("plane %q ssh.host is required", plane.Name)
+		}
+		if owner := planeHosts[plane.SSH.Host]; owner != "" {
+			return fmt.Errorf("planes %q and %q use the same ssh.host %q; a host can run only one cloud-plane", owner, plane.Name, plane.SSH.Host)
+		}
+		planeHosts[plane.SSH.Host] = plane.Name
+		if strings.TrimSpace(plane.Terraform.Dir) == "" {
+			return fmt.Errorf("plane %q terraform.dir is required", plane.Name)
+		}
+		if strings.TrimSpace(plane.Terraform.Workspace) == "" {
+			return fmt.Errorf("plane %q terraform.workspace is required", plane.Name)
+		}
+		if strings.TrimSpace(plane.Terraform.VarFile) == "" {
+			return fmt.Errorf("plane %q terraform.varFile is required", plane.Name)
+		}
 	}
 	return nil
 }

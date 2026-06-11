@@ -32,7 +32,7 @@ type dnspodRecordListResponse struct {
 	} `json:"RecordList"`
 }
 
-func (r *Runner) deleteServiceFrontDoors(ctx context.Context, out TerraformOutput) error {
+func (r *Runner) deleteServiceFrontDoors(ctx context.Context, plane Plane, out TerraformOutput) error {
 	baseDomain := cleanLabDomain(r.cfg.Install.IngressBaseDomain)
 	if baseDomain == "" {
 		return nil
@@ -49,20 +49,19 @@ func (r *Runner) deleteServiceFrontDoors(ctx context.Context, out TerraformOutpu
 		if err := r.deleteTencentCDNDomains(ctx, out.RegionID(), baseDomain); err != nil {
 			return err
 		}
+		if err := r.deleteTencentVerifyTXTRecord(ctx, baseDomain); err != nil {
+			return err
+		}
 	}
-	return r.deleteDNSPodCNAMERecords(ctx, baseDomain)
+	return r.deleteDNSPodCNAMERecords(ctx, baseDomain, out.ProviderName())
 }
 
-func (r *Runner) deleteServiceFrontDoorsWithoutTerraform(ctx context.Context) error {
+func (r *Runner) deleteServiceFrontDoorsWithoutTerraform(ctx context.Context, plane Plane) error {
 	baseDomain := cleanLabDomain(r.cfg.Install.IngressBaseDomain)
 	if baseDomain == "" {
 		return nil
 	}
-	provider, err := r.labProviderName()
-	if err != nil {
-		return err
-	}
-	switch provider {
+	switch plane.Provider {
 	case "aliyun":
 		if err := r.deleteAliyunCDNDomains(ctx, baseDomain); err != nil {
 			return err
@@ -71,17 +70,17 @@ func (r *Runner) deleteServiceFrontDoorsWithoutTerraform(ctx context.Context) er
 			return err
 		}
 	case "tencent":
-		regionID, err := r.labRegionID()
-		if err != nil {
-			return err
-		}
+		regionID := strings.TrimSpace(planeRegionFromVarFile(plane.Terraform.VarFile, "tencent"))
 		if regionID != "" {
 			if err := r.deleteTencentCDNDomains(ctx, regionID, baseDomain); err != nil {
 				return err
 			}
 		}
+		if err := r.deleteTencentVerifyTXTRecord(ctx, baseDomain); err != nil {
+			return err
+		}
 	}
-	return r.deleteDNSPodCNAMERecords(ctx, baseDomain)
+	return r.deleteDNSPodCNAMERecords(ctx, baseDomain, plane.Provider)
 }
 
 func (r *Runner) deleteAliyunCDNDomains(ctx context.Context, baseDomain string) error {
@@ -190,11 +189,12 @@ func (r *Runner) deleteTencentCDNDomains(ctx context.Context, regionID string, b
 	return nil
 }
 
-func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string) error {
+func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string, provider string) error {
 	rootDomain := cleanLabDomain(rootDomain(baseDomain))
 	if rootDomain == "" {
 		return nil
 	}
+	provider = strings.ToLower(strings.TrimSpace(provider))
 	var response dnspodRecordListResponse
 	if err := runJSON(ctx, &response, "tccli", "dnspod", "DescribeRecordList",
 		"--cli-unfold-argument",
@@ -212,6 +212,9 @@ func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string
 		if !labDomainIsUnder(host, baseDomain) {
 			continue
 		}
+		if !providerOwnsCNAME(provider, item.Value) {
+			continue
+		}
 		if _, err := runOutput(ctx, "tccli", "dnspod", "DeleteRecord",
 			"--cli-unfold-argument",
 			"--Domain", rootDomain,
@@ -221,6 +224,18 @@ func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string
 		}
 	}
 	return nil
+}
+
+func providerOwnsCNAME(provider string, value string) bool {
+	value = cleanLabDomain(value)
+	switch provider {
+	case "aliyun":
+		return strings.HasSuffix(value, ".w.kunlunaq.com")
+	case "tencent":
+		return strings.HasSuffix(value, ".cdn.dnsv1.com")
+	default:
+		return false
+	}
 }
 
 func (r *Runner) deleteAliyunVerifyTXTRecord(ctx context.Context, baseDomain string) error {
@@ -243,6 +258,39 @@ func (r *Runner) deleteAliyunVerifyTXTRecord(ctx context.Context, baseDomain str
 			continue
 		}
 		if strings.ToUpper(strings.TrimSpace(item.Type)) != "TXT" || !strings.HasPrefix(strings.TrimSpace(item.Value), "verify_") {
+			continue
+		}
+		if _, err := runOutput(ctx, "tccli", "dnspod", "DeleteRecord",
+			"--cli-unfold-argument",
+			"--Domain", rootDomain,
+			"--RecordId", fmt.Sprintf("%d", item.RecordID),
+		); err != nil && !commandOutputContains(err, "not") {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runner) deleteTencentVerifyTXTRecord(ctx context.Context, baseDomain string) error {
+	rootDomain := cleanLabDomain(rootDomain(baseDomain))
+	if rootDomain == "" {
+		return nil
+	}
+	var response dnspodRecordListResponse
+	if err := runJSON(ctx, &response, "tccli", "dnspod", "DescribeRecordList",
+		"--cli-unfold-argument",
+		"--Domain", rootDomain,
+		"--Subdomain", "_cdnauth",
+		"--RecordType", "TXT",
+		"--ErrorOnEmpty", "no",
+	); err != nil {
+		return err
+	}
+	for _, item := range response.RecordList {
+		if strings.TrimSpace(item.Name) != "_cdnauth" {
+			continue
+		}
+		if strings.ToUpper(strings.TrimSpace(item.Type)) != "TXT" {
 			continue
 		}
 		if _, err := runOutput(ctx, "tccli", "dnspod", "DeleteRecord",
@@ -288,62 +336,25 @@ func aliyunCDNDeleteRetryable(err error) bool {
 		commandOutputContains(err, "processing")
 }
 
-func (r *Runner) labProviderName() (string, error) {
-	value, err := terraformVariable("provider_name")
+func planeRegionFromVarFile(path string, provider string) string {
+	data, err := os.ReadFile(strings.TrimSpace(path))
 	if err != nil {
-		return "", err
-	}
-	return strings.ToLower(value), nil
-}
-
-func (r *Runner) labRegionID() (string, error) {
-	value, err := terraformMapString("tencent", "region_id")
-	if err != nil || value != "" {
-		return value, err
-	}
-	return terraformMapString("aliyun", "region_id")
-}
-
-func terraformVariable(name string) (string, error) {
-	data, err := os.ReadFile("deploy/terraform/lab/terraform.tfvars")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
-	}
-	prefix := name + " = "
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, prefix) {
-			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, prefix)), `"`), nil
-		}
-	}
-	return "", nil
-}
-
-func terraformMapString(mapName string, key string) (string, error) {
-	data, err := os.ReadFile("deploy/terraform/lab/terraform.tfvars")
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
-		return "", err
+		return ""
 	}
 	inMap := false
-	prefix := key + " = "
+	prefix := "region_id = "
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line == mapName+" = {" {
+		if line == provider+" = {" {
 			inMap = true
 			continue
 		}
 		if inMap && line == "}" {
-			return "", nil
+			return ""
 		}
 		if inMap && strings.HasPrefix(line, prefix) {
-			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, prefix)), `"`), nil
+			return strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, prefix)), `"`)
 		}
 	}
-	return "", nil
+	return ""
 }

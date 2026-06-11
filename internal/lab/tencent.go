@@ -151,14 +151,29 @@ func (r *Runner) ensureLighthouseFirewallRules(ctx context.Context, out Terrafor
 	}
 	ports := []struct {
 		port        int
+		cidr        string
 		description string
 	}{
-		{out.Network.Value.CloudPlaneGRPCPort, "mini-cloud runtime to cloud-plane"},
-		{out.Network.Value.EgressProxyPort, "mini-cloud runtime to workload egress proxy"},
-		{out.Network.Value.ArtifactHTTPPort, "mini-cloud runtime to node-agent artifact server"},
+		{out.Network.Value.CloudPlaneGRPCPort, subnetCIDR, "mini-cloud runtime to cloud-plane"},
+		{out.Network.Value.EgressProxyPort, subnetCIDR, "mini-cloud runtime to workload egress proxy"},
+		{out.Network.Value.ArtifactHTTPPort, subnetCIDR, "mini-cloud runtime to node-agent artifact server"},
+	}
+	if r.controlPlaneHost() == out.platformHost() {
+		controlPlaneHTTPPort, err := strconv.Atoi(portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr))
+		if err != nil {
+			return fmt.Errorf("parse control-plane HTTP port: %w", err)
+		}
+		ports = append(ports, struct {
+			port        int
+			cidr        string
+			description string
+		}{controlPlaneHTTPPort, "0.0.0.0/0", "mini-cloud control-plane HTTP"})
 	}
 	for _, wanted := range ports {
 		if wanted.port == 0 {
+			return fmt.Errorf("terraform network outputs are incomplete for Lighthouse firewall rules")
+		}
+		if wanted.cidr == "" {
 			return fmt.Errorf("terraform network outputs are incomplete for Lighthouse firewall rules")
 		}
 	}
@@ -175,13 +190,13 @@ func (r *Runner) ensureLighthouseFirewallRules(ctx context.Context, out Terrafor
 	}
 	for _, wanted := range ports {
 		port := strconv.Itoa(wanted.port)
-		if exists[firewallKey("TCP", port, subnetCIDR)] {
+		if exists[firewallKey("TCP", port, wanted.cidr)] {
 			continue
 		}
 		rule := firewallRule{
 			Protocol:                "TCP",
 			Port:                    port,
-			CidrBlock:               subnetCIDR,
+			CidrBlock:               wanted.cidr,
 			Action:                  "ACCEPT",
 			FirewallRuleDescription: wanted.description,
 		}
@@ -207,6 +222,11 @@ func (r *Runner) deleteLighthouseFirewallRules(ctx context.Context, out Terrafor
 		firewallKey("TCP", strconv.Itoa(out.Network.Value.CloudPlaneGRPCPort), subnetCIDR): true,
 		firewallKey("TCP", strconv.Itoa(out.Network.Value.EgressProxyPort), subnetCIDR):    true,
 		firewallKey("TCP", strconv.Itoa(out.Network.Value.ArtifactHTTPPort), subnetCIDR):   true,
+	}
+	if r.controlPlaneHost() == out.platformHost() {
+		if port := portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr); port != "" {
+			wanted[firewallKey("TCP", port, "0.0.0.0/0")] = true
+		}
 	}
 
 	var response lighthouseFirewallResponse

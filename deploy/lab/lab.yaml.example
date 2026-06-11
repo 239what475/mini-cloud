@@ -1,17 +1,37 @@
-terraform:
-  dir: deploy/terraform/lab
-  applyArgs: ["-auto-approve"]
-  destroyArgs: ["-auto-approve"]
+controlPlane:
+  ssh:
+    host: myserver
+    keyPath: ""
+    options: []
+  listenHTTPAddr: 0.0.0.0:18080
+  url: http://replace-with-control-plane-public-ip:18080
 
-ssh:
-  host: ""
-  keyPath: ""
-  options: []
+planes:
+  - name: mini-cloud-tencent-lab
+    provider: tencent
+    ssh:
+      host: myserver
+    terraform:
+      dir: deploy/terraform/lab
+      workspace: tencent
+      varFile: deploy/terraform/lab/tencent.tfvars
+      applyArgs: ["-auto-approve"]
+      destroyArgs: ["-auto-approve"]
+
+  - name: mini-cloud-aliyun-lab
+    provider: aliyun
+    ssh:
+      host: myserver2
+    terraform:
+      dir: deploy/terraform/lab
+      workspace: aliyun
+      varFile: deploy/terraform/lab/aliyun.tfvars
+      applyArgs: ["-auto-approve"]
+      destroyArgs: ["-auto-approve"]
 
 install:
   root: /opt/mini-cloud
-  controlPlaneHTTPAddr: 127.0.0.1:18080
-  ingressBaseDomain: ""
+  ingressBaseDomain: apps.whatcloud.cn
   registryMirror: ""
 
 binaries:

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+INSTALL_ROOT={{printf "%q" .InstallRoot}}
+REMOVE_POSTGRES={{if .RemovePostgres}}1{{else}}0{{end}}
+
+systemctl disable --now mini-cloud-cloud-plane.service 2>/dev/null || true
+rm -f /etc/systemd/system/mini-cloud-cloud-plane.service
+systemctl daemon-reload
+
+if command -v docker >/dev/null 2>&1; then
+  if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-caddy; then docker rm -f mini-cloud-caddy >/dev/null; fi
+  if [[ "$REMOVE_POSTGRES" = 1 ]]; then
+    if docker ps -a --format '{{"{{"}}.Names{{"}}"}}' | grep -qx mini-cloud-postgres; then docker rm -f mini-cloud-postgres >/dev/null; fi
+    if docker volume ls --format '{{"{{"}}.Name{{"}}"}}' | grep -qx mini-cloud-postgres-data; then docker volume rm mini-cloud-postgres-data >/dev/null; fi
+  fi
+fi
+
+systemctl disable --now tinyproxy 2>/dev/null || true
+rm -rf /etc/mini-cloud/cloud-plane /etc/mini-cloud/ingress "$INSTALL_ROOT/artifacts" "$INSTALL_ROOT/bin/cloud-plane"
+rmdir /etc/mini-cloud 2>/dev/null || true
+rmdir "$INSTALL_ROOT/bin" "$INSTALL_ROOT" 2>/dev/null || true

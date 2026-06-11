@@ -2,6 +2,7 @@ package frontdoor
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
@@ -57,6 +58,7 @@ func TestServiceApplyDeletesStaleDomains(t *testing.T) {
 	dns := &fakeDNS{records: map[string]DNSRecord{
 		"api.apps.example.com":   {ID: 1, Subdomain: "api.apps.example.com", Type: "CNAME", Value: "api.apps.example.com.cdn.example.net"},
 		"old.apps.example.com":   {ID: 2, Subdomain: "old.apps.example.com", Type: "CNAME", Value: "old.apps.example.com.cdn.example.net"},
+		"peer.apps.example.com":  {ID: 6, Subdomain: "peer.apps.example.com", Type: "CNAME", Value: "peer.apps.example.com.other-cdn.example.net"},
 		"other.example.com":      {ID: 3, Subdomain: "other.example.com", Type: "CNAME", Value: "other.example.com.cdn.example.net"},
 		"txt.apps.example.com":   {ID: 4, Subdomain: "txt.apps.example.com", Type: "TXT", Value: "keep"},
 		"plain.apps.example.com": {ID: 5, Subdomain: "plain.apps.example.com", Type: "A", Value: "192.0.2.1"},
@@ -78,6 +80,9 @@ func TestServiceApplyDeletesStaleDomains(t *testing.T) {
 	}
 	if _, ok := dns.records["other.example.com"]; !ok {
 		t.Fatalf("DNS record outside base domain was deleted: %+v", dns.records)
+	}
+	if _, ok := dns.records["peer.apps.example.com"]; !ok {
+		t.Fatalf("DNS record owned by another CDN was deleted: %+v", dns.records)
 	}
 	if _, ok := dns.records["txt.apps.example.com"]; !ok {
 		t.Fatalf("non-CNAME DNS record was deleted: %+v", dns.records)
@@ -117,6 +122,10 @@ func (f *fakeCDN) EnsureDomain(_ context.Context, host string) (string, error) {
 func (f *fakeCDN) DeleteDomain(_ context.Context, host string) error {
 	delete(f.domains, host)
 	return nil
+}
+
+func (f *fakeCDN) OwnsCNAME(value string) bool {
+	return trimCNAME(value) == "" || strings.HasSuffix(trimCNAME(value), ".cdn.example.net")
 }
 
 type fakeDNS struct {

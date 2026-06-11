@@ -67,13 +67,40 @@ type InstallEnv struct {
 	RuntimeSecurityGroupID string `json:"runtime_security_group_id"`
 }
 
-func (r *Runner) terraform(ctx context.Context, args ...string) error {
-	full := append([]string{"-chdir=" + r.cfg.Terraform.Dir}, args...)
+func (r *Runner) terraform(ctx context.Context, plane Plane, args ...string) error {
+	full := append([]string{"-chdir=" + plane.Terraform.Dir}, args...)
 	return runInteractive(ctx, "terraform", full...)
 }
 
-func (r *Runner) terraformOutput(ctx context.Context) (TerraformOutput, error) {
-	data, err := runOutput(ctx, "terraform", "-chdir="+r.cfg.Terraform.Dir, "output", "-json")
+func (r *Runner) selectTerraformWorkspace(ctx context.Context, plane Plane) error {
+	args := []string{"-chdir=" + plane.Terraform.Dir, "workspace", "select", plane.Terraform.Workspace}
+	if _, err := runOutput(ctx, "terraform", args...); err == nil {
+		return nil
+	}
+	args = []string{"-chdir=" + plane.Terraform.Dir, "workspace", "new", plane.Terraform.Workspace}
+	return runInteractive(ctx, "terraform", args...)
+}
+
+func (r *Runner) terraformApplyArgs(plane Plane) []string {
+	args := append([]string{"apply"}, varFileArg(plane.Terraform.VarFile)...)
+	return append(args, plane.Terraform.ApplyArgs...)
+}
+
+func (r *Runner) terraformDestroyArgs(plane Plane) []string {
+	args := append([]string{"destroy"}, varFileArg(plane.Terraform.VarFile)...)
+	return append(args, plane.Terraform.DestroyArgs...)
+}
+
+func varFileArg(path string) []string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+	return []string{"-var-file=" + path}
+}
+
+func (r *Runner) terraformOutput(ctx context.Context, plane Plane) (TerraformOutput, error) {
+	data, err := runOutput(ctx, "terraform", "-chdir="+plane.Terraform.Dir, "output", "-json")
 	if err != nil {
 		return TerraformOutput{}, err
 	}

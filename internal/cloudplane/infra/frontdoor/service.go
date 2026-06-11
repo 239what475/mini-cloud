@@ -16,6 +16,7 @@ type cdnClient interface {
 	PrepareDomain(context.Context, string, dnsClient) error
 	EnsureDomain(context.Context, string) (string, error)
 	DeleteDomain(context.Context, string) error
+	OwnsCNAME(string) bool
 }
 
 type dnsClient interface {
@@ -106,7 +107,7 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	}
 	for _, record := range records {
 		host := cleanDomain(record.Subdomain)
-		if record.Type != "CNAME" || !domainIsUnder(host, s.baseDomain) {
+		if record.Type != "CNAME" || !domainIsUnder(host, s.baseDomain) || !s.cdn.OwnsCNAME(record.Value) {
 			continue
 		}
 		if _, ok := desired[host]; ok {
