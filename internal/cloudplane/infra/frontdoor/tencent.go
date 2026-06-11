@@ -68,6 +68,10 @@ func (c *tencentCDNClient) ListDomains(ctx context.Context, baseDomain string) (
 	return domains, nil
 }
 
+func (c *tencentCDNClient) PrepareDomain(context.Context, string, dnsClient) error {
+	return nil
+}
+
 func (c *tencentCDNClient) EnsureDomain(ctx context.Context, host string) (string, error) {
 	host = cleanDomain(host)
 	domain, err := c.getDomain(ctx, host)
@@ -76,15 +80,15 @@ func (c *tencentCDNClient) EnsureDomain(ctx context.Context, host string) (strin
 	}
 	if domain.Host == "" {
 		if err := c.addDomain(ctx, host); err != nil {
+			if isTencentPending(err) {
+				return "", nil
+			}
 			return "", err
 		}
-		domain, err = c.getDomain(ctx, host)
-		if err != nil {
-			return "", err
-		}
+		return "", nil
 	}
 	if strings.TrimSpace(domain.CNAME) == "" {
-		return "", fmt.Errorf("domain exists but CNAME is empty")
+		return "", nil
 	}
 	return domain.CNAME, nil
 }
@@ -163,4 +167,17 @@ func isTencentNotFound(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "not found") || strings.Contains(message, "not exist")
+}
+
+func isTencentPending(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sdkErr *sdkerrors.TencentCloudSDKError
+	if errors.As(err, &sdkErr) {
+		code := strings.ToLower(sdkErr.GetCode())
+		return strings.Contains(code, "deploying") || strings.Contains(code, "processing") || strings.Contains(code, "busy")
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "deploying") || strings.Contains(message, "processing") || strings.Contains(message, "busy")
 }

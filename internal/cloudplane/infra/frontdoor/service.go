@@ -13,13 +13,14 @@ import (
 
 type cdnClient interface {
 	ListDomains(context.Context, string) ([]CDNDomain, error)
+	PrepareDomain(context.Context, string, dnsClient) error
 	EnsureDomain(context.Context, string) (string, error)
 	DeleteDomain(context.Context, string) error
 }
 
 type dnsClient interface {
 	ListRecords(context.Context) ([]DNSRecord, error)
-	EnsureCNAME(context.Context, string, string) error
+	EnsureRecord(context.Context, string, string, string) error
 	DeleteRecord(context.Context, DNSRecord) error
 }
 
@@ -83,14 +84,18 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	}
 
 	for _, host := range sortedHosts(desired) {
+		if err := s.cdn.PrepareDomain(ctx, host, s.dns); err != nil {
+			return fmt.Errorf("prepare CDN domain %s: %w", host, err)
+		}
 		cname, err := s.cdn.EnsureDomain(ctx, host)
 		if err != nil {
 			return fmt.Errorf("ensure CDN domain %s: %w", host, err)
 		}
 		if strings.TrimSpace(cname) == "" {
-			return fmt.Errorf("CDN domain %s has empty CNAME", host)
+			s.logger.Debug("frontdoor CDN domain is still configuring", "host", host)
+			continue
 		}
-		if err := s.dns.EnsureCNAME(ctx, host, cname); err != nil {
+		if err := s.dns.EnsureRecord(ctx, host, "CNAME", cname); err != nil {
 			return fmt.Errorf("ensure DNS record %s: %w", host, err)
 		}
 	}

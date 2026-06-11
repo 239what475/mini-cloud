@@ -27,6 +27,25 @@ func TestServiceApplyEnsuresDesiredDomains(t *testing.T) {
 	}
 }
 
+func TestServiceApplyWaitsForCDNCNAME(t *testing.T) {
+	t.Parallel()
+
+	cdn := &fakeCDN{
+		domains: map[string]string{},
+		pending: map[string]bool{"api.apps.example.com": true},
+	}
+	dns := &fakeDNS{records: map[string]DNSRecord{}}
+	service := newServiceWithClients(nil, "apps.example.com", cdn, dns)
+
+	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	if err != nil {
+		t.Fatalf("Apply returned error: %v", err)
+	}
+	if len(dns.records) != 0 {
+		t.Fatalf("DNS record was written before CDN CNAME was ready: %+v", dns.records)
+	}
+}
+
 func TestServiceApplyDeletesStaleDomains(t *testing.T) {
 	t.Parallel()
 
@@ -67,6 +86,7 @@ func TestServiceApplyDeletesStaleDomains(t *testing.T) {
 
 type fakeCDN struct {
 	domains map[string]string
+	pending map[string]bool
 }
 
 func (f *fakeCDN) ListDomains(context.Context, string) ([]CDNDomain, error) {
@@ -77,7 +97,14 @@ func (f *fakeCDN) ListDomains(context.Context, string) ([]CDNDomain, error) {
 	return domains, nil
 }
 
+func (f *fakeCDN) PrepareDomain(context.Context, string, dnsClient) error {
+	return nil
+}
+
 func (f *fakeCDN) EnsureDomain(_ context.Context, host string) (string, error) {
+	if f.pending[host] {
+		return "", nil
+	}
 	if f.domains == nil {
 		f.domains = map[string]string{}
 	}
@@ -105,12 +132,12 @@ func (f *fakeDNS) ListRecords(context.Context) ([]DNSRecord, error) {
 	return records, nil
 }
 
-func (f *fakeDNS) EnsureCNAME(_ context.Context, host string, cname string) error {
+func (f *fakeDNS) EnsureRecord(_ context.Context, host string, recordType string, value string) error {
 	if f.records == nil {
 		f.records = map[string]DNSRecord{}
 	}
 	f.nextID++
-	f.records[host] = DNSRecord{ID: f.nextID, Subdomain: host, Type: "CNAME", Value: cname}
+	f.records[host] = DNSRecord{ID: f.nextID, Subdomain: host, Type: recordType, Value: value}
 	return nil
 }
 

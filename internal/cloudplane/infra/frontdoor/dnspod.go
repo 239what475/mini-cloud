@@ -46,7 +46,6 @@ func (c *dnspodClient) ListRecords(ctx context.Context) ([]DNSRecord, error) {
 	errorOnEmpty := "no"
 	req := dnspod.NewDescribeRecordListRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
-	req.RecordType = tccommon.StringPtr("CNAME")
 	req.Limit = &limit
 	req.ErrorOnEmpty = &errorOnEmpty
 
@@ -65,35 +64,36 @@ func (c *dnspodClient) ListRecords(ctx context.Context) ([]DNSRecord, error) {
 		records = append(records, DNSRecord{
 			ID:        *item.RecordId,
 			Subdomain: dnsHost(*item.Name, c.domain),
-			Type:      strings.ToUpper(strings.TrimSpace(*item.Type)),
-			Value:     trimCNAMEValue(item.Value),
+			Type:      cleanRecordType(*item.Type),
+			Value:     cleanRecordValue(item.Value, *item.Type),
 		})
 	}
 	return records, nil
 }
 
-func (c *dnspodClient) EnsureCNAME(ctx context.Context, host string, cname string) error {
+func (c *dnspodClient) EnsureRecord(ctx context.Context, host string, recordType string, value string) error {
 	host = cleanDomain(host)
-	cname = trimCNAME(cname)
+	recordType = cleanRecordType(recordType)
+	value = cleanRecordValue(&value, recordType)
 	subdomain, err := c.subdomain(host)
 	if err != nil {
 		return err
 	}
 
-	records, err := c.recordsForSubdomain(ctx, subdomain)
+	records, err := c.recordsForSubdomain(ctx, subdomain, recordType)
 	if err != nil {
 		return err
 	}
 	for _, record := range records {
-		if record.Type != "CNAME" {
+		if record.Type != recordType {
 			continue
 		}
-		if trimCNAME(record.Value) == cname {
+		if cleanRecordValue(&record.Value, recordType) == value {
 			return nil
 		}
-		return c.modifyRecord(ctx, record.ID, subdomain, cname)
+		return c.modifyRecord(ctx, record.ID, subdomain, recordType, value)
 	}
-	return c.createRecord(ctx, subdomain, cname)
+	return c.createRecord(ctx, subdomain, recordType, value)
 }
 
 func (c *dnspodClient) DeleteRecord(ctx context.Context, record DNSRecord) error {
@@ -107,13 +107,13 @@ func (c *dnspodClient) DeleteRecord(ctx context.Context, record DNSRecord) error
 	return err
 }
 
-func (c *dnspodClient) recordsForSubdomain(ctx context.Context, subdomain string) ([]DNSRecord, error) {
+func (c *dnspodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]DNSRecord, error) {
 	limit := uint64(100)
 	errorOnEmpty := "no"
 	req := dnspod.NewDescribeRecordListRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
 	req.Subdomain = tccommon.StringPtr(subdomain)
-	req.RecordType = tccommon.StringPtr("CNAME")
+	req.RecordType = tccommon.StringPtr(recordType)
 	req.Limit = &limit
 	req.ErrorOnEmpty = &errorOnEmpty
 
@@ -132,37 +132,35 @@ func (c *dnspodClient) recordsForSubdomain(ctx context.Context, subdomain string
 		records = append(records, DNSRecord{
 			ID:        *item.RecordId,
 			Subdomain: dnsHost(*item.Name, c.domain),
-			Type:      strings.ToUpper(strings.TrimSpace(*item.Type)),
-			Value:     trimCNAMEValue(item.Value),
+			Type:      cleanRecordType(*item.Type),
+			Value:     cleanRecordValue(item.Value, *item.Type),
 		})
 	}
 	return records, nil
 }
 
-func (c *dnspodClient) createRecord(ctx context.Context, subdomain string, cname string) error {
+func (c *dnspodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string) error {
 	line := "默认"
-	recordType := "CNAME"
 	req := dnspod.NewCreateRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
 	req.SubDomain = tccommon.StringPtr(subdomain)
 	req.RecordType = &recordType
 	req.RecordLine = &line
-	req.Value = tccommon.StringPtr(cname)
+	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	_, err := c.client.CreateRecordWithContext(ctx, req)
 	return err
 }
 
-func (c *dnspodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, cname string) error {
+func (c *dnspodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string) error {
 	line := "默认"
-	recordType := "CNAME"
 	req := dnspod.NewModifyRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
 	req.RecordId = tccommon.Uint64Ptr(recordID)
 	req.SubDomain = tccommon.StringPtr(subdomain)
 	req.RecordType = &recordType
 	req.RecordLine = &line
-	req.Value = tccommon.StringPtr(cname)
+	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	_, err := c.client.ModifyRecordWithContext(ctx, req)
 	return err
@@ -198,4 +196,18 @@ func trimCNAMEValue(value *string) string {
 
 func trimCNAME(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
+}
+
+func cleanRecordType(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
+func cleanRecordValue(value *string, recordType string) string {
+	if value == nil {
+		return ""
+	}
+	if cleanRecordType(recordType) == "CNAME" {
+		return trimCNAME(*value)
+	}
+	return strings.TrimSpace(*value)
 }

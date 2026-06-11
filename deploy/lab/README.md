@@ -67,7 +67,7 @@ install:
   ingressBaseDomain: apps.whatcloud.cn
 ```
 
-`bootstrap` 不再创建 wildcard CDN/DNS。cloud-plane 当前只读取 `ingress.baseDomain` 并把 `<service-name>.<ingressBaseDomain>` 路由应用到入口机上的 Caddy；service 级 CDN/DNS frontdoor 后续由 cloud-plane 管理。
+`bootstrap` 不创建 wildcard CDN/DNS。cloud-plane 会按 service 名称生成 `<service-name>.<ingressBaseDomain>`，先把路由应用到入口机上的 Caddy，再按 service 收敛云厂商 CDN 和 DNSPod CNAME。
 
 ## Install
 

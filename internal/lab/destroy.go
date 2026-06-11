@@ -22,10 +22,6 @@ func (r *Runner) Destroy(ctx context.Context) error {
 	}
 	platformUninstalled := false
 	if hasOutput {
-		// Wildcard CDN/DNS front doors are no longer created by bootstrap.
-		// if err := r.deleteFrontDoor(ctx, out); err != nil {
-		// 	return err
-		// }
 		switch out.ProviderName() {
 		case "aliyun":
 			if out.PlatformModeName() == "existing_ecs" {
@@ -37,6 +33,9 @@ func (r *Runner) Destroy(ctx context.Context) error {
 					return err
 				}
 				platformUninstalled = true
+			}
+			if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
+				return err
 			}
 			if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
 				return err
@@ -51,6 +50,9 @@ func (r *Runner) Destroy(ctx context.Context) error {
 					return err
 				}
 				platformUninstalled = true
+			}
+			if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
+				return err
 			}
 			if err := r.deleteTencentRuntimeNodes(ctx, out); err != nil {
 				return err
@@ -67,6 +69,11 @@ func (r *Runner) Destroy(ctx context.Context) error {
 	}
 	if !platformUninstalled && strings.TrimSpace(r.cfg.SSH.Host) != "" {
 		if err := r.uninstallPlatform(ctx, r.cfg.SSH.Host); err != nil {
+			return err
+		}
+	}
+	if !hasOutput {
+		if err := r.deleteServiceFrontDoorsWithoutTerraform(ctx); err != nil {
 			return err
 		}
 	}
