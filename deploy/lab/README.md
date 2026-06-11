@@ -12,7 +12,7 @@ Terraform 只负责云资源底座：
 - provider role
 - existing Tencent CCN，用于打通轻量应用服务器和 runtime CVM VPC
 
-平台进程安装、入口机清理、Lighthouse CCN 补齐、Lighthouse 防火墙补齐和临时 DNS 记录由 `labctl` 负责。
+平台进程安装、入口机清理、Lighthouse CCN 补齐、Lighthouse 防火墙补齐和公网入口 CDN/DNS 由 `labctl` 负责。
 
 ## Config
 
@@ -62,16 +62,17 @@ terraform:
 - 等待关联状态变成 `ACTIVE`
 - 给 Lighthouse 防火墙补齐 runtime subnet 到 cloud-plane gRPC、tinyproxy 和 artifact server 的规则
 
-如果 lab 需要临时 HTTP 泛解析，可以在 `lab.yaml` 里配置 DNSPod CNAME：
+如果 lab 需要公网 service 入口，在 `lab.yaml` 里配置托管 service 域名和稳定源站域名：
 
 ```yaml
-dns:
-  domain: whatcloud.cn
-  subdomain: "*.apps"
-  value: tx-origin.whatcloud.cn.
+install:
+  ingressBaseDomain: apps.whatcloud.cn
+  ingressOriginHost: tx-origin.whatcloud.cn
 ```
 
-如果同名记录已经存在且值不同，`bootstrap` 会拒绝覆盖。
+`bootstrap` 会根据 Terraform 输出的云厂商创建同云厂商的 wildcard CDN/DNS 入口：腾讯云使用 CDN + DNSPod，阿里云使用 CDN + AliDNS。`ingressOriginHost` 是稳定源站域名，通常由你提前指向入口机；labctl 不创建这个 origin 记录。
+
+cloud-plane 不管理 CDN/DNS，只读取 `ingress.baseDomain` 并把 `<service-name>.<ingressBaseDomain>` 路由应用到入口机上的 Caddy。
 
 ## Install
 
@@ -111,7 +112,7 @@ ssh:
 go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 ```
 
-`destroy` 会先用云厂商 CLI 清理当前平台名下的 runtime 节点，再执行 `terraform destroy` 删除 Terraform 管理的基础设施。默认参数来自 `lab.yaml`：
+`destroy` 会先删除 lab 创建的公网入口 CDN/DNS，再用云厂商 CLI 清理当前平台名下的 runtime 节点，最后执行 `terraform destroy` 删除 Terraform 管理的基础设施。默认参数来自 `lab.yaml`：
 
 ```yaml
 terraform:
@@ -141,8 +142,6 @@ terraform:
 ssh:
   host: myserver
 ```
-
-如果 bootstrap 创建过临时 DNS 记录，destroy 会删除同一条记录；配置了 `dns.value` 时，只有记录值匹配才会删除。
 
 ## Requirements
 

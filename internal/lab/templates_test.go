@@ -83,6 +83,9 @@ func TestCloudPlaneConfigTemplateRendersProviderSpec(t *testing.T) {
 	if !strings.Contains(text, "  tencentCredential:\n    secretId: \"sid\"\n    secretKey: \"skey\"\n    token: \"stok\"") {
 		t.Fatalf("tencentCredential was not rendered:\n%s", text)
 	}
+	if strings.Contains(text, "originHost") {
+		t.Fatalf("cloud-plane config should not contain originHost:\n%s", text)
+	}
 }
 
 func TestParseTencentCredentialData(t *testing.T) {

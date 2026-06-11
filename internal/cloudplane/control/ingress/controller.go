@@ -23,7 +23,7 @@ type storeReader interface {
 	GetNode(context.Context, string) (cloudmodel.Node, error)
 }
 
-// routeSink 定义外置 ingress 数据面应用路由快照的能力。
+// routeSink 定义本地 ingress 数据面应用路由快照的能力。
 type routeSink interface {
 	// Apply 将本轮路由快照应用到具体 ingress 数据面实现。
 	Apply(context.Context, []cloudmodel.Route) error
@@ -37,15 +37,18 @@ type Controller struct {
 	store storeReader
 	// cfg 是已校验的 cloud-plane 配置。
 	cfg cloudplaneconfig.Config
-	// sink 应用路由快照，具体实现可以是 Caddy Admin API、其它远端 API 或 no-op。
+	// sink 应用 service 路由快照，当前实现是外置 Caddy。
 	sink routeSink
 }
 
 var dnsLabelCleaner = regexp.MustCompile(`[^a-z0-9-]+`)
 
 // NewController 构造外置 ingress 控制器。
-// 参数说明：logger 记录后台日志；stores 读取本地状态；cfg 提供 ingress 策略；sink 应用路由快照。
+// 参数说明：logger 记录后台日志；stores 读取本地状态；cfg 提供 ingress 策略；sink 应用 service 路由。
 func NewController(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig.Config, sink routeSink) *Controller {
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return &Controller{logger: logger, store: stores, cfg: cfg, sink: sink}
 }
 
@@ -61,11 +64,10 @@ func (c *Controller) ReconcileOnce(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	// sink 代表具体数据面应用方式；未注入 sink 是组装错误，直接返回明确错误。
+	// sink 代表本地代理数据面；未注入 sink 是组装错误，直接返回明确错误。
 	if c.sink == nil {
 		return fmt.Errorf("ingress sink is required when ingress is enabled")
 	}
-	// 将路由快照交给下游实现；例如 Caddy sink 会通过 Admin API 加载结构化配置。
 	if err := c.sink.Apply(ctx, routes); err != nil {
 		return err
 	}

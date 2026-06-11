@@ -22,6 +22,9 @@ func (r *Runner) Destroy(ctx context.Context) error {
 	}
 	platformUninstalled := false
 	if hasOutput {
+		if err := r.deleteFrontDoor(ctx, out); err != nil {
+			return err
+		}
 		switch out.ProviderName() {
 		case "aliyun":
 			if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
@@ -56,15 +59,15 @@ func (r *Runner) Destroy(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := r.deleteDNSRecord(ctx); err != nil {
-		return err
-	}
 	return r.terraform(ctx, append([]string{"destroy"}, r.cfg.Terraform.DestroyArgs...)...)
 }
 
 func (r *Runner) tryTerraformOutput(ctx context.Context) (TerraformOutput, bool, error) {
 	out, err := r.terraformOutput(ctx)
 	if err == nil {
+		if out.ProviderName() == "" {
+			return TerraformOutput{}, false, nil
+		}
 		return out, true, nil
 	}
 	return TerraformOutput{}, false, nil

@@ -106,6 +106,25 @@ func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
 	}
 }
 
+// TestReconcileOnceAppliesRoutes 验证 ingress 将当前路由快照应用到本地入口数据面。
+func TestReconcileOnceAppliesRoutes(t *testing.T) {
+	t.Parallel()
+
+	sink := &fakeSink{}
+	stores := &fakeStore{
+		sources: []cloudmodel.RouteSource{{ServiceName: "api"}},
+		nodes:   map[string]cloudmodel.Node{},
+	}
+	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink)
+
+	if err := controller.ReconcileOnce(context.Background()); err != nil {
+		t.Fatalf("ReconcileOnce returned error: %v", err)
+	}
+	if sink.calls != 1 {
+		t.Fatalf("sink calls = %d, want 1", sink.calls)
+	}
+}
+
 // fakeStore 是 ingress controller 单测使用的只读状态集合。
 type fakeStore struct {
 	sources []cloudmodel.RouteSource

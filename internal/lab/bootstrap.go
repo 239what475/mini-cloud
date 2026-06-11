@@ -24,7 +24,7 @@ func (r *Runner) Bootstrap(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := r.ensureDNSRecord(ctx); err != nil {
+	if err := r.ensureFrontDoor(ctx, out); err != nil {
 		return err
 	}
 	fmt.Println()

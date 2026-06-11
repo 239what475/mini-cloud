@@ -19,7 +19,6 @@ type Config struct {
 	Tokens        TokenConfig     `yaml:"tokens"`
 	Provider      ProviderConfig  `yaml:"provider"`
 	Observability Observability   `yaml:"observability"`
-	DNS           DNSConfig       `yaml:"dns"`
 }
 
 type TerraformConfig struct {
@@ -38,6 +37,7 @@ type InstallConfig struct {
 	Root                 string `yaml:"root"`
 	ControlPlaneHTTPAddr string `yaml:"controlPlaneHTTPAddr"`
 	IngressBaseDomain    string `yaml:"ingressBaseDomain"`
+	IngressOriginHost    string `yaml:"ingressOriginHost"`
 	RegistryMirror       string `yaml:"registryMirror"`
 }
 
@@ -61,12 +61,6 @@ type Observability struct {
 	WorkloadLogLokiURL      string `yaml:"workloadLogLokiURL"`
 	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
 	WorkloadOTLPEndpoint    string `yaml:"workloadOTLPEndpoint"`
-}
-
-type DNSConfig struct {
-	Domain    string `yaml:"domain"`
-	Subdomain string `yaml:"subdomain"`
-	Value     string `yaml:"value"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -104,7 +98,8 @@ func (c *Config) applyDefaults() {
 
 	c.Install.Root = defaultString(c.Install.Root, "/opt/mini-cloud")
 	c.Install.ControlPlaneHTTPAddr = defaultString(c.Install.ControlPlaneHTTPAddr, "127.0.0.1:18080")
-	c.Install.IngressBaseDomain = defaultString(c.Install.IngressBaseDomain, "apps.example.com")
+	c.Install.IngressBaseDomain = strings.Trim(strings.TrimSpace(c.Install.IngressBaseDomain), ".")
+	c.Install.IngressOriginHost = strings.Trim(strings.TrimSpace(c.Install.IngressOriginHost), ".")
 
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")

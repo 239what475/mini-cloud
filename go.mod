@@ -3,6 +3,8 @@ module mini-cloud
 go 1.26.0
 
 require (
+	github.com/alibabacloud-go/alidns-20150109/v4 v4.7.0
+	github.com/alibabacloud-go/cdn-20180510/v5 v5.2.2
 	github.com/alibabacloud-go/darabonba-openapi/v2 v2.1.16
 	github.com/alibabacloud-go/ecs-20140526/v7 v7.6.1
 	github.com/alibabacloud-go/tea v1.4.0
@@ -14,8 +16,10 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
 	github.com/pressly/goose/v3 v3.26.0
-	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.78
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdn v1.3.90
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common v1.3.90
 	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm v1.3.72
+	github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod v1.3.78
 	golang.org/x/net v0.52.0
 	google.golang.org/grpc v1.80.0
 	google.golang.org/protobuf v1.36.11
@@ -26,6 +30,8 @@ require (
 	github.com/Microsoft/go-winio v0.4.21 // indirect
 	github.com/alibabacloud-go/alibabacloud-gateway-spi v0.0.5 // indirect
 	github.com/alibabacloud-go/debug v1.0.1 // indirect
+	github.com/alibabacloud-go/endpoint-util v1.1.0 // indirect
+	github.com/alibabacloud-go/openapi-util v0.1.1 // indirect
 	github.com/alibabacloud-go/tea-utils/v2 v2.0.7 // indirect
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
@@ -88,6 +94,7 @@ require (
 	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260401024825-9d38bb4040a9 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
