@@ -4,15 +4,13 @@
 
 Terraform 只负责云资源底座：
 
-- VPC / subnet
-- platform host，或复用已有腾讯云轻量应用服务器
-- EIP
+- runtime VPC / subnet / security group
+- 复用已有入口机：阿里云 ECS 或腾讯云轻量应用服务器
 - security groups
 - SSH key
-- provider role
 - existing Tencent CCN，用于打通轻量应用服务器和 runtime CVM VPC
 
-平台进程安装、入口机清理、Lighthouse CCN 补齐、Lighthouse 防火墙补齐和公网入口 CDN/DNS 由 `labctl` 负责。
+平台进程安装、入口机清理、Lighthouse CCN 补齐和 Lighthouse 防火墙补齐由 `labctl` 负责。
 
 ## Config
 
@@ -62,17 +60,14 @@ terraform:
 - 等待关联状态变成 `ACTIVE`
 - 给 Lighthouse 防火墙补齐 runtime subnet 到 cloud-plane gRPC、tinyproxy 和 artifact server 的规则
 
-如果 lab 需要公网 service 入口，在 `lab.yaml` 里配置托管 service 域名和稳定源站域名：
+如果 lab 需要本地 Caddy 入口路由，在 `lab.yaml` 里配置托管 service 域名：
 
 ```yaml
 install:
   ingressBaseDomain: apps.whatcloud.cn
-  ingressOriginHost: tx-origin.whatcloud.cn
 ```
 
-`bootstrap` 会根据 Terraform 输出的云厂商创建同云厂商的 wildcard CDN/DNS 入口：腾讯云使用 CDN + DNSPod，阿里云使用 CDN + AliDNS。`ingressOriginHost` 是稳定源站域名，通常由你提前指向入口机；labctl 不创建这个 origin 记录。
-
-cloud-plane 不管理 CDN/DNS，只读取 `ingress.baseDomain` 并把 `<service-name>.<ingressBaseDomain>` 路由应用到入口机上的 Caddy。
+`bootstrap` 不再创建 wildcard CDN/DNS。cloud-plane 当前只读取 `ingress.baseDomain` 并把 `<service-name>.<ingressBaseDomain>` 路由应用到入口机上的 Caddy；service 级 CDN/DNS frontdoor 后续由 cloud-plane 管理。
 
 ## Install
 
@@ -112,7 +107,7 @@ ssh:
 go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 ```
 
-`destroy` 会先删除 lab 创建的公网入口 CDN/DNS，再用云厂商 CLI 清理当前平台名下的 runtime 节点，最后执行 `terraform destroy` 删除 Terraform 管理的基础设施。默认参数来自 `lab.yaml`：
+`destroy` 会先卸载复用入口机上的平台进程，再用云厂商 CLI 清理当前平台名下的 runtime 节点，最后执行 `terraform destroy` 删除 Terraform 管理的 runtime 基础设施。默认参数来自 `lab.yaml`：
 
 ```yaml
 terraform:

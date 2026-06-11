@@ -2,8 +2,8 @@ package lab
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -22,11 +22,22 @@ func (r *Runner) Destroy(ctx context.Context) error {
 	}
 	platformUninstalled := false
 	if hasOutput {
-		if err := r.deleteFrontDoor(ctx, out); err != nil {
-			return err
-		}
+		// Wildcard CDN/DNS front doors are no longer created by bootstrap.
+		// if err := r.deleteFrontDoor(ctx, out); err != nil {
+		// 	return err
+		// }
 		switch out.ProviderName() {
 		case "aliyun":
+			if out.PlatformModeName() == "existing_ecs" {
+				host, err := r.platformHost(out)
+				if err != nil {
+					return err
+				}
+				if err := r.uninstallPlatform(ctx, host); err != nil {
+					return err
+				}
+				platformUninstalled = true
+			}
 			if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
 				return err
 			}
@@ -81,11 +92,11 @@ func (r *Runner) deleteAliyunRuntimeNodes(ctx context.Context, out TerraformOutp
 	if len(ids) == 0 {
 		return nil
 	}
-	data, err := json.Marshal(ids)
-	if err != nil {
-		return err
+	args := []string{"ecs", "DeleteInstances", "--RegionId", out.RegionID(), "--Force", "true"}
+	for index, id := range ids {
+		args = append(args, "--InstanceId."+strconv.Itoa(index+1), id)
 	}
-	_, err = runOutput(ctx, "aliyun", "ecs", "DeleteInstances", "--RegionId", out.RegionID(), "--InstanceIds", string(data), "--Force", "true")
+	_, err = runOutput(ctx, "aliyun", args...)
 	return err
 }
 

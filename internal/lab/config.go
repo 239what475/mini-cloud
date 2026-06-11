@@ -37,7 +37,6 @@ type InstallConfig struct {
 	Root                 string `yaml:"root"`
 	ControlPlaneHTTPAddr string `yaml:"controlPlaneHTTPAddr"`
 	IngressBaseDomain    string `yaml:"ingressBaseDomain"`
-	IngressOriginHost    string `yaml:"ingressOriginHost"`
 	RegistryMirror       string `yaml:"registryMirror"`
 }
 
@@ -99,7 +98,6 @@ func (c *Config) applyDefaults() {
 	c.Install.Root = defaultString(c.Install.Root, "/opt/mini-cloud")
 	c.Install.ControlPlaneHTTPAddr = defaultString(c.Install.ControlPlaneHTTPAddr, "127.0.0.1:18080")
 	c.Install.IngressBaseDomain = strings.Trim(strings.TrimSpace(c.Install.IngressBaseDomain), ".")
-	c.Install.IngressOriginHost = strings.Trim(strings.TrimSpace(c.Install.IngressOriginHost), ".")
 
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")

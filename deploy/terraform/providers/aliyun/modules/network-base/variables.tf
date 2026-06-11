@@ -1,16 +1,5 @@
 variable "region_id" {
   type = string
-
-  validation {
-    condition = contains([
-      "cn-wulanchabu",
-      "cn-heyuan",
-      "cn-hangzhou",
-      "cn-beijing",
-      "us-east-1"
-    ], var.region_id)
-    error_message = "region_id 必须落在当前教学允许的地域集合内。"
-  }
 }
 
 variable "zone_id" {
@@ -29,31 +18,29 @@ variable "owner" {
   type = string
 }
 
-variable "vpc_name" {
-  type    = string
-  default = ""
-}
-
-variable "vpc_cidr_block" {
+variable "vpc_id" {
   type = string
 }
 
-variable "vswitch_name" {
-  type    = string
-  default = ""
+variable "vswitch_id" {
+  type = string
 }
 
 variable "vswitch_cidr_block" {
   type = string
 }
 
+variable "platform_security_group_id" {
+  type = string
+}
+
+variable "platform_private_ip" {
+  type = string
+}
+
 variable "security_group_name_prefix" {
   type    = string
   default = ""
-}
-
-variable "admin_cidrs" {
-  type = list(string)
 }
 
 variable "control_plane_cidrs" {
@@ -90,7 +77,7 @@ variable "runtime_host_port_min" {
 
   validation {
     condition     = var.runtime_host_port_min >= 1 && var.runtime_host_port_min <= 65535
-    error_message = "runtime_host_port_min 必须是 1 到 65535 之间的 TCP 端口。"
+    error_message = "runtime_host_port_min must be between 1 and 65535."
   }
 }
 
@@ -100,21 +87,8 @@ variable "runtime_host_port_max" {
 
   validation {
     condition     = var.runtime_host_port_max >= 1 && var.runtime_host_port_max <= 65535
-    error_message = "runtime_host_port_max 必须是 1 到 65535 之间的 TCP 端口。"
+    error_message = "runtime_host_port_max must be between 1 and 65535."
   }
-}
-
-variable "platform_role_name" {
-  type    = string
-  default = ""
-}
-
-variable "platform_role_policy_names" {
-  type = list(string)
-  default = [
-    "AliyunECSFullAccess",
-    "AliyunVPCFullAccess"
-  ]
 }
 
 variable "ssh_public_key" {

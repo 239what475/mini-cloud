@@ -1,62 +1,54 @@
 provider_name = "aliyun"
-platform_mode = "managed_cvm"
-platform_name = "mini-cloud-v3-lab"
+platform_mode = "existing_ecs"
+platform_name = "mini-cloud-aliyun-lab"
 environment   = "lab"
-owner         = "student"
+owner         = "operator"
 
-vpc_cidr_block    = "10.88.0.0/16"
-subnet_cidr_block = "10.88.1.0/24"
-
-# admin_cidrs 只用于 SSH 登录 platform host。
-admin_cidrs = [
-  "203.0.113.10/32"
-]
-
-# control_plane_cidrs 用于外部 control-plane/admin 访问 cloud-plane gRPC。
 control_plane_cidrs = [
-  "203.0.113.10/32"
+  "0.0.0.0/0"
 ]
 
-# ingress_cidrs 用于用户/CDN 访问 Caddy HTTP 入口。
 ingress_cidrs = [
-  "203.0.113.10/32"
+  "0.0.0.0/0"
 ]
 
-# 这里填本机 SSH 公钥路径。
-# Terraform 会读取这把公钥，并自动在云侧创建登录密钥对。
 ssh_public_key_path = "~/.ssh/id_ed25519.pub"
 
-# Terraform 只负责创建真实云底座，不负责安装 mini-cloud 进程。
-# 底座创建后，用 go run ./cmd/labctl install 通过 SSH 安装 control-plane 和 cloud-plane。
-# 入口机不运行 node-agent；runtime node 会从入口机内网 artifact server 下载 node-agent。
+existing_ecs_instance_id          = "i-xxxxxxxx"
+existing_ecs_instance_name        = "mini-cloud-entry"
+existing_ecs_instance_type        = "ecs.e-c1m1.large"
+existing_ecs_image_id             = "debian_13_x64.vhd"
+existing_ecs_public_ip            = "203.0.113.10"
+existing_ecs_private_ip           = "172.29.199.49"
+existing_ecs_ssh_host             = "myserver2"
+existing_ecs_vpc_id               = "vpc-xxxxxxxx"
+existing_ecs_vswitch_id           = "vsw-xxxxxxxx"
+existing_ecs_vswitch_cidr_block   = "172.29.192.0/20"
+existing_ecs_security_group_id    = "sg-xxxxxxxx"
+existing_ecs_role_name            = "mini-cloud"
 
-# 复用腾讯云轻量应用服务器作为入口机时，改成：
+aliyun = {
+  region_id     = "cn-beijing"
+  zone_id       = "cn-beijing-f"
+  instance_type = "ecs.e-c1m1.large"
+  image_id      = "replace-with-runtime-image-id"
+}
+
+# Tencent uses an existing Lighthouse entry host and a new runtime CVM VPC.
 #
 # provider_name = "tencent"
 # platform_mode = "existing_lighthouse"
+# platform_name = "mini-cloud-lighthouse-tencent"
+# vpc_cidr_block    = "10.88.0.0/16"
+# subnet_cidr_block = "10.88.1.0/24"
 # existing_lighthouse_instance_id = "lhins-xxxxxxxx"
 # existing_lighthouse_public_ip   = "203.0.113.10"
 # existing_lighthouse_private_ip  = "10.1.0.6"
 # existing_lighthouse_ssh_host    = "myserver"
 # existing_ccn_id                 = "ccn-xxxxxxxx"
-#
-# Terraform 会创建 runtime CVM VPC、安全组和密钥，并把 runtime VPC 关联到已有 CCN。
-# go run ./cmd/labctl bootstrap 会把 Lighthouse 关联到同一个 CCN。
-# 注意 vpc_cidr_block/subnet_cidr_block 不要和 Lighthouse 私网 CIDR 冲突。
-
-aliyun = {
-  region_id     = "cn-beijing"
-  zone_id       = "cn-beijing-f"
-  instance_type = "ecs.u1-c1m1.large"
-  image_id      = "replace-with-a-region-available-image-id"
-}
-
-# 如果要切到腾讯云，只需要把 provider_name 改成 "tencent"，
-# 然后填写下面这组字段；未被选中的 provider 配置不会参与本次部署。
-#
 # tencent = {
-#   region_id     = "ap-beijing"
-#   zone_id       = "ap-beijing-6"
-#   instance_type = "S5.MEDIUM4"
+#   region_id     = "ap-guangzhou"
+#   zone_id       = "ap-guangzhou-6"
+#   instance_type = "S6.MEDIUM2"
 #   image_id      = "img-xxxxxxxx"
 # }

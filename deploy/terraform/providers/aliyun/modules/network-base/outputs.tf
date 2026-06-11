@@ -7,27 +7,19 @@ output "zone_id" {
 }
 
 output "vpc_id" {
-  value = alicloud_vpc.platform.id
-}
-
-output "vpc_name" {
-  value = alicloud_vpc.platform.vpc_name
+  value = var.vpc_id
 }
 
 output "vswitch_id" {
-  value = alicloud_vswitch.platform.id
+  value = var.vswitch_id
 }
 
-output "vswitch_name" {
-  value = alicloud_vswitch.platform.vswitch_name
+output "vswitch_cidr_block" {
+  value = var.vswitch_cidr_block
 }
 
 output "platform_security_group_id" {
-  value = alicloud_security_group.platform.id
-}
-
-output "platform_security_group_name" {
-  value = alicloud_security_group.platform.security_group_name
+  value = var.platform_security_group_id
 }
 
 output "runtime_security_group_id" {
@@ -44,12 +36,4 @@ output "platform_key_pair_name" {
 
 output "platform_key_pair_id" {
   value = alicloud_ecs_key_pair.platform.id
-}
-
-output "platform_role_name" {
-  value = alicloud_ram_role.platform.role_name
-}
-
-output "platform_role_arn" {
-  value = alicloud_ram_role.platform.arn
 }

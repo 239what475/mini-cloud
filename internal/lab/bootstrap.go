@@ -24,9 +24,11 @@ func (r *Runner) Bootstrap(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := r.ensureFrontDoor(ctx, out); err != nil {
-		return err
-	}
+	// Wildcard CDN/DNS bootstrap is intentionally disabled. Public service
+	// front doors will be reconciled per service by cloud-plane in a later step.
+	// if err := r.ensureFrontDoor(ctx, out); err != nil {
+	// 	return err
+	// }
 	fmt.Println()
 	fmt.Println("platform output:")
 	return r.terraform(ctx, "output", "platform")

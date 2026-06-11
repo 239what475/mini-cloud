@@ -1,24 +1,5 @@
 locals {
-  vpc_name                     = var.vpc_name != "" ? var.vpc_name : "${var.platform_name}-vpc"
-  vswitch_name                 = var.vswitch_name != "" ? var.vswitch_name : "${var.platform_name}-vsw"
-  platform_security_group_name = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-platform-sg" : "${var.platform_name}-platform-sg"
-  runtime_security_group_name  = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-runtime-sg" : "${var.platform_name}-runtime-sg"
-  platform_role_name           = var.platform_role_name != "" ? var.platform_role_name : "${var.platform_name}-role"
-
-  role_document = jsonencode({
-    Version = "1"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = [
-            "ecs.aliyuncs.com"
-          ]
-        }
-      }
-    ]
-  })
+  runtime_security_group_name = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-runtime-sg" : "${var.platform_name}-runtime-sg"
 
   common_tags = {
     "managed-by"             = "mini-cloud"
@@ -26,18 +7,6 @@ locals {
     "mini-cloud/environment" = var.environment
     "mini-cloud/owner"       = var.owner
   }
-
-  platform_admin_ingress_rules = [
-    for cidr in var.admin_cidrs : {
-      description = "ssh from admin cidrs"
-      ip_protocol = "tcp"
-      port_range  = "22/22"
-      cidr_ip     = cidr
-      priority    = 1
-      policy      = "accept"
-      nic_type    = "intranet"
-    }
-  ]
 
   platform_control_plane_ingress_rules = [
     for cidr in var.control_plane_cidrs : {
@@ -63,14 +32,8 @@ locals {
     }
   ]
 
-  platform_external_ingress_rules = concat(
-    local.platform_admin_ingress_rules,
-    local.platform_control_plane_ingress_rules,
-    local.platform_http_ingress_rules,
-  )
-
   platform_external_ingress_rule_map = {
-    for index, rule in local.platform_external_ingress_rules :
+    for index, rule in concat(local.platform_control_plane_ingress_rules, local.platform_http_ingress_rules) :
     format("%03d", index) => rule
   }
 }
@@ -78,40 +41,20 @@ locals {
 check "runtime_host_port_range" {
   assert {
     condition     = var.runtime_host_port_min <= var.runtime_host_port_max
-    error_message = "runtime_host_port_min 不能大于 runtime_host_port_max。"
+    error_message = "runtime_host_port_min must not be greater than runtime_host_port_max."
   }
-}
-
-resource "alicloud_vpc" "platform" {
-  vpc_name   = local.vpc_name
-  cidr_block = var.vpc_cidr_block
-  tags       = local.common_tags
-}
-
-resource "alicloud_vswitch" "platform" {
-  vpc_id       = alicloud_vpc.platform.id
-  cidr_block   = var.vswitch_cidr_block
-  zone_id      = var.zone_id
-  vswitch_name = local.vswitch_name
-  tags         = local.common_tags
-}
-
-resource "alicloud_security_group" "platform" {
-  security_group_name = local.platform_security_group_name
-  vpc_id              = alicloud_vpc.platform.id
-  tags                = merge(local.common_tags, { "mini-cloud/security-group-role" = "platform" })
 }
 
 resource "alicloud_security_group" "runtime" {
   security_group_name = local.runtime_security_group_name
-  vpc_id              = alicloud_vpc.platform.id
+  vpc_id              = var.vpc_id
   tags                = merge(local.common_tags, { "mini-cloud/security-group-role" = "runtime" })
 }
 
 resource "alicloud_security_group_rule" "platform_external_ingress" {
   for_each = local.platform_external_ingress_rule_map
 
-  security_group_id = alicloud_security_group.platform.id
+  security_group_id = var.platform_security_group_id
   type              = "ingress"
   ip_protocol       = each.value.ip_protocol
   port_range        = each.value.port_range
@@ -123,7 +66,7 @@ resource "alicloud_security_group_rule" "platform_external_ingress" {
 }
 
 resource "alicloud_security_group_rule" "platform_grpc_from_runtime" {
-  security_group_id        = alicloud_security_group.platform.id
+  security_group_id        = var.platform_security_group_id
   type                     = "ingress"
   ip_protocol              = "tcp"
   port_range               = "${var.cloud_plane_grpc_port}/${var.cloud_plane_grpc_port}"
@@ -135,7 +78,7 @@ resource "alicloud_security_group_rule" "platform_grpc_from_runtime" {
 }
 
 resource "alicloud_security_group_rule" "platform_proxy_from_runtime" {
-  security_group_id        = alicloud_security_group.platform.id
+  security_group_id        = var.platform_security_group_id
   type                     = "ingress"
   ip_protocol              = "tcp"
   port_range               = "${var.egress_proxy_port}/${var.egress_proxy_port}"
@@ -147,7 +90,7 @@ resource "alicloud_security_group_rule" "platform_proxy_from_runtime" {
 }
 
 resource "alicloud_security_group_rule" "platform_artifacts_from_runtime" {
-  security_group_id        = alicloud_security_group.platform.id
+  security_group_id        = var.platform_security_group_id
   type                     = "ingress"
   ip_protocol              = "tcp"
   port_range               = "${var.artifact_http_port}/${var.artifact_http_port}"
@@ -159,27 +102,15 @@ resource "alicloud_security_group_rule" "platform_artifacts_from_runtime" {
 }
 
 resource "alicloud_security_group_rule" "runtime_host_ports_from_platform" {
-  security_group_id        = alicloud_security_group.runtime.id
-  type                     = "ingress"
-  ip_protocol              = "tcp"
-  port_range               = "${var.runtime_host_port_min}/${var.runtime_host_port_max}"
-  source_security_group_id = alicloud_security_group.platform.id
-  priority                 = 1
-  policy                   = "accept"
-  nic_type                 = "intranet"
-  description              = "runtime host ports from platform security group"
-}
-
-resource "alicloud_security_group_rule" "platform_egress_all" {
-  security_group_id = alicloud_security_group.platform.id
-  type              = "egress"
-  ip_protocol       = "all"
-  port_range        = "-1/-1"
-  cidr_ip           = "0.0.0.0/0"
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "ingress"
+  ip_protocol       = "tcp"
+  port_range        = "${var.runtime_host_port_min}/${var.runtime_host_port_max}"
+  cidr_ip           = "${var.platform_private_ip}/32"
   priority          = 1
   policy            = "accept"
   nic_type          = "intranet"
-  description       = "platform host can reach internet and cloud APIs"
+  description       = "runtime host ports from platform private ip"
 }
 
 resource "alicloud_security_group_rule" "runtime_egress_grpc" {
@@ -187,7 +118,7 @@ resource "alicloud_security_group_rule" "runtime_egress_grpc" {
   type              = "egress"
   ip_protocol       = "tcp"
   port_range        = "${var.cloud_plane_grpc_port}/${var.cloud_plane_grpc_port}"
-  cidr_ip           = var.vswitch_cidr_block
+  cidr_ip           = "${var.platform_private_ip}/32"
   priority          = 1
   policy            = "accept"
   nic_type          = "intranet"
@@ -199,7 +130,7 @@ resource "alicloud_security_group_rule" "runtime_egress_proxy" {
   type              = "egress"
   ip_protocol       = "tcp"
   port_range        = "${var.egress_proxy_port}/${var.egress_proxy_port}"
-  cidr_ip           = var.vswitch_cidr_block
+  cidr_ip           = "${var.platform_private_ip}/32"
   priority          = 1
   policy            = "accept"
   nic_type          = "intranet"
@@ -211,7 +142,7 @@ resource "alicloud_security_group_rule" "runtime_egress_artifacts" {
   type              = "egress"
   ip_protocol       = "tcp"
   port_range        = "${var.artifact_http_port}/${var.artifact_http_port}"
-  cidr_ip           = var.vswitch_cidr_block
+  cidr_ip           = "${var.platform_private_ip}/32"
   priority          = 1
   policy            = "accept"
   nic_type          = "intranet"
@@ -228,6 +159,58 @@ resource "alicloud_security_group_rule" "runtime_egress_metadata_aliyun" {
   policy            = "accept"
   nic_type          = "intranet"
   description       = "runtime to aliyun metadata"
+}
+
+resource "alicloud_security_group_rule" "runtime_egress_aliyun_internal_http" {
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "tcp"
+  port_range        = "80/80"
+  cidr_ip           = "100.100.0.0/16"
+  priority          = 2
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to aliyun internal package mirrors"
+}
+
+resource "alicloud_security_group_rule" "runtime_egress_aliyun_internal_https" {
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "tcp"
+  port_range        = "443/443"
+  cidr_ip           = "100.100.0.0/16"
+  priority          = 2
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to aliyun internal package mirrors"
+}
+
+resource "alicloud_security_group_rule" "runtime_egress_aliyun_dns_udp" {
+  for_each = toset(["100.100.2.136/32", "100.100.2.138/32"])
+
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "udp"
+  port_range        = "53/53"
+  cidr_ip           = each.value
+  priority          = 1
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to aliyun vpc dns"
+}
+
+resource "alicloud_security_group_rule" "runtime_egress_aliyun_dns_tcp" {
+  for_each = toset(["100.100.2.136/32", "100.100.2.138/32"])
+
+  security_group_id = alicloud_security_group.runtime.id
+  type              = "egress"
+  ip_protocol       = "tcp"
+  port_range        = "53/53"
+  cidr_ip           = each.value
+  priority          = 1
+  policy            = "accept"
+  nic_type          = "intranet"
+  description       = "runtime to aliyun vpc dns"
 }
 
 resource "alicloud_security_group_rule" "runtime_egress_metadata_link_local" {
@@ -270,19 +253,4 @@ resource "alicloud_ecs_key_pair" "platform" {
   key_name_prefix = "${var.platform_name}-platform-"
   public_key      = var.ssh_public_key
   tags            = local.common_tags
-}
-
-resource "alicloud_ram_role" "platform" {
-  role_name                   = local.platform_role_name
-  assume_role_policy_document = local.role_document
-  description                 = "${var.platform_name} platform role"
-  tags                        = local.common_tags
-}
-
-resource "alicloud_ram_role_policy_attachment" "platform" {
-  for_each = toset(var.platform_role_policy_names)
-
-  policy_name = each.value
-  policy_type = "System"
-  role_name   = alicloud_ram_role.platform.role_name
 }

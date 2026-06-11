@@ -7,18 +7,82 @@ variable "provider_name" {
   }
 }
 
+variable "aliyun_profile" {
+  type    = string
+  default = "default"
+}
+
 variable "platform_name" {
   type = string
 }
 
 variable "platform_mode" {
-  type    = string
-  default = "managed_cvm"
+  type = string
 
   validation {
-    condition     = contains(["managed_cvm", "existing_lighthouse"], lower(trimspace(var.platform_mode)))
-    error_message = "platform_mode must be managed_cvm or existing_lighthouse."
+    condition     = contains(["existing_ecs", "existing_lighthouse"], lower(trimspace(var.platform_mode)))
+    error_message = "platform_mode must be existing_ecs or existing_lighthouse."
   }
+}
+
+variable "existing_ecs_instance_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_instance_name" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_instance_type" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_image_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_public_ip" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_private_ip" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_ssh_host" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_vpc_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_vswitch_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_vswitch_cidr_block" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_security_group_id" {
+  type    = string
+  default = ""
+}
+
+variable "existing_ecs_role_name" {
+  type    = string
+  default = ""
 }
 
 variable "existing_lighthouse_public_ip" {
@@ -62,7 +126,8 @@ variable "vpc_name" {
 }
 
 variable "vpc_cidr_block" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "subnet_name" {
@@ -71,7 +136,8 @@ variable "subnet_name" {
 }
 
 variable "subnet_cidr_block" {
-  type = string
+  type    = string
+  default = ""
 }
 
 variable "security_group_name_prefix" {
@@ -80,7 +146,8 @@ variable "security_group_name_prefix" {
 }
 
 variable "admin_cidrs" {
-  type = list(string)
+  type    = list(string)
+  default = []
 }
 
 variable "control_plane_cidrs" {
@@ -143,17 +210,12 @@ variable "ssh_public_key_path" {
 
 variable "aliyun" {
   type = object({
-    region_id                  = optional(string, "")
-    zone_id                    = optional(string, "")
-    platform_role_policy_names = optional(list(string), ["AliyunECSFullAccess", "AliyunVPCFullAccess"])
-    platform_instance_name     = optional(string, "")
-    instance_type              = optional(string, "")
-    image_id                   = optional(string, "")
-    system_disk_category       = optional(string, "cloud_essd")
-    system_disk_size           = optional(number, 40)
-    eip_name                   = optional(string, "")
-    eip_bandwidth              = optional(number, 5)
-    eip_internet_charge_type   = optional(string, "PayByTraffic")
+    region_id            = optional(string, "")
+    zone_id              = optional(string, "")
+    instance_type        = optional(string, "")
+    image_id             = optional(string, "")
+    system_disk_category = optional(string, "cloud_essd")
+    system_disk_size     = optional(number, 40)
   })
   default = {}
 }
@@ -162,8 +224,7 @@ variable "tencent" {
   type = object({
     region_id                      = optional(string, "")
     zone_id                        = optional(string, "")
-    platform_role_policy_names     = optional(list(string), ["QcloudCVMFullAccess", "QcloudCVMFinanceAccess"])
-    platform_instance_name         = optional(string, "")
+    platform_role_policy_names     = optional(list(string), [])
     instance_type                  = optional(string, "")
     image_id                       = optional(string, "")
     system_disk_type               = optional(string, "CLOUD_PREMIUM")

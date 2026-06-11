@@ -188,8 +188,23 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.WorkActionRun); err != nil {
 		return fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
 	}
-
 	if _, err := tx.ExecContext(ctx, `
+		UPDATE execution_intents
+		SET
+			status = $2,
+			status_reason = $3,
+			finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
+			updated_at = now()
+		WHERE service_id = $1
+		  AND work_action = $5
+		  AND status = $4
+		  AND container_id = ''
+		  AND node_id IS NOT NULL
+	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before container was created", cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
+		return fmt.Errorf("supersede containerless deploying execution intents for delete: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, `
 		WITH locked AS (
 			SELECT id, updated_at
 			FROM execution_intents
@@ -212,11 +227,86 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 			updated_at = now()
 		FROM locked
 		WHERE execution_intents.id = locked.id
-	`, input.ServiceID, cloudmodel.WorkActionDelete, input.PlanID, input.ServiceGeneration, cloudmodel.StatusPending, "service deletion requested by control-plane", cloudmodel.WorkActionRun, cloudmodel.StatusRunning); err != nil {
+	`, input.ServiceID, cloudmodel.WorkActionDelete, input.PlanID, input.ServiceGeneration, cloudmodel.StatusPending, "service deletion requested by control-plane", cloudmodel.WorkActionRun, cloudmodel.StatusRunning)
+	if err != nil {
 		return fmt.Errorf("mark running execution intents for delete: %w", err)
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read delete execution affected rows: %w", err)
+	}
+	if rowsAffected == 0 {
+		if err := insertCompletedDeleteExecutionSnapshot(ctx, tx, input); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit delete execution plan tx: %w", err)
+	}
+	return nil
+}
+
+func insertCompletedDeleteExecutionSnapshot(ctx context.Context, tx *sql.Tx, input cloudmodel.DeletePlanInput) error {
+	var serviceName string
+	var serviceExposure string
+	var image string
+	var containerPort int
+	var readinessPath string
+	var cpuMilliRequest int
+	var memoryMiRequest int
+	err := tx.QueryRowContext(ctx, `
+		SELECT
+			service_name,
+			service_exposure,
+			image,
+			container_port,
+			readiness_path,
+			cpu_milli_request,
+			memory_mi_request
+		FROM execution_intents
+		WHERE service_id = $1
+		ORDER BY service_generation DESC, updated_at DESC, id DESC
+		LIMIT 1
+	`, input.ServiceID).Scan(&serviceName, &serviceExposure, &image, &containerPort, &readinessPath, &cpuMilliRequest, &memoryMiRequest)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return fmt.Errorf("load service execution metadata for delete snapshot: %w", err)
+	}
+	id, err := newID("exe")
+	if err != nil {
+		return fmt.Errorf("generate delete execution snapshot id: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO execution_intents (
+			id,
+			work_action,
+			plan_id,
+			service_id,
+			service_name,
+			service_exposure,
+			service_generation,
+			image,
+			container_port,
+			readiness_path,
+			cpu_milli_request,
+			memory_mi_request,
+			status,
+			status_reason,
+			finished_at,
+			created_at,
+			updated_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now(), now(), now())
+		ON CONFLICT (plan_id) DO UPDATE
+		SET
+			status = EXCLUDED.status,
+			status_reason = EXCLUDED.status_reason,
+			finished_at = COALESCE(execution_intents.finished_at, EXCLUDED.finished_at),
+			updated_at = now()
+	`, id, cloudmodel.WorkActionDelete, input.PlanID, input.ServiceID, serviceName, serviceExposure, input.ServiceGeneration, image, containerPort, readinessPath, cpuMilliRequest, memoryMiRequest, cloudmodel.StatusSuperseded, "service had no running container to delete"); err != nil {
+		return fmt.Errorf("insert completed delete execution snapshot: %w", err)
 	}
 	return nil
 }

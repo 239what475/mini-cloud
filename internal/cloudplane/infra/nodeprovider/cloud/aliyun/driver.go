@@ -398,7 +398,6 @@ func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanc
 		return "", fmt.Errorf("render aliyun node bootstrap template: %w", err)
 	}
 
-	// 阿里云 user-data 接口接收 base64 编码后的脚本内容。
 	return base64.StdEncoding.EncodeToString(script.Bytes()), nil
 }
 

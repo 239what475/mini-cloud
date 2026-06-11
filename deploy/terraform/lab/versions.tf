@@ -14,10 +14,9 @@ terraform {
 }
 
 provider "alicloud" {
-  region = local.selected_provider == "aliyun" && trimspace(var.aliyun.region_id) != "" ? var.aliyun.region_id : "cn-beijing"
+  region  = local.selected_provider == "aliyun" && trimspace(var.aliyun.region_id) != "" ? var.aliyun.region_id : "cn-beijing"
+  profile = local.selected_provider == "aliyun" ? var.aliyun_profile : null
 
-  // Terraform 会先初始化所有 provider 配置。
-  // 这里给未选中的云填占位 AK/SK，避免它在本次 apply 中因为缺少真实凭证而提前失败。
   access_key = local.selected_provider == "aliyun" ? null : "unused"
   secret_key = local.selected_provider == "aliyun" ? null : "unused"
 }

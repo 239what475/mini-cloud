@@ -95,6 +95,9 @@ func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 		t.Fatalf("DecodeString returned error: %v", err)
 	}
 	script = string(decodedScript)
+	if !strings.HasPrefix(script, "#!/usr/bin/env bash\n") {
+		t.Fatalf("node user-data is not a shell script")
+	}
 	// user-data 不能开启 xtrace，否则 bootstrap token 可能出现在 cloud-init 日志。
 	if strings.Contains(script, "set -x") || strings.Contains(script, "set -eux") {
 		t.Fatalf("node user-data enables xtrace")

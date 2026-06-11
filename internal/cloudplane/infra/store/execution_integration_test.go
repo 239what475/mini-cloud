@@ -152,6 +152,99 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	}
 }
 
+func TestIntegrationDeletePendingExecutionPlanCompletesWithoutNodeAgent(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
+		PlanID:            "svc-delete-pending-g1",
+		ServiceID:         "svc-delete-pending",
+		ServiceName:       "delete-pending-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+	}
+
+	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+		ServiceID:         "svc-delete-pending",
+		ServiceGeneration: 2,
+		PlanID:            "svc-delete-pending-delete-g2",
+	}); err != nil {
+		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
+	}
+
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	runSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-g1")
+	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusSuperseded {
+		t.Fatalf("run snapshot = %+v, want superseded", runSnapshot)
+	}
+	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-delete-g2")
+	if deleteSnapshot == nil {
+		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
+	}
+	if deleteSnapshot.Status != cloudmodel.StatusSuperseded {
+		t.Fatalf("delete snapshot = %+v, want superseded status", *deleteSnapshot)
+	}
+}
+
+func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNodeAgent(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	node := seedReadyNode(t, ctx, db, "node-delete-deploying", "i-node-delete-deploying")
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
+		PlanID:            "svc-delete-deploying-g1",
+		ServiceID:         "svc-delete-deploying",
+		ServiceName:       "delete-deploying-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+	}
+	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim returned error: %v", err)
+	}
+	if work == nil {
+		t.Fatal("CreateExecutionClaim returned nil work item")
+	}
+
+	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+		ServiceID:         "svc-delete-deploying",
+		ServiceGeneration: 2,
+		PlanID:            "svc-delete-deploying-delete-g2",
+	}); err != nil {
+		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
+	}
+
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	runSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-g1")
+	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusSuperseded {
+		t.Fatalf("run snapshot = %+v, want superseded", runSnapshot)
+	}
+	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-delete-g2")
+	if deleteSnapshot == nil || deleteSnapshot.Status != cloudmodel.StatusSuperseded {
+		t.Fatalf("delete snapshot = %+v, want superseded", deleteSnapshot)
+	}
+}
+
 func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, name string, instanceID string) cloudmodel.Node {
 	t.Helper()
 

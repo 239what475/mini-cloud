@@ -12,7 +12,6 @@ install:
   root: /opt/mini-cloud
   controlPlaneHTTPAddr: 127.0.0.1:18080
   ingressBaseDomain: ""
-  ingressOriginHost: ""
   registryMirror: ""
 
 binaries:
