@@ -12,6 +12,7 @@ import (
 	"strings"
 	"text/template"
 
+	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	tcprofile "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	cvm "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cvm/v20170312"
@@ -87,7 +88,10 @@ func NewDriver(cfg cloudplaneconfig.Config) (nodeprovider.Driver, error) {
 		return nil, err
 	}
 	// CVM client 绑定到配置中的 region。
-	client, err := newCVMClient(typedConfig.CloudPlane.Infrastructure.RegionID)
+	client, err := newCVMClient(
+		typedConfig.CloudPlane.Infrastructure.RegionID,
+		typedConfig.CloudPlane.Infrastructure.TencentCredential,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -441,21 +445,19 @@ func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanc
 
 // newCVMClient 构造绑定指定 region 的腾讯云 CVM client。
 // 参数说明：regionID 是云厂商地域标识。
-func newCVMClient(regionID string) (*cvm.Client, error) {
-	// 使用项目内腾讯云凭据解析逻辑创建 credential。
-	credential, err := ResolveCredential()
-	if err != nil {
-		return nil, fmt.Errorf("create tencent credential: %w", err)
+func newCVMClient(regionID string, credentialConfig cloudplaneconfig.TencentCredentialConfig) (*cvm.Client, error) {
+	secretID := strings.TrimSpace(credentialConfig.SecretID)
+	secretKey := strings.TrimSpace(credentialConfig.SecretKey)
+	if secretID == "" || secretKey == "" {
+		return nil, fmt.Errorf("infrastructure.tencentCredential.secretId and secretKey are required")
 	}
-
-	// CVM endpoint 当前使用腾讯云公共 OpenAPI endpoint。
+	credential := tccommon.NewTokenCredential(secretID, secretKey, strings.TrimSpace(credentialConfig.Token))
 	clientProfile := tcprofile.NewClientProfile()
 	clientProfile.HttpProfile.Endpoint = "cvm.tencentcloudapi.com"
 
-	// SDK client 绑定 region、credential 和 profile。
 	client, err := cvm.NewClient(credential, regionID, clientProfile)
 	if err != nil {
-		return nil, fmt.Errorf("create cvm client: %w", err)
+		return nil, fmt.Errorf("create tencent cvm client: %w", err)
 	}
 	// 返回可直接调用 CVM API 的 client。
 	return client, nil

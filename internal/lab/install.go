@@ -11,21 +11,23 @@ import (
 type installFiles struct {
 	ControlPlaneConfig string
 	CloudPlaneConfig   string
-	ProviderEnv        string
 	RemoteScript       string
 }
 
 type controlPlaneTemplateData struct {
-	HTTPAddr     string
-	InstallRoot  string
-	AdminToken   string
-	LokiURL      string
-	LokiTenantID string
+	HTTPAddr        string
+	InstallRoot     string
+	AdminToken      string
+	SouthboundToken string
+	LokiURL         string
+	LokiTenantID    string
 }
 
 type cloudPlaneTemplateData struct {
 	ListenGRPCAddr              string
 	PlaneName                   string
+	PlaneGRPCEndpoint           string
+	ControlPlaneURL             string
 	SouthboundToken             string
 	NodeAgentConnectEndpoint    string
 	NodeAgentBootstrapToken     string
@@ -33,6 +35,7 @@ type cloudPlaneTemplateData struct {
 	Provider                    string
 	RegionID                    string
 	ZoneID                      string
+	TencentCredential           tencentCredential
 	InstanceType                string
 	RegistryMirrors             []string
 	WorkloadEgressProxyEndpoint string
@@ -81,7 +84,7 @@ func (r *Runner) Install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	paths := []string{install.ControlPlaneConfig, install.CloudPlaneConfig, install.ProviderEnv, install.RemoteScript}
+	paths := []string{install.ControlPlaneConfig, install.CloudPlaneConfig, install.RemoteScript}
 	defer removeFiles(paths)
 
 	remote := func(name string) string { return host + ":/tmp/" + name }
@@ -100,12 +103,6 @@ func (r *Runner) Install(ctx context.Context) error {
 	if err := r.scp(ctx, install.CloudPlaneConfig, remote("mini-cloud-cloud-plane.yaml")); err != nil {
 		return err
 	}
-	if install.ProviderEnv != "" {
-		if err := r.scp(ctx, install.ProviderEnv, remote("mini-cloud-provider.env")); err != nil {
-			return err
-		}
-	}
-
 	script, err := os.ReadFile(install.RemoteScript)
 	if err != nil {
 		return err
@@ -139,6 +136,17 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 	if strings.TrimSpace(specYAML) == "" {
 		specYAML = "    {}"
 	}
+	tencentCredential := tencentCredential{}
+	if provider == "tencent" {
+		var err error
+		tencentCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
+		if err != nil {
+			return installFiles{}, err
+		}
+		if strings.TrimSpace(tencentCredential.SecretID) == "" || strings.TrimSpace(tencentCredential.SecretKey) == "" {
+			return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
+		}
+	}
 
 	artifactPort := out.Network.Value.ArtifactHTTPPort
 	grpcPort := out.Network.Value.CloudPlaneGRPCPort
@@ -151,11 +159,12 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 	connectEndpoint := fmt.Sprintf("%s:%d", platformPrivateIP, grpcPort)
 
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
-		HTTPAddr:     r.cfg.Install.ControlPlaneHTTPAddr,
-		InstallRoot:  r.cfg.Install.Root,
-		AdminToken:   r.cfg.Tokens.ControlPlaneAdmin,
-		LokiURL:      r.cfg.Observability.WorkloadLogLokiURL,
-		LokiTenantID: r.cfg.Observability.WorkloadLogLokiTenantID,
+		HTTPAddr:        r.cfg.Install.ControlPlaneHTTPAddr,
+		InstallRoot:     r.cfg.Install.Root,
+		AdminToken:      r.cfg.Tokens.ControlPlaneAdmin,
+		SouthboundToken: r.cfg.Tokens.ControlPlaneSouthbound,
+		LokiURL:         r.cfg.Observability.WorkloadLogLokiURL,
+		LokiTenantID:    r.cfg.Observability.WorkloadLogLokiTenantID,
 	})
 	if err != nil {
 		return installFiles{}, err
@@ -163,6 +172,8 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 	cloudPlaneConfig, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:              fmt.Sprintf("0.0.0.0:%d", grpcPort),
 		PlaneName:                   out.Platform.Value.Name,
+		PlaneGRPCEndpoint:           connectEndpoint,
+		ControlPlaneURL:             fmt.Sprintf("http://%s", r.cfg.Install.ControlPlaneHTTPAddr),
 		SouthboundToken:             r.cfg.Tokens.ControlPlaneSouthbound,
 		NodeAgentConnectEndpoint:    connectEndpoint,
 		NodeAgentBootstrapToken:     r.cfg.Tokens.NodeAgentBootstrap,
@@ -170,6 +181,7 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 		Provider:                    provider,
 		RegionID:                    out.RegionID(),
 		ZoneID:                      out.InstallEnv.Value.ZoneID,
+		TencentCredential:           tencentCredential,
 		InstanceType:                instanceType,
 		RegistryMirrors:             []string{registryMirror},
 		WorkloadEgressProxyEndpoint: fmt.Sprintf("http://%s:%d", platformPrivateIP, proxyPort),
@@ -211,51 +223,31 @@ func (r *Runner) renderInstallFiles(out TerraformOutput, platformPrivateIP strin
 		return installFiles{}, err
 	}
 
-	files := installFiles{ControlPlaneConfig: controlPath, CloudPlaneConfig: cloudPath, RemoteScript: scriptPath}
-	if provider == "tencent" {
-		providerEnv, err := r.tencentProviderEnv()
-		if err != nil {
-			removeFiles([]string{controlPath, cloudPath, scriptPath})
-			return installFiles{}, err
-		}
-		providerPath, err := writeTempFile("mini-cloud-provider-*.env", []byte(providerEnv), 0600)
-		if err != nil {
-			removeFiles([]string{controlPath, cloudPath, scriptPath})
-			return installFiles{}, err
-		}
-		files.ProviderEnv = providerPath
-	}
-	return files, nil
+	return installFiles{ControlPlaneConfig: controlPath, CloudPlaneConfig: cloudPath, RemoteScript: scriptPath}, nil
 }
 
-func (r *Runner) tencentProviderEnv() (string, error) {
-	secretID := strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_ID"))
-	secretKey := strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_KEY"))
-	token := strings.TrimSpace(os.Getenv("TENCENTCLOUD_TOKEN"))
-	if secretID == "" || secretKey == "" {
-		fileSecretID, fileSecretKey, fileToken, err := readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
-		if err != nil {
-			return "", err
-		}
-		secretID = defaultString(secretID, fileSecretID)
-		secretKey = defaultString(secretKey, fileSecretKey)
-		token = defaultString(token, fileToken)
-	}
-	if secretID == "" || secretKey == "" {
-		return "", fmt.Errorf("Tencent credentials are required; set TENCENTCLOUD_SECRET_ID/TENCENTCLOUD_SECRET_KEY or provider.tencentCredentialFile")
-	}
-	lines := []string{
-		shellAssign("TENCENTCLOUD_SECRET_ID", secretID),
-		shellAssign("TENCENTCLOUD_SECRET_KEY", secretKey),
-		shellAssign("TENCENTCLOUD_TOKEN", token),
-	}
-	return strings.Join(lines, "\n") + "\n", nil
+type tencentCredential struct {
+	SecretID  string
+	SecretKey string
+	Token     string
 }
 
-func readTencentCredentialFile(path string) (string, string, string, error) {
+func readTencentCredentialFile(path string) (tencentCredential, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", "", fmt.Errorf("read Tencent credential file %q: %w", path, err)
+		return tencentCredential{}, fmt.Errorf("read Tencent credential file %q: %w", path, err)
+	}
+	credential, err := parseTencentCredentialData(data)
+	if err != nil {
+		return tencentCredential{}, fmt.Errorf("parse Tencent credential file %q: %w", path, err)
+	}
+	return credential, nil
+}
+
+func parseTencentCredentialData(data []byte) (tencentCredential, error) {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return tencentCredential{}, fmt.Errorf("credential file is empty")
 	}
 	var values struct {
 		SecretID     string `json:"secretId"`
@@ -263,10 +255,14 @@ func readTencentCredentialFile(path string) (string, string, string, error) {
 		SessionToken string `json:"sessionToken"`
 		Token        string `json:"token"`
 	}
-	if err := json.Unmarshal(data, &values); err != nil {
-		return "", "", "", fmt.Errorf("parse Tencent credential file %q: %w", path, err)
+	if err := json.Unmarshal([]byte(trimmed), &values); err != nil {
+		return tencentCredential{}, err
 	}
-	return values.SecretID, values.SecretKey, defaultString(values.SessionToken, values.Token), nil
+	return tencentCredential{
+		SecretID:  strings.TrimSpace(values.SecretID),
+		SecretKey: strings.TrimSpace(values.SecretKey),
+		Token:     defaultString(values.SessionToken, values.Token),
+	}, nil
 }
 
 func removeFiles(paths []string) {

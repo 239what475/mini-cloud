@@ -19,7 +19,9 @@ database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
   name: mini-cloud-lab
+  grpcEndpoint: 10.0.0.10:18081
 controlPlane:
+  url: http://127.0.0.1:18080
   bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
@@ -62,8 +64,8 @@ func TestValidateAcceptsHTTPNodeAgentConnectEndpoint(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
-		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "https://10.0.0.10:18081",
 			BootstrapToken:  "bootstrap-token",
@@ -89,8 +91,8 @@ func TestValidateRejectsLocalProvider(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
-		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
 			BootstrapToken:  "bootstrap-token",
@@ -122,7 +124,9 @@ database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
   name: mini-cloud-lab
+  grpcEndpoint: 10.0.0.10:18081
 controlPlane:
+  url: http://127.0.0.1:18080
   bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
@@ -154,8 +158,8 @@ func TestValidateRequiresRuntimeProvisioningProviderSpec(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
-		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
 			BootstrapToken:  "bootstrap-token",
@@ -177,8 +181,8 @@ func TestValidateRequiresNodeProvisioningInstanceType(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
-		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
 			BootstrapToken:  "bootstrap-token",
@@ -198,8 +202,8 @@ func TestValidateRequiresCaddyAdminURLWhenIngressEnabled(t *testing.T) {
 	cfg := Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab"},
-		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
+		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
 			BootstrapToken:  "bootstrap-token",

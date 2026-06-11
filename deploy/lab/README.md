@@ -28,15 +28,19 @@ cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/terraform.
 cp deploy/lab/lab.yaml.example deploy/lab/lab.yaml
 ```
 
-`deploy/lab/lab.yaml` 不提交。可以把 token 写进文件，也可以通过环境变量提供：
+`deploy/lab/lab.yaml` 不提交。token 写在这个本地配置文件里。
 
-```bash
-export CONTROL_PLANE_ADMIN_TOKEN=replace-with-token
-export CONTROL_PLANE_SOUTHBOUND_TOKEN=replace-with-token
-export NODE_AGENT_BOOTSTRAP_TOKEN=replace-with-token
+如果使用腾讯云，`install` 只读取 `provider.tencentCredentialFile` 指向的 JSON 凭据文件，并把凭据写进远端 `cloud-plane.yaml`。不要通过环境变量提供平台 token 或腾讯云 AK/SK。
+
+腾讯云凭据文件格式固定为：
+
+```json
+{
+  "secretId": "replace-with-secret-id",
+  "secretKey": "replace-with-secret-key",
+  "token": ""
+}
 ```
-
-如果使用腾讯云，`install` 默认读取 `~/.tccli/default.credential`，也可以设置 `TENCENTCLOUD_SECRET_ID` / `TENCENTCLOUD_SECRET_KEY` / `TENCENTCLOUD_TOKEN`。
 
 ## Bootstrap
 

@@ -17,6 +17,7 @@ database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
 auth:
   adminToken: admin-secret
+  southboundToken: southbound-secret
 sync:
   planeIntervalSeconds: 15
 service:
@@ -49,6 +50,9 @@ logs:
 	if cfg.AdminToken != "admin-secret" {
 		t.Fatalf("AdminToken = %q", cfg.AdminToken)
 	}
+	if cfg.SouthboundToken != "southbound-secret" {
+		t.Fatalf("SouthboundToken = %q", cfg.SouthboundToken)
+	}
 	if cfg.PlaneSyncIntervalSeconds != 15 {
 		t.Fatalf("PlaneSyncIntervalSeconds = %d", cfg.PlaneSyncIntervalSeconds)
 	}
@@ -73,6 +77,7 @@ database:
   url: ""
 auth:
   adminToken: ""
+  southboundToken: ""
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -89,6 +94,7 @@ database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
 auth:
   adminToken: admin-secret
+  southboundToken: southbound-secret
 sync:
   planeIntervalSeconds: -1
 `), 0600); err != nil {

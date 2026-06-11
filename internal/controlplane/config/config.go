@@ -31,7 +31,8 @@ type databaseConfig struct {
 }
 
 type authConfig struct {
-	AdminToken string `yaml:"adminToken"`
+	AdminToken      string `yaml:"adminToken"`
+	SouthboundToken string `yaml:"southboundToken"`
 }
 
 type syncConfig struct {
@@ -58,6 +59,7 @@ type Config struct {
 	UIDir                          string
 	DatabaseURL                    string
 	AdminToken                     string
+	SouthboundToken                string
 	PlaneSyncIntervalSeconds       int
 	ServiceReconcileTimeoutSeconds int
 	LokiURL                        string
@@ -87,6 +89,7 @@ func Load(path string) (Config, error) {
 		UIDir:                          defaultString(file.UI.Dir, "web/dist"),
 		DatabaseURL:                    strings.TrimSpace(file.Database.URL),
 		AdminToken:                     strings.TrimSpace(file.Auth.AdminToken),
+		SouthboundToken:                strings.TrimSpace(file.Auth.SouthboundToken),
 		PlaneSyncIntervalSeconds:       defaultPositiveInt(file.Sync.PlaneIntervalSeconds, 30),
 		ServiceReconcileTimeoutSeconds: defaultPositiveInt(file.Service.ReconcileTimeoutSeconds, 1200),
 		LokiURL:                        strings.TrimSpace(file.Logs.Loki.URL),
@@ -105,6 +108,9 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.AdminToken) == "" {
 		return fmt.Errorf("auth.adminToken is required")
+	}
+	if strings.TrimSpace(c.SouthboundToken) == "" {
+		return fmt.Errorf("auth.southboundToken is required")
 	}
 	if c.PlaneSyncIntervalSeconds <= 0 {
 		return fmt.Errorf("sync.planeIntervalSeconds must be positive")

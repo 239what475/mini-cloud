@@ -113,9 +113,9 @@ func (c *Config) applyDefaults() {
 	c.Provider.TencentCredentialFile = defaultString(c.Provider.TencentCredentialFile, filepath.Join(os.Getenv("HOME"), ".tccli/default.credential"))
 	c.Provider.TencentCredentialFile = expandHome(c.Provider.TencentCredentialFile)
 
-	c.Tokens.ControlPlaneAdmin = resolveSecret(c.Tokens.ControlPlaneAdmin, "CONTROL_PLANE_ADMIN_TOKEN")
-	c.Tokens.ControlPlaneSouthbound = resolveSecret(c.Tokens.ControlPlaneSouthbound, "CONTROL_PLANE_SOUTHBOUND_TOKEN")
-	c.Tokens.NodeAgentBootstrap = resolveSecret(c.Tokens.NodeAgentBootstrap, "NODE_AGENT_BOOTSTRAP_TOKEN")
+	c.Tokens.ControlPlaneAdmin = strings.TrimSpace(c.Tokens.ControlPlaneAdmin)
+	c.Tokens.ControlPlaneSouthbound = strings.TrimSpace(c.Tokens.ControlPlaneSouthbound)
+	c.Tokens.NodeAgentBootstrap = strings.TrimSpace(c.Tokens.NodeAgentBootstrap)
 }
 
 func expandHome(path string) string {
@@ -167,14 +167,6 @@ func defaultString(value string, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func resolveSecret(value string, envName string) string {
-	value = strings.TrimSpace(value)
-	if value != "" {
-		return value
-	}
-	return strings.TrimSpace(os.Getenv(envName))
 }
 
 func requireFile(path string) error {

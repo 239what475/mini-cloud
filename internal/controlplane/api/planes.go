@@ -23,38 +23,56 @@ func newPlaneHandler(logger *slog.Logger, stores *store.Store) planeHandler {
 	}
 }
 
-func (h planeHandler) createPlane(c *gin.Context) {
+type registerPlaneRequest struct {
+	Name         string `json:"name"`
+	DisplayName  string `json:"displayName"`
+	Provider     string `json:"provider"`
+	Region       string `json:"region"`
+	GRPCEndpoint string `json:"grpcEndpoint"`
+}
+
+func (h planeHandler) registerPlane(c *gin.Context) {
 	logger := logctx.Logger(c.Request.Context(), h.logger)
-	var input store.CreatePlaneInput
-	if err := c.ShouldBindJSON(&input); err != nil {
+	var request registerPlaneRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
 
-	created, err := h.store.CreatePlane(c.Request.Context(), input)
+	secret, ok := bearerSecret(c.GetHeader("Authorization"))
+	if !ok {
+		c.JSON(http.StatusUnauthorized, map[string]any{"error": "invalid Authorization header; use Bearer <token>"})
+		return
+	}
+
+	registered, err := h.store.RegisterPlane(c.Request.Context(), store.RegisterPlaneInput{
+		Name:            request.Name,
+		DisplayName:     request.DisplayName,
+		Provider:        request.Provider,
+		Region:          request.Region,
+		GRPCEndpoint:    request.GRPCEndpoint,
+		SouthboundToken: secret,
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrInvalidInput):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrPlaneNameAlreadyExists):
-			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
-			return
 		default:
-			logger.Error("create plane failed", "error", err)
+			logger.Error("register plane failed", "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
 
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.plane.create",
+		Action:     "control.plane.register",
 		TargetType: "plane",
-		TargetID:   created.ID,
-		TargetName: created.Name,
+		TargetID:   registered.ID,
+		TargetName: registered.Name,
 	})
 
-	c.JSON(http.StatusCreated, created)
+	c.JSON(http.StatusOK, registered)
 }
 
 func (h planeHandler) listPlanes(c *gin.Context) {

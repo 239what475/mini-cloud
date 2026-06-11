@@ -254,7 +254,7 @@ func (p *serviceControllerPlane) deleteRequests() []*cloudplanev1.DeleteExecutio
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string, endpoint string) model.PlaneDetail {
 	t.Helper()
 	ctx := context.Background()
-	item, err := db.Store.CreatePlane(ctx, controlplanestore.CreatePlaneInput{
+	item, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
 		Name:            name,
 		DisplayName:     name,
 		Provider:        "aliyun",
@@ -263,7 +263,7 @@ func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, na
 		SouthboundToken: "southbound-" + name,
 	})
 	if err != nil {
-		t.Fatalf("CreatePlane returned error: %v", err)
+		t.Fatalf("RegisterPlane returned error: %v", err)
 	}
 	if err := db.Store.UpdatePlaneStatus(ctx, item.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusReady, Message: "ready"}); err != nil {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)

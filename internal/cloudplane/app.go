@@ -85,6 +85,12 @@ func (a App) Run(ctx context.Context) error {
 		errCh <- a.server.Serve(listener)
 	}()
 
+	if err := registerWithControlPlane(runCtx, a.Config); err != nil {
+		cancel()
+		a.server.GracefulStop()
+		return err
+	}
+
 	select {
 	case err := <-errCh:
 		cancel()

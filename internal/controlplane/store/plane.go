@@ -10,8 +10,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
@@ -31,13 +29,13 @@ var (
 	planeNamePattern                = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
-type CreatePlaneInput struct {
+type RegisterPlaneInput struct {
 	Name            string `json:"name"`
 	DisplayName     string `json:"displayName"`
 	Provider        string `json:"provider"`
 	Region          string `json:"region"`
 	GRPCEndpoint    string `json:"grpcEndpoint"`
-	SouthboundToken string `json:"southboundToken"`
+	SouthboundToken string `json:"-"`
 }
 
 type UpdatePlaneStatusInput struct {
@@ -47,22 +45,26 @@ type UpdatePlaneStatusInput struct {
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
 }
 
-func (in CreatePlaneInput) validate() error {
+func (in RegisterPlaneInput) validate() error {
+	return validatePlaneFields(in.Name, in.DisplayName, in.Provider, in.Region, in.GRPCEndpoint, in.SouthboundToken)
+}
+
+func validatePlaneFields(name string, displayName string, provider string, region string, grpcEndpoint string, southboundToken string) error {
 	switch {
-	case strings.TrimSpace(in.Name) == "":
+	case strings.TrimSpace(name) == "":
 		return invalidInput(errPlaneNameRequired)
-	case !planeNamePattern.MatchString(strings.TrimSpace(in.Name)):
+	case !planeNamePattern.MatchString(strings.TrimSpace(name)):
 		return invalidInput(errInvalidPlaneName)
-	case strings.TrimSpace(in.DisplayName) == "":
+	case strings.TrimSpace(displayName) == "":
 		return invalidInput(errPlaneDisplayNameRequired)
-	case strings.TrimSpace(in.Provider) == "":
+	case strings.TrimSpace(provider) == "":
 		return invalidInput(errPlaneProviderRequired)
-	case strings.TrimSpace(in.Region) == "":
+	case strings.TrimSpace(region) == "":
 		return invalidInput(errPlaneRegionRequired)
-	case strings.TrimSpace(in.SouthboundToken) == "":
+	case strings.TrimSpace(southboundToken) == "":
 		return invalidInput(errPlaneSouthboundTokenRequired)
 	}
-	_, err := normalizeGRPCEndpoint(in.GRPCEndpoint)
+	_, err := normalizeGRPCEndpoint(grpcEndpoint)
 	return invalidInput(err)
 }
 
@@ -73,16 +75,10 @@ func (in UpdatePlaneStatusInput) validate() error {
 	return nil
 }
 
-func (s *Store) CreatePlane(ctx context.Context, input CreatePlaneInput) (model.PlaneDetail, error) {
+func (s *Store) RegisterPlane(ctx context.Context, input RegisterPlaneInput) (model.PlaneDetail, error) {
 	if err := input.validate(); err != nil {
 		return model.PlaneDetail{}, err
 	}
-
-	id, err := newID("pln")
-	if err != nil {
-		return model.PlaneDetail{}, err
-	}
-
 	grpcEndpoint, err := normalizeGRPCEndpoint(input.GRPCEndpoint)
 	if err != nil {
 		return model.PlaneDetail{}, err
@@ -90,101 +86,95 @@ func (s *Store) CreatePlane(ctx context.Context, input CreatePlaneInput) (model.
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.PlaneDetail{}, fmt.Errorf("begin create plane tx: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("begin register plane tx: %w", err)
 	}
 	defer func() {
 		_ = tx.Rollback()
 	}()
 
-	var created model.Plane
+	var planeID string
 	err = tx.QueryRowContext(ctx, `
-		INSERT INTO fleet_planes (
-			id,
-			name,
-			display_name,
-			provider,
-			region,
-			grpc_endpoint
-		)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING
-			id,
-			name,
-			display_name,
-			provider,
-			region,
-			grpc_endpoint,
-			created_at
-	`, id, input.Name, input.DisplayName, input.Provider, input.Region, grpcEndpoint).Scan(
-		&created.ID,
-		&created.Name,
-		&created.DisplayName,
-		&created.Provider,
-		&created.Region,
-		&created.GRPCEndpoint,
-		&created.CreatedAt,
-	)
+		SELECT id
+		FROM fleet_planes
+		WHERE name = $1
+	`, strings.TrimSpace(input.Name)).Scan(&planeID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return model.PlaneDetail{}, ErrPlaneNameAlreadyExists
+		if !errors.Is(err, sql.ErrNoRows) {
+			return model.PlaneDetail{}, fmt.Errorf("query existing plane: %w", err)
 		}
-		return model.PlaneDetail{}, fmt.Errorf("insert plane: %w", err)
+		planeID, err = newID("pln")
+		if err != nil {
+			return model.PlaneDetail{}, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO fleet_planes (
+				id,
+				name,
+				display_name,
+				provider,
+				region,
+				grpc_endpoint
+			)
+			VALUES ($1, $2, $3, $4, $5, $6)
+		`, planeID, strings.TrimSpace(input.Name), strings.TrimSpace(input.DisplayName), strings.TrimSpace(input.Provider), strings.TrimSpace(input.Region), grpcEndpoint); err != nil {
+			return model.PlaneDetail{}, fmt.Errorf("insert registered plane: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO fleet_plane_statuses (
+				plane_id,
+				status,
+				message,
+				last_heartbeat_at
+			)
+			VALUES ($1, $2, $3, now())
+		`, planeID, model.StatusRegistering, "cloud-plane registered"); err != nil {
+			return model.PlaneDetail{}, fmt.Errorf("insert registered plane status: %w", err)
+		}
+	} else {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE fleet_planes
+			SET
+				display_name = $2,
+				provider = $3,
+				region = $4,
+				grpc_endpoint = $5
+			WHERE id = $1
+		`, planeID, strings.TrimSpace(input.DisplayName), strings.TrimSpace(input.Provider), strings.TrimSpace(input.Region), grpcEndpoint); err != nil {
+			return model.PlaneDetail{}, fmt.Errorf("update registered plane: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE fleet_plane_statuses
+			SET
+				status = $2,
+				message = $3,
+				last_heartbeat_at = now(),
+				updated_at = now()
+			WHERE plane_id = $1
+		`, planeID, model.StatusRegistering, "cloud-plane registered"); err != nil {
+			return model.PlaneDetail{}, fmt.Errorf("update registered plane status: %w", err)
+		}
 	}
 
-	var status model.PlaneStatus
-	err = tx.QueryRowContext(ctx, `
-		INSERT INTO fleet_plane_statuses (
-			plane_id,
-			status,
-			message
-		)
-		VALUES ($1, $2, $3)
-		RETURNING
-			plane_id,
-			status,
-			message,
-			last_heartbeat_at,
-			last_sync_at,
-			updated_at
-	`, created.ID, model.StatusRegistering, defaultPlaneStatusMessage).Scan(
-		&status.PlaneID,
-		&status.Status,
-		&status.Message,
-		new(sql.NullTime),
-		new(sql.NullTime),
-		&status.UpdatedAt,
-	)
-	if err != nil {
-		return model.PlaneDetail{}, fmt.Errorf("insert plane status: %w", err)
-	}
-	status.Status = model.StatusRegistering
-	status.Message = defaultPlaneStatusMessage
-
-	registration, err := scanPlaneRegistration(tx.QueryRowContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO plane_southbound_tokens (
 			plane_id,
-			southbound_token
+			southbound_token,
+			last_verified_at
 		)
-		VALUES ($1, $2)
-		RETURNING
-			last_verified_at,
-			updated_at
-	`, created.ID, strings.TrimSpace(input.SouthboundToken)))
-	if err != nil {
-		return model.PlaneDetail{}, fmt.Errorf("insert plane southbound token: %w", err)
+		VALUES ($1, $2, now())
+		ON CONFLICT (plane_id) DO UPDATE
+		SET
+			southbound_token = EXCLUDED.southbound_token,
+			last_verified_at = now(),
+			updated_at = now()
+	`, planeID, strings.TrimSpace(input.SouthboundToken)); err != nil {
+		return model.PlaneDetail{}, fmt.Errorf("upsert plane southbound token: %w", err)
 	}
-	registration.Registered = true
 
 	if err := tx.Commit(); err != nil {
-		return model.PlaneDetail{}, fmt.Errorf("commit create plane: %w", err)
+		return model.PlaneDetail{}, fmt.Errorf("commit register plane: %w", err)
 	}
-
-	return model.PlaneDetail{
-		Plane:        created,
-		Status:       status,
-		Registration: registration,
-	}, nil
+	return s.GetPlane(ctx, planeID)
 }
 
 func (s *Store) ListPlanes(ctx context.Context) ([]model.PlaneDetail, error) {

@@ -6,8 +6,10 @@ database:
 
 plane:
   name: {{printf "%q" .PlaneName}}
+  grpcEndpoint: {{printf "%q" .PlaneGRPCEndpoint}}
 
 controlPlane:
+  url: {{printf "%q" .ControlPlaneURL}}
   bearerToken: {{printf "%q" .SouthboundToken}}
 
 nodeAgent:
@@ -19,6 +21,12 @@ infrastructure:
   provider: {{printf "%q" .Provider}}
   regionId: {{printf "%q" .RegionID}}
   zoneId: {{printf "%q" .ZoneID}}
+{{- if eq .Provider "tencent"}}
+  tencentCredential:
+    secretId: {{printf "%q" .TencentCredential.SecretID}}
+    secretKey: {{printf "%q" .TencentCredential.SecretKey}}
+    token: {{printf "%q" .TencentCredential.Token}}
+{{- end}}
 
 runtimeProvisioning:
   instanceType: {{printf "%q" .InstanceType}}

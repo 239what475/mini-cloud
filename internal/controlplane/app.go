@@ -57,6 +57,7 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	)
 	handler := api.NewMux(api.Options{
 		AdminToken:        cfg.AdminToken,
+		SouthboundToken:   cfg.SouthboundToken,
 		UIDir:             cfg.UIDir,
 		LogQueryService:   logQueryService,
 		ServiceController: serviceController,

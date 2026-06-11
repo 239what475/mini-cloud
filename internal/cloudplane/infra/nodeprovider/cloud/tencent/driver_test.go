@@ -14,11 +14,16 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 	// 组装 tencent driver 单测所需的公共配置。
 	return cloudplaneconfig.Config{
 		// plane/infrastructure/node-agent 字段参与 user-data 和实例归属信息生成。
-		Plane: cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab"},
+		Plane:        cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		ControlPlane: cloudplaneconfig.ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
 			Provider: Name,
 			RegionID: "ap-beijing",
 			ZoneID:   "ap-beijing-6",
+			TencentCredential: cloudplaneconfig.TencentCredentialConfig{
+				SecretID:  "sid",
+				SecretKey: "skey",
+			},
 		},
 		NodeAgent: cloudplaneconfig.NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",

@@ -15,7 +15,7 @@ import (
 func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
-	createdPlane, err := db.Store.CreatePlane(context.Background(), controlplanestore.CreatePlaneInput{
+	createdPlane, err := db.Store.RegisterPlane(context.Background(), controlplanestore.RegisterPlaneInput{
 		Name:            "aliyun-bj-primary",
 		DisplayName:     "Aliyun Beijing Primary",
 		Provider:        "aliyun",
@@ -24,7 +24,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 		SouthboundToken: "plane-southbound-secret",
 	})
 	if err != nil {
-		t.Fatalf("CreatePlane returned error: %v", err)
+		t.Fatalf("RegisterPlane returned error: %v", err)
 	}
 	if createdPlane.Status.Status != model.StatusRegistering {
 		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, model.StatusRegistering)
@@ -147,7 +147,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
-	planeItem, err := db.Store.CreatePlane(ctx, controlplanestore.CreatePlaneInput{
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
 		Name:            "service-plane",
 		DisplayName:     "Service Plane",
 		Provider:        "aliyun",
@@ -156,7 +156,7 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 		SouthboundToken: "service-plane-token",
 	})
 	if err != nil {
-		t.Fatalf("CreatePlane returned error: %v", err)
+		t.Fatalf("RegisterPlane returned error: %v", err)
 	}
 
 	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{

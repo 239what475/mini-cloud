@@ -14,6 +14,7 @@ import (
 
 type Options struct {
 	AdminToken        string
+	SouthboundToken   string
 	UIDir             string
 	LogQueryService   logquery.Backend
 	ServiceController *coordination.ServiceController
@@ -24,6 +25,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	router.Use(ginRecoverPanics(logger), ginRequestLogger(logger))
 
 	auth := newAdminAuth(opts.AdminToken)
+	southboundAuth := newAdminAuth(opts.SouthboundToken)
 
 	serveRootJSONOrIndex(logger, opts.UIDir, router)
 
@@ -58,10 +60,13 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	control.GET("/logs", logQueryHandler.queryControlLogs)
 	control.GET("/inventory", planeHandler.inventory)
 	control.GET("/planes", planeHandler.listPlanes)
-	control.POST("/planes", planeHandler.createPlane)
 	control.GET("/planes/:planeID", planeHandler.getPlane)
 	control.DELETE("/planes/:planeID", planeHandler.deletePlane)
 	control.GET("/events", eventHandler.listControlEvents)
+
+	internal := router.Group("/api/v1/internal")
+	internal.Use(southboundAuth.requireAdmin())
+	internal.POST("/planes/register", planeHandler.registerPlane)
 
 	return router
 }

@@ -45,10 +45,12 @@ type DatabaseConfig struct {
 }
 
 type PlaneConfig struct {
-	Name string `yaml:"name"`
+	Name         string `yaml:"name"`
+	GRPCEndpoint string `yaml:"grpcEndpoint"`
 }
 
 type ControlPlaneConfig struct {
+	URL         string `yaml:"url"`
 	BearerToken string `yaml:"bearerToken"`
 }
 
@@ -59,9 +61,16 @@ type NodeAgentConfig struct {
 }
 
 type InfrastructureConfig struct {
-	Provider string `yaml:"provider"`
-	RegionID string `yaml:"regionId"`
-	ZoneID   string `yaml:"zoneId"`
+	Provider          string                  `yaml:"provider"`
+	RegionID          string                  `yaml:"regionId"`
+	ZoneID            string                  `yaml:"zoneId"`
+	TencentCredential TencentCredentialConfig `yaml:"tencentCredential"`
+}
+
+type TencentCredentialConfig struct {
+	SecretID  string `yaml:"secretId"`
+	SecretKey string `yaml:"secretKey"`
+	Token     string `yaml:"token"`
 }
 
 type RuntimeProvisioningConfig struct {
@@ -125,10 +134,15 @@ func Load(path string) (Config, error) {
 
 func (c *Config) normalize() {
 	c.Plane.Name = strings.TrimSpace(c.Plane.Name)
+	c.Plane.GRPCEndpoint = strings.TrimSpace(c.Plane.GRPCEndpoint)
+	c.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(c.ControlPlane.URL), "/")
 	c.ControlPlane.BearerToken = strings.TrimSpace(c.ControlPlane.BearerToken)
 	c.Infrastructure.Provider = strings.TrimSpace(c.Infrastructure.Provider)
 	c.Infrastructure.RegionID = strings.TrimSpace(c.Infrastructure.RegionID)
 	c.Infrastructure.ZoneID = strings.TrimSpace(c.Infrastructure.ZoneID)
+	c.Infrastructure.TencentCredential.SecretID = strings.TrimSpace(c.Infrastructure.TencentCredential.SecretID)
+	c.Infrastructure.TencentCredential.SecretKey = strings.TrimSpace(c.Infrastructure.TencentCredential.SecretKey)
+	c.Infrastructure.TencentCredential.Token = strings.TrimSpace(c.Infrastructure.TencentCredential.Token)
 	c.NodeAgent.ConnectEndpoint = strings.TrimSpace(c.NodeAgent.ConnectEndpoint)
 	c.NodeAgent.BootstrapToken = strings.TrimSpace(c.NodeAgent.BootstrapToken)
 	c.NodeAgent.BinaryURL = strings.TrimSpace(c.NodeAgent.BinaryURL)
@@ -151,6 +165,18 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Plane.Name) == "" {
 		return fmt.Errorf("plane.name is required")
 	}
+	if strings.TrimSpace(c.Plane.GRPCEndpoint) == "" {
+		return fmt.Errorf("plane.grpcEndpoint is required")
+	}
+	if err := validateGRPCEndpoint(c.Plane.GRPCEndpoint); err != nil {
+		return err
+	}
+	if strings.TrimSpace(c.ControlPlane.URL) == "" {
+		return fmt.Errorf("controlPlane.url is required")
+	}
+	if err := validateControlPlaneURL(c.ControlPlane.URL); err != nil {
+		return err
+	}
 	if strings.TrimSpace(c.ControlPlane.BearerToken) == "" {
 		return fmt.Errorf("controlPlane.bearerToken is required")
 	}
@@ -169,6 +195,14 @@ func (c Config) Validate() error {
 	}
 	if provider != "aliyun" && provider != "tencent" {
 		return fmt.Errorf("infrastructure.provider must be aliyun or tencent")
+	}
+	if provider == "tencent" {
+		if strings.TrimSpace(c.Infrastructure.TencentCredential.SecretID) == "" {
+			return fmt.Errorf("infrastructure.tencentCredential.secretId is required when provider is tencent")
+		}
+		if strings.TrimSpace(c.Infrastructure.TencentCredential.SecretKey) == "" {
+			return fmt.Errorf("infrastructure.tencentCredential.secretKey is required when provider is tencent")
+		}
 	}
 	if strings.TrimSpace(c.Infrastructure.RegionID) == "" {
 		return fmt.Errorf("infrastructure.regionId is required")
@@ -222,6 +256,48 @@ func validateProxyEndpoint(value string) error {
 		return fmt.Errorf("runtimeProvisioning.workloadEgressProxyEndpoint must include host")
 	}
 	return nil
+}
+
+func validateControlPlaneURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return fmt.Errorf("parse controlPlane.url: %w", err)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("controlPlane.url must use http or https")
+	}
+	if parsed.Host == "" {
+		return fmt.Errorf("controlPlane.url must include host")
+	}
+	return nil
+}
+
+func validateGRPCEndpoint(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return fmt.Errorf("plane.grpcEndpoint is required")
+	}
+	if strings.ContainsAny(trimmed, " \t\r\n") {
+		return fmt.Errorf("plane.grpcEndpoint must not contain whitespace")
+	}
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		return fmt.Errorf("plane.grpcEndpoint must be a gRPC target, not an HTTP URL")
+	}
+	if strings.HasPrefix(lower, "grpc://") || strings.HasPrefix(lower, "grpcs://") {
+		_, port, err := net.SplitHostPort(strings.TrimSpace(trimmed[strings.Index(trimmed, "://")+3:]))
+		if err != nil || strings.TrimSpace(port) == "" {
+			return fmt.Errorf("plane.grpcEndpoint must include host:port")
+		}
+		return nil
+	}
+	if strings.HasPrefix(lower, "dns:///") || strings.HasPrefix(lower, "unix:///") {
+		return nil
+	}
+	if _, port, err := net.SplitHostPort(trimmed); err == nil && strings.TrimSpace(port) != "" {
+		return nil
+	}
+	return fmt.Errorf("plane.grpcEndpoint must include host:port")
 }
 
 func validateCaddyAdminURL(value string) error {

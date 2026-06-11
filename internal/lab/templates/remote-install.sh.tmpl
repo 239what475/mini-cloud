@@ -22,8 +22,7 @@ cleanup() {
     /tmp/mini-cloud-cloud-plane \
     /tmp/mini-cloud-node-agent \
     /tmp/mini-cloud-control-plane.yaml \
-    /tmp/mini-cloud-cloud-plane.yaml \
-    /tmp/mini-cloud-provider.env
+    /tmp/mini-cloud-cloud-plane.yaml
 }
 trap cleanup EXIT
 
@@ -163,11 +162,6 @@ install_configs() {
   install -d -m 0755 "$CONTROL_PLANE_CONFIG_DIR" "$CLOUD_PLANE_CONFIG_DIR"
   install -m 0600 /tmp/mini-cloud-control-plane.yaml "$CONTROL_PLANE_CONFIG_DIR/control-plane.yaml"
   install -m 0600 /tmp/mini-cloud-cloud-plane.yaml "$CLOUD_PLANE_CONFIG_DIR/cloud-plane.yaml"
-  if [[ -f /tmp/mini-cloud-provider.env ]]; then
-    install -m 0600 /tmp/mini-cloud-provider.env "$CLOUD_PLANE_CONFIG_DIR/provider.env"
-  else
-    rm -f "$CLOUD_PLANE_CONFIG_DIR/provider.env"
-  fi
 }
 
 write_systemd_units() {
@@ -197,7 +191,6 @@ Wants=network-online.target docker.service
 [Service]
 Type=simple
 WorkingDirectory=$INSTALL_ROOT
-EnvironmentFile=-$CLOUD_PLANE_CONFIG_DIR/provider.env
 ExecStart=$INSTALL_ROOT/bin/cloud-plane --config $CLOUD_PLANE_CONFIG_DIR/cloud-plane.yaml
 Restart=always
 RestartSec=5
