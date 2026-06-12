@@ -78,16 +78,11 @@ type ServiceSpec = {
 };
 
 type ServiceRunStatus = {
-  currentRunID?: string;
-  latestRunID?: string;
   phase: string;
   message?: string;
-  lastObservedAt?: string;
 };
 
 type ServiceStatus = {
-  observedGeneration: number;
-  desiredState: string;
   phase: string;
   message?: string;
   lastObservedAt?: string;
@@ -99,7 +94,6 @@ type ServiceMetadata = {
   name: string;
   displayName: string;
   host: string;
-  generation: number;
 };
 
 type ServiceResource = {
@@ -908,11 +902,7 @@ function App() {
                 <div className="app-card__section">
                   <p className="app-card__section-title">status</p>
                   <p>{service.status.message || "-"}</p>
-                  <p>current run {service.status.run.currentRunID ?? "-"}</p>
-                  <p>
-                    latest run {service.status.run.latestRunID ?? "-"} ·{" "}
-                    {service.status.run.phase}
-                  </p>
+                  <p>run phase {service.status.run.phase}</p>
                 </div>
               </article>
             ))}
@@ -949,14 +939,9 @@ function App() {
                   <p>{selectedStatus?.message ?? "-"}</p>
                 </div>
                 <div className="status-card">
-                  <span className="status-card__label">Generation</span>
-                  <strong>{currentService.metadata.generation}</strong>
-                  <p>observed {selectedStatus?.observedGeneration ?? 0}</p>
-                </div>
-                <div className="status-card">
                   <span className="status-card__label">Run</span>
                   <strong>{selectedStatus?.run.phase ?? "-"}</strong>
-                  <p>{selectedStatus?.run.latestRunID ?? "-"}</p>
+                  <p>{selectedStatus?.run.message ?? "-"}</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Image</span>
@@ -969,7 +954,7 @@ function App() {
                 <div className="status-card">
                   <span className="status-card__label">Last observed</span>
                   <strong>{formatTime(selectedStatus?.lastObservedAt)}</strong>
-                  <p>{formatTime(selectedStatus?.run.lastObservedAt)}</p>
+                  <p>{currentService.spec.planeID}</p>
                 </div>
               </div>
 
@@ -1118,9 +1103,7 @@ function App() {
                       <strong>{selectedStatus?.run.phase ?? "-"}</strong>
                       <p>{selectedStatus?.run.message ?? "-"}</p>
                     </div>
-                    <span>
-                      {formatTime(selectedStatus?.run.lastObservedAt)}
-                    </span>
+                    <span>{formatTime(selectedStatus?.lastObservedAt)}</span>
                   </div>
                 </div>
               </div>

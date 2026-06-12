@@ -11,19 +11,18 @@ import (
 	"mini-cloud/internal/controlplane/store"
 )
 
-func dispatchedRunStatus(serviceItem model.Service) model.RunStatus {
-	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
-	runStatus.LatestRunID = serviceItem.Metadata.ID
-	runStatus.Phase = model.RunPhaseDispatching
-	runStatus.Message = "service accepted by cloud-plane; waiting for node-agent execution result"
-	return runStatus
+func dispatchedRunStatus() model.RunStatus {
+	return model.RunStatus{
+		Phase:   model.RunPhaseDispatching,
+		Message: "service accepted by cloud-plane; waiting for node-agent execution result",
+	}
 }
 
-func deletingRunStatus(serviceItem model.Service) model.RunStatus {
-	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
-	runStatus.Phase = model.RunPhaseDispatching
-	runStatus.Message = "service delete accepted by cloud-plane; waiting for node-agent cleanup result"
-	return runStatus
+func deletingRunStatus() model.RunStatus {
+	return model.RunStatus{
+		Phase:   model.RunPhaseDispatching,
+		Message: "service delete accepted by cloud-plane; waiting for node-agent cleanup result",
+	}
 }
 
 func (c *ServiceOperations) targetPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {

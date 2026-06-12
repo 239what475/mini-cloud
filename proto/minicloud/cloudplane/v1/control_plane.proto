@@ -50,26 +50,14 @@ message PlaneExecutionSnapshot {
   google.protobuf.Timestamp observed_at = 7 [json_name = "observedAt"];
 }
 
-message PlaneServiceSpec {
-  string instance_class = 1 [json_name = "instanceClass"];
-  string exposure = 2;
-  string image = 3;
-  repeated string command = 4;
-  repeated string args = 5;
-  map<string, string> env = 6;
-  int32 container_port = 7 [json_name = "containerPort"];
-  string readiness_path = 8 [json_name = "readinessPath"];
-}
-
 message PlaneService {
   string service_id = 1 [json_name = "serviceID"];
   string name = 2;
   string display_name = 3 [json_name = "displayName"];
   int64 generation = 4;
   string desired_state = 5 [json_name = "desiredState"];
-  PlaneServiceSpec spec = 6;
-  google.protobuf.Timestamp updated_at = 7 [json_name = "updatedAt"];
-  string host = 8;
+  google.protobuf.Timestamp updated_at = 6 [json_name = "updatedAt"];
+  string host = 7;
 }
 
 message PlaneFrontDoorDomain {

@@ -35,22 +35,7 @@ type ReadinessResult struct {
 	Observations []ReadinessObservation
 }
 
-type httpDoer interface {
-	Do(*http.Request) (*http.Response, error)
-}
-
-type ReadinessChecker struct {
-	client httpDoer
-}
-
-func NewReadinessChecker(client httpDoer) ReadinessChecker {
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return ReadinessChecker{client: client}
-}
-
-func (c ReadinessChecker) Wait(ctx context.Context, cfg ReadinessConfig) ReadinessResult {
+func WaitReadiness(ctx context.Context, cfg ReadinessConfig) ReadinessResult {
 	if cfg.Attempts <= 0 {
 		cfg.Attempts = defaultAttempts
 	}
@@ -67,7 +52,7 @@ func (c ReadinessChecker) Wait(ctx context.Context, cfg ReadinessConfig) Readine
 	}
 
 	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
-		observation := c.probe(ctx, cfg, attempt)
+		observation := probeReadiness(ctx, cfg, attempt)
 		result.Observations = append(result.Observations, observation)
 		if observation.Error == "" && observation.StatusCode >= 200 && observation.StatusCode < 400 {
 			passedAt := observation.StartedAt
@@ -86,7 +71,7 @@ func (c ReadinessChecker) Wait(ctx context.Context, cfg ReadinessConfig) Readine
 	return result
 }
 
-func (c ReadinessChecker) probe(ctx context.Context, cfg ReadinessConfig, attempt int) ReadinessObservation {
+func probeReadiness(ctx context.Context, cfg ReadinessConfig, attempt int) ReadinessObservation {
 	observation := ReadinessObservation{
 		Attempt:   attempt,
 		StartedAt: time.Now().UTC(),
@@ -104,11 +89,7 @@ func (c ReadinessChecker) probe(ctx context.Context, cfg ReadinessConfig, attemp
 		return observation
 	}
 
-	client := c.client
-	if client == nil {
-		client = http.DefaultClient
-	}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		observation.Error = err.Error()
 		return observation

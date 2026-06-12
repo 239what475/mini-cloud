@@ -138,7 +138,7 @@ func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	run := deletingRunStatus(serviceItem)
+	run := deletingRunStatus()
 	if err := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, serviceDeletingStatus(serviceItem.Metadata.Generation), &run); err != nil &&
 		!errors.Is(err, store.ErrServiceNotFound) &&
 		!errors.Is(err, store.ErrServiceGenerationConflict) {
@@ -178,7 +178,7 @@ func (c *ServiceOperations) applyRemoteService(ctx context.Context, service mode
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	run := dispatchedRunStatus(service)
+	run := dispatchedRunStatus()
 	if err := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, serviceAcceptedStatus(service.Metadata.Generation), &run); err != nil {
 		return err
 	}

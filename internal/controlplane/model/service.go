@@ -70,24 +70,11 @@ const (
 	RunPhaseDispatching = "dispatching"
 	RunPhaseRunning     = "running"
 	RunPhaseFailed      = "failed"
-	RunPhaseSuperseded  = "superseded"
 )
 
 type RunStatus struct {
-	CurrentRunID   string
-	LatestRunID    string
-	Phase          string
-	Message        string
-	LastObservedAt *time.Time
-}
-
-func CloneRunStatus(input RunStatus) RunStatus {
-	out := input
-	if input.LastObservedAt != nil {
-		value := input.LastObservedAt.UTC()
-		out.LastObservedAt = &value
-	}
-	return out
+	Phase   string
+	Message string
 }
 
 func PendingRunStatus(message string) RunStatus {
@@ -142,7 +129,7 @@ func IsServicePhase(phase string) bool {
 
 func IsRunPhase(phase string) bool {
 	switch phase {
-	case RunPhasePending, RunPhaseDispatching, RunPhaseRunning, RunPhaseFailed, RunPhaseSuperseded:
+	case RunPhasePending, RunPhaseDispatching, RunPhaseRunning, RunPhaseFailed:
 		return true
 	default:
 		return false

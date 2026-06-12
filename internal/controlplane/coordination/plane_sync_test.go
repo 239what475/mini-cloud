@@ -141,13 +141,6 @@ func TestApplyServiceSnapshotsIgnoresUnknownService(t *testing.T) {
 			DisplayName: "Unknown",
 			Host:        "unknown.apps.example.com",
 			Generation:  1,
-			Spec: &cloudplanev1.PlaneServiceSpec{
-				InstanceClass: "small",
-				Exposure:      "public",
-				Image:         "nginx:1.27-alpine",
-				ContainerPort: 80,
-				ReadinessPath: "/",
-			},
 		},
 	}); err != nil {
 		t.Fatalf("applyServiceSnapshots returned error: %v", err)
@@ -220,14 +213,12 @@ func TestBuildNodeInventoryIncludesElasticNodeSource(t *testing.T) {
 	}
 }
 
-func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.T) {
+func TestServiceStatusFromExecutionSnapshotRunning(t *testing.T) {
 	observedAt := time.Now().UTC()
 	serviceItem := model.Service{
 		Status: model.ServiceStatus{
 			Run: model.RunStatus{
-				CurrentRunID: "svc-api-g1",
-				LatestRunID:  "svc-api-g2",
-				Phase:        model.RunPhaseDispatching,
+				Phase: model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -243,22 +234,17 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 	if status.Observed.Phase != model.PhaseReady {
 		t.Fatalf("status = %+v, want ready", status.Observed)
 	}
-	if status.Run.CurrentRunID != "svc-api-g2" || status.Run.LatestRunID != "svc-api-g2" {
-		t.Fatalf("run ids = %+v, want current/latest g2", status.Run)
-	}
 	if status.Run.Phase != model.RunPhaseRunning {
 		t.Fatalf("run = %+v, want running", status.Run)
 	}
 }
 
-func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *testing.T) {
+func TestServiceStatusFromExecutionSnapshotFailed(t *testing.T) {
 	observedAt := time.Now().UTC()
 	serviceItem := model.Service{
 		Status: model.ServiceStatus{
 			Run: model.RunStatus{
-				CurrentRunID: "svc-api-g1",
-				LatestRunID:  "svc-api-g2",
-				Phase:        model.RunPhaseDispatching,
+				Phase: model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -274,22 +260,17 @@ func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *te
 	if status.Observed.Phase != model.PhaseDegraded {
 		t.Fatalf("status = %+v, want degraded", status.Observed)
 	}
-	if status.Run.CurrentRunID != "svc-api-g1" {
-		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
-	}
-	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != model.RunPhaseFailed {
-		t.Fatalf("run = %+v, want latest failed g2", status.Run)
+	if status.Run.Phase != model.RunPhaseFailed {
+		t.Fatalf("run = %+v, want failed", status.Run)
 	}
 }
 
-func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing.T) {
+func TestServiceStatusFromExecutionSnapshotProgressing(t *testing.T) {
 	observedAt := time.Now().UTC()
 	serviceItem := model.Service{
 		Status: model.ServiceStatus{
 			Run: model.RunStatus{
-				CurrentRunID: "svc-api-g1",
-				LatestRunID:  "svc-api-g2",
-				Phase:        model.RunPhaseDispatching,
+				Phase: model.RunPhaseDispatching,
 			},
 		},
 	}
@@ -305,10 +286,7 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 	if status.Observed.Phase != model.PhaseProgressing {
 		t.Fatalf("status = %+v, want progressing", status.Observed)
 	}
-	if status.Run.CurrentRunID != "svc-api-g1" {
-		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
-	}
-	if status.Run.LatestRunID != "svc-api-g2" || status.Run.Phase != model.RunPhaseDispatching {
-		t.Fatalf("run = %+v, want latest g2 dispatching", status.Run)
+	if status.Run.Phase != model.RunPhaseDispatching {
+		t.Fatalf("run = %+v, want dispatching", status.Run)
 	}
 }

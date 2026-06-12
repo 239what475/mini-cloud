@@ -16,11 +16,10 @@ import (
 )
 
 const (
-	planeExecutionStatusFailed     = "failed"
-	planeExecutionStatusRunning    = "running"
-	planeExecutionStatusSucceeded  = "succeeded"
-	planeExecutionStatusSuperseded = "superseded"
-	RequestPlaneSyncTimeout        = 10 * time.Second
+	planeExecutionStatusFailed    = "failed"
+	planeExecutionStatusRunning   = "running"
+	planeExecutionStatusSucceeded = "succeeded"
+	RequestPlaneSyncTimeout       = 10 * time.Second
 )
 
 type PlaneSyncer struct {
@@ -213,7 +212,11 @@ func (s *PlaneSyncer) applyServiceSnapshots(ctx context.Context, planeID string,
 		}
 		if err := s.store.UpsertServiceSnapshot(ctx, store.UpsertServiceSnapshotInput{
 			PlaneID:       planeID,
-			Service:       serviceFromPlaneSnapshot(planeID, item),
+			ServiceID:     item.GetServiceId(),
+			Name:          item.GetName(),
+			Host:          item.GetHost(),
+			Generation:    item.GetGeneration(),
+			DesiredState:  item.GetDesiredState(),
 			ObservedAt:    observedAt,
 			StatusMessage: "observed from cloud-plane snapshot",
 		}); err != nil {
@@ -244,17 +247,11 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudpl
 	case planeExecutionStatusRunning:
 		phase = model.PhaseReady
 		runPhase = model.RunPhaseRunning
-	case planeExecutionStatusSuperseded:
-		runPhase = model.RunPhaseSuperseded
 	}
-	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
-	runStatus.LatestRunID = item.GetPlanId()
-	if runPhase == model.RunPhaseRunning {
-		runStatus.CurrentRunID = item.GetPlanId()
+	runStatus := model.RunStatus{
+		Phase:   runPhase,
+		Message: message,
 	}
-	runStatus.Phase = runPhase
-	runStatus.Message = message
-	runStatus.LastObservedAt = &now
 
 	return executionDerivedStatus{
 		Observed: model.ServiceObservedStatus{
@@ -264,41 +261,6 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudpl
 			LastObservedAt:     &now,
 		},
 		Run: runStatus,
-	}
-}
-
-func serviceFromPlaneSnapshot(planeID string, input *cloudplanev1.PlaneService) model.Service {
-	spec := input.GetSpec()
-	env := make(map[string]string, len(spec.GetEnv()))
-	for key, value := range spec.GetEnv() {
-		env[key] = value
-	}
-	desiredState := input.GetDesiredState()
-	if strings.TrimSpace(desiredState) == "" {
-		desiredState = model.DesiredStateActive
-	}
-	return model.Service{
-		Metadata: model.ServiceMetadata{
-			ID:          input.GetServiceId(),
-			Name:        input.GetName(),
-			DisplayName: input.GetDisplayName(),
-			Host:        input.GetHost(),
-			Generation:  input.GetGeneration(),
-		},
-		Spec: model.ServiceSpec{
-			PlaneID:       planeID,
-			InstanceClass: spec.GetInstanceClass(),
-			Exposure:      spec.GetExposure(),
-			Image:         spec.GetImage(),
-			Command:       append([]string(nil), spec.GetCommand()...),
-			Args:          append([]string(nil), spec.GetArgs()...),
-			DefaultPort:   int(spec.GetContainerPort()),
-			ReadinessPath: spec.GetReadinessPath(),
-			Env:           env,
-		},
-		Status: model.ServiceStatus{
-			DesiredState: desiredState,
-		},
 	}
 }
 
@@ -313,8 +275,6 @@ func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string 
 		return fmt.Sprintf("execution plan %s is running", item.GetPlanId())
 	case planeExecutionStatusSucceeded:
 		return fmt.Sprintf("execution plan %s succeeded", item.GetPlanId())
-	case planeExecutionStatusSuperseded:
-		return fmt.Sprintf("execution plan %s is superseded", item.GetPlanId())
 	default:
 		return fmt.Sprintf("execution plan %s is %s", item.GetPlanId(), strings.TrimSpace(item.GetStatus()))
 	}

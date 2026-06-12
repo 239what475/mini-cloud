@@ -7,12 +7,11 @@ import (
 )
 
 const (
-	StatusPending    = "pending"
-	StatusDeploying  = "deploying"
-	StatusRunning    = "running"
-	StatusSucceeded  = "succeeded"
-	StatusSuperseded = "superseded"
-	StatusFailed     = "failed"
+	StatusPending   = "pending"
+	StatusDeploying = "deploying"
+	StatusRunning   = "running"
+	StatusSucceeded = "succeeded"
+	StatusFailed    = "failed"
 )
 
 const (
@@ -170,7 +169,7 @@ type ReportAck struct {
 
 func IsExecutionStatus(status string) bool {
 	switch status {
-	case StatusDeploying, StatusRunning, StatusSucceeded, StatusSuperseded, StatusFailed:
+	case StatusDeploying, StatusRunning, StatusSucceeded, StatusFailed:
 		return true
 	default:
 		return false
@@ -179,7 +178,7 @@ func IsExecutionStatus(status string) bool {
 
 func (in ReportInput) Validate() error {
 	if !IsExecutionStatus(in.Status) {
-		return errors.New("status must be one of deploying, running, succeeded, superseded, failed")
+		return errors.New("status must be one of deploying, running, succeeded, failed")
 	}
 	if strings.TrimSpace(in.Reason) == "" {
 		return errors.New("reason is required")

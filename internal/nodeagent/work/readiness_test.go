@@ -2,9 +2,8 @@ package work
 
 import (
 	"context"
-	"io"
 	"net/http"
-	"strings"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -14,15 +13,17 @@ func TestWaitEventuallyPasses(t *testing.T) {
 	t.Parallel()
 
 	var attempts atomic.Int32
-	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		current := attempts.Add(1)
 		if current == 1 {
-			return newHTTPResponse(http.StatusServiceUnavailable), nil
+			http.Error(w, "not ready", http.StatusServiceUnavailable)
+			return
 		}
-		return newHTTPResponse(http.StatusOK), nil
 	}))
-	result := checker.Wait(context.Background(), ReadinessConfig{
-		URL:      "http://service.local/healthz",
+	t.Cleanup(server.Close)
+
+	result := WaitReadiness(context.Background(), ReadinessConfig{
+		URL:      server.URL + "/healthz",
 		Attempts: 3,
 		Interval: 5 * time.Millisecond,
 		Timeout:  time.Second,
@@ -48,11 +49,13 @@ func TestWaitEventuallyPasses(t *testing.T) {
 func TestWaitReturnsFailureAfterAllAttempts(t *testing.T) {
 	t.Parallel()
 
-	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return newHTTPResponse(http.StatusBadGateway), nil
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "bad gateway", http.StatusBadGateway)
 	}))
-	result := checker.Wait(context.Background(), ReadinessConfig{
-		URL:      "http://service.local/healthz",
+	t.Cleanup(server.Close)
+
+	result := WaitReadiness(context.Background(), ReadinessConfig{
+		URL:      server.URL + "/healthz",
 		Attempts: 2,
 		Interval: 5 * time.Millisecond,
 		Timeout:  time.Second,
@@ -73,12 +76,13 @@ func TestWaitNormalizesInvalidRetryConfig(t *testing.T) {
 	t.Parallel()
 
 	var attempts atomic.Int32
-	checker := NewReadinessChecker(roundTripFunc(func(*http.Request) (*http.Response, error) {
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
 		attempts.Add(1)
-		return newHTTPResponse(http.StatusOK), nil
 	}))
-	result := checker.Wait(context.Background(), ReadinessConfig{
-		URL:      "http://service.local/healthz",
+	t.Cleanup(server.Close)
+
+	result := WaitReadiness(context.Background(), ReadinessConfig{
+		URL:      server.URL + "/healthz",
 		Attempts: -1,
 		Interval: -1,
 		Timeout:  -1,
@@ -89,17 +93,5 @@ func TestWaitNormalizesInvalidRetryConfig(t *testing.T) {
 	}
 	if attempts.Load() != 1 {
 		t.Fatalf("attempts = %d, want 1", attempts.Load())
-	}
-}
-
-type roundTripFunc func(*http.Request) (*http.Response, error)
-
-func (f roundTripFunc) Do(req *http.Request) (*http.Response, error) {
-	return f(req)
-}
-func newHTTPResponse(statusCode int) *http.Response {
-	return &http.Response{
-		StatusCode: statusCode,
-		Body:       io.NopCloser(strings.NewReader("ok")),
 	}
 }

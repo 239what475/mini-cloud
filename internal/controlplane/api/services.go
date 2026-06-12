@@ -27,20 +27,15 @@ type serviceSpec struct {
 	Env           map[string]string `json:"env,omitempty"`
 }
 type serviceRunStatus struct {
-	CurrentRunID   string `json:"currentRunID,omitempty"`
-	LatestRunID    string `json:"latestRunID,omitempty"`
-	Phase          string `json:"phase"`
-	Message        string `json:"message,omitempty"`
-	LastObservedAt string `json:"lastObservedAt,omitempty"`
+	Phase   string `json:"phase"`
+	Message string `json:"message,omitempty"`
 }
 
 type serviceStatus struct {
-	ObservedGeneration int64            `json:"observedGeneration"`
-	DesiredState       string           `json:"desiredState"`
-	Phase              string           `json:"phase"`
-	Message            string           `json:"message,omitempty"`
-	LastObservedAt     *time.Time       `json:"lastObservedAt,omitempty"`
-	Run                serviceRunStatus `json:"run"`
+	Phase          string           `json:"phase"`
+	Message        string           `json:"message,omitempty"`
+	LastObservedAt *time.Time       `json:"lastObservedAt,omitempty"`
+	Run            serviceRunStatus `json:"run"`
 }
 
 type serviceMetadata struct {
@@ -48,7 +43,6 @@ type serviceMetadata struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Host        string `json:"host"`
-	Generation  int64  `json:"generation"`
 }
 
 type serviceResource struct {
@@ -248,7 +242,6 @@ func buildServiceResource(service model.Service) serviceResource {
 			Name:        service.Metadata.Name,
 			DisplayName: service.Metadata.DisplayName,
 			Host:        service.Metadata.Host,
-			Generation:  service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
 			PlaneID:       service.Spec.PlaneID,
@@ -262,27 +255,19 @@ func buildServiceResource(service model.Service) serviceResource {
 			Env:           service.Spec.Env,
 		},
 		Status: serviceStatus{
-			ObservedGeneration: service.Status.Observed.ObservedGeneration,
-			DesiredState:       service.Status.DesiredState,
-			Phase:              service.Status.Observed.Phase,
-			Message:            service.Status.Observed.Message,
-			LastObservedAt:     service.Status.Observed.LastObservedAt,
-			Run:                buildServiceRun(service.Status.Run),
+			Phase:          service.Status.Observed.Phase,
+			Message:        service.Status.Observed.Message,
+			LastObservedAt: service.Status.Observed.LastObservedAt,
+			Run:            buildServiceRun(service.Status.Run),
 		},
 	}
 }
 
 func buildServiceRun(input model.RunStatus) serviceRunStatus {
-	out := serviceRunStatus{
-		CurrentRunID: input.CurrentRunID,
-		LatestRunID:  input.LatestRunID,
-		Phase:        input.Phase,
-		Message:      input.Message,
+	return serviceRunStatus{
+		Phase:   input.Phase,
+		Message: input.Message,
 	}
-	if input.LastObservedAt != nil {
-		out.LastObservedAt = input.LastObservedAt.UTC().Format(time.RFC3339)
-	}
-	return out
 }
 
 func (r serviceCreateRequest) toCreateInput() (store.CreateServiceInput, error) {

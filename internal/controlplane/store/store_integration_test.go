@@ -274,24 +274,12 @@ func TestIntegrationUpsertServiceSnapshotRefreshesActiveServiceCacheOnly(t *test
 	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
-		PlaneID: planeItem.ID,
-		Service: model.Service{
-			Metadata: model.ServiceMetadata{
-				ID:          serviceItem.Metadata.ID,
-				Name:        "cache-api",
-				DisplayName: "Remote Display Name",
-				Host:        "cache-api.apps.example.test",
-				Generation:  serviceItem.Metadata.Generation,
-			},
-			Spec: model.ServiceSpec{
-				InstanceClass: model.InstanceClassSmall,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:1.28-alpine",
-				DefaultPort:   80,
-				ReadinessPath: "/",
-			},
-			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
-		},
+		PlaneID:      planeItem.ID,
+		ServiceID:    serviceItem.Metadata.ID,
+		Name:         "cache-api",
+		Host:         "cache-api.apps.example.test",
+		Generation:   serviceItem.Metadata.Generation,
+		DesiredState: model.DesiredStateActive,
 	}); err != nil {
 		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
 	}
@@ -308,8 +296,8 @@ func TestIntegrationUpsertServiceSnapshotRefreshesActiveServiceCacheOnly(t *test
 	if reloaded.Status.DesiredState != model.DesiredStateActive {
 		t.Fatalf("desired state = %q, want active", reloaded.Status.DesiredState)
 	}
-	if reloaded.Spec.Image != "nginx:1.28-alpine" {
-		t.Fatalf("image = %q, want snapshot cache update", reloaded.Spec.Image)
+	if reloaded.Spec.Image != "nginx:1.27-alpine" {
+		t.Fatalf("image = %q, want control-plane cached spec", reloaded.Spec.Image)
 	}
 }
 
@@ -344,24 +332,12 @@ func TestIntegrationUpsertServiceSnapshotDoesNotChangeControlPlaneBinding(t *tes
 	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
-		PlaneID: planeItem.ID,
-		Service: model.Service{
-			Metadata: model.ServiceMetadata{
-				ID:          serviceItem.Metadata.ID,
-				Name:        "wrong-name",
-				DisplayName: "Wrong Display",
-				Host:        "wrong.apps.example.test",
-				Generation:  serviceItem.Metadata.Generation,
-			},
-			Spec: model.ServiceSpec{
-				InstanceClass: model.InstanceClassSmall,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:wrong",
-				DefaultPort:   80,
-				ReadinessPath: "/",
-			},
-			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
-		},
+		PlaneID:      planeItem.ID,
+		ServiceID:    serviceItem.Metadata.ID,
+		Name:         "wrong-name",
+		Host:         "wrong.apps.example.test",
+		Generation:   serviceItem.Metadata.Generation,
+		DesiredState: model.DesiredStateActive,
 	}); err != nil {
 		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
 	}
@@ -412,23 +388,12 @@ func TestIntegrationUpsertServiceSnapshotDoesNotReviveDeletingService(t *testing
 	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
-		PlaneID: planeItem.ID,
-		Service: model.Service{
-			Metadata: model.ServiceMetadata{
-				ID:         serviceItem.Metadata.ID,
-				Name:       serviceItem.Metadata.Name,
-				Host:       serviceItem.Metadata.Host,
-				Generation: deleting.Metadata.Generation,
-			},
-			Spec: model.ServiceSpec{
-				InstanceClass: model.InstanceClassSmall,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:1.28-alpine",
-				DefaultPort:   80,
-				ReadinessPath: "/",
-			},
-			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
-		},
+		PlaneID:      planeItem.ID,
+		ServiceID:    serviceItem.Metadata.ID,
+		Name:         serviceItem.Metadata.Name,
+		Host:         serviceItem.Metadata.Host,
+		Generation:   deleting.Metadata.Generation,
+		DesiredState: model.DesiredStateActive,
 	}); err != nil {
 		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
 	}
@@ -459,24 +424,12 @@ func TestIntegrationUpsertServiceSnapshotIgnoresUnknownService(t *testing.T) {
 	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
-		PlaneID: planeItem.ID,
-		Service: model.Service{
-			Metadata: model.ServiceMetadata{
-				ID:          "svc-unknown",
-				Name:        "unknown-api",
-				DisplayName: "Unknown API",
-				Host:        "unknown-api.apps.example.test",
-				Generation:  1,
-			},
-			Spec: model.ServiceSpec{
-				InstanceClass: model.InstanceClassSmall,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:1.27-alpine",
-				DefaultPort:   80,
-				ReadinessPath: "/",
-			},
-			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
-		},
+		PlaneID:      planeItem.ID,
+		ServiceID:    "svc-unknown",
+		Name:         "unknown-api",
+		Host:         "unknown-api.apps.example.test",
+		Generation:   1,
+		DesiredState: model.DesiredStateActive,
 	}); err != nil {
 		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
 	}
@@ -675,24 +628,12 @@ func TestIntegrationUpsertServiceSnapshotIgnoresStaleGeneration(t *testing.T) {
 	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
-		PlaneID: planeItem.ID,
-		Service: model.Service{
-			Metadata: model.ServiceMetadata{
-				ID:          serviceItem.Metadata.ID,
-				Name:        serviceItem.Metadata.Name,
-				DisplayName: serviceItem.Metadata.DisplayName,
-				Host:        serviceItem.Metadata.Host,
-				Generation:  serviceItem.Metadata.Generation,
-			},
-			Spec: model.ServiceSpec{
-				InstanceClass: model.InstanceClassSmall,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:stale",
-				DefaultPort:   80,
-				ReadinessPath: "/",
-			},
-			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
-		},
+		PlaneID:      planeItem.ID,
+		ServiceID:    serviceItem.Metadata.ID,
+		Name:         serviceItem.Metadata.Name,
+		Host:         serviceItem.Metadata.Host,
+		Generation:   serviceItem.Metadata.Generation,
+		DesiredState: model.DesiredStateActive,
 	}); err != nil {
 		t.Fatalf("UpsertServiceSnapshot(stale) returned error: %v", err)
 	}
@@ -788,10 +729,8 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		Phase:              model.PhaseReady,
 		Message:            "running",
 		Run: &model.RunStatus{
-			CurrentRunID: "old-run",
-			LatestRunID:  "old-run",
-			Phase:        model.RunPhaseRunning,
-			Message:      "old run is running",
+			Phase:   model.RunPhaseRunning,
+			Message: "old run is running",
 		},
 	}); err != nil {
 		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
@@ -812,10 +751,8 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("UpdateService returned error: %v", err)
 	}
 	if updated.Status.Run.Phase != model.RunPhasePending ||
-		updated.Status.Run.CurrentRunID != "" ||
-		updated.Status.Run.LatestRunID != "" ||
 		updated.Status.Run.Message != "waiting for cloud-plane service apply" {
-		t.Fatalf("run after update = %+v, want pending without old run IDs", updated.Status.Run)
+		t.Fatalf("run after update = %+v, want pending without old run message", updated.Status.Run)
 	}
 
 	if err := db.Store.UpdateServiceStatusForGeneration(ctx, updated.Metadata.ID, updated.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
@@ -823,10 +760,8 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		Phase:              model.PhaseReady,
 		Message:            "running",
 		Run: &model.RunStatus{
-			CurrentRunID: "new-run",
-			LatestRunID:  "new-run",
-			Phase:        model.RunPhaseRunning,
-			Message:      "new run is running",
+			Phase:   model.RunPhaseRunning,
+			Message: "new run is running",
 		},
 	}); err != nil {
 		t.Fatalf("UpdateServiceStatusForGeneration for updated service returned error: %v", err)
@@ -839,8 +774,11 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 	if err := json.Unmarshal(runJSON, &runRecord); err != nil {
 		t.Fatalf("decode raw service run json returned error: %v", err)
 	}
-	if runRecord["phase"] != model.RunPhaseRunning || runRecord["latestRunID"] != "new-run" {
+	if runRecord["phase"] != model.RunPhaseRunning || runRecord["message"] != "new run is running" {
 		t.Fatalf("raw service run json = %s, want lower-case persistent keys", string(runJSON))
+	}
+	if _, ok := runRecord["executionID"]; ok {
+		t.Fatalf("raw service run json = %s, must not store executionID", string(runJSON))
 	}
 	if _, ok := runRecord["Phase"]; ok {
 		t.Fatalf("raw service run json = %s, must not use Go field names", string(runJSON))
@@ -857,7 +795,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetService after status refresh returned error: %v", err)
 	}
-	if refreshed.Status.Run.Phase != model.RunPhaseRunning || refreshed.Status.Run.LatestRunID != "new-run" {
+	if refreshed.Status.Run.Phase != model.RunPhaseRunning || refreshed.Status.Run.Message != "new run is running" {
 		t.Fatalf("run after status-only refresh = %+v, want previous running run", refreshed.Status.Run)
 	}
 
@@ -866,9 +804,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 	if deleting.Status.Run.Phase != model.RunPhasePending ||
-		deleting.Status.Run.CurrentRunID != "" ||
-		deleting.Status.Run.LatestRunID != "" ||
 		deleting.Status.Run.Message != "waiting for remote service teardown" {
-		t.Fatalf("run after delete request = %+v, want pending delete without old run IDs", deleting.Status.Run)
+		t.Fatalf("run after delete request = %+v, want pending delete without old run message", deleting.Status.Run)
 	}
 }

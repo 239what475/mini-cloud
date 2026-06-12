@@ -68,9 +68,10 @@ func applyExecutionPlanTx(ctx context.Context, tx *sql.Tx, input cloudmodel.Plan
 			updated_at = now()
 		WHERE service_id = $1
 		  AND plan_id <> $4
-		  AND status IN ($5, $6)
-	`, input.ServiceID, cloudmodel.StatusSuperseded, "superseded by a newer execution plan", input.PlanID, cloudmodel.StatusPending, cloudmodel.StatusDeploying); err != nil {
-		return "", fmt.Errorf("supersede old execution intents: %w", err)
+		  AND work_action = $5
+		  AND status IN ($6, $7)
+	`, input.ServiceID, cloudmodel.StatusFailed, "stopped before startup by newer service generation", input.PlanID, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusDeploying); err != nil {
+		return "", fmt.Errorf("fail old unstarted execution intents: %w", err)
 	}
 
 	id, err := newID("exe")
@@ -78,50 +79,70 @@ func applyExecutionPlanTx(ctx context.Context, tx *sql.Tx, input cloudmodel.Plan
 		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, `
-			INSERT INTO execution_intents (
-				id,
-				work_action,
-				plan_id,
-				service_id,
-				service_name,
-				service_exposure,
-				service_generation,
-				image,
-				command_json,
-				args_json,
-				env_json,
-				container_port,
-				readiness_path,
-				cpu_milli_request,
-				memory_mi_request,
-				status,
-				status_reason
-			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
-			ON CONFLICT (plan_id) DO UPDATE
-			SET
-				work_action = EXCLUDED.work_action,
-				service_name = EXCLUDED.service_name,
-				service_exposure = EXCLUDED.service_exposure,
-				service_generation = EXCLUDED.service_generation,
-				image = EXCLUDED.image,
-				command_json = EXCLUDED.command_json,
-				args_json = EXCLUDED.args_json,
-				env_json = EXCLUDED.env_json,
-				container_port = EXCLUDED.container_port,
-				readiness_path = EXCLUDED.readiness_path,
-				cpu_milli_request = EXCLUDED.cpu_milli_request,
-				memory_mi_request = EXCLUDED.memory_mi_request,
-				node_id = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.node_id END,
-				container_name = CASE WHEN execution_intents.status IN ($18, $19) THEN '' ELSE execution_intents.container_name END,
-				container_id = CASE WHEN execution_intents.status IN ($18, $19) THEN '' ELSE execution_intents.container_id END,
-				host_port = CASE WHEN execution_intents.status IN ($18, $19) THEN 0 ELSE execution_intents.host_port END,
-				status = CASE WHEN execution_intents.status IN ($18, $19) THEN EXCLUDED.status ELSE execution_intents.status END,
-				status_reason = CASE WHEN execution_intents.status IN ($18, $19) THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
-				started_at = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.started_at END,
-				finished_at = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.finished_at END,
-				updated_at = now()
-		`,
+		UPDATE execution_intents
+		SET
+			work_action = $2,
+			plan_id = $3,
+			service_generation = $4,
+			status = $5,
+			status_reason = $6,
+			started_at = NULL,
+			finished_at = NULL,
+			updated_at = now()
+		WHERE service_id = $1
+		  AND plan_id <> $3
+		  AND work_action = $7
+		  AND status = $8
+		  AND node_id IS NOT NULL
+		  AND container_id <> ''
+	`, input.ServiceID, cloudmodel.WorkActionDelete, replacementDeletePlanID(input.ServiceID, input.ServiceGeneration), input.ServiceGeneration, cloudmodel.StatusPending, "new service generation requested; stopping previous container", cloudmodel.WorkActionRun, cloudmodel.StatusRunning); err != nil {
+		return "", fmt.Errorf("mark old running execution intents for replacement delete: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO execution_intents (
+			id,
+			work_action,
+			plan_id,
+			service_id,
+			service_name,
+			service_exposure,
+			service_generation,
+			image,
+			command_json,
+			args_json,
+			env_json,
+			container_port,
+			readiness_path,
+			cpu_milli_request,
+			memory_mi_request,
+			status,
+			status_reason
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+		ON CONFLICT (plan_id) DO UPDATE
+		SET
+			work_action = EXCLUDED.work_action,
+			service_name = EXCLUDED.service_name,
+			service_exposure = EXCLUDED.service_exposure,
+			service_generation = EXCLUDED.service_generation,
+			image = EXCLUDED.image,
+			command_json = EXCLUDED.command_json,
+			args_json = EXCLUDED.args_json,
+			env_json = EXCLUDED.env_json,
+			container_port = EXCLUDED.container_port,
+			readiness_path = EXCLUDED.readiness_path,
+			cpu_milli_request = EXCLUDED.cpu_milli_request,
+			memory_mi_request = EXCLUDED.memory_mi_request,
+			node_id = CASE WHEN execution_intents.status = $18 THEN NULL ELSE execution_intents.node_id END,
+			container_name = CASE WHEN execution_intents.status = $18 THEN '' ELSE execution_intents.container_name END,
+			container_id = CASE WHEN execution_intents.status = $18 THEN '' ELSE execution_intents.container_id END,
+			host_port = CASE WHEN execution_intents.status = $18 THEN 0 ELSE execution_intents.host_port END,
+			status = CASE WHEN execution_intents.status = $18 THEN EXCLUDED.status ELSE execution_intents.status END,
+			status_reason = CASE WHEN execution_intents.status = $18 THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
+			started_at = CASE WHEN execution_intents.status = $18 THEN NULL ELSE execution_intents.started_at END,
+			finished_at = CASE WHEN execution_intents.status = $18 THEN NULL ELSE execution_intents.finished_at END,
+			updated_at = now()
+	`,
 		id,
 		cloudmodel.WorkActionRun,
 		input.PlanID,
@@ -140,7 +161,6 @@ func applyExecutionPlanTx(ctx context.Context, tx *sql.Tx, input cloudmodel.Plan
 		cloudmodel.StatusPending,
 		"execution plan accepted",
 		cloudmodel.StatusFailed,
-		cloudmodel.StatusSuperseded,
 	); err != nil {
 		return "", fmt.Errorf("upsert execution intent: %w", err)
 	}
@@ -193,8 +213,8 @@ func deleteExecutionPlansForServiceTx(ctx context.Context, tx *sql.Tx, input clo
 		WHERE service_id = $1
 		  AND work_action = $5
 		  AND status = $4
-	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.WorkActionRun); err != nil {
-		return fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
+	`, input.ServiceID, cloudmodel.StatusFailed, "service deletion requested before execution started", cloudmodel.StatusPending, cloudmodel.WorkActionRun); err != nil {
+		return fmt.Errorf("fail unstarted execution intents for delete: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		WITH locked AS (
@@ -233,8 +253,8 @@ func deleteExecutionPlansForServiceTx(ctx context.Context, tx *sql.Tx, input clo
 			updated_at = now()
 		FROM freed
 		WHERE nodes.id = freed.node_id
-	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before container was created", cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
-		return fmt.Errorf("supersede containerless deploying execution intents for delete: %w", err)
+		`, input.ServiceID, cloudmodel.StatusFailed, "service deletion requested before container was created", cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
+		return fmt.Errorf("fail containerless deploying execution intents for delete: %w", err)
 	}
 
 	result, err := tx.ExecContext(ctx, `
@@ -353,8 +373,8 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 			FROM execution_intents
 			JOIN services ON services.id = execution_intents.service_id
 			WHERE work_action = $2
-			  AND status <> $3
-			  AND services.desired_state = $4
+			  AND status = $1
+			  AND services.desired_state = $3
 			ORDER BY service_id, service_generation DESC, updated_at DESC, plan_id DESC
 		)
 		SELECT
@@ -371,7 +391,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 		   AND e.host_port > 0
 		WHERE p.service_exposure = 'public'
 		ORDER BY p.service_name ASC, p.plan_id ASC, e.id ASC
-	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.StatusSuperseded, cloudmodel.ServiceDesiredActive)
+	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.ServiceDesiredActive)
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}
@@ -543,6 +563,13 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 			OR (
 				work_action = $4
 				AND $5
+				AND NOT EXISTS (
+					SELECT 1
+					FROM execution_intents delete_work
+					WHERE delete_work.service_id = execution_intents.service_id
+					  AND delete_work.work_action = $9
+					  AND delete_work.status IN ($1, $10)
+				)
 				AND (
 					EXISTS (
 						SELECT 1
@@ -563,7 +590,7 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 					)
 				)
 			)
-		  )
+		)
 		ORDER BY CASE WHEN work_action = $2 THEN 0 ELSE 1 END, created_at ASC, plan_id ASC
 		LIMIT 1
 		FOR UPDATE SKIP LOCKED
@@ -576,6 +603,8 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 		cpuMilliAllocatable-cpuMilliAllocated,
 		memoryMiAllocatable-memoryMiAllocated,
 		cloudmodel.StatusRunning,
+		cloudmodel.WorkActionDelete,
+		cloudmodel.StatusDeploying,
 	).Scan(
 		&work.ExecutionID,
 		&work.Action,
@@ -654,9 +683,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.PlanID)
 
 	startedAt := time.Now().UTC()
-	if err := supersedeRunningIntentsForServiceOnNode(ctx, tx, nodeID, work.ServiceID, work.PlanID, "superseded by replacement execution"); err != nil {
-		return nil, err
-	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
 		SET
@@ -709,7 +735,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 
 	observedAt := time.Now().UTC()
 	var finishedAt sql.NullTime
-	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSucceeded || input.Status == cloudmodel.StatusSuperseded {
+	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSucceeded {
 		finishedAt = sql.NullTime{Time: observedAt, Valid: true}
 	}
 	var updated cloudmodel.ExecutionRecord
@@ -745,7 +771,7 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	if err != nil {
 		return cloudmodel.ReportAck{}, fmt.Errorf("update execution intent report: %w", err)
 	}
-	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSucceeded || input.Status == cloudmodel.StatusSuperseded {
+	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSucceeded {
 		if err := freeNodeAllocation(ctx, tx, nodeID, current.CPUMilliRequest, current.MemoryMiRequest); err != nil {
 			return cloudmodel.ReportAck{}, err
 		}
@@ -860,41 +886,6 @@ func deleteServiceTruthForCompletedDeletePlan(ctx context.Context, tx *sql.Tx, s
 	return deleteServiceTruthAfterDeleteExecution(ctx, tx, serviceID, generation)
 }
 
-func supersedeRunningIntentsForServiceOnNode(ctx context.Context, tx *sql.Tx, nodeID string, serviceID string, planID string, reason string) error {
-	finishedAt := time.Now().UTC()
-	if _, err := tx.ExecContext(ctx, `
-		WITH updated AS (
-			UPDATE execution_intents
-			SET
-				status = $5,
-				status_reason = $6,
-				finished_at = $7,
-				updated_at = now()
-			WHERE service_id = $1
-			  AND plan_id <> $2
-			  AND node_id = $3
-			  AND status = $4
-			RETURNING cpu_milli_request, memory_mi_request
-		),
-		freed AS (
-			SELECT
-				COALESCE(SUM(cpu_milli_request), 0) AS cpu_milli,
-				COALESCE(SUM(memory_mi_request), 0) AS memory_mi
-			FROM updated
-		)
-		UPDATE nodes
-		SET
-			cpu_milli_allocated = GREATEST(cpu_milli_allocated - freed.cpu_milli, 0),
-			memory_mi_allocated = GREATEST(memory_mi_allocated - freed.memory_mi, 0),
-			updated_at = now()
-		FROM freed
-		WHERE nodes.id = $3
-	`, serviceID, planID, nodeID, cloudmodel.StatusRunning, cloudmodel.StatusSuperseded, reason, finishedAt); err != nil {
-		return fmt.Errorf("supersede running execution intents for service: %w", err)
-	}
-	return nil
-}
-
 func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilliRequest int, memoryMiRequest int) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE nodes
@@ -907,4 +898,8 @@ func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilli
 		return fmt.Errorf("free node allocation for execution intent: %w", err)
 	}
 	return nil
+}
+
+func replacementDeletePlanID(serviceID string, generation int64) string {
+	return fmt.Sprintf("%s-stop-before-g%d", serviceID, generation)
 }

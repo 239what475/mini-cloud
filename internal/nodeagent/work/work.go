@@ -16,10 +16,6 @@ import (
 	"mini-cloud/internal/transport"
 )
 
-type readinessWaiter interface {
-	Wait(context.Context, ReadinessConfig) ReadinessResult
-}
-
 type ContainerRuntime interface {
 	Run(context.Context, runtime.RunInput) (runtime.RunResult, error)
 	Stop(context.Context, string) error
@@ -97,23 +93,14 @@ type executor struct {
 	logger           *slog.Logger
 	client           *agentclient.Client
 	containerRuntime ContainerRuntime
-	readinessWaiter  readinessWaiter
 	opts             Options
 }
 
 func ExecuteNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime ContainerRuntime, opts Options) (Result, error) {
-	return executeNext(ctx, logger, client, containerRuntime, opts, nil)
-}
-
-func executeNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime ContainerRuntime, opts Options, readinessWaiter readinessWaiter) (Result, error) {
-	if readinessWaiter == nil {
-		readinessWaiter = NewReadinessChecker(nil)
-	}
 	return executor{
 		logger:           logger,
 		client:           client,
 		containerRuntime: containerRuntime,
-		readinessWaiter:  readinessWaiter,
 		opts:             opts,
 	}.executeNext(ctx)
 }
@@ -178,7 +165,7 @@ func (e executor) executeNext(ctx context.Context) (Result, error) {
 		readinessHost = "127.0.0.1"
 	}
 	readinessURL := fmt.Sprintf("http://%s%s", net.JoinHostPort(readinessHost, fmt.Sprintf("%d", runResult.HostPort)), item.GetReadinessPath())
-	readinessResult := e.readinessWaiter.Wait(ctx, ReadinessConfig{
+	readinessResult := WaitReadiness(ctx, ReadinessConfig{
 		URL:      readinessURL,
 		Attempts: opts.Readiness.Attempts,
 		Interval: opts.Readiness.Interval,

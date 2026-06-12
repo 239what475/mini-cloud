@@ -101,10 +101,6 @@ func protoServices(items []cloudmodel.Service) []*cloudplanev1.PlaneService {
 }
 
 func protoService(item cloudmodel.Service) *cloudplanev1.PlaneService {
-	env := make(map[string]string, len(item.Spec.Env))
-	for key, value := range item.Spec.Env {
-		env[key] = value
-	}
 	return &cloudplanev1.PlaneService{
 		ServiceId:    item.ID,
 		Name:         item.Name,
@@ -112,17 +108,7 @@ func protoService(item cloudmodel.Service) *cloudplanev1.PlaneService {
 		Host:         item.Host,
 		Generation:   item.Generation,
 		DesiredState: item.DesiredState,
-		Spec: &cloudplanev1.PlaneServiceSpec{
-			InstanceClass: item.Spec.InstanceClass,
-			Exposure:      item.Spec.Exposure,
-			Image:         item.Spec.Image,
-			Command:       append([]string(nil), item.Spec.Command...),
-			Args:          append([]string(nil), item.Spec.Args...),
-			Env:           env,
-			ContainerPort: int32(item.Spec.ContainerPort),
-			ReadinessPath: item.Spec.ReadinessPath,
-		},
-		UpdatedAt: protoTimestamp(item.UpdatedAt),
+		UpdatedAt:    protoTimestamp(item.UpdatedAt),
 	}
 }
 

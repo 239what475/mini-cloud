@@ -85,7 +85,11 @@ type UpdateServiceStatusInput struct {
 
 type UpsertServiceSnapshotInput struct {
 	PlaneID       string
-	Service       model.Service
+	ServiceID     string
+	Name          string
+	Host          string
+	Generation    int64
+	DesiredState  string
 	ObservedAt    time.Time
 	StatusMessage string
 }
@@ -103,11 +107,8 @@ type serviceSpecColumns struct {
 }
 
 type serviceRunRecord struct {
-	CurrentRunID   string     `json:"currentRunID,omitempty"`
-	LatestRunID    string     `json:"latestRunID,omitempty"`
-	Phase          string     `json:"phase"`
-	Message        string     `json:"message,omitempty"`
-	LastObservedAt *time.Time `json:"lastObservedAt,omitempty"`
+	Phase   string `json:"phase"`
+	Message string `json:"message,omitempty"`
 }
 
 func (in CreateServiceInput) validate() error {
@@ -270,17 +271,11 @@ func (s *Store) GetDeletingService(ctx context.Context, serviceID string) (model
 }
 
 func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSnapshotInput) error {
-	service := input.Service
 	if strings.TrimSpace(input.PlaneID) == "" {
 		return invalidInput(errPlaneIDRequired)
 	}
-	if strings.TrimSpace(service.Metadata.ID) == "" {
+	if strings.TrimSpace(input.ServiceID) == "" {
 		return invalidInput(errServiceIDRequired)
-	}
-	service.Spec.PlaneID = strings.TrimSpace(input.PlaneID)
-	specColumns, err := buildServiceSpecColumns(service.Spec)
-	if err != nil {
-		return err
 	}
 	observedAt := input.ObservedAt.UTC()
 	if observedAt.IsZero() {
@@ -294,7 +289,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	if err != nil {
 		return fmt.Errorf("marshal service cache run: %w", err)
 	}
-	desiredState := strings.TrimSpace(service.Status.DesiredState)
+	desiredState := strings.TrimSpace(input.DesiredState)
 	if desiredState == "" {
 		desiredState = model.DesiredStateActive
 	}
@@ -302,6 +297,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	if desiredState == model.DesiredStateDeleted {
 		phase = model.PhaseDeleting
 	}
+	planeID := strings.TrimSpace(input.PlaneID)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -309,27 +305,31 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, err := getServiceForUpdateTx(ctx, tx, service.Metadata.ID)
+	current, err := getServiceForUpdateTx(ctx, tx, input.ServiceID)
 	if err != nil {
 		if errors.Is(err, ErrServiceNotFound) {
 			return tx.Commit()
 		}
 		return err
 	}
-	if current.Spec.PlaneID != specColumns.PlaneID ||
-		current.Metadata.Generation != service.Metadata.Generation ||
+	if current.Spec.PlaneID != planeID ||
+		current.Metadata.Generation != input.Generation ||
 		current.Status.DesiredState != model.DesiredStateActive ||
 		desiredState != model.DesiredStateActive ||
-		strings.TrimSpace(service.Metadata.Name) != current.Metadata.Name ||
-		cleanServiceDomain(service.Metadata.Host) != current.Metadata.Host {
+		strings.TrimSpace(input.Name) != current.Metadata.Name ||
+		cleanServiceDomain(input.Host) != current.Metadata.Host {
 		return tx.Commit()
+	}
+	specColumns, err := buildServiceSpecColumns(current.Spec)
+	if err != nil {
+		return err
 	}
 
 	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
-		ServiceID:          service.Metadata.ID,
+		ServiceID:          input.ServiceID,
 		Spec:               specColumns,
 		RunJSON:            runJSON,
-		ObservedGeneration: service.Metadata.Generation,
+		ObservedGeneration: input.Generation,
 		Phase:              phase,
 		Message:            message,
 		LastObservedAt:     &observedAt,
@@ -522,7 +522,7 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	}
 	nextRun := current.Status.Run
 	if input.Run != nil {
-		nextRun = model.CloneRunStatus(*input.Run)
+		nextRun = *input.Run
 	}
 	if !model.IsRunPhase(nextRun.Phase) {
 		return errInvalidServiceRunPhase
@@ -746,18 +746,11 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 
 func encodeServiceRun(input model.RunStatus) ([]byte, error) {
 	record := serviceRunRecord{
-		CurrentRunID:   strings.TrimSpace(input.CurrentRunID),
-		LatestRunID:    strings.TrimSpace(input.LatestRunID),
-		Phase:          strings.TrimSpace(input.Phase),
-		Message:        input.Message,
-		LastObservedAt: input.LastObservedAt,
+		Phase:   strings.TrimSpace(input.Phase),
+		Message: input.Message,
 	}
 	if !model.IsRunPhase(record.Phase) {
 		return nil, errInvalidServiceRunPhase
-	}
-	if record.LastObservedAt != nil {
-		value := record.LastObservedAt.UTC()
-		record.LastObservedAt = &value
 	}
 	return json.Marshal(record)
 }
@@ -774,15 +767,8 @@ func decodeServiceRun(data []byte) (model.RunStatus, error) {
 		return model.RunStatus{}, errInvalidServiceRunPhase
 	}
 	out := model.RunStatus{
-		CurrentRunID:   record.CurrentRunID,
-		LatestRunID:    record.LatestRunID,
-		Phase:          record.Phase,
-		Message:        record.Message,
-		LastObservedAt: record.LastObservedAt,
-	}
-	if out.LastObservedAt != nil {
-		value := out.LastObservedAt.UTC()
-		out.LastObservedAt = &value
+		Phase:   record.Phase,
+		Message: record.Message,
 	}
 	return out, nil
 }

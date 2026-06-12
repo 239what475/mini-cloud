@@ -102,7 +102,7 @@ func TestIntegrationApplyExecutionPlanRetriesFailedPlan(t *testing.T) {
 	}
 }
 
-func TestIntegrationReplacementRunStaysOnCurrentNode(t *testing.T) {
+func TestIntegrationReplacementRunStopsCurrentContainerBeforeStartingNewRun(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	currentNode := seedReadyNode(t, ctx, db, "node-replace-current", "i-node-replace-current")
@@ -153,6 +153,20 @@ func TestIntegrationReplacementRunStaysOnCurrentNode(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyExecutionPlan(g2) returned error: %v", err)
 	}
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
+		PlanID:            "svc-replace-g2",
+		ServiceID:         "svc-replace",
+		ServiceName:       "replace-web",
+		ServiceGeneration: 2,
+		Image:             "nginx:1.28-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan(g2 retry) returned error: %v", err)
+	}
 
 	otherWork, err := db.Store.CreateExecutionClaim(ctx, otherNode.ID)
 	if err != nil {
@@ -162,23 +176,43 @@ func TestIntegrationReplacementRunStaysOnCurrentNode(t *testing.T) {
 		t.Fatalf("other node claimed replacement work: %+v", otherWork)
 	}
 
+	deleteWork, err := db.Store.CreateExecutionClaim(ctx, currentNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(delete old run) returned error: %v", err)
+	}
+	if deleteWork == nil {
+		t.Fatal("CreateExecutionClaim(delete old run) returned nil work item")
+	}
+	if deleteWork.Action != cloudmodel.WorkActionDelete || deleteWork.ContainerID != "ctr-replace-v1" {
+		t.Fatalf("delete old run work = %+v, want delete work for old container", deleteWork)
+	}
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, currentNode.ID, deleteWork.ExecutionID, cloudmodel.ReportInput{
+		Status:        cloudmodel.StatusSucceeded,
+		Reason:        "replacement stopped previous container",
+		ContainerID:   deleteWork.ContainerID,
+		ContainerName: deleteWork.ContainerName,
+		HostPort:      deleteWork.HostPort,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(delete old run) returned error: %v", err)
+	}
+
 	replacementWork, err := db.Store.CreateExecutionClaim(ctx, currentNode.ID)
 	if err != nil {
-		t.Fatalf("CreateExecutionClaim(current node) returned error: %v", err)
+		t.Fatalf("CreateExecutionClaim(new run) returned error: %v", err)
 	}
 	if replacementWork == nil {
-		t.Fatal("CreateExecutionClaim(current node) returned nil work item")
+		t.Fatal("CreateExecutionClaim(new run) returned nil work item")
 	}
-	if replacementWork.PlanID != "svc-replace-g2" || replacementWork.NodeID != currentNode.ID {
-		t.Fatalf("replacement work = planID %q nodeID %q, want svc-replace-g2 on %s", replacementWork.PlanID, replacementWork.NodeID, currentNode.ID)
+	if replacementWork.Action != cloudmodel.WorkActionRun || replacementWork.PlanID != "svc-replace-g2" {
+		t.Fatalf("replacement work = %+v, want run work for svc-replace-g2", replacementWork)
 	}
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
 	if err != nil {
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
-	oldSnapshot := findExecutionSnapshot(snapshots, "svc-replace-g1")
-	if oldSnapshot == nil || oldSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("old execution snapshot = %+v, want superseded", oldSnapshot)
+	oldDeleteSnapshot := findExecutionSnapshot(snapshots, "svc-replace-stop-before-g2")
+	if oldDeleteSnapshot == nil || oldDeleteSnapshot.Status != cloudmodel.StatusSucceeded {
+		t.Fatalf("old delete snapshot = %+v, want succeeded", oldDeleteSnapshot)
 	}
 }
 
@@ -318,8 +352,8 @@ func TestIntegrationDeletePendingExecutionPlanCompletesWithoutNodeAgent(t *testi
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
 	runSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-g1")
-	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("run snapshot = %+v, want superseded", runSnapshot)
+	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusFailed {
+		t.Fatalf("run snapshot = %+v, want failed", runSnapshot)
 	}
 	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-delete-g2")
 	if deleteSnapshot == nil {
@@ -378,8 +412,8 @@ func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNode
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
 	runSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-g1")
-	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("run snapshot = %+v, want superseded", runSnapshot)
+	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusFailed {
+		t.Fatalf("run snapshot = %+v, want failed", runSnapshot)
 	}
 	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-delete-g2")
 	if deleteSnapshot == nil || deleteSnapshot.Status != cloudmodel.StatusSucceeded {

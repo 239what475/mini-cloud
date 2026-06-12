@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,16 +67,18 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
 	workloadLogs := &fakeWorkloadLogs{}
-	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 	opts := testOptions()
 	opts.Observability.WorkloadLogs = workloadLogs.Start
+	opts.Readiness.Timeout = time.Second
+	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusOK)
+	opts.Node.PrivateIP = readinessHost
 	containerRuntime := &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
 		ContainerName: "svc-web-0",
-		HostPort:      32080,
+		HostPort:      readinessPort,
 	}}
 
-	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
+	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
 	if err != nil {
 		t.Fatalf("ExecuteNext returned error: %v", err)
 	}
@@ -88,17 +92,11 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	if report.GetStatus() != executionStatusRunning {
 		t.Fatalf("report status = %q, want running", report.GetStatus())
 	}
-	if report.GetHostPort() != 32080 {
-		t.Fatalf("report host port = %d, want 32080", report.GetHostPort())
+	if report.GetHostPort() != int32(readinessPort) {
+		t.Fatalf("report host port = %d, want %d", report.GetHostPort(), readinessPort)
 	}
 	if len(workloadLogs.starts) != 1 {
 		t.Fatalf("workload log start count = %d, want 1", len(workloadLogs.starts))
-	}
-	if len(readinessWaiter.urls) != 1 {
-		t.Fatalf("readiness check count = %d, want 1", len(readinessWaiter.urls))
-	}
-	if readinessWaiter.urls[0] != "http://127.0.0.1:32080/healthz" {
-		t.Fatalf("readiness url = %q, want localhost readiness URL", readinessWaiter.urls[0])
 	}
 }
 
@@ -111,19 +109,16 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 		runResult: runtime.RunResult{
 			ContainerID:   "container-new",
 			ContainerName: "svc-web-0",
-			HostPort:      32080,
 		},
 		logs: "workload boot failed",
 	}
 	opts := testOptions()
-	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{
-		URL: "http://127.0.0.1:32080/healthz",
-		Observations: []ReadinessObservation{
-			{Attempt: 1, StatusCode: http.StatusInternalServerError, Error: "unexpected status 500"},
-		},
-	}}
+	opts.Readiness.Timeout = time.Second
+	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusInternalServerError)
+	opts.Node.PrivateIP = readinessHost
+	containerRuntime.runResult.HostPort = readinessPort
 
-	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
+	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure", err)
 	}
@@ -173,13 +168,15 @@ func TestExecuteNextReturnsReportError(t *testing.T) {
 		reportErr: errors.New("control plane unavailable"),
 	})
 	opts := testOptions()
-	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
+	opts.Readiness.Timeout = time.Second
+	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusOK)
+	opts.Node.PrivateIP = readinessHost
 
-	_, err := executeNext(context.Background(), testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
+	_, err := ExecuteNext(context.Background(), testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
 		ContainerName: "svc-web-0",
-		HostPort:      32080,
-	}}, opts, readinessWaiter)
+		HostPort:      readinessPort,
+	}}, opts)
 	if err == nil || !strings.Contains(err.Error(), "report running execution") {
 		t.Fatalf("ExecuteNext error = %v, want report running error", err)
 	}
@@ -192,19 +189,15 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
 	opts := testOptions()
-	readinessWaiter := &fakeReadinessWaiter{beforeWait: cancel, result: ReadinessResult{
-		URL: "http://127.0.0.1:32080/healthz",
-		Observations: []ReadinessObservation{
-			{Attempt: 1, Error: context.Canceled.Error()},
-		},
-	}}
+	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusOK)
+	opts.Node.PrivateIP = readinessHost
 	containerRuntime := &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
 		ContainerName: "svc-web-0",
-		HostPort:      32080,
-	}}
+		HostPort:      readinessPort,
+	}, afterRun: cancel}
 
-	result, err := executeNext(ctx, testLogger(), client, containerRuntime, opts, readinessWaiter)
+	result, err := ExecuteNext(ctx, testLogger(), client, containerRuntime, opts)
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure after cancellation", err)
 	}
@@ -284,6 +277,25 @@ func testWorkItem() *nodeagentv1.WorkItem {
 	}
 }
 
+func newReadinessTestServer(t *testing.T, statusCode int) (string, int) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(statusCode)
+	}))
+	t.Cleanup(server.Close)
+
+	host, portText, err := net.SplitHostPort(server.Listener.Addr().String())
+	if err != nil {
+		t.Fatalf("split readiness server address: %v", err)
+	}
+	port, err := strconv.Atoi(portText)
+	if err != nil {
+		t.Fatalf("parse readiness server port: %v", err)
+	}
+	return host, port
+}
+
 type workTestService struct {
 	nodeagentv1.UnimplementedNodeAgentServiceServer
 
@@ -357,9 +369,13 @@ type fakeRuntime struct {
 	runErr    error
 	logs      string
 	stops     []string
+	afterRun  func()
 }
 
 func (f *fakeRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
+	if f.afterRun != nil {
+		f.afterRun()
+	}
 	return f.runResult, f.runErr
 }
 
@@ -370,23 +386,6 @@ func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 
 func (f *fakeRuntime) Logs(context.Context, string, int) (string, error) {
 	return f.logs, nil
-}
-
-type fakeReadinessWaiter struct {
-	result     ReadinessResult
-	beforeWait func()
-	urls       []string
-}
-
-func (f *fakeReadinessWaiter) Wait(_ context.Context, cfg ReadinessConfig) ReadinessResult {
-	f.urls = append(f.urls, cfg.URL)
-	if f.beforeWait != nil {
-		f.beforeWait()
-	}
-	if f.result.URL == "" {
-		f.result.URL = cfg.URL
-	}
-	return f.result
 }
 
 type fakeWorkloadLogs struct {
