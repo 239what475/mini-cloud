@@ -19,7 +19,8 @@ var (
 	ErrServiceNotFound           = errors.New("service not found")
 	ErrServiceNameAlreadyExists  = errors.New("service name already exists")
 	ErrServiceHostAlreadyExists  = errors.New("service host already exists")
-	ErrServiceGenerationConflict = errors.New("service generation changed before reconcile write could be committed")
+	ErrServiceGenerationConflict = errors.New("service generation changed before status write could be committed")
+	errServiceIDRequired         = errors.New("serviceID is required")
 	errServiceNameRequired       = errors.New("name is required")
 	errServiceHostRequired       = errors.New("host is required")
 	errInvalidServiceName        = errors.New("name must use lowercase letters, digits, and hyphens")
@@ -38,28 +39,28 @@ var (
 )
 
 const serviceSelectColumns = `
-	id,
-	name,
-	display_name,
-	host,
-	spec_plane_id,
-	spec_instance_class,
-	spec_exposure,
-	spec_image,
-	spec_command_json,
-	spec_args_json,
-	spec_default_port,
-	spec_readiness_path,
-	spec_env_json,
-	status_run_json,
-	generation,
-	status_desired_state,
-	status_observed_generation,
-	status_phase,
-	status_message,
-	status_last_reconciled_at,
-	created_at,
-	updated_at
+	b.id,
+	b.name,
+	b.display_name,
+	b.host,
+	b.plane_id,
+	c.instance_class,
+	c.exposure,
+	c.image,
+	c.command_json,
+	c.args_json,
+	c.default_port,
+	c.readiness_path,
+	c.env_json,
+	c.run_json,
+	b.generation,
+	b.desired_state,
+	c.observed_generation,
+	c.phase,
+	c.message,
+	c.last_observed_at,
+	b.created_at,
+	b.updated_at
 `
 
 type CreateServiceInput struct {
@@ -78,8 +79,15 @@ type UpdateServiceStatusInput struct {
 	ObservedGeneration int64
 	Phase              string
 	Message            string
-	LastReconciledAt   *time.Time
+	LastObservedAt     *time.Time
 	Run                *model.RunStatus
+}
+
+type UpsertServiceSnapshotInput struct {
+	PlaneID       string
+	Service       model.Service
+	ObservedAt    time.Time
+	StatusMessage string
 }
 
 type serviceSpecColumns struct {
@@ -150,84 +158,65 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	if err != nil {
 		return model.Service{}, err
 	}
-
 	initialStatus := model.PendingServiceStatus(0, "waiting for cloud-plane service apply")
 	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
 
-	item, err := scanService(s.db.QueryRowContext(ctx, `
-		INSERT INTO services (
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return model.Service{}, fmt.Errorf("begin create service binding tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO service_bindings (
 			id,
 			name,
 			display_name,
 			host,
-			spec_plane_id,
-			spec_instance_class,
-			spec_exposure,
-			spec_image,
-			spec_command_json,
-			spec_args_json,
-			spec_default_port,
-			spec_readiness_path,
-			spec_env_json,
-			status_run_json,
+			plane_id,
 			generation,
-			status_desired_state,
-			status_observed_generation,
-			status_phase,
-			status_message,
-			status_last_reconciled_at
+			desired_state
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 1, $15, $16, $17, $18, NULL)
-		RETURNING `+serviceSelectColumns+`
-	`,
-		id,
-		strings.TrimSpace(input.Name),
-		strings.TrimSpace(input.DisplayName),
-		strings.TrimSpace(input.Host),
-		specColumns.PlaneID,
-		specColumns.InstanceClass,
-		specColumns.Exposure,
-		specColumns.Image,
-		specColumns.CommandJSON,
-		specColumns.ArgsJSON,
-		specColumns.DefaultPort,
-		specColumns.ReadinessPath,
-		specColumns.EnvJSON,
-		runJSON,
-		model.DesiredStateActive,
-		initialStatus.ObservedGeneration,
-		initialStatus.Phase,
-		initialStatus.Message,
-	))
-	if err != nil {
+		VALUES ($1, $2, $3, $4, $5, 1, $6)
+	`, id, strings.TrimSpace(input.Name), strings.TrimSpace(input.DisplayName), cleanServiceDomain(input.Host), specColumns.PlaneID, model.DesiredStateActive); err != nil {
 		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			switch pgErr.Code {
-			case "23505":
-				switch pgErr.ConstraintName {
-				case "services_host_key":
-					return model.Service{}, ErrServiceHostAlreadyExists
-				default:
-					return model.Service{}, ErrServiceNameAlreadyExists
-				}
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			if pgErr.ConstraintName == "service_bindings_host_key" {
+				return model.Service{}, ErrServiceHostAlreadyExists
 			}
+			return model.Service{}, ErrServiceNameAlreadyExists
 		}
-		return model.Service{}, fmt.Errorf("insert service: %w", err)
+		return model.Service{}, fmt.Errorf("insert service binding: %w", err)
 	}
-	return item, nil
+	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+		ServiceID:          id,
+		Spec:               specColumns,
+		RunJSON:            runJSON,
+		ObservedGeneration: initialStatus.ObservedGeneration,
+		Phase:              initialStatus.Phase,
+		Message:            initialStatus.Message,
+		LastObservedAt:     nil,
+	}); err != nil {
+		return model.Service{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return model.Service{}, fmt.Errorf("commit create service binding tx: %w", err)
+	}
+	return s.GetService(ctx, id)
 }
 
 func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM services
-		ORDER BY created_at ASC, id ASC
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		ORDER BY b.created_at ASC, b.id ASC
 	`)
 	if err != nil {
-		return nil, fmt.Errorf("query services: %w", err)
+		return nil, fmt.Errorf("query service bindings: %w", err)
 	}
 	defer rows.Close()
 
@@ -240,22 +229,141 @@ func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate services: %w", err)
+		return nil, fmt.Errorf("iterate service bindings: %w", err)
 	}
 	return items, nil
+}
+
+func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSnapshotInput) error {
+	service := input.Service
+	if strings.TrimSpace(input.PlaneID) == "" {
+		return invalidInput(errPlaneIDRequired)
+	}
+	if strings.TrimSpace(service.Metadata.ID) == "" {
+		return invalidInput(errServiceIDRequired)
+	}
+	if strings.TrimSpace(service.Metadata.Name) == "" {
+		return invalidInput(errServiceNameRequired)
+	}
+	if strings.TrimSpace(service.Metadata.Host) == "" {
+		return invalidInput(errServiceHostRequired)
+	}
+	specColumns, err := buildServiceSpecColumns(service.Spec)
+	if err != nil {
+		return err
+	}
+	specColumns.PlaneID = strings.TrimSpace(input.PlaneID)
+	observedAt := input.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+	message := strings.TrimSpace(input.StatusMessage)
+	if message == "" {
+		message = "observed from cloud-plane snapshot"
+	}
+	runJSON, err := encodeServiceRun(model.PendingRunStatus(message))
+	if err != nil {
+		return fmt.Errorf("marshal service cache run: %w", err)
+	}
+	desiredState := strings.TrimSpace(service.Status.DesiredState)
+	if desiredState == "" {
+		desiredState = model.DesiredStateActive
+	}
+	phase := model.PhaseProgressing
+	if desiredState == model.DesiredStateDeleted {
+		phase = model.PhaseDeleting
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin upsert service cache tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	result, err := tx.ExecContext(ctx, `
+		INSERT INTO service_bindings (
+			id,
+			name,
+			display_name,
+			host,
+			plane_id,
+			generation,
+			desired_state
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT (id) DO UPDATE
+		SET
+			name = EXCLUDED.name,
+			display_name = EXCLUDED.display_name,
+			host = EXCLUDED.host,
+			plane_id = EXCLUDED.plane_id,
+			generation = EXCLUDED.generation,
+			desired_state = CASE
+				WHEN service_bindings.desired_state = $8 THEN service_bindings.desired_state
+				ELSE EXCLUDED.desired_state
+			END,
+			updated_at = now()
+		WHERE service_bindings.generation <= EXCLUDED.generation
+	`, service.Metadata.ID,
+		strings.TrimSpace(service.Metadata.Name),
+		strings.TrimSpace(service.Metadata.DisplayName),
+		cleanServiceDomain(service.Metadata.Host),
+		specColumns.PlaneID,
+		service.Metadata.Generation,
+		desiredState,
+		model.DesiredStateDeleted,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert service binding snapshot: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return tx.Commit()
+	}
+	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+		ServiceID:          service.Metadata.ID,
+		Spec:               specColumns,
+		RunJSON:            runJSON,
+		ObservedGeneration: service.Metadata.Generation,
+		Phase:              phase,
+		Message:            message,
+		LastObservedAt:     &observedAt,
+	}); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit upsert service cache tx: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) GetService(ctx context.Context, serviceID string) (model.Service, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM services
-		WHERE id = $1
-	`, serviceID))
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.id = $1
+	`, strings.TrimSpace(serviceID)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Service{}, ErrServiceNotFound
 		}
-		return model.Service{}, fmt.Errorf("query service: %w", err)
+		return model.Service{}, fmt.Errorf("query service binding: %w", err)
+	}
+	return item, nil
+}
+
+func (s *Store) GetServiceByHost(ctx context.Context, host string) (model.Service, error) {
+	item, err := scanService(s.db.QueryRowContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.host = $1
+	`, cleanServiceDomain(host)))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Service{}, ErrServiceNotFound
+		}
+		return model.Service{}, fmt.Errorf("query service binding by host: %w", err)
 	}
 	return item, nil
 }
@@ -263,15 +371,16 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (model.Service
 func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (model.Service, error) {
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM services
-		WHERE id = $1
-		FOR UPDATE
-	`, serviceID))
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.id = $1
+		FOR UPDATE OF b, c
+	`, strings.TrimSpace(serviceID)))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Service{}, ErrServiceNotFound
 		}
-		return model.Service{}, fmt.Errorf("query service for update: %w", err)
+		return model.Service{}, fmt.Errorf("query service binding for update: %w", err)
 	}
 	return item, nil
 }
@@ -279,11 +388,9 @@ func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (m
 func (s *Store) UpdateService(ctx context.Context, serviceID string, input UpdateServiceInput) (model.Service, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.Service{}, fmt.Errorf("begin update service tx: %w", err)
+		return model.Service{}, fmt.Errorf("begin update service binding tx: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
@@ -299,79 +406,52 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if _, err := s.GetPlane(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
+	nextGeneration := current.Metadata.Generation + 1
+	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for cloud-plane service apply")
 	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
 
-	nextGeneration := current.Metadata.Generation + 1
-	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for cloud-plane service apply")
-
-	item, err := scanService(tx.QueryRowContext(ctx, `
-		UPDATE services
+	result, err := tx.ExecContext(ctx, `
+		UPDATE service_bindings
 		SET
 			display_name = $2,
-			spec_plane_id = $3,
-			spec_instance_class = $4,
-			spec_exposure = $5,
-			spec_image = $6,
-			spec_command_json = $7,
-			spec_args_json = $8,
-			spec_default_port = $9,
-			spec_readiness_path = $10,
-			spec_env_json = $11,
-			status_run_json = $12,
-			generation = $13,
-			status_desired_state = $14,
-			status_observed_generation = $15,
-			status_phase = $16,
-			status_message = $17,
-			status_last_reconciled_at = NULL,
+			generation = $3,
+			desired_state = $4,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $18
-		RETURNING `+serviceSelectColumns+`
-	`,
-		serviceID,
-		strings.TrimSpace(input.DisplayName),
-		specColumns.PlaneID,
-		specColumns.InstanceClass,
-		specColumns.Exposure,
-		specColumns.Image,
-		specColumns.CommandJSON,
-		specColumns.ArgsJSON,
-		specColumns.DefaultPort,
-		specColumns.ReadinessPath,
-		specColumns.EnvJSON,
-		pendingRunJSON,
-		nextGeneration,
-		model.DesiredStateActive,
-		pendingStatus.ObservedGeneration,
-		pendingStatus.Phase,
-		pendingStatus.Message,
-		current.Metadata.Generation,
-	))
+		  AND generation = $5
+	`, serviceID, strings.TrimSpace(input.DisplayName), nextGeneration, model.DesiredStateActive, current.Metadata.Generation)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
-		}
-		return model.Service{}, fmt.Errorf("update service: %w", err)
+		return model.Service{}, fmt.Errorf("update service binding: %w", err)
 	}
-
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+	}
+	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+		ServiceID:          serviceID,
+		Spec:               specColumns,
+		RunJSON:            pendingRunJSON,
+		ObservedGeneration: pendingStatus.ObservedGeneration,
+		Phase:              pendingStatus.Phase,
+		Message:            pendingStatus.Message,
+		LastObservedAt:     nil,
+	}); err != nil {
+		return model.Service{}, err
+	}
 	if err := tx.Commit(); err != nil {
-		return model.Service{}, fmt.Errorf("commit update service: %w", err)
+		return model.Service{}, fmt.Errorf("commit update service binding tx: %w", err)
 	}
-	return item, nil
+	return s.GetService(ctx, serviceID)
 }
 
 func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID string) (model.Service, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return model.Service{}, fmt.Errorf("begin delete service tx: %w", err)
+		return model.Service{}, fmt.Errorf("begin delete service binding tx: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
@@ -380,7 +460,6 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	if current.Status.DesiredState == model.DesiredStateDeleted {
 		return current, nil
 	}
-
 	nextGeneration := current.Metadata.Generation + 1
 	deletingStatus := model.DeletingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
 	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for remote service teardown"))
@@ -388,55 +467,45 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 		return model.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
 	}
 
-	item, err := scanService(tx.QueryRowContext(ctx, `
-		UPDATE services
+	result, err := tx.ExecContext(ctx, `
+		UPDATE service_bindings
 		SET
 			generation = $2,
-			status_desired_state = $3,
-			status_observed_generation = $4,
-			status_phase = $5,
-			status_message = $6,
-			status_run_json = $7,
-			status_last_reconciled_at = NULL,
+			desired_state = $3,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $8
-		RETURNING `+serviceSelectColumns+`
-	`,
-		serviceID,
-		nextGeneration,
-		model.DesiredStateDeleted,
-		deletingStatus.ObservedGeneration,
-		deletingStatus.Phase,
-		deletingStatus.Message,
-		pendingRunJSON,
-		current.Metadata.Generation,
-	))
+		  AND generation = $4
+	`, serviceID, nextGeneration, model.DesiredStateDeleted, current.Metadata.Generation)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
-		}
-		return model.Service{}, fmt.Errorf("mark service deletion requested: %w", err)
+		return model.Service{}, fmt.Errorf("mark service binding deletion requested: %w", err)
 	}
-
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
+	}
+	if err := updateServiceCacheStatusTx(ctx, tx, serviceID, updateCacheStatusInput{
+		ObservedGeneration: deletingStatus.ObservedGeneration,
+		Phase:              deletingStatus.Phase,
+		Message:            deletingStatus.Message,
+		LastObservedAt:     nil,
+		RunJSON:            pendingRunJSON,
+	}); err != nil {
+		return model.Service{}, err
+	}
 	if err := tx.Commit(); err != nil {
-		return model.Service{}, fmt.Errorf("commit delete service: %w", err)
+		return model.Service{}, fmt.Errorf("commit delete service binding tx: %w", err)
 	}
-	return item, nil
+	return s.GetService(ctx, serviceID)
 }
 
 func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input UpdateServiceStatusInput) error {
 	if !model.IsServicePhase(input.Phase) {
 		return errInvalidServicePhase
 	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin update service status tx: %w", err)
+		return fmt.Errorf("begin update service cache status tx: %w", err)
 	}
-	defer func() {
-		_ = tx.Rollback()
-	}()
+	defer func() { _ = tx.Rollback() }()
 
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
@@ -445,7 +514,6 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	if current.Metadata.Generation != expectedGeneration {
 		return ErrServiceGenerationConflict
 	}
-
 	nextRun := current.Status.Run
 	if input.Run != nil {
 		nextRun = model.CloneRunStatus(*input.Run)
@@ -457,53 +525,34 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	if err != nil {
 		return fmt.Errorf("marshal service run status: %w", err)
 	}
-	query := `
-		UPDATE services
-		SET
-			status_observed_generation = $2,
-			status_phase = $3,
-			status_message = $4,
-			status_last_reconciled_at = $5,
-			status_run_json = $6,
-			updated_at = now()
-		WHERE id = $1
-			AND generation = $7
-	`
-	args := []any{
-		serviceID,
-		input.ObservedGeneration,
-		input.Phase,
-		input.Message,
-		input.LastReconciledAt,
-		runJSON,
-		expectedGeneration,
-	}
-	result, err := tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		return fmt.Errorf("update service status: %w", err)
-	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		return classifyServiceGenerationConflict(ctx, s, serviceID, expectedGeneration)
+	if err := updateServiceCacheStatusTx(ctx, tx, serviceID, updateCacheStatusInput{
+		ObservedGeneration: input.ObservedGeneration,
+		Phase:              input.Phase,
+		Message:            input.Message,
+		LastObservedAt:     input.LastObservedAt,
+		RunJSON:            runJSON,
+	}); err != nil {
+		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update service status tx: %w", err)
+		return fmt.Errorf("commit update service cache status tx: %w", err)
 	}
 	return nil
 }
 
 func (s *Store) DeleteServiceForGeneration(ctx context.Context, serviceID string, expectedGeneration int64) error {
 	row := s.db.QueryRowContext(ctx, `
-		DELETE FROM services
+		DELETE FROM service_bindings
 		WHERE id = $1
-			AND generation = $2
+		  AND generation = $2
 		RETURNING id
-	`, serviceID, expectedGeneration)
+	`, strings.TrimSpace(serviceID), expectedGeneration)
 	var deletedID string
 	if err := row.Scan(&deletedID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return classifyServiceGenerationConflict(ctx, s, serviceID, expectedGeneration)
 		}
-		return fmt.Errorf("delete service for generation: %w", err)
+		return fmt.Errorf("delete service binding for generation: %w", err)
 	}
 	return nil
 }
@@ -519,13 +568,108 @@ func classifyServiceGenerationConflict(ctx context.Context, stores *Store, servi
 	return ErrServiceNotFound
 }
 
+type serviceCacheInput struct {
+	ServiceID          string
+	Spec               serviceSpecColumns
+	RunJSON            []byte
+	ObservedGeneration int64
+	Phase              string
+	Message            string
+	LastObservedAt     *time.Time
+}
+
+func upsertServiceCacheTx(ctx context.Context, tx *sql.Tx, input serviceCacheInput) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO service_caches (
+			service_id,
+			instance_class,
+			exposure,
+			image,
+			command_json,
+			args_json,
+			default_port,
+			readiness_path,
+			env_json,
+			run_json,
+			observed_generation,
+			phase,
+			message,
+			last_observed_at
+		)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		ON CONFLICT (service_id) DO UPDATE
+		SET
+			instance_class = EXCLUDED.instance_class,
+			exposure = EXCLUDED.exposure,
+			image = EXCLUDED.image,
+			command_json = EXCLUDED.command_json,
+			args_json = EXCLUDED.args_json,
+			default_port = EXCLUDED.default_port,
+			readiness_path = EXCLUDED.readiness_path,
+			env_json = EXCLUDED.env_json,
+			run_json = EXCLUDED.run_json,
+			observed_generation = EXCLUDED.observed_generation,
+			phase = EXCLUDED.phase,
+			message = EXCLUDED.message,
+			last_observed_at = EXCLUDED.last_observed_at,
+			updated_at = now()
+	`, strings.TrimSpace(input.ServiceID),
+		input.Spec.InstanceClass,
+		input.Spec.Exposure,
+		input.Spec.Image,
+		input.Spec.CommandJSON,
+		input.Spec.ArgsJSON,
+		input.Spec.DefaultPort,
+		input.Spec.ReadinessPath,
+		input.Spec.EnvJSON,
+		input.RunJSON,
+		input.ObservedGeneration,
+		input.Phase,
+		input.Message,
+		input.LastObservedAt,
+	)
+	if err != nil {
+		return fmt.Errorf("upsert service cache: %w", err)
+	}
+	return nil
+}
+
+type updateCacheStatusInput struct {
+	ObservedGeneration int64
+	Phase              string
+	Message            string
+	LastObservedAt     *time.Time
+	RunJSON            []byte
+}
+
+func updateServiceCacheStatusTx(ctx context.Context, tx *sql.Tx, serviceID string, input updateCacheStatusInput) error {
+	result, err := tx.ExecContext(ctx, `
+		UPDATE service_caches
+		SET
+			observed_generation = $2,
+			phase = $3,
+			message = $4,
+			last_observed_at = $5,
+			run_json = $6,
+			updated_at = now()
+		WHERE service_id = $1
+	`, strings.TrimSpace(serviceID), input.ObservedGeneration, input.Phase, input.Message, input.LastObservedAt, input.RunJSON)
+	if err != nil {
+		return fmt.Errorf("update service cache status: %w", err)
+	}
+	if affected, _ := result.RowsAffected(); affected == 0 {
+		return ErrServiceNotFound
+	}
+	return nil
+}
+
 func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, error) {
 	var item model.Service
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
 	var runJSON []byte
-	var lastReconciledAt sql.NullTime
+	var lastObservedAt sql.NullTime
 	if err := scanner.Scan(
 		&item.Metadata.ID,
 		&item.Metadata.Name,
@@ -546,7 +690,7 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		&item.Status.Observed.ObservedGeneration,
 		&item.Status.Observed.Phase,
 		&item.Status.Observed.Message,
-		&lastReconciledAt,
+		&lastObservedAt,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
@@ -587,9 +731,9 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		return model.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
 	item.Status.Run = runStatus
-	if lastReconciledAt.Valid {
-		lastValue := lastReconciledAt.Time.UTC()
-		item.Status.Observed.LastReconciledAt = &lastValue
+	if lastObservedAt.Valid {
+		lastValue := lastObservedAt.Time.UTC()
+		item.Status.Observed.LastObservedAt = &lastValue
 	}
 	return item, nil
 }
@@ -698,7 +842,7 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service env: %w", err)
 	}
-	out := serviceSpecColumns{
+	return serviceSpecColumns{
 		PlaneID:       planeID,
 		InstanceClass: instanceClass,
 		Exposure:      exposure,
@@ -708,8 +852,7 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 		DefaultPort:   spec.DefaultPort,
 		ReadinessPath: strings.TrimSpace(spec.ReadinessPath),
 		EnvJSON:       envJSON,
-	}
-	return out, nil
+	}, nil
 }
 
 func resolveServicePlacementFields(planeID string, instanceClass string) (string, string, error) {

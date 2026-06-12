@@ -57,6 +57,7 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	}
 	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
 	serviceController := coordination.NewServiceController(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain)
+	serviceController.SetPlaneSyncer(planeSyncer)
 
 	logQueryService := logquery.NewService(
 		cfg.Logs.Loki.URL,

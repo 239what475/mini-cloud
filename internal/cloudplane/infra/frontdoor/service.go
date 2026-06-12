@@ -109,11 +109,6 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 			continue
 		}
 		if s.store != nil {
-			if err := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, CNAME: cname, Verification: verification}); err != nil {
-				return err
-			}
-		}
-		if s.store != nil {
 			if err := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, CNAME: cname}); err != nil {
 				return err
 			}

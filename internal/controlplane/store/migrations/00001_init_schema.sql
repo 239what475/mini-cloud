@@ -31,37 +31,56 @@ CREATE TABLE IF NOT EXISTS plane_statuses (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS services (
+CREATE TABLE IF NOT EXISTS service_bindings (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
     host TEXT NOT NULL,
-    spec_plane_id TEXT NOT NULL,
-    spec_instance_class TEXT NOT NULL DEFAULT 'small',
-    spec_exposure TEXT NOT NULL,
-    spec_image TEXT NOT NULL,
-    spec_command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    spec_args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    spec_default_port INTEGER NOT NULL,
-    spec_readiness_path TEXT NOT NULL,
-    spec_env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    status_run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb,
+    plane_id TEXT NOT NULL,
     generation BIGINT NOT NULL DEFAULT 1,
-    status_desired_state TEXT NOT NULL DEFAULT 'active',
-    status_observed_generation BIGINT NOT NULL DEFAULT 0,
-    status_phase TEXT NOT NULL DEFAULT 'pending',
-    status_message TEXT NOT NULL DEFAULT '',
-    status_last_reconciled_at TIMESTAMPTZ NULL,
+    desired_state TEXT NOT NULL DEFAULT 'active',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT services_name_key UNIQUE (name),
-    CONSTRAINT services_host_key UNIQUE (host),
-    CONSTRAINT services_plane_fk
-        FOREIGN KEY (spec_plane_id) REFERENCES planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+    CONSTRAINT service_bindings_name_key UNIQUE (name),
+    CONSTRAINT service_bindings_host_key UNIQUE (host),
+    CONSTRAINT service_bindings_plane_fk
+        FOREIGN KEY (plane_id) REFERENCES planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE INDEX IF NOT EXISTS idx_services_created_at
-    ON services (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_bindings_created_at
+    ON service_bindings (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS service_caches (
+    service_id TEXT PRIMARY KEY REFERENCES service_bindings(id) ON DELETE CASCADE,
+    instance_class TEXT NOT NULL DEFAULT 'small',
+    exposure TEXT NOT NULL,
+    image TEXT NOT NULL,
+    command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    default_port INTEGER NOT NULL,
+    readiness_path TEXT NOT NULL,
+    env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb,
+    observed_generation BIGINT NOT NULL DEFAULT 0,
+    phase TEXT NOT NULL DEFAULT 'pending',
+    message TEXT NOT NULL DEFAULT '',
+    last_observed_at TIMESTAMPTZ NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS service_dns_records (
+    service_id TEXT NOT NULL REFERENCES service_bindings(id) ON DELETE CASCADE,
+    host TEXT NOT NULL,
+    record_type TEXT NOT NULL,
+    value TEXT NOT NULL DEFAULT '',
+    purpose TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (service_id, host, record_type, purpose)
+);
+
+CREATE INDEX IF NOT EXISTS idx_service_dns_records_host_type
+    ON service_dns_records (host, record_type);
 
 CREATE TABLE IF NOT EXISTS plane_node_inventory_states (
     plane_id TEXT PRIMARY KEY REFERENCES planes(id) ON DELETE CASCADE,
@@ -103,8 +122,11 @@ CREATE INDEX IF NOT EXISTS idx_plane_nodes_plane_status
 DROP INDEX IF EXISTS idx_plane_nodes_plane_status;
 DROP TABLE IF EXISTS plane_nodes;
 DROP TABLE IF EXISTS plane_node_inventory_states;
-DROP INDEX IF EXISTS idx_services_created_at;
-DROP TABLE IF EXISTS services;
+DROP INDEX IF EXISTS idx_service_dns_records_host_type;
+DROP TABLE IF EXISTS service_dns_records;
+DROP TABLE IF EXISTS service_caches;
+DROP INDEX IF EXISTS idx_service_bindings_created_at;
+DROP TABLE IF EXISTS service_bindings;
 DROP TABLE IF EXISTS plane_statuses;
 DROP TABLE IF EXISTS planes;
 DROP INDEX IF EXISTS idx_control_events_action_created_at;

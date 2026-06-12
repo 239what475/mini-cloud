@@ -168,6 +168,155 @@ func TestIntegrationCreateServicePersistsEnv(t *testing.T) {
 	}
 }
 
+func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeletingService(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "cache-plane",
+		DisplayName:  "Cache Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "cache-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "cache-api",
+		DisplayName: "Cache API",
+		Host:        "cache-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
+		PlaneID: planeItem.ID,
+		Service: model.Service{
+			Metadata: model.ServiceMetadata{
+				ID:          serviceItem.Metadata.ID,
+				Name:        "cache-api",
+				DisplayName: "Cache API",
+				Host:        "cache-api.apps.example.test",
+				Generation:  deleting.Metadata.Generation,
+			},
+			Spec: model.ServiceSpec{
+				InstanceClass: model.InstanceClassSmall,
+				Exposure:      model.ExposurePublic,
+				Image:         "nginx:1.28-alpine",
+				DefaultPort:   80,
+				ReadinessPath: "/",
+			},
+			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
+	}
+	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if reloaded.Metadata.Generation != deleting.Metadata.Generation {
+		t.Fatalf("generation = %d, want %d", reloaded.Metadata.Generation, deleting.Metadata.Generation)
+	}
+	if reloaded.Status.DesiredState != model.DesiredStateDeleted {
+		t.Fatalf("desired state = %q, want deleted", reloaded.Status.DesiredState)
+	}
+	if reloaded.Spec.Image != "nginx:1.28-alpine" {
+		t.Fatalf("image = %q, want snapshot cache update", reloaded.Spec.Image)
+	}
+}
+
+func TestIntegrationUpsertServiceSnapshotIgnoresStaleGeneration(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "stale-cache-plane",
+		DisplayName:  "Stale Cache Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "stale-cache-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "stale-cache-api",
+		DisplayName: "Stale Cache API",
+		Host:        "stale-cache-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	updated, err := db.Store.UpdateService(ctx, serviceItem.Metadata.ID, controlplanestore.UpdateServiceInput{
+		DisplayName: "Stale Cache API",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.28-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateService returned error: %v", err)
+	}
+
+	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
+		PlaneID: planeItem.ID,
+		Service: model.Service{
+			Metadata: model.ServiceMetadata{
+				ID:          serviceItem.Metadata.ID,
+				Name:        serviceItem.Metadata.Name,
+				DisplayName: serviceItem.Metadata.DisplayName,
+				Host:        serviceItem.Metadata.Host,
+				Generation:  serviceItem.Metadata.Generation,
+			},
+			Spec: model.ServiceSpec{
+				InstanceClass: model.InstanceClassSmall,
+				Exposure:      model.ExposurePublic,
+				Image:         "nginx:stale",
+				DefaultPort:   80,
+				ReadinessPath: "/",
+			},
+			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertServiceSnapshot(stale) returned error: %v", err)
+	}
+	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if reloaded.Metadata.Generation != updated.Metadata.Generation {
+		t.Fatalf("generation = %d, want %d", reloaded.Metadata.Generation, updated.Metadata.Generation)
+	}
+	if reloaded.Spec.Image != "nginx:1.28-alpine" {
+		t.Fatalf("image = %q, want stale snapshot ignored", reloaded.Spec.Image)
+	}
+}
+
 func TestIntegrationCreateServiceNormalizesStoredSpec(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
@@ -292,7 +441,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("UpdateServiceStatusForGeneration for updated service returned error: %v", err)
 	}
 	var runJSON []byte
-	if err := db.DB.QueryRowContext(ctx, `SELECT status_run_json FROM services WHERE id = $1`, updated.Metadata.ID).Scan(&runJSON); err != nil {
+	if err := db.DB.QueryRowContext(ctx, `SELECT run_json FROM service_caches WHERE service_id = $1`, updated.Metadata.ID).Scan(&runJSON); err != nil {
 		t.Fatalf("query service run json returned error: %v", err)
 	}
 	var runRecord map[string]any

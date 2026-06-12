@@ -56,7 +56,7 @@ func (c *ServiceController) updateServiceStatus(ctx context.Context, serviceID s
 		ObservedGeneration: status.ObservedGeneration,
 		Phase:              status.Phase,
 		Message:            status.Message,
-		LastReconciledAt:   status.LastReconciledAt,
+		LastObservedAt:     status.LastObservedAt,
 		Run:                run,
 	}
 	err := c.store.UpdateServiceStatusForGeneration(ctx, serviceID, expectedGeneration, input)
@@ -72,7 +72,7 @@ func serviceAcceptedStatus(generation int64) model.ServiceObservedStatus {
 		ObservedGeneration: generation,
 		Phase:              model.PhaseProgressing,
 		Message:            "service accepted by cloud-plane",
-		LastReconciledAt:   &now,
+		LastObservedAt:     &now,
 	}
 }
 
@@ -82,18 +82,18 @@ func serviceDeletingStatus(generation int64) model.ServiceObservedStatus {
 		ObservedGeneration: generation,
 		Phase:              model.PhaseDeleting,
 		Message:            "service delete accepted by cloud-plane",
-		LastReconciledAt:   &now,
+		LastObservedAt:     &now,
 	}
 }
 
 func failedServiceStatus(generation int64, err error) model.ServiceObservedStatus {
 	now := time.Now().UTC()
-	message := fmt.Sprintf("service reconcile failed: %v", err)
+	message := fmt.Sprintf("service dispatch failed: %v", err)
 	return model.ServiceObservedStatus{
 		ObservedGeneration: generation,
 		Phase:              model.PhaseDegraded,
 		Message:            message,
-		LastReconciledAt:   &now,
+		LastObservedAt:     &now,
 	}
 }
 
@@ -104,6 +104,6 @@ func deletingFailureServiceStatus(generation int64, err error) model.ServiceObse
 		ObservedGeneration: generation,
 		Phase:              model.PhaseDeleting,
 		Message:            message,
-		LastReconciledAt:   &now,
+		LastObservedAt:     &now,
 	}
 }

@@ -113,6 +113,9 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 	if err := s.store.ReplacePlaneNodeInventory(ctx, planeID, buildNodeInventory(snapshot)); err != nil {
 		return err
 	}
+	if err := s.applyServiceSnapshots(ctx, planeID, checkedAt, snapshot.GetServices()); err != nil {
+		return err
+	}
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
 		return err
 	}
@@ -174,6 +177,9 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		}
 		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
 			if strings.TrimSpace(item.GetStatus()) == planeExecutionStatusSucceeded {
+				if err := s.deleteServiceDNS(ctx, serviceItem); err != nil {
+					return err
+				}
 				if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
 					!errors.Is(err, store.ErrServiceNotFound) &&
 					!errors.Is(err, store.ErrServiceGenerationConflict) {
@@ -187,12 +193,29 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
 			Message:            status.Observed.Message,
-			LastReconciledAt:   status.Observed.LastReconciledAt,
+			LastObservedAt:     status.Observed.LastObservedAt,
 			Run:                &status.Run,
 		}); err != nil {
 			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 				continue
 			}
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *PlaneSyncer) applyServiceSnapshots(ctx context.Context, planeID string, observedAt time.Time, services []*cloudplanev1.PlaneService) error {
+	for _, item := range services {
+		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" {
+			continue
+		}
+		if err := s.store.UpsertServiceSnapshot(ctx, store.UpsertServiceSnapshotInput{
+			PlaneID:       planeID,
+			Service:       serviceFromPlaneSnapshot(planeID, item),
+			ObservedAt:    observedAt,
+			StatusMessage: "observed from cloud-plane snapshot",
+		}); err != nil {
 			return err
 		}
 	}
@@ -207,6 +230,13 @@ func (s *PlaneSyncer) applyFrontDoorDNS(ctx context.Context, planeID string, dom
 		if item == nil || strings.TrimSpace(item.GetHost()) == "" {
 			continue
 		}
+		serviceItem, err := s.serviceForFrontDoorDomain(ctx, planeID, item.GetHost())
+		if err != nil {
+			if errors.Is(err, store.ErrServiceNotFound) {
+				continue
+			}
+			return err
+		}
 		if strings.TrimSpace(item.GetVerifySubdomain()) != "" && strings.TrimSpace(item.GetVerifyValue()) != "" {
 			recordType := strings.TrimSpace(item.GetVerifyType())
 			if recordType == "" {
@@ -215,12 +245,79 @@ func (s *PlaneSyncer) applyFrontDoorDNS(ctx context.Context, planeID string, dom
 			if err := s.dns.EnsureRecord(ctx, item.GetVerifySubdomain(), recordType, item.GetVerifyValue()); err != nil {
 				return fmt.Errorf("ensure frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
 			}
+			if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+				ServiceID:  serviceItem.Metadata.ID,
+				Host:       item.GetVerifySubdomain(),
+				RecordType: recordType,
+				Value:      item.GetVerifyValue(),
+				Purpose:    store.DNSRecordPurposeFrontDoorVerification,
+			}); err != nil {
+				return err
+			}
 		}
 		if strings.TrimSpace(item.GetCname()) == "" {
 			continue
 		}
 		if err := s.dns.EnsureRecord(ctx, item.GetHost(), "CNAME", item.GetCname()); err != nil {
 			return fmt.Errorf("ensure frontdoor CNAME DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+		}
+		if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+			ServiceID:  serviceItem.Metadata.ID,
+			Host:       item.GetHost(),
+			RecordType: "CNAME",
+			Value:      item.GetCname(),
+			Purpose:    store.DNSRecordPurposeFrontDoorCNAME,
+		}); err != nil {
+			return err
+		}
+		if err := s.deleteServiceVerificationDNS(ctx, serviceItem); err != nil {
+			return fmt.Errorf("delete frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+		}
+	}
+	return nil
+}
+
+func (s *PlaneSyncer) serviceForFrontDoorDomain(ctx context.Context, planeID string, host string) (model.Service, error) {
+	serviceItem, err := s.store.GetServiceByHost(ctx, host)
+	if err != nil {
+		return model.Service{}, err
+	}
+	if strings.TrimSpace(serviceItem.Spec.PlaneID) != planeID {
+		return model.Service{}, store.ErrServiceNotFound
+	}
+	return serviceItem, nil
+}
+
+func (s *PlaneSyncer) deleteServiceDNS(ctx context.Context, serviceItem model.Service) error {
+	if s.dns == nil {
+		return nil
+	}
+	records, err := s.store.ListServiceDNSRecords(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err := s.dns.DeleteRecord(ctx, record.Host, record.RecordType, record.Value); err != nil {
+			return fmt.Errorf("delete DNS record %s %s for service %s: %w", record.Host, record.RecordType, serviceItem.Metadata.ID, err)
+		}
+	}
+	return s.store.DeleteServiceDNSRecords(ctx, serviceItem.Metadata.ID)
+}
+
+func (s *PlaneSyncer) deleteServiceVerificationDNS(ctx context.Context, serviceItem model.Service) error {
+	records, err := s.store.ListServiceDNSRecords(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if record.Purpose != store.DNSRecordPurposeFrontDoorVerification {
+			continue
+		}
+		if err := s.dns.DeleteRecord(ctx, record.Host, record.RecordType, record.Value); err != nil {
+			return err
+		}
+		if err := s.store.DeleteServiceDNSRecord(ctx, record); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -264,9 +361,44 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudpl
 			ObservedGeneration: item.GetServiceGeneration(),
 			Phase:              phase,
 			Message:            message,
-			LastReconciledAt:   &now,
+			LastObservedAt:     &now,
 		},
 		Run: runStatus,
+	}
+}
+
+func serviceFromPlaneSnapshot(planeID string, input *cloudplanev1.PlaneService) model.Service {
+	spec := input.GetSpec()
+	env := make(map[string]string, len(spec.GetEnv()))
+	for key, value := range spec.GetEnv() {
+		env[key] = value
+	}
+	desiredState := input.GetDesiredState()
+	if strings.TrimSpace(desiredState) == "" {
+		desiredState = model.DesiredStateActive
+	}
+	return model.Service{
+		Metadata: model.ServiceMetadata{
+			ID:          input.GetServiceId(),
+			Name:        input.GetName(),
+			DisplayName: input.GetDisplayName(),
+			Host:        input.GetHost(),
+			Generation:  input.GetGeneration(),
+		},
+		Spec: model.ServiceSpec{
+			PlaneID:       planeID,
+			InstanceClass: spec.GetInstanceClass(),
+			Exposure:      spec.GetExposure(),
+			Image:         spec.GetImage(),
+			Command:       append([]string(nil), spec.GetCommand()...),
+			Args:          append([]string(nil), spec.GetArgs()...),
+			DefaultPort:   int(spec.GetContainerPort()),
+			ReadinessPath: spec.GetReadinessPath(),
+			Env:           env,
+		},
+		Status: model.ServiceStatus{
+			DesiredState: desiredState,
+		},
 	}
 }
 

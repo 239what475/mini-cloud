@@ -39,7 +39,7 @@ type serviceStatus struct {
 	DesiredState       string           `json:"desiredState"`
 	Phase              string           `json:"phase"`
 	Message            string           `json:"message,omitempty"`
-	LastReconciledAt   *time.Time       `json:"lastReconciledAt,omitempty"`
+	LastObservedAt     *time.Time       `json:"lastObservedAt,omitempty"`
 	Run                serviceRunStatus `json:"run"`
 }
 
@@ -266,7 +266,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			DesiredState:       service.Status.DesiredState,
 			Phase:              service.Status.Observed.Phase,
 			Message:            service.Status.Observed.Message,
-			LastReconciledAt:   service.Status.Observed.LastReconciledAt,
+			LastObservedAt:     service.Status.Observed.LastObservedAt,
 			Run:                buildServiceRun(service.Status.Run),
 		},
 	}

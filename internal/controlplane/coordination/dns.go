@@ -16,10 +16,12 @@ const dnsRecordTTL uint64 = 600
 
 type dnsClient interface {
 	EnsureRecord(context.Context, string, string, string) error
+	DeleteRecord(context.Context, string, string, string) error
 }
 
 type dnsPodAPI interface {
 	CreateRecordWithContext(context.Context, *dnspod.CreateRecordRequest) (*dnspod.CreateRecordResponse, error)
+	DeleteRecordWithContext(context.Context, *dnspod.DeleteRecordRequest) (*dnspod.DeleteRecordResponse, error)
 	DescribeRecordListWithContext(context.Context, *dnspod.DescribeRecordListRequest) (*dnspod.DescribeRecordListResponse, error)
 	ModifyRecordWithContext(context.Context, *dnspod.ModifyRecordRequest) (*dnspod.ModifyRecordResponse, error)
 }
@@ -63,6 +65,29 @@ func (c *dnsPodClient) EnsureRecord(ctx context.Context, host string, recordType
 		return c.modifyRecord(ctx, record.id, subdomain, recordType, value)
 	}
 	return c.createRecord(ctx, subdomain, recordType, value)
+}
+
+func (c *dnsPodClient) DeleteRecord(ctx context.Context, host string, recordType string, value string) error {
+	host = cleanDNSDomain(host)
+	recordType = strings.ToUpper(strings.TrimSpace(recordType))
+	value = cleanDNSRecordValue(recordType, value)
+	subdomain, err := c.subdomain(host)
+	if err != nil {
+		return err
+	}
+	records, err := c.recordsForSubdomain(ctx, subdomain, recordType)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if value != "" && cleanDNSRecordValue(recordType, record.value) != value {
+			continue
+		}
+		if err := c.deleteRecord(ctx, record.id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type dnsRecord struct {
@@ -125,6 +150,14 @@ func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdom
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	_, err := c.client.ModifyRecordWithContext(ctx, req)
+	return err
+}
+
+func (c *dnsPodClient) deleteRecord(ctx context.Context, recordID uint64) error {
+	req := dnspod.NewDeleteRecordRequest()
+	req.Domain = tccommon.StringPtr(c.domain)
+	req.RecordId = tccommon.Uint64Ptr(recordID)
+	_, err := c.client.DeleteRecordWithContext(ctx, req)
 	return err
 }
 

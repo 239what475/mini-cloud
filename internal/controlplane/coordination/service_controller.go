@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
@@ -17,6 +18,7 @@ type ServiceController struct {
 	store             *store.Store
 	serviceBaseDomain string
 	dispatcher        *serviceDispatcher
+	planeSyncer       *PlaneSyncer
 }
 
 func NewServiceController(logger *slog.Logger, stores *store.Store, southboundToken string, serviceBaseDomain string) *ServiceController {
@@ -29,6 +31,10 @@ func NewServiceController(logger *slog.Logger, stores *store.Store, southboundTo
 		serviceBaseDomain: strings.Trim(strings.ToLower(strings.TrimSpace(serviceBaseDomain)), "."),
 		dispatcher:        newServiceDispatcher(logger, stores, southboundToken),
 	}
+}
+
+func (c *ServiceController) SetPlaneSyncer(syncer *PlaneSyncer) {
+	c.planeSyncer = syncer
 }
 
 func (c *ServiceController) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
@@ -50,14 +56,25 @@ func serviceHost(name string, baseDomain string) string {
 }
 
 func (c *ServiceController) List(ctx context.Context) ([]model.Service, error) {
+	if c.planeSyncer != nil {
+		if err := c.planeSyncer.SyncRegisteredPlanes(ctx, 10*time.Second); err != nil {
+			c.logger.Warn("sync planes before listing services failed", "error", err)
+		}
+	}
 	return c.store.ListServices(ctx)
 }
 
 func (c *ServiceController) Get(ctx context.Context, serviceID string) (model.Service, error) {
+	if err := c.syncServicePlane(ctx, serviceID); err != nil {
+		return model.Service{}, err
+	}
 	return c.store.GetService(ctx, serviceID)
 }
 
 func (c *ServiceController) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
+	if err := c.syncServicePlane(ctx, serviceID); err != nil {
+		return model.Service{}, err
+	}
 	updated, err := c.store.UpdateService(ctx, serviceID, input)
 	if err != nil {
 		return model.Service{}, err
@@ -66,6 +83,9 @@ func (c *ServiceController) Update(ctx context.Context, serviceID string, input 
 }
 
 func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model.Service, error) {
+	if err := c.syncServicePlane(ctx, serviceID); err != nil {
+		return model.Service{}, err
+	}
 	deleting, err := c.store.MarkServiceDeletionRequested(ctx, serviceID)
 	if err != nil {
 		return model.Service{}, err
@@ -88,6 +108,24 @@ func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model
 		return model.Service{}, err
 	}
 	return current, nil
+}
+
+func (c *ServiceController) syncServicePlane(ctx context.Context, serviceID string) error {
+	if c.planeSyncer == nil {
+		return nil
+	}
+	serviceItem, err := c.store.GetService(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
+	if planeID == "" {
+		return nil
+	}
+	if err := c.planeSyncer.SyncPlane(ctx, planeID); err != nil {
+		c.logger.Warn("sync service plane failed", "service_id", serviceID, "plane_id", planeID, "error", err)
+	}
+	return nil
 }
 
 func (c *ServiceController) applyRemoteService(ctx context.Context, service model.Service) (model.Service, error) {

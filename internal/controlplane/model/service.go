@@ -62,7 +62,7 @@ type ServiceObservedStatus struct {
 	ObservedGeneration int64
 	Phase              string
 	Message            string
-	LastReconciledAt   *time.Time
+	LastObservedAt     *time.Time
 }
 
 const (
