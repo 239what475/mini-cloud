@@ -62,7 +62,7 @@ func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken st
 	}
 }
 
-func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
+func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	logger := s.logger.With("plane_id", planeID)
 	planeDetail, err := s.store.GetPlane(ctx, planeID)
 	if err != nil {
@@ -76,7 +76,12 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 			status:  model.StatusOffline,
 			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
 		}
-		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
+		syncedAt := s.now()
+		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
+			Status:     syncErr.status,
+			Message:    syncErr.message,
+			LastSyncAt: &syncedAt,
+		}); updateErr != nil {
 			logger.Error("update failed plane status failed", "error", updateErr)
 		}
 		return syncErr
@@ -93,7 +98,12 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 			status:  model.StatusOffline,
 			message: fmt.Sprintf("load plane snapshot failed: %v", err),
 		}
-		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
+		syncedAt := s.now()
+		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
+			Status:     syncErr.status,
+			Message:    syncErr.message,
+			LastSyncAt: &syncedAt,
+		}); updateErr != nil {
 			logger.Error("update failed plane status failed", "error", updateErr)
 		}
 		return syncErr
@@ -125,15 +135,7 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 	return nil
 }
 
-func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
-	return s.syncPlane(ctx, planeID)
-}
-
 func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
-	return s.syncRegisteredPlanes(ctx, perPlaneTimeout)
-}
-
-func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
 	planeIDs, err := s.store.ListPlaneIDs(ctx)
 	if err != nil {
 		return err
@@ -145,7 +147,7 @@ func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 		if perPlaneTimeout > 0 {
 			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
 		}
-		err := s.syncPlane(planeCtx, planeID)
+		err := s.SyncPlane(planeCtx, planeID)
 		cancel()
 		if err != nil {
 			s.logger.Warn("plane sync failed", "plane_id", planeID, "error", err)
@@ -301,16 +303,6 @@ func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string 
 	default:
 		return fmt.Sprintf("execution plan %s is %s", item.GetPlanId(), strings.TrimSpace(item.GetStatus()))
 	}
-}
-
-func (s *PlaneSyncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
-	syncedAt := s.now()
-	err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-		Status:     syncErr.status,
-		Message:    syncErr.message,
-		LastSyncAt: &syncedAt,
-	})
-	return err
 }
 
 func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.PlaneSnapshot) (string, string) {

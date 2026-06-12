@@ -17,21 +17,11 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 )
 
-type aliyunCDNAPI interface {
-	AddCdnDomainWithOptions(*cdn20180510.AddCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.AddCdnDomainResponse, error)
-	BatchSetCdnDomainConfigWithOptions(*cdn20180510.BatchSetCdnDomainConfigRequest, *util.RuntimeOptions) (*cdn20180510.BatchSetCdnDomainConfigResponse, error)
-	DescribeUserDomainsWithOptions(*cdn20180510.DescribeUserDomainsRequest, *util.RuntimeOptions) (*cdn20180510.DescribeUserDomainsResponse, error)
-	StopCdnDomainWithOptions(*cdn20180510.StopCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.StopCdnDomainResponse, error)
-	DeleteCdnDomainWithOptions(*cdn20180510.DeleteCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.DeleteCdnDomainResponse, error)
-	VerifyDomainOwnerWithOptions(*cdn20180510.VerifyDomainOwnerRequest, *util.RuntimeOptions) (*cdn20180510.VerifyDomainOwnerResponse, error)
-}
-
 type aliyunRawAPI interface {
 	CallApiWithCtx(context.Context, *openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error)
 }
 
 type aliyunCDNClient struct {
-	client    aliyunCDNAPI
 	rawClient aliyunRawAPI
 	origin    string
 }
@@ -55,7 +45,6 @@ func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
 		return nil, fmt.Errorf("create aliyun CDN client: %w", err)
 	}
 	return &aliyunCDNClient{
-		client:    client,
 		rawClient: client,
 		origin:    cfg.Ingress.PublicOrigin,
 	}, nil
@@ -63,7 +52,7 @@ func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
 
 func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSRecord, error) {
 	host = cleanDomain(host)
-	domain, err := c.getDomain(host)
+	domain, err := c.getDomain(ctx, host)
 	if err != nil {
 		return nil, err
 	}
@@ -79,11 +68,10 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSR
 		Type:      "TXT",
 		Value:     verify.VerifyCode,
 	}
-	verifyType := "dnsCheck"
-	_, err = c.client.VerifyDomainOwnerWithOptions(&cdn20180510.VerifyDomainOwnerRequest{
-		DomainName: &host,
-		VerifyType: &verifyType,
-	}, aliyunCDNRuntimeOptions())
+	_, err = c.callAPI(ctx, "VerifyDomainOwner", map[string]interface{}{
+		"DomainName": host,
+		"VerifyType": "dnsCheck",
+	})
 	if isAliyunPending(err) {
 		return verifyRecord, errDomainVerificationPending
 	}
@@ -92,12 +80,12 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSR
 
 func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string, error) {
 	host = cleanDomain(host)
-	domain, err := c.getDomain(host)
+	domain, err := c.getDomain(ctx, host)
 	if err != nil {
 		return "", err
 	}
 	if !domain.Exists {
-		if err := c.addDomain(host); err != nil {
+		if err := c.addDomain(ctx, host); err != nil {
 			if isAliyunPending(err) {
 				return "", nil
 			}
@@ -108,7 +96,7 @@ func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string
 	if strings.TrimSpace(domain.CNAME) == "" {
 		return "", nil
 	}
-	if err := c.setOriginHost(host); err != nil {
+	if err := c.setOriginHost(ctx, host); err != nil {
 		if isAliyunPending(err) {
 			return "", nil
 		}
@@ -117,57 +105,46 @@ func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string
 	return domain.CNAME, nil
 }
 
-func (c *aliyunCDNClient) DeleteDomain(_ context.Context, host string) error {
+func (c *aliyunCDNClient) DeleteDomain(ctx context.Context, host string) error {
 	host = cleanDomain(host)
 	if host == "" {
 		return nil
 	}
-	if _, err := c.client.StopCdnDomainWithOptions((&cdn20180510.StopCdnDomainRequest{}).SetDomainName(host), aliyunCDNRuntimeOptions()); err != nil && !isAliyunNotFound(err) {
+	if _, err := c.callAPI(ctx, "StopCdnDomain", map[string]interface{}{"DomainName": host}); err != nil && !isAliyunNotFound(err) {
 		return err
 	}
-	if _, err := c.client.DeleteCdnDomainWithOptions((&cdn20180510.DeleteCdnDomainRequest{}).SetDomainName(host), aliyunCDNRuntimeOptions()); err != nil && !isAliyunNotFound(err) {
+	if _, err := c.callAPI(ctx, "DeleteCdnDomain", map[string]interface{}{"DomainName": host}); err != nil && !isAliyunNotFound(err) {
 		return err
 	}
 	return nil
 }
 
-func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
-	match := "full_match"
-	resp, err := c.client.DescribeUserDomainsWithOptions(&cdn20180510.DescribeUserDomainsRequest{
-		DomainName:       &host,
-		DomainSearchType: &match,
-	}, aliyunCDNRuntimeOptions())
+func (c *aliyunCDNClient) getDomain(ctx context.Context, host string) (cdnDomain, error) {
+	result, err := c.callAPI(ctx, "DescribeUserDomains", map[string]interface{}{
+		"DomainName":       host,
+		"DomainSearchType": "full_match",
+	})
 	if err != nil {
 		return cdnDomain{}, err
 	}
-	if resp == nil || resp.Body == nil || resp.Body.Domains == nil {
+	body, _ := result["body"].(map[string]interface{})
+	domains, _ := body["Domains"].(map[string]interface{})
+	pageData, _ := domains["PageData"].([]interface{})
+	if len(pageData) == 0 {
 		return cdnDomain{}, nil
 	}
-	for _, item := range resp.Body.Domains.PageData {
-		if item == nil || item.DomainName == nil || cleanDomain(*item.DomainName) != host {
+	for _, rawItem := range pageData {
+		item, _ := rawItem.(map[string]interface{})
+		if cleanDomain(stringValue(item["DomainName"])) != host {
 			continue
 		}
-		return cdnDomain{Exists: true, CNAME: cleanDomainPointer(item.Cname)}, nil
+		return cdnDomain{Exists: true, CNAME: cleanDomain(stringValue(item["Cname"]))}, nil
 	}
 	return cdnDomain{}, nil
 }
 
 func (c *aliyunCDNClient) domainVerifyData(ctx context.Context, host string) (aliyunDomainVerifyData, error) {
-	if c.rawClient == nil {
-		return aliyunDomainVerifyData{}, fmt.Errorf("aliyun raw API client is nil")
-	}
-	result, err := c.rawClient.CallApiWithCtx(ctx, (&openapi.Params{}).
-		SetAction("DescribeDomainVerifyData").
-		SetVersion("2018-05-10").
-		SetProtocol("HTTPS").
-		SetPathname("/").
-		SetMethod("POST").
-		SetAuthType("AK").
-		SetStyle("RPC").
-		SetReqBodyType("formData").
-		SetBodyType("json"), &openapi.OpenApiRequest{
-		Query: openapiutil.Query(map[string]interface{}{"DomainName": host}),
-	}, aliyunCDNRuntimeOptions())
+	result, err := c.callAPI(ctx, "DescribeDomainVerifyData", map[string]interface{}{"DomainName": host})
 	if err != nil {
 		return aliyunDomainVerifyData{}, err
 	}
@@ -193,7 +170,7 @@ func (c *aliyunCDNClient) domainVerifyData(ctx context.Context, host string) (al
 	return verify, nil
 }
 
-func (c *aliyunCDNClient) addDomain(host string) error {
+func (c *aliyunCDNClient) addDomain(ctx context.Context, host string) error {
 	sources, err := json.Marshal([]map[string]any{{
 		"type":     originType(c.origin),
 		"content":  c.origin,
@@ -204,19 +181,16 @@ func (c *aliyunCDNClient) addDomain(host string) error {
 	if err != nil {
 		return err
 	}
-	cdnType := "web"
-	scope := "domestic"
-	sourceJSON := string(sources)
-	_, err = c.client.AddCdnDomainWithOptions(&cdn20180510.AddCdnDomainRequest{
-		DomainName: &host,
-		CdnType:    &cdnType,
-		Scope:      &scope,
-		Sources:    &sourceJSON,
-	}, aliyunCDNRuntimeOptions())
+	_, err = c.callAPI(ctx, "AddCdnDomain", map[string]interface{}{
+		"DomainName": host,
+		"CdnType":    "web",
+		"Scope":      "domestic",
+		"Sources":    string(sources),
+	})
 	return err
 }
 
-func (c *aliyunCDNClient) setOriginHost(host string) error {
+func (c *aliyunCDNClient) setOriginHost(ctx context.Context, host string) error {
 	functions, err := json.Marshal([]map[string]any{{
 		"functionName": "set_req_host_header",
 		"functionArgs": []map[string]string{{
@@ -227,12 +201,29 @@ func (c *aliyunCDNClient) setOriginHost(host string) error {
 	if err != nil {
 		return err
 	}
-	functionJSON := string(functions)
-	_, err = c.client.BatchSetCdnDomainConfigWithOptions(&cdn20180510.BatchSetCdnDomainConfigRequest{
-		DomainNames: &host,
-		Functions:   &functionJSON,
-	}, aliyunCDNRuntimeOptions())
+	_, err = c.callAPI(ctx, "BatchSetCdnDomainConfig", map[string]interface{}{
+		"DomainNames": host,
+		"Functions":   string(functions),
+	})
 	return err
+}
+
+func (c *aliyunCDNClient) callAPI(ctx context.Context, action string, query map[string]interface{}) (map[string]interface{}, error) {
+	if c.rawClient == nil {
+		return nil, fmt.Errorf("aliyun raw API client is nil")
+	}
+	return c.rawClient.CallApiWithCtx(ctx, (&openapi.Params{}).
+		SetAction(action).
+		SetVersion("2018-05-10").
+		SetProtocol("HTTPS").
+		SetPathname("/").
+		SetMethod("POST").
+		SetAuthType("AK").
+		SetStyle("RPC").
+		SetReqBodyType("formData").
+		SetBodyType("json"), &openapi.OpenApiRequest{
+		Query: openapiutil.Query(query),
+	}, aliyunCDNRuntimeOptions())
 }
 
 func aliyunCDNRuntimeOptions() *util.RuntimeOptions {
@@ -259,6 +250,13 @@ func originType(origin string) string {
 		return "ipaddr"
 	}
 	return "domain"
+}
+
+func stringValue(value interface{}) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func isAliyunNotFound(err error) bool {

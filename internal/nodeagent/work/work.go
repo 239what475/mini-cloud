@@ -188,7 +188,7 @@ func (e executor) executeNext(ctx context.Context) (Result, error) {
 }
 
 func (e executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (*nodeagentv1.ReportExecutionResponse, error) {
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
+	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, item.GetContainerId())
 	cancelStop()
 	if stopErr != nil {
@@ -286,11 +286,11 @@ func (e executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem,
 
 func (e executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	logSnippet := ""
-	logCtx, cancelLogs := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeLogs))
+	logCtx, cancelLogs := context.WithTimeout(context.WithoutCancel(ctx), e.timeout(e.opts.Timeouts.RuntimeLogs))
 	logSnippet, _ = e.containerRuntime.Logs(logCtx, runResult.ContainerID, e.opts.Observability.LogTail)
 	cancelLogs()
 
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
+	stopCtx, cancelStop := context.WithTimeout(context.WithoutCancel(ctx), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, runResult.ContainerID)
 	cancelStop()
 
@@ -340,9 +340,9 @@ func (e executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, 
 }
 
 func (e executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
-	reportCtx, cancel := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.Report))
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), e.timeout(e.opts.Timeouts.Report))
 	defer cancel()
-	reportCtx = transport.ContextWithRequestID(reportCtx, transport.EnsureRequestID(""))
+	reportCtx = transport.ContextWithRequestID(reportCtx, transport.EnsureRequestID(transport.RequestIDFromContext(reportCtx)))
 	req.NodeId = e.opts.Node.ID
 	req.ExecutionId = item.GetExecutionId()
 	return e.client.ReportExecution(reportCtx, req)

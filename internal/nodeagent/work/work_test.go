@@ -16,8 +16,10 @@ import (
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
+	"mini-cloud/internal/transport"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -203,6 +205,30 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	}
 }
 
+func TestExecuteNextReportKeepsRequestIDFromContext(t *testing.T) {
+	t.Parallel()
+
+	recorder := &workTestRecorder{item: testWorkItem()}
+	client := newWorkTestClient(t, recorder)
+	opts := testOptions()
+	opts.Readiness.Timeout = time.Second
+	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusOK)
+	opts.Node.PrivateIP = readinessHost
+
+	ctx := transport.ContextWithRequestID(context.Background(), "req-from-work-cycle")
+	_, err := ExecuteNext(ctx, testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
+		ContainerID:   "container-new",
+		ContainerName: "svc-web-0",
+		HostPort:      readinessPort,
+	}}, opts)
+	if err != nil {
+		t.Fatalf("ExecuteNext returned error: %v", err)
+	}
+	if recorder.reportRequestID != "req-from-work-cycle" {
+		t.Fatalf("report request id = %q, want req-from-work-cycle", recorder.reportRequestID)
+	}
+}
+
 func TestBuildFailedExecutionReasonIncludesUsefulContext(t *testing.T) {
 	t.Parallel()
 
@@ -306,11 +332,12 @@ func (s *workTestService) PollWork(context.Context, *nodeagentv1.PollWorkRequest
 	return &nodeagentv1.PollWorkResponse{Item: s.recorder.item}, nil
 }
 
-func (s *workTestService) ReportExecution(_ context.Context, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
+func (s *workTestService) ReportExecution(ctx context.Context, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	if s.recorder == nil {
 		return &nodeagentv1.ReportExecutionResponse{Ack: protoReportAck(req.GetExecutionId(), req.GetStatus())}, nil
 	}
 	s.recorder.reports = append(s.recorder.reports, req)
+	s.recorder.reportRequestID = firstIncomingMetadata(ctx, strings.ToLower(transport.RequestIDHeader))
 	if s.recorder.reportErr != nil {
 		return nil, s.recorder.reportErr
 	}
@@ -351,11 +378,24 @@ func protoReportAck(executionID string, status string) *nodeagentv1.ReportExecut
 	}
 }
 
+func firstIncomingMetadata(ctx context.Context, key string) string {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ""
+	}
+	values := md.Get(key)
+	if len(values) == 0 {
+		return ""
+	}
+	return values[0]
+}
+
 type workTestRecorder struct {
-	item      *nodeagentv1.WorkItem
-	pollErr   error
-	reportErr error
-	reports   []*nodeagentv1.ReportExecutionRequest
+	item            *nodeagentv1.WorkItem
+	pollErr         error
+	reportErr       error
+	reports         []*nodeagentv1.ReportExecutionRequest
+	reportRequestID string
 }
 
 type fakeRuntime struct {

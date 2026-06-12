@@ -23,7 +23,7 @@ mini-cloud 不是 Kubernetes，也不应该长成半个 Kubernetes。审核功�
 
 - control-plane 管理 plane 注册、全局 service 入口绑定、DNS 修改和聚合门户。
 - cloud-plane 持有本 plane 的 service truth，并管理本云运行节点、执行计划、入口路由、provider driver、CDN。
-- node-agent 执行 workload、上报状态、采集基础日志。
+- node-agent 执行 workload、上报状态，并在启动失败时上报容器尾日志作为诊断信息。
 - Aliyun + Tencent 两套 backend。
 - 自动扩缩 runtime node。
 - service name 自动生成三级域名。
@@ -79,7 +79,7 @@ node-agent 是 worker 上的执行器：
 - 注册到 cloud-plane。
 - 拉取 work item。
 - 启停 workload。
-- 上报 execution、node capacity、基础日志。
+- 上报 execution、node capacity，并在启动失败时提供容器尾日志诊断。
 
 node-agent 不应该：
 
@@ -92,7 +92,7 @@ node-agent 不应该：
 API 要少，语义要直：
 
 - 用户 API 只围绕 service。
-- control API 只围绕 plane、inventory、logs、events。
+- control API 只围绕 plane、inventory、events。
 - internal API 只服务 cloud-plane 自动注册和内部同步。
 - 不做“为了以后可能需要”的 API。
 

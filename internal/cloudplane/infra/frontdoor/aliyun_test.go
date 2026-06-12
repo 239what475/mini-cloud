@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"testing"
 
-	cdn20180510 "github.com/alibabacloud-go/cdn-20180510/v5/client"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	util "github.com/alibabacloud-go/tea-utils/v2/service"
 )
@@ -21,7 +20,7 @@ func TestAliyunPrepareDomainReturnsOwnerVerifyTXT(t *testing.T) {
 			"verifyKey":  "verification",
 		},
 	}
-	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
+	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
 
 	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
 	if err != nil {
@@ -46,7 +45,7 @@ func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.
 		},
 		verifyErr: fmt.Errorf("DomainOwnerVerifyFail: owner verification pending"),
 	}
-	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
+	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
 
 	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
 	if !errors.Is(err, errDomainVerificationPending) {
@@ -57,43 +56,68 @@ func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.
 	}
 }
 
+func TestAliyunEnsureDomainReadsExistingCNAME(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeAliyunCDN{
+		domainPageData: []interface{}{
+			map[string]interface{}{
+				"DomainName": "demo.apps.whatcloud.cn",
+				"Cname":      "demo.apps.whatcloud.cn.w.kunlunsl.com",
+			},
+		},
+	}
+	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
+
+	cname, err := client.EnsureDomain(context.Background(), "demo.apps.whatcloud.cn")
+	if err != nil {
+		t.Fatalf("EnsureDomain returned error: %v", err)
+	}
+	if cname != "demo.apps.whatcloud.cn.w.kunlunsl.com" {
+		t.Fatalf("cname = %q", cname)
+	}
+	if api.setOriginHost != "demo.apps.whatcloud.cn" {
+		t.Fatalf("set origin host = %q", api.setOriginHost)
+	}
+}
+
 type fakeAliyunCDN struct {
+	domainPageData []interface{}
 	verifyContent  map[string]interface{}
 	verifiedDomain string
+	setOriginHost  string
 	verifyErr      error
 }
 
-func (f *fakeAliyunCDN) AddCdnDomainWithOptions(*cdn20180510.AddCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.AddCdnDomainResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeAliyunCDN) BatchSetCdnDomainConfigWithOptions(*cdn20180510.BatchSetCdnDomainConfigRequest, *util.RuntimeOptions) (*cdn20180510.BatchSetCdnDomainConfigResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeAliyunCDN) CallApiWithCtx(context.Context, *openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error) {
-	return map[string]interface{}{
-		"body": map[string]interface{}{
-			"Content": f.verifyContent,
-		},
-	}, nil
-}
-
-func (f *fakeAliyunCDN) DescribeUserDomainsWithOptions(*cdn20180510.DescribeUserDomainsRequest, *util.RuntimeOptions) (*cdn20180510.DescribeUserDomainsResponse, error) {
-	return &cdn20180510.DescribeUserDomainsResponse{Body: &cdn20180510.DescribeUserDomainsResponseBody{}}, nil
-}
-
-func (f *fakeAliyunCDN) StopCdnDomainWithOptions(*cdn20180510.StopCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.StopCdnDomainResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeAliyunCDN) DeleteCdnDomainWithOptions(*cdn20180510.DeleteCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.DeleteCdnDomainResponse, error) {
-	return nil, nil
-}
-
-func (f *fakeAliyunCDN) VerifyDomainOwnerWithOptions(req *cdn20180510.VerifyDomainOwnerRequest, _ *util.RuntimeOptions) (*cdn20180510.VerifyDomainOwnerResponse, error) {
-	if req != nil && req.DomainName != nil {
-		f.verifiedDomain = *req.DomainName
+func (f *fakeAliyunCDN) CallApiWithCtx(_ context.Context, params *openapi.Params, req *openapi.OpenApiRequest, _ *util.RuntimeOptions) (map[string]interface{}, error) {
+	action := ""
+	if params != nil && params.Action != nil {
+		action = *params.Action
 	}
-	return nil, f.verifyErr
+	switch action {
+	case "DescribeUserDomains":
+		return map[string]interface{}{
+			"body": map[string]interface{}{
+				"Domains": map[string]interface{}{"PageData": f.domainPageData},
+			},
+		}, nil
+	case "DescribeDomainVerifyData":
+		return map[string]interface{}{
+			"body": map[string]interface{}{
+				"Content": f.verifyContent,
+			},
+		}, nil
+	case "VerifyDomainOwner":
+		if req != nil && req.Query != nil && req.Query["DomainName"] != nil {
+			f.verifiedDomain = *req.Query["DomainName"]
+		}
+		return map[string]interface{}{}, f.verifyErr
+	case "BatchSetCdnDomainConfig":
+		if req != nil && req.Query != nil && req.Query["DomainNames"] != nil {
+			f.setOriginHost = *req.Query["DomainNames"]
+		}
+		return map[string]interface{}{}, nil
+	default:
+		return map[string]interface{}{}, nil
+	}
 }

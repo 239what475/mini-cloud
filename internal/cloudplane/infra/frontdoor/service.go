@@ -60,6 +60,17 @@ func NewService(logger *slog.Logger, cfg cloudplaneconfig.Config, stores domainS
 	}, nil
 }
 
+func newCDNClient(cfg cloudplaneconfig.Config) (cdnClient, error) {
+	switch strings.ToLower(strings.TrimSpace(cfg.Infrastructure.Provider)) {
+	case "aliyun":
+		return newAliyunCDNClient(cfg)
+	case "tencent":
+		return newTencentCDNClient(cfg)
+	default:
+		return nil, fmt.Errorf("unsupported frontdoor CDN provider %q", cfg.Infrastructure.Provider)
+	}
+}
+
 func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	desired := make(map[string]struct{})
 	for _, route := range routes {
