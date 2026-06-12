@@ -15,7 +15,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type stubControlPlaneSouthbound struct {
@@ -26,9 +25,9 @@ type stubControlPlaneSouthbound struct {
 	wantAuthorization string
 }
 
-func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
+func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
 	s.assertAuthorization(ctx)
-	return &cloudplanev1.PlaneSnapshot{
+	return &cloudplanev1.GetSnapshotResponse{Snapshot: &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:     "plane-a",
 			Provider: "aliyun",
@@ -47,7 +46,7 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 				Status:            "running",
 			},
 		},
-	}, nil
+	}}, nil
 }
 
 func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
@@ -58,20 +57,7 @@ func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *clou
 	if req.GetServiceName() != "svc-demo" {
 		s.t.Fatalf("unexpected service name: %q", req.GetServiceName())
 	}
-	return &cloudplanev1.ApplyServiceResponse{
-		Service: &cloudplanev1.PlaneService{
-			ServiceId:   req.GetServiceId(),
-			Name:        req.GetServiceName(),
-			DisplayName: req.GetDisplayName(),
-			Generation:  req.GetServiceGeneration(),
-			Spec: &cloudplanev1.PlaneServiceSpec{
-				InstanceClass: req.GetInstanceClass(),
-				Image:         req.GetImage(),
-				ContainerPort: req.GetContainerPort(),
-				ReadinessPath: req.GetReadinessPath(),
-			},
-		},
-	}, nil
+	return &cloudplanev1.ApplyServiceResponse{}, nil
 }
 
 func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
@@ -82,10 +68,7 @@ func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *clo
 	if req.GetServiceGeneration() != 13 {
 		s.t.Fatalf("unexpected service generation: %d", req.GetServiceGeneration())
 	}
-	return &cloudplanev1.DeleteServiceResponse{
-		ServiceId: req.GetServiceId(),
-		Deleted:   true,
-	}, nil
+	return &cloudplanev1.DeleteServiceResponse{}, nil
 }
 
 func (s *stubControlPlaneSouthbound) assertAuthorization(ctx context.Context) {
@@ -104,7 +87,7 @@ type notFoundControlPlaneSouthbound struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 }
 
-func (notFoundControlPlaneSouthbound) GetSnapshot(context.Context, *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
+func (notFoundControlPlaneSouthbound) GetSnapshot(context.Context, *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
 	return nil, status.Error(codes.NotFound, "plane not found")
 }
 
@@ -142,7 +125,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())
 	}
 
-	applyResp, err := client.ApplyService(context.Background(), &cloudplanev1.ApplyServiceRequest{
+	if err := client.ApplyService(context.Background(), &cloudplanev1.ApplyServiceRequest{
 		ServiceId:         "svc-1",
 		ServiceName:       "svc-demo",
 		DisplayName:       "Demo",
@@ -151,12 +134,8 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
 		InstanceClass:     "small",
-	})
-	if err != nil {
+	}); err != nil {
 		t.Fatalf("ApplyService returned error: %v", err)
-	}
-	if applyResp.GetService().GetServiceId() != "svc-1" {
-		t.Fatalf("unexpected apply service response: %+v", applyResp)
 	}
 
 	if err := client.DeleteService(context.Background(), &cloudplanev1.DeleteServiceRequest{

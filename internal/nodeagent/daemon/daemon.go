@@ -282,7 +282,7 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	defer cancel()
 	requestID := transport.EnsureRequestID("")
 	reqCtx = transport.ContextWithRequestID(reqCtx, requestID)
-	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.HeartbeatRequest{
+	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.RecordHeartbeatRequest{
 		NodeId:              nodeID,
 		CpuMilliAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.CPUMilli),
 		MemoryMiAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.MemoryMi),

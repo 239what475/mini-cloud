@@ -9,7 +9,6 @@ package cloudplanev1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -803,6 +802,86 @@ func (x *PlaneSnapshot) GetFrontdoorDomains() []*PlaneFrontDoorDomain {
 	return nil
 }
 
+type GetSnapshotRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSnapshotRequest) Reset() {
+	*x = GetSnapshotRequest{}
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSnapshotRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSnapshotRequest) ProtoMessage() {}
+
+func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
+func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{9}
+}
+
+type GetSnapshotResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Snapshot      *PlaneSnapshot         `protobuf:"bytes,1,opt,name=snapshot,proto3" json:"snapshot,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetSnapshotResponse) Reset() {
+	*x = GetSnapshotResponse{}
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetSnapshotResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetSnapshotResponse) ProtoMessage() {}
+
+func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetSnapshotResponse.ProtoReflect.Descriptor instead.
+func (*GetSnapshotResponse) Descriptor() ([]byte, []int) {
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *GetSnapshotResponse) GetSnapshot() *PlaneSnapshot {
+	if x != nil {
+		return x.Snapshot
+	}
+	return nil
+}
+
 type ApplyServiceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ServiceId         string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
@@ -824,7 +903,7 @@ type ApplyServiceRequest struct {
 
 func (x *ApplyServiceRequest) Reset() {
 	*x = ApplyServiceRequest{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[9]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -836,7 +915,7 @@ func (x *ApplyServiceRequest) String() string {
 func (*ApplyServiceRequest) ProtoMessage() {}
 
 func (x *ApplyServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[9]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -849,7 +928,7 @@ func (x *ApplyServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyServiceRequest.ProtoReflect.Descriptor instead.
 func (*ApplyServiceRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{9}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ApplyServiceRequest) GetServiceId() string {
@@ -945,14 +1024,13 @@ func (x *ApplyServiceRequest) GetHost() string {
 
 type ApplyServiceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Service       *PlaneService          `protobuf:"bytes,1,opt,name=service,proto3" json:"service,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ApplyServiceResponse) Reset() {
 	*x = ApplyServiceResponse{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -964,7 +1042,7 @@ func (x *ApplyServiceResponse) String() string {
 func (*ApplyServiceResponse) ProtoMessage() {}
 
 func (x *ApplyServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -977,14 +1055,7 @@ func (x *ApplyServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ApplyServiceResponse.ProtoReflect.Descriptor instead.
 func (*ApplyServiceResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{10}
-}
-
-func (x *ApplyServiceResponse) GetService() *PlaneService {
-	if x != nil {
-		return x.Service
-	}
-	return nil
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{12}
 }
 
 type DeleteServiceRequest struct {
@@ -997,7 +1068,7 @@ type DeleteServiceRequest struct {
 
 func (x *DeleteServiceRequest) Reset() {
 	*x = DeleteServiceRequest{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1009,7 +1080,7 @@ func (x *DeleteServiceRequest) String() string {
 func (*DeleteServiceRequest) ProtoMessage() {}
 
 func (x *DeleteServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1022,7 +1093,7 @@ func (x *DeleteServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteServiceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteServiceRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{11}
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DeleteServiceRequest) GetServiceId() string {
@@ -1041,15 +1112,13 @@ func (x *DeleteServiceRequest) GetServiceGeneration() int64 {
 
 type DeleteServiceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	Deleted       bool                   `protobuf:"varint,2,opt,name=deleted,proto3" json:"deleted,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *DeleteServiceResponse) Reset() {
 	*x = DeleteServiceResponse{}
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1061,7 +1130,7 @@ func (x *DeleteServiceResponse) String() string {
 func (*DeleteServiceResponse) ProtoMessage() {}
 
 func (x *DeleteServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1074,28 +1143,14 @@ func (x *DeleteServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteServiceResponse.ProtoReflect.Descriptor instead.
 func (*DeleteServiceResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *DeleteServiceResponse) GetServiceId() string {
-	if x != nil {
-		return x.ServiceId
-	}
-	return ""
-}
-
-func (x *DeleteServiceResponse) GetDeleted() bool {
-	if x != nil {
-		return x.Deleted
-	}
-	return false
+	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{14}
 }
 
 var File_minicloud_cloudplane_v1_control_plane_proto protoreflect.FileDescriptor
 
 const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\n" +
-	"+minicloud/cloudplane/v1/control_plane.proto\x12\x17minicloud.cloudplane.v1\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"V\n" +
+	"+minicloud/cloudplane/v1/control_plane.proto\x12\x17minicloud.cloudplane.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"V\n" +
 	"\fPlaneSummary\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x16\n" +
@@ -1177,7 +1232,10 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"executions\x18\x05 \x03(\v2/.minicloud.cloudplane.v1.PlaneExecutionSnapshotR\n" +
 	"executions\x12A\n" +
 	"\bservices\x18\x06 \x03(\v2%.minicloud.cloudplane.v1.PlaneServiceR\bservices\x12Z\n" +
-	"\x11frontdoor_domains\x18\a \x03(\v2-.minicloud.cloudplane.v1.PlaneFrontDoorDomainR\x10frontdoorDomains\"\x93\x04\n" +
+	"\x11frontdoor_domains\x18\a \x03(\v2-.minicloud.cloudplane.v1.PlaneFrontDoorDomainR\x10frontdoorDomains\"\x14\n" +
+	"\x12GetSnapshotRequest\"Y\n" +
+	"\x13GetSnapshotResponse\x12B\n" +
+	"\bsnapshot\x18\x01 \x01(\v2&.minicloud.cloudplane.v1.PlaneSnapshotR\bsnapshot\"\x93\x04\n" +
 	"\x13ApplyServiceRequest\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12!\n" +
@@ -1196,19 +1254,15 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x04host\x18\r \x01(\tR\x04host\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +
-	"\x14ApplyServiceResponse\x12?\n" +
-	"\aservice\x18\x01 \x01(\v2%.minicloud.cloudplane.v1.PlaneServiceR\aservice\"d\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x16\n" +
+	"\x14ApplyServiceResponse\"d\n" +
 	"\x14DeleteServiceRequest\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12-\n" +
-	"\x12service_generation\x18\x02 \x01(\x03R\x11serviceGeneration\"P\n" +
-	"\x15DeleteServiceResponse\x12\x1d\n" +
-	"\n" +
-	"service_id\x18\x01 \x01(\tR\tserviceID\x12\x18\n" +
-	"\adeleted\x18\x02 \x01(\bR\adeleted2l\n" +
-	"\x1bControlPlaneSnapshotService\x12M\n" +
-	"\vGetSnapshot\x12\x16.google.protobuf.Empty\x1a&.minicloud.cloudplane.v1.PlaneSnapshot2\xfb\x01\n" +
+	"\x12service_generation\x18\x02 \x01(\x03R\x11serviceGeneration\"\x17\n" +
+	"\x15DeleteServiceResponse2\x87\x01\n" +
+	"\x1bControlPlaneSnapshotService\x12h\n" +
+	"\vGetSnapshot\x12+.minicloud.cloudplane.v1.GetSnapshotRequest\x1a,.minicloud.cloudplane.v1.GetSnapshotResponse2\xfb\x01\n" +
 	"\x1cControlPlaneExecutionService\x12k\n" +
 	"\fApplyService\x12,.minicloud.cloudplane.v1.ApplyServiceRequest\x1a-.minicloud.cloudplane.v1.ApplyServiceResponse\x12n\n" +
 	"\rDeleteService\x12-.minicloud.cloudplane.v1.DeleteServiceRequest\x1a..minicloud.cloudplane.v1.DeleteServiceResponseBDZBmini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1b\x06proto3"
@@ -1225,7 +1279,7 @@ func file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP() []byte {
 	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescData
 }
 
-var file_minicloud_cloudplane_v1_control_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_minicloud_cloudplane_v1_control_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
 var file_minicloud_cloudplane_v1_control_plane_proto_goTypes = []any{
 	(*PlaneSummary)(nil),           // 0: minicloud.cloudplane.v1.PlaneSummary
 	(*PlaneReliability)(nil),       // 1: minicloud.cloudplane.v1.PlaneReliability
@@ -1236,38 +1290,39 @@ var file_minicloud_cloudplane_v1_control_plane_proto_goTypes = []any{
 	(*PlaneService)(nil),           // 6: minicloud.cloudplane.v1.PlaneService
 	(*PlaneFrontDoorDomain)(nil),   // 7: minicloud.cloudplane.v1.PlaneFrontDoorDomain
 	(*PlaneSnapshot)(nil),          // 8: minicloud.cloudplane.v1.PlaneSnapshot
-	(*ApplyServiceRequest)(nil),    // 9: minicloud.cloudplane.v1.ApplyServiceRequest
-	(*ApplyServiceResponse)(nil),   // 10: minicloud.cloudplane.v1.ApplyServiceResponse
-	(*DeleteServiceRequest)(nil),   // 11: minicloud.cloudplane.v1.DeleteServiceRequest
-	(*DeleteServiceResponse)(nil),  // 12: minicloud.cloudplane.v1.DeleteServiceResponse
-	nil,                            // 13: minicloud.cloudplane.v1.PlaneServiceSpec.EnvEntry
-	nil,                            // 14: minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
-	(*timestamppb.Timestamp)(nil),  // 15: google.protobuf.Timestamp
-	(*emptypb.Empty)(nil),          // 16: google.protobuf.Empty
+	(*GetSnapshotRequest)(nil),     // 9: minicloud.cloudplane.v1.GetSnapshotRequest
+	(*GetSnapshotResponse)(nil),    // 10: minicloud.cloudplane.v1.GetSnapshotResponse
+	(*ApplyServiceRequest)(nil),    // 11: minicloud.cloudplane.v1.ApplyServiceRequest
+	(*ApplyServiceResponse)(nil),   // 12: minicloud.cloudplane.v1.ApplyServiceResponse
+	(*DeleteServiceRequest)(nil),   // 13: minicloud.cloudplane.v1.DeleteServiceRequest
+	(*DeleteServiceResponse)(nil),  // 14: minicloud.cloudplane.v1.DeleteServiceResponse
+	nil,                            // 15: minicloud.cloudplane.v1.PlaneServiceSpec.EnvEntry
+	nil,                            // 16: minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
+	(*timestamppb.Timestamp)(nil),  // 17: google.protobuf.Timestamp
 }
 var file_minicloud_cloudplane_v1_control_plane_proto_depIdxs = []int32{
-	15, // 0: minicloud.cloudplane.v1.PlaneNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	15, // 1: minicloud.cloudplane.v1.PlaneNodeInventory.observed_at:type_name -> google.protobuf.Timestamp
+	17, // 0: minicloud.cloudplane.v1.PlaneNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	17, // 1: minicloud.cloudplane.v1.PlaneNodeInventory.observed_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: minicloud.cloudplane.v1.PlaneNodeInventory.nodes:type_name -> minicloud.cloudplane.v1.PlaneNode
-	15, // 3: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
-	13, // 4: minicloud.cloudplane.v1.PlaneServiceSpec.env:type_name -> minicloud.cloudplane.v1.PlaneServiceSpec.EnvEntry
+	17, // 3: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	15, // 4: minicloud.cloudplane.v1.PlaneServiceSpec.env:type_name -> minicloud.cloudplane.v1.PlaneServiceSpec.EnvEntry
 	5,  // 5: minicloud.cloudplane.v1.PlaneService.spec:type_name -> minicloud.cloudplane.v1.PlaneServiceSpec
-	15, // 6: minicloud.cloudplane.v1.PlaneService.updated_at:type_name -> google.protobuf.Timestamp
+	17, // 6: minicloud.cloudplane.v1.PlaneService.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 7: minicloud.cloudplane.v1.PlaneSnapshot.plane:type_name -> minicloud.cloudplane.v1.PlaneSummary
-	15, // 8: minicloud.cloudplane.v1.PlaneSnapshot.checked_at:type_name -> google.protobuf.Timestamp
+	17, // 8: minicloud.cloudplane.v1.PlaneSnapshot.checked_at:type_name -> google.protobuf.Timestamp
 	1,  // 9: minicloud.cloudplane.v1.PlaneSnapshot.reliability:type_name -> minicloud.cloudplane.v1.PlaneReliability
 	3,  // 10: minicloud.cloudplane.v1.PlaneSnapshot.node_inventory:type_name -> minicloud.cloudplane.v1.PlaneNodeInventory
 	4,  // 11: minicloud.cloudplane.v1.PlaneSnapshot.executions:type_name -> minicloud.cloudplane.v1.PlaneExecutionSnapshot
 	6,  // 12: minicloud.cloudplane.v1.PlaneSnapshot.services:type_name -> minicloud.cloudplane.v1.PlaneService
 	7,  // 13: minicloud.cloudplane.v1.PlaneSnapshot.frontdoor_domains:type_name -> minicloud.cloudplane.v1.PlaneFrontDoorDomain
-	14, // 14: minicloud.cloudplane.v1.ApplyServiceRequest.env:type_name -> minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
-	6,  // 15: minicloud.cloudplane.v1.ApplyServiceResponse.service:type_name -> minicloud.cloudplane.v1.PlaneService
-	16, // 16: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:input_type -> google.protobuf.Empty
-	9,  // 17: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:input_type -> minicloud.cloudplane.v1.ApplyServiceRequest
-	11, // 18: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
-	8,  // 19: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.PlaneSnapshot
-	10, // 20: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:output_type -> minicloud.cloudplane.v1.ApplyServiceResponse
-	12, // 21: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
+	8,  // 14: minicloud.cloudplane.v1.GetSnapshotResponse.snapshot:type_name -> minicloud.cloudplane.v1.PlaneSnapshot
+	16, // 15: minicloud.cloudplane.v1.ApplyServiceRequest.env:type_name -> minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
+	9,  // 16: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:input_type -> minicloud.cloudplane.v1.GetSnapshotRequest
+	11, // 17: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:input_type -> minicloud.cloudplane.v1.ApplyServiceRequest
+	13, // 18: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
+	10, // 19: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.GetSnapshotResponse
+	12, // 20: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:output_type -> minicloud.cloudplane.v1.ApplyServiceResponse
+	14, // 21: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
 	19, // [19:22] is the sub-list for method output_type
 	16, // [16:19] is the sub-list for method input_type
 	16, // [16:16] is the sub-list for extension type_name
@@ -1286,7 +1341,7 @@ func file_minicloud_cloudplane_v1_control_plane_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_control_plane_proto_rawDesc), len(file_minicloud_cloudplane_v1_control_plane_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   17,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

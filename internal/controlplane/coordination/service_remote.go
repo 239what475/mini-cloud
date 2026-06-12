@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 )
 
@@ -23,32 +21,18 @@ const (
 	dispatchDeleteTimeout = 15 * time.Second
 )
 
-type serviceDispatcher struct {
-	logger          *slog.Logger
-	store           *store.Store
-	southboundToken string
-}
-
-func newServiceDispatcher(logger *slog.Logger, stores *store.Store, southboundToken string) *serviceDispatcher {
-	return &serviceDispatcher{
-		logger:          logger,
-		store:           stores,
-		southboundToken: strings.TrimSpace(southboundToken),
-	}
-}
-
-func (s *serviceDispatcher) ApplyService(ctx context.Context, planeID string, service model.Service) error {
+func (c *ServiceOperations) dispatchRemoteService(ctx context.Context, planeID string, service model.Service) error {
 	if planeID == "" {
 		return errPlaneIDRequired
 	}
 
-	client, err := s.planeClient(ctx, planeID)
+	client, err := c.planeClient(ctx, planeID)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
-			s.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
+			c.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
 		}
 	}()
 
@@ -59,14 +43,13 @@ func (s *serviceDispatcher) ApplyService(ctx context.Context, planeID string, se
 	requestCtx, cancel := context.WithTimeout(ctx, dispatchApplyTimeout)
 	defer cancel()
 
-	_, err = client.ApplyService(requestCtx, request)
-	if err != nil {
+	if err := client.ApplyService(requestCtx, request); err != nil {
 		return fmt.Errorf("apply service to cloud-plane: %w", err)
 	}
 	return nil
 }
 
-func (s *serviceDispatcher) DeleteService(ctx context.Context, planeID string, serviceID string, serviceGeneration int64) error {
+func (c *ServiceOperations) deleteRemoteService(ctx context.Context, planeID string, serviceID string, serviceGeneration int64) error {
 	if planeID == "" {
 		return errPlaneIDRequired
 	}
@@ -77,13 +60,13 @@ func (s *serviceDispatcher) DeleteService(ctx context.Context, planeID string, s
 		return fmt.Errorf("serviceGeneration must be greater than 0")
 	}
 
-	client, err := s.planeClient(ctx, planeID)
+	client, err := c.planeClient(ctx, planeID)
 	if err != nil {
 		return err
 	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
-			s.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
+			c.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
 		}
 	}()
 
@@ -99,12 +82,12 @@ func (s *serviceDispatcher) DeleteService(ctx context.Context, planeID string, s
 	return nil
 }
 
-func (s *serviceDispatcher) planeClient(ctx context.Context, planeID string) (*planeClient, error) {
-	plane, err := s.store.GetPlane(ctx, planeID)
+func (c *ServiceOperations) planeClient(ctx context.Context, planeID string) (*planeClient, error) {
+	plane, err := c.store.GetPlane(ctx, planeID)
 	if err != nil {
 		return nil, err
 	}
-	return newPlaneClient(plane.GRPCEndpoint, s.southboundToken)
+	return newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
 }
 
 func applyServiceRequest(service model.Service) (*cloudplanev1.ApplyServiceRequest, error) {

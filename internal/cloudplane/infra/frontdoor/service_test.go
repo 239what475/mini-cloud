@@ -2,6 +2,7 @@ package frontdoor
 
 import (
 	"context"
+	"log/slog"
 	"testing"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
@@ -12,7 +13,7 @@ func TestServiceApplyEnsuresDesiredDomains(t *testing.T) {
 
 	cdn := &fakeCDN{domains: map[string]string{}}
 	store := &fakeDomainStore{domains: map[string]ManagedDomain{}}
-	service := newServiceWithClients(nil, "apps.example.com", cdn, store)
+	service := testService(cdn, store)
 
 	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
@@ -33,7 +34,7 @@ func TestServiceApplyWaitsForCDNCNAME(t *testing.T) {
 		domains: map[string]string{},
 		pending: map[string]bool{"api.apps.example.com": true},
 	}
-	service := newServiceWithClients(nil, "apps.example.com", cdn, &fakeDomainStore{domains: map[string]ManagedDomain{}})
+	service := testService(cdn, &fakeDomainStore{domains: map[string]ManagedDomain{}})
 
 	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
@@ -57,7 +58,7 @@ func TestServiceApplySkipsPendingDomainVerification(t *testing.T) {
 		prepareErr: errDomainVerificationPending,
 	}
 	store := &fakeDomainStore{domains: map[string]ManagedDomain{}}
-	service := newServiceWithClients(nil, "apps.example.com", cdn, store)
+	service := testService(cdn, store)
 
 	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
@@ -93,7 +94,7 @@ func TestServiceApplyDeletesPreviouslyTrackedVerificationAfterDomainReady(t *tes
 			},
 		},
 	}}
-	service := newServiceWithClients(nil, "apps.example.com", cdn, store)
+	service := testService(cdn, store)
 
 	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
@@ -118,7 +119,7 @@ func TestServiceApplyDeletesOnlyManagedStaleDomains(t *testing.T) {
 	store := &fakeDomainStore{domains: map[string]ManagedDomain{
 		"old.apps.example.com": {Host: "old.apps.example.com", CNAME: "old.apps.example.com.cdn.example.net"},
 	}}
-	service := newServiceWithClients(nil, "apps.example.com", cdn, store)
+	service := testService(cdn, store)
 
 	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
@@ -135,6 +136,15 @@ func TestServiceApplyDeletesOnlyManagedStaleDomains(t *testing.T) {
 	}
 	if _, ok := cdn.domains["api.apps.example.com"]; !ok {
 		t.Fatalf("unmanaged desired CDN domain was deleted: %+v", cdn.domains)
+	}
+}
+
+func testService(cdn cdnClient, store domainStore) *Service {
+	return &Service{
+		logger:     slog.Default(),
+		baseDomain: "apps.example.com",
+		cdn:        cdn,
+		store:      store,
 	}
 }
 

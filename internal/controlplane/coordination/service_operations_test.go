@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
@@ -17,6 +18,7 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestCreateAppliesServiceToSpecPlane(t *testing.T) {
@@ -312,6 +314,50 @@ func TestGetAdvancesOnlyRequestedService(t *testing.T) {
 	}
 }
 
+func TestListSyncsRegisteredPlanesBeforeReturningServices(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceOperationsPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-list-sync", planeServer.endpoint)
+
+	service, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "listed", "Listed", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	now := time.Now().UTC()
+	planeServer.setSnapshot(&cloudplanev1.PlaneSnapshot{
+		Plane: &cloudplanev1.PlaneSummary{
+			Name:     "plane-list-sync",
+			Provider: "aliyun",
+			Region:   "cn-beijing",
+		},
+		CheckedAt:     timestamppb.New(now),
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
+		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
+			{
+				PlanId:            service.Metadata.ID + "-run",
+				ServiceId:         service.Metadata.ID,
+				ServiceName:       service.Metadata.Name,
+				ServiceGeneration: service.Metadata.Generation,
+				Status:            planeExecutionStatusRunning,
+				ObservedAt:        timestamppb.New(now),
+			},
+		},
+	})
+
+	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", nil))
+	services, err := operations.List(ctx)
+	if err != nil {
+		t.Fatalf("List returned error: %v", err)
+	}
+	if len(services) != 1 {
+		t.Fatalf("services len = %d, want 1", len(services))
+	}
+	if services[0].Status.Observed.Phase != model.PhaseReady || services[0].Status.Run.Phase != model.RunPhaseRunning {
+		t.Fatalf("service status after List = %+v, want ready/running from cloud-plane snapshot", services[0].Status)
+	}
+}
+
 func createInput(planeID string, name string, displayName string, image string) controlplanestore.CreateServiceInput {
 	return controlplanestore.CreateServiceInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
@@ -333,11 +379,13 @@ func serviceSpec(planeID string, image string) model.ServiceSpec {
 
 type serviceOperationsPlane struct {
 	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 
 	mu       sync.Mutex
 	endpoint string
 	apply    []*cloudplanev1.ApplyServiceRequest
 	delete   []*cloudplanev1.DeleteServiceRequest
+	snapshot *cloudplanev1.PlaneSnapshot
 }
 
 func startServiceOperationsPlane(t *testing.T) *serviceOperationsPlane {
@@ -346,6 +394,7 @@ func startServiceOperationsPlane(t *testing.T) *serviceOperationsPlane {
 	grpcServer := grpc.NewServer()
 	plane := &serviceOperationsPlane{}
 	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, plane)
+	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, plane)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	t.Cleanup(func() {
@@ -356,40 +405,40 @@ func startServiceOperationsPlane(t *testing.T) *serviceOperationsPlane {
 	return plane
 }
 
+func (p *serviceOperationsPlane) GetSnapshot(context.Context, *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.snapshot != nil {
+		return &cloudplanev1.GetSnapshotResponse{Snapshot: p.snapshot}, nil
+	}
+	return &cloudplanev1.GetSnapshotResponse{Snapshot: &cloudplanev1.PlaneSnapshot{
+		Plane: &cloudplanev1.PlaneSummary{
+			Name:     "test-plane",
+			Provider: "tencent",
+			Region:   "ap-guangzhou",
+		},
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
+	}}, nil
+}
+
+func (p *serviceOperationsPlane) setSnapshot(snapshot *cloudplanev1.PlaneSnapshot) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.snapshot = snapshot
+}
+
 func (p *serviceOperationsPlane) ApplyService(_ context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.apply = append(p.apply, req)
-	return &cloudplanev1.ApplyServiceResponse{
-		Service: &cloudplanev1.PlaneService{
-			ServiceId:    req.GetServiceId(),
-			Name:         req.GetServiceName(),
-			DisplayName:  req.GetDisplayName(),
-			Host:         req.GetHost(),
-			Generation:   req.GetServiceGeneration(),
-			DesiredState: model.DesiredStateActive,
-			Spec: &cloudplanev1.PlaneServiceSpec{
-				InstanceClass: req.GetInstanceClass(),
-				Exposure:      req.GetExposure(),
-				Image:         req.GetImage(),
-				Command:       append([]string(nil), req.GetCommand()...),
-				Args:          append([]string(nil), req.GetArgs()...),
-				Env:           req.GetEnv(),
-				ContainerPort: req.GetContainerPort(),
-				ReadinessPath: req.GetReadinessPath(),
-			},
-		},
-	}, nil
+	return &cloudplanev1.ApplyServiceResponse{}, nil
 }
 
 func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.delete = append(p.delete, req)
-	return &cloudplanev1.DeleteServiceResponse{
-		ServiceId: req.GetServiceId(),
-		Deleted:   true,
-	}, nil
+	return &cloudplanev1.DeleteServiceResponse{}, nil
 }
 
 func (p *serviceOperationsPlane) applyRequests() []*cloudplanev1.ApplyServiceRequest {

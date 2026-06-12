@@ -55,11 +55,10 @@ func (s *executionServer) ApplyService(ctx context.Context, req *cloudplanev1.Ap
 			ReadinessPath: strings.TrimSpace(req.GetReadinessPath()),
 		},
 	}
-	service, err := s.store.ApplyService(ctx, input)
-	if err != nil {
+	if _, err := s.store.ApplyService(ctx, input); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.ApplyServiceResponse{Service: protoService(service)}, nil
+	return &cloudplanev1.ApplyServiceResponse{}, nil
 }
 
 func (s *executionServer) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
@@ -79,5 +78,5 @@ func (s *executionServer) DeleteService(ctx context.Context, req *cloudplanev1.D
 		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.DeleteServiceResponse{ServiceId: serviceID, Deleted: true}, nil
+	return &cloudplanev1.DeleteServiceResponse{}, nil
 }

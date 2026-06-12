@@ -4,7 +4,6 @@ package minicloud.cloudplane.v1;
 
 option go_package = "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1";
 
-import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
 message PlaneSummary {
@@ -91,6 +90,12 @@ message PlaneSnapshot {
   repeated PlaneFrontDoorDomain frontdoor_domains = 7 [json_name = "frontdoorDomains"];
 }
 
+message GetSnapshotRequest {}
+
+message GetSnapshotResponse {
+  PlaneSnapshot snapshot = 1;
+}
+
 message ApplyServiceRequest {
   string service_id = 1 [json_name = "serviceID"];
   string service_name = 2 [json_name = "serviceName"];
@@ -107,22 +112,17 @@ message ApplyServiceRequest {
   string host = 13;
 }
 
-message ApplyServiceResponse {
-  PlaneService service = 1;
-}
+message ApplyServiceResponse {}
 
 message DeleteServiceRequest {
   string service_id = 1 [json_name = "serviceID"];
   int64 service_generation = 2 [json_name = "serviceGeneration"];
 }
 
-message DeleteServiceResponse {
-  string service_id = 1 [json_name = "serviceID"];
-  bool deleted = 2;
-}
+message DeleteServiceResponse {}
 
 service ControlPlaneSnapshotService {
-  rpc GetSnapshot(google.protobuf.Empty) returns (PlaneSnapshot);
+  rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
 }
 
 service ControlPlaneExecutionService {

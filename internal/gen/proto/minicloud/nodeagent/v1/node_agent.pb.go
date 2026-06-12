@@ -166,7 +166,7 @@ func (x *RegisterNodeResponse) GetNodeId() string {
 	return ""
 }
 
-type HeartbeatRequest struct {
+type RecordHeartbeatRequest struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	NodeId              string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
 	CpuMilliAllocatable int32                  `protobuf:"varint,2,opt,name=cpu_milli_allocatable,json=cpuMilliAllocatable,proto3" json:"cpu_milli_allocatable,omitempty"`
@@ -175,20 +175,20 @@ type HeartbeatRequest struct {
 	sizeCache           protoimpl.SizeCache
 }
 
-func (x *HeartbeatRequest) Reset() {
-	*x = HeartbeatRequest{}
+func (x *RecordHeartbeatRequest) Reset() {
+	*x = RecordHeartbeatRequest{}
 	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HeartbeatRequest) String() string {
+func (x *RecordHeartbeatRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HeartbeatRequest) ProtoMessage() {}
+func (*RecordHeartbeatRequest) ProtoMessage() {}
 
-func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
+func (x *RecordHeartbeatRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -200,33 +200,33 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
-func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use RecordHeartbeatRequest.ProtoReflect.Descriptor instead.
+func (*RecordHeartbeatRequest) Descriptor() ([]byte, []int) {
 	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{2}
 }
 
-func (x *HeartbeatRequest) GetNodeId() string {
+func (x *RecordHeartbeatRequest) GetNodeId() string {
 	if x != nil {
 		return x.NodeId
 	}
 	return ""
 }
 
-func (x *HeartbeatRequest) GetCpuMilliAllocatable() int32 {
+func (x *RecordHeartbeatRequest) GetCpuMilliAllocatable() int32 {
 	if x != nil {
 		return x.CpuMilliAllocatable
 	}
 	return 0
 }
 
-func (x *HeartbeatRequest) GetMemoryMiAllocatable() int32 {
+func (x *RecordHeartbeatRequest) GetMemoryMiAllocatable() int32 {
 	if x != nil {
 		return x.MemoryMiAllocatable
 	}
 	return 0
 }
 
-type HeartbeatResponse struct {
+type RecordHeartbeatResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
 	ObservedStatus string                 `protobuf:"bytes,2,opt,name=observed_status,json=observedStatus,proto3" json:"observed_status,omitempty"`
@@ -234,20 +234,20 @@ type HeartbeatResponse struct {
 	sizeCache      protoimpl.SizeCache
 }
 
-func (x *HeartbeatResponse) Reset() {
-	*x = HeartbeatResponse{}
+func (x *RecordHeartbeatResponse) Reset() {
+	*x = RecordHeartbeatResponse{}
 	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *HeartbeatResponse) String() string {
+func (x *RecordHeartbeatResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*HeartbeatResponse) ProtoMessage() {}
+func (*RecordHeartbeatResponse) ProtoMessage() {}
 
-func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
+func (x *RecordHeartbeatResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -259,19 +259,19 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
-func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use RecordHeartbeatResponse.ProtoReflect.Descriptor instead.
+func (*RecordHeartbeatResponse) Descriptor() ([]byte, []int) {
 	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{3}
 }
 
-func (x *HeartbeatResponse) GetNodeId() string {
+func (x *RecordHeartbeatResponse) GetNodeId() string {
 	if x != nil {
 		return x.NodeId
 	}
 	return ""
 }
 
-func (x *HeartbeatResponse) GetObservedStatus() string {
+func (x *RecordHeartbeatResponse) GetObservedStatus() string {
 	if x != nil {
 		return x.ObservedStatus
 	}
@@ -883,12 +883,12 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x0fcpu_milli_total\x18\a \x01(\x05R\rcpuMilliTotal\x12&\n" +
 	"\x0fmemory_mi_total\x18\b \x01(\x05R\rmemoryMiTotal\"/\n" +
 	"\x14RegisterNodeResponse\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"\x93\x01\n" +
-	"\x10HeartbeatRequest\x12\x17\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"\x99\x01\n" +
+	"\x16RecordHeartbeatRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x122\n" +
 	"\x15cpu_milli_allocatable\x18\x02 \x01(\x05R\x13cpuMilliAllocatable\x122\n" +
-	"\x15memory_mi_allocatable\x18\x03 \x01(\x05R\x13memoryMiAllocatable\"U\n" +
-	"\x11HeartbeatResponse\x12\x17\n" +
+	"\x15memory_mi_allocatable\x18\x03 \x01(\x05R\x13memoryMiAllocatable\"[\n" +
+	"\x17RecordHeartbeatResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12'\n" +
 	"\x0fobserved_status\x18\x02 \x01(\tR\x0eobservedStatus\"\xa7\x04\n" +
 	"\bWorkItem\x12!\n" +
@@ -950,10 +950,10 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\vobserved_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\"W\n" +
 	"\x17ReportExecutionResponse\x12<\n" +
-	"\x03ack\x18\x01 \x01(\v2*.minicloud.nodeagent.v1.ReportExecutionAckR\x03ack2\xb8\x03\n" +
+	"\x03ack\x18\x01 \x01(\v2*.minicloud.nodeagent.v1.ReportExecutionAckR\x03ack2\xc4\x03\n" +
 	"\x10NodeAgentService\x12i\n" +
-	"\fRegisterNode\x12+.minicloud.nodeagent.v1.RegisterNodeRequest\x1a,.minicloud.nodeagent.v1.RegisterNodeResponse\x12f\n" +
-	"\x0fRecordHeartbeat\x12(.minicloud.nodeagent.v1.HeartbeatRequest\x1a).minicloud.nodeagent.v1.HeartbeatResponse\x12]\n" +
+	"\fRegisterNode\x12+.minicloud.nodeagent.v1.RegisterNodeRequest\x1a,.minicloud.nodeagent.v1.RegisterNodeResponse\x12r\n" +
+	"\x0fRecordHeartbeat\x12..minicloud.nodeagent.v1.RecordHeartbeatRequest\x1a/.minicloud.nodeagent.v1.RecordHeartbeatResponse\x12]\n" +
 	"\bPollWork\x12'.minicloud.nodeagent.v1.PollWorkRequest\x1a(.minicloud.nodeagent.v1.PollWorkResponse\x12r\n" +
 	"\x0fReportExecution\x12..minicloud.nodeagent.v1.ReportExecutionRequest\x1a/.minicloud.nodeagent.v1.ReportExecutionResponseBBZ@mini-cloud/internal/gen/proto/minicloud/nodeagent/v1;nodeagentv1b\x06proto3"
 
@@ -973,8 +973,8 @@ var file_minicloud_nodeagent_v1_node_agent_proto_msgTypes = make([]protoimpl.Mes
 var file_minicloud_nodeagent_v1_node_agent_proto_goTypes = []any{
 	(*RegisterNodeRequest)(nil),     // 0: minicloud.nodeagent.v1.RegisterNodeRequest
 	(*RegisterNodeResponse)(nil),    // 1: minicloud.nodeagent.v1.RegisterNodeResponse
-	(*HeartbeatRequest)(nil),        // 2: minicloud.nodeagent.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),       // 3: minicloud.nodeagent.v1.HeartbeatResponse
+	(*RecordHeartbeatRequest)(nil),  // 2: minicloud.nodeagent.v1.RecordHeartbeatRequest
+	(*RecordHeartbeatResponse)(nil), // 3: minicloud.nodeagent.v1.RecordHeartbeatResponse
 	(*WorkItem)(nil),                // 4: minicloud.nodeagent.v1.WorkItem
 	(*PollWorkRequest)(nil),         // 5: minicloud.nodeagent.v1.PollWorkRequest
 	(*PollWorkResponse)(nil),        // 6: minicloud.nodeagent.v1.PollWorkResponse
@@ -996,11 +996,11 @@ var file_minicloud_nodeagent_v1_node_agent_proto_depIdxs = []int32{
 	12, // 7: minicloud.nodeagent.v1.ReportExecutionAck.observed_at:type_name -> google.protobuf.Timestamp
 	9,  // 8: minicloud.nodeagent.v1.ReportExecutionResponse.ack:type_name -> minicloud.nodeagent.v1.ReportExecutionAck
 	0,  // 9: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:input_type -> minicloud.nodeagent.v1.RegisterNodeRequest
-	2,  // 10: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.HeartbeatRequest
+	2,  // 10: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.RecordHeartbeatRequest
 	5,  // 11: minicloud.nodeagent.v1.NodeAgentService.PollWork:input_type -> minicloud.nodeagent.v1.PollWorkRequest
 	7,  // 12: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:input_type -> minicloud.nodeagent.v1.ReportExecutionRequest
 	1,  // 13: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:output_type -> minicloud.nodeagent.v1.RegisterNodeResponse
-	3,  // 14: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.HeartbeatResponse
+	3,  // 14: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.RecordHeartbeatResponse
 	6,  // 15: minicloud.nodeagent.v1.NodeAgentService.PollWork:output_type -> minicloud.nodeagent.v1.PollWorkResponse
 	10, // 16: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:output_type -> minicloud.nodeagent.v1.ReportExecutionResponse
 	13, // [13:17] is the sub-list for method output_type

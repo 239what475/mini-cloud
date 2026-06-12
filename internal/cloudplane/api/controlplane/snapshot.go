@@ -13,7 +13,6 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -30,7 +29,7 @@ func newSnapshotServer(logger *slog.Logger, stores *store.Store, cfg cloudplanec
 	return &snapshotServer{logger: logger, store: stores, config: cfg, auth: auth}
 }
 
-func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
+func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
 	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
 	}
@@ -40,7 +39,7 @@ func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cl
 		s.logger.Error("build cloud-plane snapshot failed", "error", err)
 		return nil, status.Error(codes.Internal, "build cloud-plane snapshot failed")
 	}
-	return snapshot, nil
+	return &cloudplanev1.GetSnapshotResponse{Snapshot: snapshot}, nil
 }
 
 func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {

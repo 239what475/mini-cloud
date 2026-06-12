@@ -158,14 +158,14 @@ func TestClientRejectsInvalidHeartbeatResponse(t *testing.T) {
 	t.Parallel()
 
 	client := newBufconnClient(t, &testNodeControlService{
-		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
-			return &nodeagentv1.HeartbeatResponse{
+		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
+			return &nodeagentv1.RecordHeartbeatResponse{
 				NodeId: req.GetNodeId(),
 			}, nil
 		},
 	})
 
-	_, err := client.SendHeartbeat(context.Background(), &nodeagentv1.HeartbeatRequest{
+	_, err := client.SendHeartbeat(context.Background(), &nodeagentv1.RecordHeartbeatRequest{
 		NodeId:              "node-a",
 		CpuMilliAllocatable: 1000,
 		MemoryMiAllocatable: 1024,
@@ -234,7 +234,7 @@ type testNodeControlService struct {
 
 	registerNode    func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
 	pollWork        func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error)
-	recordHeartbeat func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error)
+	recordHeartbeat func(context.Context, *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error)
 }
 
 func (s *testNodeControlService) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
@@ -251,11 +251,11 @@ func (s *testNodeControlService) PollWork(ctx context.Context, req *nodeagentv1.
 	return &nodeagentv1.PollWorkResponse{}, nil
 }
 
-func (s *testNodeControlService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+func (s *testNodeControlService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 	if s.recordHeartbeat != nil {
 		return s.recordHeartbeat(ctx, req)
 	}
-	return &nodeagentv1.HeartbeatResponse{}, nil
+	return &nodeagentv1.RecordHeartbeatResponse{}, nil
 }
 
 func newBufconnClient(t *testing.T, server nodeagentv1.NodeAgentServiceServer) *Client {

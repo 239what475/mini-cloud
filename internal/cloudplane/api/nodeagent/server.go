@@ -72,7 +72,7 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 	}, nil
 }
 
-func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 	nodeID := strings.TrimSpace(req.GetNodeId())
 	if nodeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "nodeID is required")
@@ -91,7 +91,7 @@ func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.Heartbea
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	return &nodeagentv1.HeartbeatResponse{
+	return &nodeagentv1.RecordHeartbeatResponse{
 		NodeId:         nodeID,
 		ObservedStatus: observedStatus,
 	}, nil

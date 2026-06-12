@@ -16,7 +16,6 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var errPlaneObjectNotFound = errors.New("plane api object not found")
@@ -69,19 +68,21 @@ func (c *planeClient) Close() error {
 }
 
 func (c *planeClient) Snapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
-	resp, err := c.snapshotRPC.GetSnapshot(withAuth(ctx, c.bearerToken), &emptypb.Empty{})
+	resp, err := c.snapshotRPC.GetSnapshot(withAuth(ctx, c.bearerToken), &cloudplanev1.GetSnapshotRequest{})
 	if err != nil {
 		return nil, classifyRPCError(err)
 	}
-	return resp, nil
+	if resp.GetSnapshot() == nil {
+		return nil, fmt.Errorf("plane snapshot response is empty")
+	}
+	return resp.GetSnapshot(), nil
 }
 
-func (c *planeClient) ApplyService(ctx context.Context, input *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
-	resp, err := c.executionRPC.ApplyService(withAuth(ctx, c.bearerToken), input)
-	if err != nil {
-		return nil, classifyRPCError(err)
+func (c *planeClient) ApplyService(ctx context.Context, input *cloudplanev1.ApplyServiceRequest) error {
+	if _, err := c.executionRPC.ApplyService(withAuth(ctx, c.bearerToken), input); err != nil {
+		return classifyRPCError(err)
 	}
-	return resp, nil
+	return nil
 }
 
 func (c *planeClient) DeleteService(ctx context.Context, input *cloudplanev1.DeleteServiceRequest) error {

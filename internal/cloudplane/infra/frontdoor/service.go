@@ -49,19 +49,15 @@ func NewService(logger *slog.Logger, cfg cloudplaneconfig.Config, stores domainS
 	if err != nil {
 		return nil, err
 	}
-	return newServiceWithClients(logger, cfg.Ingress.BaseDomain, cdn, stores), nil
-}
-
-func newServiceWithClients(logger *slog.Logger, baseDomain string, cdn cdnClient, stores domainStore) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Service{
 		logger:     logger,
-		baseDomain: cleanDomain(baseDomain),
+		baseDomain: cleanDomain(cfg.Ingress.BaseDomain),
 		cdn:        cdn,
 		store:      stores,
-	}
+	}, nil
 }
 
 func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {

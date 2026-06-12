@@ -104,7 +104,7 @@ func (c *Client) RegisterNode(ctx context.Context, input *nodeagentv1.RegisterNo
 	return resp, nil
 }
 
-func (c *Client) SendHeartbeat(ctx context.Context, input *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+func (c *Client) SendHeartbeat(ctx context.Context, input *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err

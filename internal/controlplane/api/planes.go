@@ -158,7 +158,7 @@ func (h planeHandler) syncRegisteredPlanes(c *gin.Context) {
 	if h.syncer == nil {
 		return
 	}
-	if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), 10*time.Second); err != nil {
+	if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), coordination.RequestPlaneSyncTimeout); err != nil {
 		h.logger.Warn("sync planes for request failed", "error", err)
 	}
 }

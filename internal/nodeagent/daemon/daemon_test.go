@@ -91,7 +91,7 @@ func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 				NodeId: "node-renewed",
 			}, nil
 		},
-		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 			heartbeatCalls++
 			switch req.GetNodeId() {
 			case "node-stale":
@@ -100,7 +100,7 @@ func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 				if firstIncomingMetadata(ctx, "authorization") != "Bearer node-agent-secret" {
 					t.Fatalf("unexpected renewed heartbeat auth header: %q", firstIncomingMetadata(ctx, "authorization"))
 				}
-				return &nodeagentv1.HeartbeatResponse{
+				return &nodeagentv1.RecordHeartbeatResponse{
 					NodeId:         "node-renewed",
 					ObservedStatus: "ready",
 				}, nil
@@ -201,12 +201,12 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 				NodeId: "node-injected",
 			}, nil
 		},
-		recordHeartbeat: func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+		recordHeartbeat: func(context.Context, *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 			heartbeatCalls++
 			if heartbeatCalls == 1 {
 				close(heartbeatDone)
 			}
-			return &nodeagentv1.HeartbeatResponse{
+			return &nodeagentv1.RecordHeartbeatResponse{
 				NodeId:         "node-injected",
 				ObservedStatus: "ready",
 			}, nil
@@ -280,7 +280,7 @@ type nodeAgentTestService struct {
 	nodeagentv1.UnimplementedNodeAgentServiceServer
 
 	registerNode    func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
-	recordHeartbeat func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error)
+	recordHeartbeat func(context.Context, *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error)
 	pollWork        func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error)
 	reportExecution func(context.Context, *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error)
 }
@@ -289,7 +289,7 @@ func (s *nodeAgentTestService) RegisterNode(ctx context.Context, req *nodeagentv
 	return s.registerNode(ctx, req)
 }
 
-func (s *nodeAgentTestService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+func (s *nodeAgentTestService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 	return s.recordHeartbeat(ctx, req)
 }
 

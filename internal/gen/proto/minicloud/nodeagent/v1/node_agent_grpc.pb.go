@@ -30,7 +30,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NodeAgentServiceClient interface {
 	RegisterNode(ctx context.Context, in *RegisterNodeRequest, opts ...grpc.CallOption) (*RegisterNodeResponse, error)
-	RecordHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
+	RecordHeartbeat(ctx context.Context, in *RecordHeartbeatRequest, opts ...grpc.CallOption) (*RecordHeartbeatResponse, error)
 	PollWork(ctx context.Context, in *PollWorkRequest, opts ...grpc.CallOption) (*PollWorkResponse, error)
 	ReportExecution(ctx context.Context, in *ReportExecutionRequest, opts ...grpc.CallOption) (*ReportExecutionResponse, error)
 }
@@ -53,9 +53,9 @@ func (c *nodeAgentServiceClient) RegisterNode(ctx context.Context, in *RegisterN
 	return out, nil
 }
 
-func (c *nodeAgentServiceClient) RecordHeartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+func (c *nodeAgentServiceClient) RecordHeartbeat(ctx context.Context, in *RecordHeartbeatRequest, opts ...grpc.CallOption) (*RecordHeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(HeartbeatResponse)
+	out := new(RecordHeartbeatResponse)
 	err := c.cc.Invoke(ctx, NodeAgentService_RecordHeartbeat_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func (c *nodeAgentServiceClient) ReportExecution(ctx context.Context, in *Report
 // for forward compatibility.
 type NodeAgentServiceServer interface {
 	RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error)
-	RecordHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
+	RecordHeartbeat(context.Context, *RecordHeartbeatRequest) (*RecordHeartbeatResponse, error)
 	PollWork(context.Context, *PollWorkRequest) (*PollWorkResponse, error)
 	ReportExecution(context.Context, *ReportExecutionRequest) (*ReportExecutionResponse, error)
 	mustEmbedUnimplementedNodeAgentServiceServer()
@@ -104,7 +104,7 @@ type UnimplementedNodeAgentServiceServer struct{}
 func (UnimplementedNodeAgentServiceServer) RegisterNode(context.Context, *RegisterNodeRequest) (*RegisterNodeResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterNode not implemented")
 }
-func (UnimplementedNodeAgentServiceServer) RecordHeartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+func (UnimplementedNodeAgentServiceServer) RecordHeartbeat(context.Context, *RecordHeartbeatRequest) (*RecordHeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RecordHeartbeat not implemented")
 }
 func (UnimplementedNodeAgentServiceServer) PollWork(context.Context, *PollWorkRequest) (*PollWorkResponse, error) {
@@ -153,7 +153,7 @@ func _NodeAgentService_RegisterNode_Handler(srv interface{}, ctx context.Context
 }
 
 func _NodeAgentService_RecordHeartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HeartbeatRequest)
+	in := new(RecordHeartbeatRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -165,7 +165,7 @@ func _NodeAgentService_RecordHeartbeat_Handler(srv interface{}, ctx context.Cont
 		FullMethod: NodeAgentService_RecordHeartbeat_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(NodeAgentServiceServer).RecordHeartbeat(ctx, req.(*HeartbeatRequest))
+		return srv.(NodeAgentServiceServer).RecordHeartbeat(ctx, req.(*RecordHeartbeatRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }

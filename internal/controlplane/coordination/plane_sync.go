@@ -20,6 +20,7 @@ const (
 	planeExecutionStatusRunning    = "running"
 	planeExecutionStatusSucceeded  = "succeeded"
 	planeExecutionStatusSuperseded = "superseded"
+	RequestPlaneSyncTimeout        = 10 * time.Second
 )
 
 type PlaneSyncer struct {

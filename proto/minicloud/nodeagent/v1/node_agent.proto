@@ -21,13 +21,13 @@ message RegisterNodeResponse {
   string node_id = 1 [json_name = "nodeID"];
 }
 
-message HeartbeatRequest {
+message RecordHeartbeatRequest {
   string node_id = 1 [json_name = "nodeID"];
   int32 cpu_milli_allocatable = 2 [json_name = "cpuMilliAllocatable"];
   int32 memory_mi_allocatable = 3 [json_name = "memoryMiAllocatable"];
 }
 
-message HeartbeatResponse {
+message RecordHeartbeatResponse {
   string node_id = 1 [json_name = "nodeID"];
   string observed_status = 2 [json_name = "observedStatus"];
 }
@@ -98,7 +98,7 @@ message ReportExecutionResponse {
 service NodeAgentService {
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeResponse);
 
-  rpc RecordHeartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc RecordHeartbeat(RecordHeartbeatRequest) returns (RecordHeartbeatResponse);
 
   rpc PollWork(PollWorkRequest) returns (PollWorkResponse);
 
