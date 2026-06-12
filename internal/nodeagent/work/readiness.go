@@ -50,9 +50,10 @@ func WaitReadiness(ctx context.Context, cfg ReadinessConfig) ReadinessResult {
 		URL:          cfg.URL,
 		Observations: make([]ReadinessObservation, 0, cfg.Attempts),
 	}
+	client := &http.Client{Timeout: cfg.Timeout}
 
 	for attempt := 1; attempt <= cfg.Attempts; attempt++ {
-		observation := probeReadiness(ctx, cfg, attempt)
+		observation := probeReadiness(ctx, client, cfg, attempt)
 		result.Observations = append(result.Observations, observation)
 		if observation.Error == "" && observation.StatusCode >= 200 && observation.StatusCode < 400 {
 			passedAt := observation.StartedAt
@@ -71,7 +72,7 @@ func WaitReadiness(ctx context.Context, cfg ReadinessConfig) ReadinessResult {
 	return result
 }
 
-func probeReadiness(ctx context.Context, cfg ReadinessConfig, attempt int) ReadinessObservation {
+func probeReadiness(ctx context.Context, client *http.Client, cfg ReadinessConfig, attempt int) ReadinessObservation {
 	observation := ReadinessObservation{
 		Attempt:   attempt,
 		StartedAt: time.Now().UTC(),
@@ -89,7 +90,7 @@ func probeReadiness(ctx context.Context, cfg ReadinessConfig, attempt int) Readi
 		return observation
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		observation.Error = err.Error()
 		return observation

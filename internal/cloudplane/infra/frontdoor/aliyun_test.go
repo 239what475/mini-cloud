@@ -63,15 +63,15 @@ type fakeAliyunCDN struct {
 	verifyErr      error
 }
 
-func (f *fakeAliyunCDN) AddCdnDomain(*cdn20180510.AddCdnDomainRequest) (*cdn20180510.AddCdnDomainResponse, error) {
+func (f *fakeAliyunCDN) AddCdnDomainWithOptions(*cdn20180510.AddCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.AddCdnDomainResponse, error) {
 	return nil, nil
 }
 
-func (f *fakeAliyunCDN) BatchSetCdnDomainConfig(*cdn20180510.BatchSetCdnDomainConfigRequest) (*cdn20180510.BatchSetCdnDomainConfigResponse, error) {
+func (f *fakeAliyunCDN) BatchSetCdnDomainConfigWithOptions(*cdn20180510.BatchSetCdnDomainConfigRequest, *util.RuntimeOptions) (*cdn20180510.BatchSetCdnDomainConfigResponse, error) {
 	return nil, nil
 }
 
-func (f *fakeAliyunCDN) CallApi(*openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error) {
+func (f *fakeAliyunCDN) CallApiWithCtx(context.Context, *openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error) {
 	return map[string]interface{}{
 		"body": map[string]interface{}{
 			"Content": f.verifyContent,
@@ -79,19 +79,19 @@ func (f *fakeAliyunCDN) CallApi(*openapi.Params, *openapi.OpenApiRequest, *util.
 	}, nil
 }
 
-func (f *fakeAliyunCDN) DescribeUserDomains(*cdn20180510.DescribeUserDomainsRequest) (*cdn20180510.DescribeUserDomainsResponse, error) {
+func (f *fakeAliyunCDN) DescribeUserDomainsWithOptions(*cdn20180510.DescribeUserDomainsRequest, *util.RuntimeOptions) (*cdn20180510.DescribeUserDomainsResponse, error) {
 	return &cdn20180510.DescribeUserDomainsResponse{Body: &cdn20180510.DescribeUserDomainsResponseBody{}}, nil
 }
 
-func (f *fakeAliyunCDN) StopCdnDomain(*cdn20180510.StopCdnDomainRequest) (*cdn20180510.StopCdnDomainResponse, error) {
+func (f *fakeAliyunCDN) StopCdnDomainWithOptions(*cdn20180510.StopCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.StopCdnDomainResponse, error) {
 	return nil, nil
 }
 
-func (f *fakeAliyunCDN) DeleteCdnDomain(*cdn20180510.DeleteCdnDomainRequest) (*cdn20180510.DeleteCdnDomainResponse, error) {
+func (f *fakeAliyunCDN) DeleteCdnDomainWithOptions(*cdn20180510.DeleteCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.DeleteCdnDomainResponse, error) {
 	return nil, nil
 }
 
-func (f *fakeAliyunCDN) VerifyDomainOwner(req *cdn20180510.VerifyDomainOwnerRequest) (*cdn20180510.VerifyDomainOwnerResponse, error) {
+func (f *fakeAliyunCDN) VerifyDomainOwnerWithOptions(req *cdn20180510.VerifyDomainOwnerRequest, _ *util.RuntimeOptions) (*cdn20180510.VerifyDomainOwnerResponse, error) {
 	if req != nil && req.DomainName != nil {
 		f.verifiedDomain = *req.DomainName
 	}

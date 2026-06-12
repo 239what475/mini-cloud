@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	cdn "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/cdn/v20180606"
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
@@ -30,6 +31,8 @@ type tencentCDNClient struct {
 	dnsRootDomain string
 }
 
+const tencentCDNRequestTimeout = 15 * time.Second
+
 func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error) {
 	credential := tccommon.NewTokenCredential(
 		cfg.Infrastructure.TencentCredential.SecretID,
@@ -38,6 +41,7 @@ func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error)
 	)
 	profile := tcprofile.NewClientProfile()
 	profile.HttpProfile.Endpoint = "cdn.tencentcloudapi.com"
+	profile.HttpProfile.ReqTimeout = int(tencentCDNRequestTimeout / time.Second)
 	client, err := cdn.NewClient(credential, "", profile)
 	if err != nil {
 		return nil, fmt.Errorf("create Tencent CDN client: %w", err)

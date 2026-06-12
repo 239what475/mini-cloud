@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"mini-cloud/internal/controlplane/config"
 
@@ -12,7 +13,10 @@ import (
 	dnspod "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod/v20210323"
 )
 
-const dnsRecordTTL uint64 = 600
+const (
+	dnsRecordTTL         uint64 = 600
+	dnsPodRequestTimeout        = 15 * time.Second
+)
 
 type dnsClient interface {
 	EnsureRecord(context.Context, string, string, string) error
@@ -38,6 +42,7 @@ func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	credential := tccommon.NewTokenCredential(cfg.SecretID, cfg.SecretKey, cfg.Token)
 	profile := tcprofile.NewClientProfile()
 	profile.HttpProfile.Endpoint = "dnspod.tencentcloudapi.com"
+	profile.HttpProfile.ReqTimeout = int(dnsPodRequestTimeout / time.Second)
 	client, err := dnspod.NewClient(credential, "", profile)
 	if err != nil {
 		return nil, fmt.Errorf("create DNSPod client: %w", err)

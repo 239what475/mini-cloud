@@ -13,7 +13,10 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
-const provisioningNodeTimeout = 10 * time.Minute
+const (
+	provisioningNodeTimeout = 10 * time.Minute
+	providerRequestTimeout  = 30 * time.Second
+)
 
 type nodeReconciler struct {
 	logger *slog.Logger
@@ -66,12 +69,14 @@ func (s *nodeReconciler) reconcilePendingExecutionCapacity(ctx context.Context) 
 		return false, err
 	}
 
-	result, err := s.driver.Create(ctx, infranodeprovider.CreateRequest{
+	providerCtx, cancel := context.WithTimeout(ctx, providerRequestTimeout)
+	result, err := s.driver.Create(providerCtx, infranodeprovider.CreateRequest{
 		Name:        candidate.NodeName,
 		ClientToken: candidate.ClientToken,
 		CPUMilli:    candidate.CPUMilli,
 		MemoryMi:    candidate.MemoryMi,
 	})
+	cancel()
 	if err != nil {
 		reason := "provider node creation failed: " + err.Error()
 		_, cleanupErr := s.store.MarkNodeDeleted(
@@ -93,7 +98,7 @@ func (s *nodeReconciler) reconcilePendingExecutionCapacity(ctx context.Context) 
 		time.Now().UTC(),
 	); err != nil {
 		reason := "provider node was created but cloud-plane failed to bind it: " + err.Error()
-		deleteErr := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: result.InstanceID})
+		deleteErr := s.deleteProviderNode(ctx, result.InstanceID)
 		_, cleanupErr := s.store.MarkNodeDeleted(ctx, node.ID, reason, time.Now().UTC())
 		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
 		return false, errors.Join(err, deleteErr, cleanupErr, failErr)
@@ -132,7 +137,7 @@ func (s *nodeReconciler) reconcileStaleProvisioningNode(ctx context.Context, nod
 	}
 	reason := "node did not register before provisioning timeout"
 	if strings.TrimSpace(item.InstanceID) != "" {
-		if err := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: item.InstanceID}); err != nil {
+		if err := s.deleteProviderNode(ctx, item.InstanceID); err != nil {
 			return err
 		}
 	}
@@ -207,7 +212,7 @@ func (s *nodeReconciler) reconcileNodeDeletion(ctx context.Context, item cloudmo
 		return nil
 	}
 
-	if err := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: draining.InstanceID}); err != nil {
+	if err := s.deleteProviderNode(ctx, draining.InstanceID); err != nil {
 		return err
 	}
 
@@ -218,4 +223,10 @@ func (s *nodeReconciler) reconcileNodeDeletion(ctx context.Context, item cloudmo
 		time.Now().UTC(),
 	)
 	return err
+}
+
+func (s *nodeReconciler) deleteProviderNode(ctx context.Context, instanceID string) error {
+	providerCtx, cancel := context.WithTimeout(ctx, providerRequestTimeout)
+	defer cancel()
+	return s.driver.Delete(providerCtx, infranodeprovider.DeleteRequest{InstanceID: instanceID})
 }

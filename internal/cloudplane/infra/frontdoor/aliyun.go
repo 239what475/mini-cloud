@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"time"
 
 	cdn20180510 "github.com/alibabacloud-go/cdn-20180510/v5/client"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
@@ -17,16 +18,16 @@ import (
 )
 
 type aliyunCDNAPI interface {
-	AddCdnDomain(*cdn20180510.AddCdnDomainRequest) (*cdn20180510.AddCdnDomainResponse, error)
-	BatchSetCdnDomainConfig(*cdn20180510.BatchSetCdnDomainConfigRequest) (*cdn20180510.BatchSetCdnDomainConfigResponse, error)
-	DescribeUserDomains(*cdn20180510.DescribeUserDomainsRequest) (*cdn20180510.DescribeUserDomainsResponse, error)
-	StopCdnDomain(*cdn20180510.StopCdnDomainRequest) (*cdn20180510.StopCdnDomainResponse, error)
-	DeleteCdnDomain(*cdn20180510.DeleteCdnDomainRequest) (*cdn20180510.DeleteCdnDomainResponse, error)
-	VerifyDomainOwner(*cdn20180510.VerifyDomainOwnerRequest) (*cdn20180510.VerifyDomainOwnerResponse, error)
+	AddCdnDomainWithOptions(*cdn20180510.AddCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.AddCdnDomainResponse, error)
+	BatchSetCdnDomainConfigWithOptions(*cdn20180510.BatchSetCdnDomainConfigRequest, *util.RuntimeOptions) (*cdn20180510.BatchSetCdnDomainConfigResponse, error)
+	DescribeUserDomainsWithOptions(*cdn20180510.DescribeUserDomainsRequest, *util.RuntimeOptions) (*cdn20180510.DescribeUserDomainsResponse, error)
+	StopCdnDomainWithOptions(*cdn20180510.StopCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.StopCdnDomainResponse, error)
+	DeleteCdnDomainWithOptions(*cdn20180510.DeleteCdnDomainRequest, *util.RuntimeOptions) (*cdn20180510.DeleteCdnDomainResponse, error)
+	VerifyDomainOwnerWithOptions(*cdn20180510.VerifyDomainOwnerRequest, *util.RuntimeOptions) (*cdn20180510.VerifyDomainOwnerResponse, error)
 }
 
 type aliyunRawAPI interface {
-	CallApi(*openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error)
+	CallApiWithCtx(context.Context, *openapi.Params, *openapi.OpenApiRequest, *util.RuntimeOptions) (map[string]interface{}, error)
 }
 
 type aliyunCDNClient struct {
@@ -34,6 +35,11 @@ type aliyunCDNClient struct {
 	rawClient aliyunRawAPI
 	origin    string
 }
+
+const (
+	aliyunCDNConnectTimeout = 5 * time.Second
+	aliyunCDNReadTimeout    = 15 * time.Second
+)
 
 func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
 	credential, err := credentials.NewCredential(nil)
@@ -64,7 +70,7 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSR
 	if domain.Exists {
 		return nil, nil
 	}
-	verify, err := c.domainVerifyData(host)
+	verify, err := c.domainVerifyData(ctx, host)
 	if err != nil {
 		return nil, err
 	}
@@ -74,10 +80,10 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSR
 		Value:     verify.VerifyCode,
 	}
 	verifyType := "dnsCheck"
-	_, err = c.client.VerifyDomainOwner(&cdn20180510.VerifyDomainOwnerRequest{
+	_, err = c.client.VerifyDomainOwnerWithOptions(&cdn20180510.VerifyDomainOwnerRequest{
 		DomainName: &host,
 		VerifyType: &verifyType,
-	})
+	}, aliyunCDNRuntimeOptions())
 	if isAliyunPending(err) {
 		return verifyRecord, errDomainVerificationPending
 	}
@@ -116,10 +122,10 @@ func (c *aliyunCDNClient) DeleteDomain(_ context.Context, host string) error {
 	if host == "" {
 		return nil
 	}
-	if _, err := c.client.StopCdnDomain((&cdn20180510.StopCdnDomainRequest{}).SetDomainName(host)); err != nil && !isAliyunNotFound(err) {
+	if _, err := c.client.StopCdnDomainWithOptions((&cdn20180510.StopCdnDomainRequest{}).SetDomainName(host), aliyunCDNRuntimeOptions()); err != nil && !isAliyunNotFound(err) {
 		return err
 	}
-	if _, err := c.client.DeleteCdnDomain((&cdn20180510.DeleteCdnDomainRequest{}).SetDomainName(host)); err != nil && !isAliyunNotFound(err) {
+	if _, err := c.client.DeleteCdnDomainWithOptions((&cdn20180510.DeleteCdnDomainRequest{}).SetDomainName(host), aliyunCDNRuntimeOptions()); err != nil && !isAliyunNotFound(err) {
 		return err
 	}
 	return nil
@@ -127,10 +133,10 @@ func (c *aliyunCDNClient) DeleteDomain(_ context.Context, host string) error {
 
 func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
 	match := "full_match"
-	resp, err := c.client.DescribeUserDomains(&cdn20180510.DescribeUserDomainsRequest{
+	resp, err := c.client.DescribeUserDomainsWithOptions(&cdn20180510.DescribeUserDomainsRequest{
 		DomainName:       &host,
 		DomainSearchType: &match,
-	})
+	}, aliyunCDNRuntimeOptions())
 	if err != nil {
 		return cdnDomain{}, err
 	}
@@ -146,11 +152,11 @@ func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
 	return cdnDomain{}, nil
 }
 
-func (c *aliyunCDNClient) domainVerifyData(host string) (aliyunDomainVerifyData, error) {
+func (c *aliyunCDNClient) domainVerifyData(ctx context.Context, host string) (aliyunDomainVerifyData, error) {
 	if c.rawClient == nil {
 		return aliyunDomainVerifyData{}, fmt.Errorf("aliyun raw API client is nil")
 	}
-	result, err := c.rawClient.CallApi((&openapi.Params{}).
+	result, err := c.rawClient.CallApiWithCtx(ctx, (&openapi.Params{}).
 		SetAction("DescribeDomainVerifyData").
 		SetVersion("2018-05-10").
 		SetProtocol("HTTPS").
@@ -161,7 +167,7 @@ func (c *aliyunCDNClient) domainVerifyData(host string) (aliyunDomainVerifyData,
 		SetReqBodyType("formData").
 		SetBodyType("json"), &openapi.OpenApiRequest{
 		Query: openapiutil.Query(map[string]interface{}{"DomainName": host}),
-	}, &util.RuntimeOptions{})
+	}, aliyunCDNRuntimeOptions())
 	if err != nil {
 		return aliyunDomainVerifyData{}, err
 	}
@@ -201,12 +207,12 @@ func (c *aliyunCDNClient) addDomain(host string) error {
 	cdnType := "web"
 	scope := "domestic"
 	sourceJSON := string(sources)
-	_, err = c.client.AddCdnDomain(&cdn20180510.AddCdnDomainRequest{
+	_, err = c.client.AddCdnDomainWithOptions(&cdn20180510.AddCdnDomainRequest{
 		DomainName: &host,
 		CdnType:    &cdnType,
 		Scope:      &scope,
 		Sources:    &sourceJSON,
-	})
+	}, aliyunCDNRuntimeOptions())
 	return err
 }
 
@@ -222,11 +228,20 @@ func (c *aliyunCDNClient) setOriginHost(host string) error {
 		return err
 	}
 	functionJSON := string(functions)
-	_, err = c.client.BatchSetCdnDomainConfig(&cdn20180510.BatchSetCdnDomainConfigRequest{
+	_, err = c.client.BatchSetCdnDomainConfigWithOptions(&cdn20180510.BatchSetCdnDomainConfigRequest{
 		DomainNames: &host,
 		Functions:   &functionJSON,
-	})
+	}, aliyunCDNRuntimeOptions())
 	return err
+}
+
+func aliyunCDNRuntimeOptions() *util.RuntimeOptions {
+	connectTimeout := int(aliyunCDNConnectTimeout / time.Millisecond)
+	readTimeout := int(aliyunCDNReadTimeout / time.Millisecond)
+	return &util.RuntimeOptions{
+		ConnectTimeout: &connectTimeout,
+		ReadTimeout:    &readTimeout,
+	}
 }
 
 type aliyunDomainVerifyData struct {

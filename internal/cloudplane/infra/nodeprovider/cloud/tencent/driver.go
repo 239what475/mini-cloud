@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
@@ -18,6 +19,8 @@ import (
 )
 
 const Name = "tencent"
+
+const tencentCVMRequestTimeout = 15 * time.Second
 
 var nodeNoProxy = []string{
 	"127.0.0.1",
@@ -312,6 +315,7 @@ func newCVMClient(regionID string, credentialConfig cloudplaneconfig.TencentCred
 	credential := tccommon.NewTokenCredential(secretID, secretKey, strings.TrimSpace(credentialConfig.Token))
 	clientProfile := tcprofile.NewClientProfile()
 	clientProfile.HttpProfile.Endpoint = "cvm.tencentcloudapi.com"
+	clientProfile.HttpProfile.ReqTimeout = int(tencentCVMRequestTimeout / time.Second)
 	client, err := cvm.NewClient(credential, regionID, clientProfile)
 	if err != nil {
 		return nil, fmt.Errorf("create tencent cvm client: %w", err)
