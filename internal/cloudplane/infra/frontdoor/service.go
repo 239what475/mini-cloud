@@ -156,6 +156,13 @@ func cleanDomain(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
+func cleanDomainPointer(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return cleanDomain(*value)
+}
+
 func domainIsUnder(child string, parent string) bool {
 	child = cleanDomain(child)
 	parent = cleanDomain(parent)

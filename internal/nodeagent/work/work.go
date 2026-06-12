@@ -12,7 +12,6 @@ import (
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/workloadlogs"
 	"mini-cloud/internal/transport"
 )
 
@@ -21,8 +20,6 @@ type ContainerRuntime interface {
 	Stop(context.Context, string) error
 	Logs(context.Context, string, int) (string, error)
 }
-
-type WorkloadLogStarter func(workloadlogs.StartRequest)
 
 const (
 	workActionRun    = "run"
@@ -69,7 +66,6 @@ type TimeoutOptions struct {
 
 type ObservabilityOptions struct {
 	PlatformName         string
-	WorkloadLogs         WorkloadLogStarter
 	WorkloadOTLPEndpoint string
 	LogTail              int
 }
@@ -158,7 +154,6 @@ func (e executor) executeNext(ctx context.Context) (Result, error) {
 		"container_id", runResult.ContainerID,
 		"host_port", runResult.HostPort,
 	)
-	e.startWorkloadLogForwarding(item, runResult)
 
 	readinessHost := strings.TrimSpace(opts.Node.PrivateIP)
 	if readinessHost == "" {
@@ -351,21 +346,6 @@ func (e executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *n
 	req.NodeId = e.opts.Node.ID
 	req.ExecutionId = item.GetExecutionId()
 	return e.client.ReportExecution(reportCtx, req)
-}
-
-func (e executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResult runtime.RunResult) {
-	if e.opts.Observability.WorkloadLogs == nil {
-		return
-	}
-	e.opts.Observability.WorkloadLogs(workloadlogs.StartRequest{
-		ServiceID:     item.GetServiceId(),
-		ServiceName:   item.GetServiceName(),
-		PlanID:        item.GetPlanId(),
-		ExecutionID:   item.GetExecutionId(),
-		NodeID:        e.opts.Node.ID,
-		ContainerID:   runResult.ContainerID,
-		ContainerName: runResult.ContainerName,
-	})
 }
 
 func (e executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {

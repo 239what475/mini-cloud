@@ -57,7 +57,7 @@ node-agent 是 worker 节点上的执行器。
 - 上报 heartbeat 和节点容量。
 - 拉取 work item。
 - 启动、停止、清理单容器 workload。
-- 上报 execution 结果和 workload 日志。
+- 上报 execution 结果，并在启动失败时截取容器尾日志辅助诊断。
 
 ## 产品边界
 
@@ -68,7 +68,7 @@ node-agent 是 worker 节点上的执行器。
 - 自动扩缩 worker node。
 - service name 自动生成三级域名。
 - Caddy + provider CDN + DNSPod 的入口链路。
-- 简单 readiness、service 状态、节点状态、事件和日志查询入口。
+- 简单 readiness、service 状态、节点状态、事件和基础 metrics。
 - 真实云 lab 的 bootstrap、install、destroy。
 
 当前不做：
@@ -93,7 +93,7 @@ node-agent 是 worker 节点上的执行器。
 - `internal/cloudplane/`
   - cloud-plane gRPC、运行态控制器、provider driver、store、frontdoor、Caddy。
 - `internal/nodeagent/`
-  - worker 节点注册、heartbeat、workload 执行和日志。
+  - worker 节点注册、heartbeat、workload 执行和失败诊断。
 - `internal/lab/`
   - 真实云 lab 的 bootstrap/install/destroy 编排。
 - `proto/`

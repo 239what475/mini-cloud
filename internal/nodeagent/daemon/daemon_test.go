@@ -13,7 +13,6 @@ import (
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/workloadlogs"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -31,7 +30,6 @@ func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
 		agentconfig.Config{},
 		agentclient.New(agentclient.Config{}),
 		&stubRuntime{},
-		nil,
 	)
 	runner.nodeID = "node_stale"
 	runner.runtimeResetNode = "node_stale"
@@ -58,7 +56,6 @@ func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
 		agentconfig.Config{},
 		agentclient.New(agentclient.Config{}),
 		&stubRuntime{},
-		nil,
 	)
 	runner.nodeID = "node-a"
 	runner.runtimeResetNode = "node-a"
@@ -129,7 +126,7 @@ func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	containerRuntime := &stubRuntime{}
-	runner := NewRunner(logger, cfg, client, containerRuntime, nil)
+	runner := NewRunner(logger, cfg, client, containerRuntime)
 	runner.nodeID = "node-stale"
 	runner.runtimeResetNode = "node-stale"
 
@@ -161,7 +158,6 @@ func TestResetRuntimeOnceDoesNotMarkDifferentNodeReset(t *testing.T) {
 		logger,
 		agentconfig.Config{},
 		agentclient.New(agentclient.Config{}),
-		nil,
 		nil,
 	)
 	runner.nodeID = "node-old"
@@ -219,10 +215,6 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			return &nodeagentv1.PollWorkResponse{}, nil
 		},
 	})
-	workloadLogs, err := workloadlogs.NewCollector(testDaemonLogger(), workloadlogs.Config{}, nil)
-	if err != nil {
-		t.Fatalf("workloadlogs.NewCollector returned error: %v", err)
-	}
 	cfg := agentconfig.Config{
 		Node: agentconfig.NodeConfig{
 			Provider:     "aliyun",
@@ -245,15 +237,13 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			cfg,
 			client,
 			&stubRuntime{},
-			workloadLogs,
 		).Run(ctx)
 	}()
 	waitForTestSignal(t, heartbeatDone, cancel, "first heartbeat")
 	waitForTestSignal(t, pollDone, cancel, "first work poll")
 	cancel()
 
-	err = <-errCh
-	if err != nil {
+	if err := <-errCh; err != nil {
 		t.Fatalf("Runner.Run returned error: %v", err)
 	}
 	if registerCalls != 1 {
@@ -370,10 +360,6 @@ func (s *stubRuntime) ResetNode(ctx context.Context, nodeID string) error {
 	if s.resetNode != nil {
 		return s.resetNode(ctx, nodeID)
 	}
-	return nil
-}
-
-func (s *stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
 	return nil
 }
 

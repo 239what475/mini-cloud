@@ -102,8 +102,6 @@ type IngressConfig struct {
 }
 
 type ObservabilityConfig struct {
-	LokiURL      string `yaml:"lokiURL"`
-	LokiTenantID string `yaml:"lokiTenantID"`
 	OTLPEndpoint string `yaml:"otlpEndpoint"`
 }
 
@@ -164,8 +162,6 @@ func (c *Config) normalize() {
 	c.Ingress.BaseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.Ingress.BaseDomain)), ".")
 	c.Ingress.CaddyAdminURL = strings.TrimSpace(c.Ingress.CaddyAdminURL)
 	c.Ingress.PublicOrigin = strings.TrimSpace(c.Ingress.PublicOrigin)
-	c.Observability.LokiURL = strings.TrimSpace(c.Observability.LokiURL)
-	c.Observability.LokiTenantID = strings.TrimSpace(c.Observability.LokiTenantID)
 	c.Observability.OTLPEndpoint = strings.TrimSpace(c.Observability.OTLPEndpoint)
 }
 

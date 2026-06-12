@@ -159,7 +159,7 @@ func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (cdnDomai
 		if item == nil || item.Domain == nil || cleanDomain(*item.Domain) != host {
 			continue
 		}
-		return cdnDomain{Exists: true, CNAME: trimCNAMEValue(item.Cname)}, nil
+		return cdnDomain{Exists: true, CNAME: cleanDomainPointer(item.Cname)}, nil
 	}
 	return cdnDomain{}, nil
 }

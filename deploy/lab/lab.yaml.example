@@ -50,6 +50,4 @@ provider:
   tencentCredentialFile: ~/.tccli/default.credential
 
 observability:
-  workloadLogLokiURL: ""
-  workloadLogLokiTenantID: ""
   workloadOTLPEndpoint: ""

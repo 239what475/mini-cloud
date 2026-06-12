@@ -16,7 +16,6 @@ type Config struct {
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
 	DNS      DNSConfig      `yaml:"dns"`
-	Logs     LogsConfig     `yaml:"logs"`
 }
 
 type ServerConfig struct {
@@ -46,15 +45,6 @@ type DNSPodConfig struct {
 	SecretID  string `yaml:"secretId"`
 	SecretKey string `yaml:"secretKey"`
 	Token     string `yaml:"token"`
-}
-
-type LogsConfig struct {
-	Loki LokiConfig `yaml:"loki"`
-}
-
-type LokiConfig struct {
-	URL      string `yaml:"url"`
-	TenantID string `yaml:"tenantID"`
 }
 
 func Load(path string) (Config, error) {
@@ -100,8 +90,6 @@ func (c *Config) normalize() {
 	c.DNS.DNSPod.SecretID = strings.TrimSpace(c.DNS.DNSPod.SecretID)
 	c.DNS.DNSPod.SecretKey = strings.TrimSpace(c.DNS.DNSPod.SecretKey)
 	c.DNS.DNSPod.Token = strings.TrimSpace(c.DNS.DNSPod.Token)
-	c.Logs.Loki.URL = strings.TrimSpace(c.Logs.Loki.URL)
-	c.Logs.Loki.TenantID = strings.TrimSpace(c.Logs.Loki.TenantID)
 }
 
 func (c Config) Validate() error {

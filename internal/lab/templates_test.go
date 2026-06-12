@@ -126,8 +126,7 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 		},
 		IngressBaseDomain:   "apps.example.com",
 		IngressPublicOrigin: "203.0.113.10",
-		LokiURL:             "http://loki.example:3100",
-		LokiTenantID:        "tenant-a",
+		OTLPEndpoint:        "http://otel.example:4318",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -150,8 +149,8 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	if !strings.Contains(text, "  tencentCredential:\n    secretId: \"sid\"\n    secretKey: \"skey\"\n    token: \"stok\"") {
 		t.Fatalf("tencentCredential was not rendered:\n%s", text)
 	}
-	if !strings.Contains(text, "  lokiTenantID: \"tenant-a\"") {
-		t.Fatalf("lokiTenantID was not rendered:\n%s", text)
+	if !strings.Contains(text, "  otlpEndpoint: \"http://otel.example:4318\"") {
+		t.Fatalf("otlpEndpoint was not rendered:\n%s", text)
 	}
 	if strings.Contains(text, "originHost") {
 		t.Fatalf("cloud-plane config should not contain originHost:\n%s", text)

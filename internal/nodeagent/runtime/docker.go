@@ -252,33 +252,6 @@ func (d *Docker) Logs(ctx context.Context, containerID string, tail int) (string
 	return strings.Join(parts, "\n"), nil
 }
 
-func (d *Docker) StreamLogs(ctx context.Context, containerID string, emit LogEmitter) error {
-	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
-		ShowStdout: true,
-		ShowStderr: true,
-		Follow:     true,
-		Timestamps: true,
-	})
-	if err != nil {
-		return fmt.Errorf("docker follow logs failed: %w", err)
-	}
-	defer func() {
-		if err := reader.Close(); err != nil {
-			d.logger.Warn("close docker follow logs stream failed", "container_id", containerID, "error", err)
-		}
-	}()
-
-	stdoutWriter := newLogLineWriter("stdout", emit)
-	stderrWriter := newLogLineWriter("stderr", emit)
-	defer stdoutWriter.Flush()
-	defer stderrWriter.Flush()
-
-	if _, err := stdcopy.StdCopy(stdoutWriter, stderrWriter, reader); err != nil {
-		return fmt.Errorf("decode docker follow logs stream: %w", err)
-	}
-	return nil
-}
-
 func (d *Docker) Close() error {
 	if d == nil {
 		return nil
@@ -552,66 +525,4 @@ func isSafePathSegment(value string) bool {
 		return false
 	}
 	return !strings.ContainsAny(value, `/\`)
-}
-
-type logLineWriter struct {
-	stream string
-	buffer bytes.Buffer
-	emit   LogEmitter
-}
-
-func newLogLineWriter(stream string, emit LogEmitter) *logLineWriter {
-	return &logLineWriter{
-		stream: stream,
-		emit:   emit,
-	}
-}
-
-func (w *logLineWriter) Write(p []byte) (int, error) {
-	if len(p) == 0 {
-		return 0, nil
-	}
-	_, _ = w.buffer.Write(p)
-	for {
-		data := w.buffer.Bytes()
-		index := bytes.IndexByte(data, '\n')
-		if index < 0 {
-			break
-		}
-		line := string(data[:index])
-		w.buffer.Next(index + 1)
-		w.emitLine(line)
-	}
-	return len(p), nil
-}
-
-func (w *logLineWriter) Flush() {
-	if w.buffer.Len() == 0 {
-		return
-	}
-	line := w.buffer.String()
-	w.buffer.Reset()
-	w.emitLine(line)
-}
-
-func (w *logLineWriter) emitLine(line string) {
-	line = strings.TrimRight(line, "\r")
-	if strings.TrimSpace(line) == "" {
-		return
-	}
-
-	timestamp := time.Now().UTC()
-	if space := strings.IndexByte(line, ' '); space > 0 {
-		if parsed, err := time.Parse(time.RFC3339Nano, line[:space]); err == nil {
-			timestamp = parsed.UTC()
-			line = line[space+1:]
-		}
-	}
-	if w.emit != nil {
-		w.emit(LogRecord{
-			Timestamp: timestamp,
-			Stream:    w.stream,
-			Line:      line,
-		})
-	}
 }

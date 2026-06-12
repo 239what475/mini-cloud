@@ -36,8 +36,6 @@ network:
       - "  "
       - 10.0.0.0/8
 observability:
-  workloadLogLokiURL: http://127.0.0.1:3100
-  workloadLogLokiTenantID: tenant-a
   workloadOTLPEndpoint: http://127.0.0.1:4318
 `)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
@@ -70,8 +68,8 @@ observability:
 	if len(cfg.Network.EgressProxy.NoProxy) != 2 {
 		t.Fatalf("egress proxy noProxy = %+v", cfg.Network.EgressProxy.NoProxy)
 	}
-	if cfg.Observability.WorkloadLogLokiURL != "http://127.0.0.1:3100" || cfg.Observability.WorkloadLogLokiTenantID != "tenant-a" {
-		t.Fatalf("log config = %q/%q", cfg.Observability.WorkloadLogLokiURL, cfg.Observability.WorkloadLogLokiTenantID)
+	if cfg.Observability.WorkloadOTLPEndpoint != "http://127.0.0.1:4318" {
+		t.Fatalf("workload otlp endpoint = %q", cfg.Observability.WorkloadOTLPEndpoint)
 	}
 }
 

@@ -249,8 +249,6 @@ func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanc
 		Provider:                    p.config.CloudPlane.Infrastructure.Provider,
 		Region:                      p.config.CloudPlane.Infrastructure.RegionID,
 		WorkloadEgressProxyEndpoint: p.config.CloudPlane.NodeProvisioning.WorkloadEgressProxyEndpoint,
-		WorkloadLogLokiURL:          p.config.CloudPlane.Observability.LokiURL,
-		WorkloadLogLokiTenantID:     p.config.CloudPlane.Observability.LokiTenantID,
 		WorkloadOTLPEndpoint:        p.config.CloudPlane.Observability.OTLPEndpoint,
 		CPUMilli:                    capacity.cpuMilli,
 		MemoryMi:                    capacity.memoryMi,

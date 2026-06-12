@@ -67,9 +67,7 @@ type ResourceConfig struct {
 }
 
 type ObservabilityConfig struct {
-	WorkloadLogLokiURL      string `yaml:"workloadLogLokiURL"`
-	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
-	WorkloadOTLPEndpoint    string `yaml:"workloadOTLPEndpoint"`
+	WorkloadOTLPEndpoint string `yaml:"workloadOTLPEndpoint"`
 }
 
 type Config struct {
@@ -157,8 +155,6 @@ func build(cfg Config) (Config, error) {
 
 	cfg.Network.EgressProxy.Endpoint = endpoint
 	cfg.Network.EgressProxy.NoProxy = trimStringList(cfg.Network.EgressProxy.NoProxy)
-	cfg.Observability.WorkloadLogLokiURL = strings.TrimSpace(cfg.Observability.WorkloadLogLokiURL)
-	cfg.Observability.WorkloadLogLokiTenantID = strings.TrimSpace(cfg.Observability.WorkloadLogLokiTenantID)
 	cfg.Observability.WorkloadOTLPEndpoint = strings.TrimSpace(cfg.Observability.WorkloadOTLPEndpoint)
 
 	cfg.Server.URL = serverURL

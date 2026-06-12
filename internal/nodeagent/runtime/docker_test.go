@@ -2,7 +2,6 @@ package runtime
 
 import (
 	"testing"
-	"time"
 )
 
 func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T) {
@@ -85,34 +84,5 @@ func TestResolveContainerCommandKeepsCurrentCliSemantics(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("resolveContainerCommand[%d] = %q, want %q", i, got[i], want[i])
 		}
-	}
-}
-
-func TestLogLineWriterParsesTimestampedLinesAcrossWrites(t *testing.T) {
-	t.Parallel()
-
-	var emitted []LogRecord
-	writer := newLogLineWriter("stdout", func(record LogRecord) {
-		emitted = append(emitted, record)
-	})
-
-	_, _ = writer.Write([]byte("2026-04-16T12:00:00Z first line\n2026-04-16T12:00:01"))
-	_, _ = writer.Write([]byte("Z second line\n"))
-	writer.Flush()
-
-	if len(emitted) != 2 {
-		t.Fatalf("emitted line count = %d, want 2", len(emitted))
-	}
-	if emitted[0].Stream != "stdout" || emitted[0].Line != "first line" {
-		t.Fatalf("first emitted record = %+v, want stdout first line", emitted[0])
-	}
-	if emitted[1].Stream != "stdout" || emitted[1].Line != "second line" {
-		t.Fatalf("second emitted record = %+v, want stdout second line", emitted[1])
-	}
-	if emitted[0].Timestamp.Format(time.RFC3339Nano) != "2026-04-16T12:00:00Z" {
-		t.Fatalf("first emitted timestamp = %s, want 2026-04-16T12:00:00Z", emitted[0].Timestamp.Format(time.RFC3339Nano))
-	}
-	if emitted[1].Timestamp.Format(time.RFC3339Nano) != "2026-04-16T12:00:01Z" {
-		t.Fatalf("second emitted timestamp = %s, want 2026-04-16T12:00:01Z", emitted[1].Timestamp.Format(time.RFC3339Nano))
 	}
 }

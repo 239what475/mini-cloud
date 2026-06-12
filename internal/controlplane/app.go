@@ -13,12 +13,9 @@ import (
 	"mini-cloud/internal/controlplane/api"
 	"mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/logquery"
 	"mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/controlplane/store/migrations"
 )
-
-const logQueryTimeout = 5 * time.Second
 
 type App struct {
 	Config  config.Config
@@ -58,16 +55,10 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
 	serviceOperations := coordination.NewServiceOperations(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
 
-	logQueryService := logquery.NewService(
-		cfg.Logs.Loki.URL,
-		cfg.Logs.Loki.TenantID,
-		logQueryTimeout,
-	)
 	handler := api.NewMux(api.Options{
 		AdminToken:        cfg.Auth.AdminToken,
 		SouthboundToken:   cfg.Auth.SouthboundToken,
 		UIDir:             cfg.UI.Dir,
-		LogQueryService:   logQueryService,
 		ServiceOperations: serviceOperations,
 		PlaneSyncer:       planeSyncer,
 	}, logger, stores)

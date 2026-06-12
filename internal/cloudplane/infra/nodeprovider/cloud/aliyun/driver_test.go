@@ -29,7 +29,7 @@ func testDriverConfig(provider cloudplaneconfig.AliyunNodeConfig) cloudplaneconf
 			Aliyun:                      provider,
 		},
 		Observability: cloudplaneconfig.ObservabilityConfig{
-			LokiTenantID: "tenant-a",
+			OTLPEndpoint: "http://otel.example:4318",
 		},
 	}
 }
@@ -109,8 +109,8 @@ func TestBuildNodeUserDataDoesNotTraceNodeAgentToken(t *testing.T) {
 	if !strings.Contains(script, "endpoint: \"http://10.0.0.10:3128\"") {
 		t.Fatalf("aliyun node user-data does not pass workload egress proxy to node-agent config")
 	}
-	if !strings.Contains(script, "workloadLogLokiTenantID: \"tenant-a\"") {
-		t.Fatalf("aliyun node user-data does not pass workload log Loki tenant to node-agent config")
+	if !strings.Contains(script, "workloadOTLPEndpoint: \"http://otel.example:4318\"") {
+		t.Fatalf("aliyun node user-data does not pass workload OTLP endpoint to node-agent config")
 	}
 	cmd := exec.Command("bash", "-n")
 	cmd.Stdin = strings.NewReader(script)

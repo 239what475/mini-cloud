@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/logquery"
 	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
@@ -16,7 +15,6 @@ type Options struct {
 	AdminToken        string
 	SouthboundToken   string
 	UIDir             string
-	LogQueryService   *logquery.Service
 	ServiceOperations *coordination.ServiceOperations
 	PlaneSyncer       *coordination.PlaneSyncer
 }
@@ -58,12 +56,10 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	services.PUT("/:serviceID", serviceHandler.updateService)
 	services.DELETE("/:serviceID", serviceHandler.deleteService)
 
-	logQueryHandler := newLogQueryHandler(logger, opts.LogQueryService)
 	planeHandler := newPlaneHandler(logger, stores, opts.PlaneSyncer)
 	eventHandler := newEventHandler(logger, stores)
 
 	control := api.Group("/control")
-	control.GET("/logs", logQueryHandler.queryControlLogs)
 	control.GET("/inventory", planeHandler.inventory)
 	control.GET("/planes", planeHandler.listPlanes)
 	control.GET("/planes/:planeID", planeHandler.getPlane)

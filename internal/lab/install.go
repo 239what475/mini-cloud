@@ -21,8 +21,6 @@ type controlPlaneTemplateData struct {
 	ServiceBaseDomain string
 	DNSPodDomain      string
 	DNSPodCredential  tencentCredential
-	LokiURL           string
-	LokiTenantID      string
 }
 
 type cloudPlaneTemplateData struct {
@@ -44,8 +42,6 @@ type cloudPlaneTemplateData struct {
 	NodeProvider                NodeProviderConfig
 	IngressBaseDomain           string
 	IngressPublicOrigin         string
-	LokiURL                     string
-	LokiTenantID                string
 	OTLPEndpoint                string
 }
 
@@ -166,8 +162,6 @@ func (r *Runner) renderControlPlaneInstallFiles() (installFiles, error) {
 		ServiceBaseDomain: strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
 		DNSPodDomain:      rootDomain(r.cfg.Install.IngressBaseDomain),
 		DNSPodCredential:  dnspodCredential,
-		LokiURL:           r.cfg.Observability.WorkloadLogLokiURL,
-		LokiTenantID:      r.cfg.Observability.WorkloadLogLokiTenantID,
 	})
 	if err != nil {
 		return installFiles{}, err
@@ -269,8 +263,6 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		NodeProvider:                nodeProvider,
 		IngressBaseDomain:           r.cfg.Install.IngressBaseDomain,
 		IngressPublicOrigin:         platformPublicIP,
-		LokiURL:                     r.cfg.Observability.WorkloadLogLokiURL,
-		LokiTenantID:                r.cfg.Observability.WorkloadLogLokiTenantID,
 		OTLPEndpoint:                r.cfg.Observability.WorkloadOTLPEndpoint,
 	})
 	if err != nil {

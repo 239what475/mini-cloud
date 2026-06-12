@@ -18,8 +18,3 @@ dns:
     secretId: {{printf "%q" .DNSPodCredential.SecretID}}
     secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
     token: {{printf "%q" .DNSPodCredential.Token}}
-
-logs:
-  loki:
-    url: {{printf "%q" .LokiURL}}
-    tenantID: {{printf "%q" .LokiTenantID}}

@@ -16,7 +16,6 @@ import (
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/workloadlogs"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/test/bufconn"
@@ -66,9 +65,7 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
-	workloadLogs := &fakeWorkloadLogs{}
 	opts := testOptions()
-	opts.Observability.WorkloadLogs = workloadLogs.Start
 	opts.Readiness.Timeout = time.Second
 	readinessHost, readinessPort := newReadinessTestServer(t, http.StatusOK)
 	opts.Node.PrivateIP = readinessHost
@@ -94,9 +91,6 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	}
 	if report.GetHostPort() != int32(readinessPort) {
 		t.Fatalf("report host port = %d, want %d", report.GetHostPort(), readinessPort)
-	}
-	if len(workloadLogs.starts) != 1 {
-		t.Fatalf("workload log start count = %d, want 1", len(workloadLogs.starts))
 	}
 }
 
@@ -386,14 +380,6 @@ func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 
 func (f *fakeRuntime) Logs(context.Context, string, int) (string, error) {
 	return f.logs, nil
-}
-
-type fakeWorkloadLogs struct {
-	starts []workloadlogs.StartRequest
-}
-
-func (f *fakeWorkloadLogs) Start(req workloadlogs.StartRequest) {
-	f.starts = append(f.starts, req)
 }
 
 func TestTruncateReasonLimitsLength(t *testing.T) {

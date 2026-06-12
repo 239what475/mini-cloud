@@ -82,8 +82,6 @@ network:
     noProxy:
 {{range .NoProxyItems}}      - {{.}}
 {{end}}observability:
-  workloadLogLokiURL: {{.WorkloadLogLokiURL}}
-  workloadLogLokiTenantID: {{.WorkloadLogLokiTenantID}}
   workloadOTLPEndpoint: {{.WorkloadOTLPEndpoint}}
 EOF_NODE_AGENT_CONFIG
 chmod 0600 "$INSTALL_ROOT/node-agent.yaml"

@@ -25,10 +25,6 @@ dns:
     secretId: sid
     secretKey: skey
     token: stok
-logs:
-  loki:
-    url: http://127.0.0.1:3100
-    tenantID: tenant-a
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -60,9 +56,6 @@ logs:
 	}
 	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" || cfg.DNS.DNSPod.SecretID != "sid" || cfg.DNS.DNSPod.SecretKey != "skey" || cfg.DNS.DNSPod.Token != "stok" {
 		t.Fatalf("unexpected DNSPod config: %+v", cfg.DNS.DNSPod)
-	}
-	if cfg.Logs.Loki.URL != "http://127.0.0.1:3100" || cfg.Logs.Loki.TenantID != "tenant-a" {
-		t.Fatalf("unexpected Loki config: %+v", cfg)
 	}
 }
 

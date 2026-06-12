@@ -11,7 +11,6 @@ import (
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/work"
-	"mini-cloud/internal/nodeagent/workloadlogs"
 	"mini-cloud/internal/transport"
 )
 
@@ -20,7 +19,6 @@ type Runner struct {
 	cfg              agentconfig.Config
 	controlClient    *agentclient.Client
 	containerRuntime containerRuntime
-	workloadLogs     *workloadlogs.Collector
 
 	registerMu       sync.Mutex
 	mu               sync.Mutex
@@ -42,7 +40,6 @@ func NewRunner(
 	cfg agentconfig.Config,
 	controlClient *agentclient.Client,
 	containerRuntime containerRuntime,
-	workloadLogs *workloadlogs.Collector,
 ) *Runner {
 	if logger == nil {
 		logger = slog.Default()
@@ -52,7 +49,6 @@ func NewRunner(
 		cfg:              cfg,
 		controlClient:    controlClient,
 		containerRuntime: containerRuntime,
-		workloadLogs:     workloadLogs,
 	}
 }
 
@@ -98,14 +94,6 @@ func (r *Runner) Run(ctx context.Context) error {
 func (r *Runner) Close() error {
 	r.closeOnce.Do(func() {
 		var errs []error
-		if r.workloadLogs != nil {
-			closeCtx, cancel := context.WithTimeout(context.Background(), agentconfig.CleanupHardTimeout)
-			if err := r.workloadLogs.Close(closeCtx); err != nil {
-				r.logger.Warn("close workload log collector failed", "error", err)
-				errs = append(errs, err)
-			}
-			cancel()
-		}
 		if r.controlClient != nil {
 			if err := r.controlClient.Close(); err != nil {
 				r.logger.Warn("close node control client failed", "error", err)
@@ -203,7 +191,6 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		},
 		Observability: work.ObservabilityOptions{
 			PlatformName:         r.cfg.Platform.Name,
-			WorkloadLogs:         r.startWorkloadLogs,
 			WorkloadOTLPEndpoint: r.cfg.Observability.WorkloadOTLPEndpoint,
 			LogTail:              agentconfig.WorkloadLogTailLineCount,
 		},
@@ -345,13 +332,6 @@ func (r *Runner) handleNodeError(nodeID string, err error) {
 		r.mu.Unlock()
 		return
 	}
-}
-
-func (r *Runner) startWorkloadLogs(req workloadlogs.StartRequest) {
-	if r.workloadLogs == nil {
-		return
-	}
-	r.workloadLogs.Start(req)
 }
 
 func (r *Runner) registerRequest() *nodeagentv1.RegisterNodeRequest {

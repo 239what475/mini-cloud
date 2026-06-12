@@ -69,7 +69,7 @@ node-agent 继续保持简单运行节点代理。
 - 上报 heartbeat 和节点容量。
 - 拉取并执行 work item。
 - 启动、停止、清理单容器 workload。
-- 上报 execution 结果和 workload 日志。
+- 上报 execution 结果，并在启动失败时提供容器尾日志作为诊断信息。
 
 ## Service 所属关系
 

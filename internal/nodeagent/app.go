@@ -8,7 +8,6 @@ import (
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/daemon"
 	"mini-cloud/internal/nodeagent/runtime"
-	"mini-cloud/internal/nodeagent/workloadlogs"
 )
 
 type App struct {
@@ -30,19 +29,9 @@ func Build(logger *slog.Logger, cfg agentconfig.Config) (App, error) {
 		_ = client.Close()
 		return App{}, err
 	}
-	workloadLogs, err := workloadlogs.NewCollector(logger, workloadlogs.Config{
-		LokiURL:      cfg.Observability.WorkloadLogLokiURL,
-		LokiTenantID: cfg.Observability.WorkloadLogLokiTenantID,
-		PlatformName: cfg.Platform.Name,
-	}, containerRuntime)
-	if err != nil {
-		_ = client.Close()
-		_ = containerRuntime.Close()
-		return App{}, err
-	}
 	return App{
 		Config: cfg,
-		runner: daemon.NewRunner(logger, cfg, client, containerRuntime, workloadLogs),
+		runner: daemon.NewRunner(logger, cfg, client, containerRuntime),
 	}, nil
 }
 

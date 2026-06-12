@@ -27,8 +27,6 @@ type Config struct {
 	Provider                    string
 	Region                      string
 	WorkloadEgressProxyEndpoint string
-	WorkloadLogLokiURL          string
-	WorkloadLogLokiTenantID     string
 	WorkloadOTLPEndpoint        string
 	CPUMilli                    int
 	MemoryMi                    int
@@ -56,8 +54,6 @@ type templateData struct {
 	CPUMilli                    int
 	MemoryMi                    int
 	NoProxyItems                []string
-	WorkloadLogLokiURL          string
-	WorkloadLogLokiTenantID     string
 	WorkloadOTLPEndpoint        string
 	NodeAgentBinaryPath         string
 	NodeAgentConfigPath         string
@@ -95,8 +91,6 @@ func RenderBase64(cfg Config) (string, error) {
 		CPUMilli:                    cfg.CPUMilli,
 		MemoryMi:                    cfg.MemoryMi,
 		NoProxyItems:                shellQuoteItems(cfg.NoProxyItems),
-		WorkloadLogLokiURL:          shellQuote(strings.TrimSpace(cfg.WorkloadLogLokiURL)),
-		WorkloadLogLokiTenantID:     shellQuote(strings.TrimSpace(cfg.WorkloadLogLokiTenantID)),
 		WorkloadOTLPEndpoint:        shellQuote(strings.TrimSpace(cfg.WorkloadOTLPEndpoint)),
 		NodeAgentBinaryPath:         shellQuote("/opt/mini-cloud/bin/node-agent"),
 		NodeAgentConfigPath:         shellQuote("/opt/mini-cloud/node-agent.yaml"),

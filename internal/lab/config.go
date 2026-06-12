@@ -74,9 +74,7 @@ type ProviderConfig struct {
 }
 
 type Observability struct {
-	WorkloadLogLokiURL      string `yaml:"workloadLogLokiURL"`
-	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
-	WorkloadOTLPEndpoint    string `yaml:"workloadOTLPEndpoint"`
+	WorkloadOTLPEndpoint string `yaml:"workloadOTLPEndpoint"`
 }
 
 func LoadConfig(path string) (Config, error) {

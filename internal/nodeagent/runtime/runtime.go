@@ -1,7 +1,5 @@
 package runtime
 
-import "time"
-
 type RunInput struct {
 	ContainerName string
 	NodeID        string
@@ -23,11 +21,3 @@ type RunResult struct {
 	ContainerName string
 	HostPort      int
 }
-
-type LogRecord struct {
-	Timestamp time.Time
-	Stream    string
-	Line      string
-}
-
-type LogEmitter func(LogRecord)

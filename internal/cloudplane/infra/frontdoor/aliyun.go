@@ -147,7 +147,7 @@ func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
 		if item == nil || item.DomainName == nil || cleanDomain(*item.DomainName) != host {
 			continue
 		}
-		return cdnDomain{Exists: true, CNAME: trimCNAMEValue(item.Cname)}, nil
+		return cdnDomain{Exists: true, CNAME: cleanDomainPointer(item.Cname)}, nil
 	}
 	return cdnDomain{}, nil
 }
