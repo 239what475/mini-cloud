@@ -19,6 +19,7 @@ var (
 	ErrServiceNotFound           = errors.New("service not found")
 	ErrServiceNameAlreadyExists  = errors.New("service name already exists")
 	ErrServiceHostAlreadyExists  = errors.New("service host already exists")
+	ErrServiceDeleting           = errors.New("service is deleting")
 	ErrServiceGenerationConflict = errors.New("service generation changed before status write could be committed")
 	errServiceIDRequired         = errors.New("serviceID is required")
 	errServiceNameRequired       = errors.New("name is required")
@@ -243,6 +244,34 @@ func (s *Store) GetPendingApplyService(ctx context.Context, serviceID string) (m
 	return item, true, nil
 }
 
+func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.desired_state = $1
+		  AND c.observed_generation < b.generation
+		ORDER BY b.created_at ASC, b.id ASC
+	`, model.DesiredStateActive)
+	if err != nil {
+		return nil, fmt.Errorf("query pending apply service bindings: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]model.Service, 0)
+	for rows.Next() {
+		item, err := scanService(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending apply service bindings: %w", err)
+	}
+	return items, nil
+}
+
 func (s *Store) GetDeletingService(ctx context.Context, serviceID string) (model.Service, bool, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
@@ -258,6 +287,33 @@ func (s *Store) GetDeletingService(ctx context.Context, serviceID string) (model
 		return model.Service{}, false, fmt.Errorf("query deleting service binding: %w", err)
 	}
 	return item, true, nil
+}
+
+func (s *Store) ListDeletingServices(ctx context.Context) ([]model.Service, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.desired_state = $1
+		ORDER BY b.created_at ASC, b.id ASC
+	`, model.DesiredStateDeleted)
+	if err != nil {
+		return nil, fmt.Errorf("query deleting service bindings: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]model.Service, 0)
+	for rows.Next() {
+		item, err := scanService(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate deleting service bindings: %w", err)
+	}
+	return items, nil
 }
 
 func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSnapshotInput) error {
@@ -391,6 +447,9 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
 		return model.Service{}, err
+	}
+	if current.Status.DesiredState == model.DesiredStateDeleted {
+		return model.Service{}, ErrServiceDeleting
 	}
 	if err := input.validate(); err != nil {
 		return model.Service{}, err

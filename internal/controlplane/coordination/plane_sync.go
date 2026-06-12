@@ -116,7 +116,7 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 	if err := s.applyServiceSnapshots(ctx, planeID, checkedAt, snapshot.GetServices()); err != nil {
 		return err
 	}
-	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
+	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
 		return err
 	}
 	if err := s.applyFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
@@ -157,7 +157,8 @@ func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 	return nil
 }
 
-func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot) error {
+func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot, frontdoorDomains []*cloudplanev1.PlaneFrontDoorDomain) error {
+	activeFrontDoorHosts := frontDoorHosts(frontdoorDomains)
 	for _, item := range executions {
 		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" || item.GetServiceGeneration() <= 0 {
 			continue
@@ -177,6 +178,9 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		}
 		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
 			if strings.TrimSpace(item.GetStatus()) == planeExecutionStatusSucceeded {
+				if _, ok := activeFrontDoorHosts[cleanSyncDomain(serviceItem.Metadata.Host)]; ok {
+					continue
+				}
 				if err := s.deleteServiceDNS(ctx, serviceItem); err != nil {
 					return err
 				}
@@ -203,6 +207,25 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		}
 	}
 	return nil
+}
+
+func frontDoorHosts(domains []*cloudplanev1.PlaneFrontDoorDomain) map[string]struct{} {
+	hosts := make(map[string]struct{})
+	for _, item := range domains {
+		if item == nil {
+			continue
+		}
+		host := cleanSyncDomain(item.GetHost())
+		if host == "" {
+			continue
+		}
+		hosts[host] = struct{}{}
+	}
+	return hosts
+}
+
+func cleanSyncDomain(value string) string {
+	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
 func (s *PlaneSyncer) applyServiceSnapshots(ctx context.Context, planeID string, observedAt time.Time, services []*cloudplanev1.PlaneService) error {

@@ -89,7 +89,11 @@ func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceI
 			container_port = EXCLUDED.container_port,
 			readiness_path = EXCLUDED.readiness_path,
 			updated_at = now()
-		WHERE services.generation <= EXCLUDED.generation
+		WHERE services.generation < EXCLUDED.generation
+		   OR (
+			services.generation = EXCLUDED.generation
+			AND services.desired_state <> $15
+		   )
 		RETURNING `+serviceSelectColumns+`
 	`,
 		strings.TrimSpace(input.ID),
@@ -106,6 +110,7 @@ func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceI
 		spec.EnvJSON,
 		input.Spec.ContainerPort,
 		strings.TrimSpace(input.Spec.ReadinessPath),
+		cloudmodel.ServiceDesiredDeleted,
 	))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

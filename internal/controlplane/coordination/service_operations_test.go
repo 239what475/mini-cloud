@@ -2,6 +2,7 @@ package coordination
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -211,6 +212,36 @@ func TestUpdateKeepsExistingPlaneBinding(t *testing.T) {
 	}
 }
 
+func TestUpdateRejectsDeletingService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceOperationsPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-update-deleting", planeServer.endpoint)
+
+	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
+
+	created, err := operations.Create(ctx, createInput(planeItem.ID, "update-deleting", "Update Deleting", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if _, err := operations.Delete(ctx, created.Metadata.ID); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if _, err := operations.Update(ctx, created.Metadata.ID, updateInput("Update Deleting v2", "nginx:1.28-alpine")); !errors.Is(err, controlplanestore.ErrServiceDeleting) {
+		t.Fatalf("Update deleting service error = %v, want ErrServiceDeleting", err)
+	}
+	current, err := db.Store.GetService(ctx, created.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if current.Status.DesiredState != model.DesiredStateDeleted {
+		t.Fatalf("desired state = %s, want deleted", current.Status.DesiredState)
+	}
+	if len(planeServer.applyRequests()) != 1 {
+		t.Fatalf("apply requests = %d, want only initial create", len(planeServer.applyRequests()))
+	}
+}
+
 func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
@@ -314,7 +345,7 @@ func TestGetAdvancesOnlyRequestedService(t *testing.T) {
 	}
 }
 
-func TestListSyncsRegisteredPlanesBeforeReturningServices(t *testing.T) {
+func TestListAdvancesPendingServicesAndSyncsBeforeReturning(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
@@ -323,6 +354,14 @@ func TestListSyncsRegisteredPlanesBeforeReturningServices(t *testing.T) {
 	service, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "listed", "Listed", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
+	}
+	deleting, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "listed-delete", "Listed Delete", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService(deleting) returned error: %v", err)
+	}
+	deleting, err = db.Store.MarkServiceDeletionRequested(ctx, deleting.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 	now := time.Now().UTC()
 	planeServer.setSnapshot(&cloudplanev1.PlaneSnapshot{
@@ -342,6 +381,14 @@ func TestListSyncsRegisteredPlanesBeforeReturningServices(t *testing.T) {
 				Status:            planeExecutionStatusRunning,
 				ObservedAt:        timestamppb.New(now),
 			},
+			{
+				PlanId:            deleting.Metadata.ID + "-delete",
+				ServiceId:         deleting.Metadata.ID,
+				ServiceName:       deleting.Metadata.Name,
+				ServiceGeneration: deleting.Metadata.Generation,
+				Status:            planeExecutionStatusSucceeded,
+				ObservedAt:        timestamppb.New(now),
+			},
 		},
 	})
 
@@ -355,6 +402,12 @@ func TestListSyncsRegisteredPlanesBeforeReturningServices(t *testing.T) {
 	}
 	if services[0].Status.Observed.Phase != model.PhaseReady || services[0].Status.Run.Phase != model.RunPhaseRunning {
 		t.Fatalf("service status after List = %+v, want ready/running from cloud-plane snapshot", services[0].Status)
+	}
+	if len(planeServer.applyRequests()) != 1 {
+		t.Fatalf("apply requests = %d, want one pending apply advanced by List", len(planeServer.applyRequests()))
+	}
+	if len(planeServer.deleteRequests()) != 1 {
+		t.Fatalf("delete requests = %d, want one pending delete advanced by List", len(planeServer.deleteRequests()))
 	}
 }
 

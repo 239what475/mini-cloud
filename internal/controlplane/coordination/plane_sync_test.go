@@ -110,7 +110,7 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 			Status:            planeExecutionStatusSucceeded,
 			ObservedAt:        timestamppb.New(time.Now().UTC()),
 		},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
 	}
 	if len(dns.deleted) != 2 {
@@ -125,6 +125,66 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 	}
 	if len(records) != 0 {
 		t.Fatalf("DNS records after delete = %+v, want none", records)
+	}
+}
+
+func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	plane := createSyncTestPlane(t, db.Store, "plane-delete-waits-frontdoor")
+	service := createSyncTestService(t, db.Store, plane.ID, "wait-frontdoor", "wait-frontdoor.apps.example.com")
+	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, service.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
+		ServiceID:  deleting.Metadata.ID,
+		Host:       "wait-frontdoor.apps.example.com",
+		RecordType: "CNAME",
+		Value:      "wait-frontdoor.apps.example.com.cdn.dnsv1.com",
+		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
+	}); err != nil {
+		t.Fatalf("SaveServiceDNSRecord(CNAME) returned error: %v", err)
+	}
+	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
+	dns := syncer.dns.(*fakeDNSClient)
+
+	if err := syncer.applyExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
+		{
+			PlanId:            "delete-plan",
+			ServiceId:         deleting.Metadata.ID,
+			ServiceGeneration: deleting.Metadata.Generation,
+			Status:            planeExecutionStatusSucceeded,
+			ObservedAt:        timestamppb.New(time.Now().UTC()),
+		},
+	}, []*cloudplanev1.PlaneFrontDoorDomain{
+		{Host: "wait-frontdoor.apps.example.com", Cname: "wait-frontdoor.apps.example.com.cdn.dnsv1.com"},
+	}); err != nil {
+		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+	}
+	if len(dns.deleted) != 0 {
+		t.Fatalf("deleted DNS records = %+v, want none while frontdoor is still reported", dns.deleted)
+	}
+	if _, err := db.Store.GetService(ctx, service.Metadata.ID); err != nil {
+		t.Fatalf("GetService after pending frontdoor cleanup returned error: %v", err)
+	}
+
+	if err := syncer.applyExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
+		{
+			PlanId:            "delete-plan",
+			ServiceId:         deleting.Metadata.ID,
+			ServiceGeneration: deleting.Metadata.Generation,
+			Status:            planeExecutionStatusSucceeded,
+			ObservedAt:        timestamppb.New(time.Now().UTC()),
+		},
+	}, nil); err != nil {
+		t.Fatalf("applyExecutionSnapshots after frontdoor cleanup returned error: %v", err)
+	}
+	if len(dns.deleted) != 1 {
+		t.Fatalf("deleted DNS records = %+v, want CNAME after frontdoor disappears", dns.deleted)
+	}
+	if _, err := db.Store.GetService(ctx, service.Metadata.ID); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
+		t.Fatalf("GetService after frontdoor cleanup error = %v, want service not found", err)
 	}
 }
 

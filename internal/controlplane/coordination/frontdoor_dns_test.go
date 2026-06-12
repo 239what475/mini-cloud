@@ -87,6 +87,40 @@ func TestApplyFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T)
 	}
 }
 
+func TestApplyFrontDoorDNSSkipsDeletingService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	plane := createSyncTestPlane(t, db.Store, "plane-deleting-frontdoor")
+	service := createSyncTestService(t, db.Store, plane.ID, "deleting-frontdoor", "deleting-frontdoor.apps.example.com")
+	if _, err := db.Store.MarkServiceDeletionRequested(ctx, service.Metadata.ID); err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
+	dns := syncer.dns.(*fakeDNSClient)
+
+	if err := syncer.applyFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+		{
+			Host:            "deleting-frontdoor.apps.example.com",
+			Cname:           "deleting-frontdoor.apps.example.com.cdn.example.net",
+			VerifySubdomain: "_cdnauth.deleting-frontdoor.apps.example.com",
+			VerifyType:      "TXT",
+			VerifyValue:     "verify-token",
+		},
+	}); err != nil {
+		t.Fatalf("applyFrontDoorDNS returned error: %v", err)
+	}
+	if len(dns.records) != 0 || len(dns.deleted) != 0 {
+		t.Fatalf("DNS operations = create %+v delete %+v, want none for deleting service", dns.records, dns.deleted)
+	}
+	records, err := db.Store.ListServiceDNSRecords(ctx, service.Metadata.ID)
+	if err != nil {
+		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("stored DNS records = %+v, want none for deleting service", records)
+	}
+}
+
 type fakeDNSClient struct {
 	records []fakeDNSRecord
 	deleted []fakeDeletedDNSRecord

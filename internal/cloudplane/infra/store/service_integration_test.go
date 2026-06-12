@@ -43,6 +43,53 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 	}
 }
 
+func TestIntegrationStaleApplyDoesNotResurrectDeletedService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+
+	input := cloudmodel.ApplyServiceInput{
+		ID:          "svc-stale-apply-delete",
+		Name:        "stale-apply-delete",
+		DisplayName: "stale apply delete",
+		Host:        "stale-apply-delete.apps.example.com",
+		Generation:  1,
+		Spec:        serviceSpec(),
+	}
+	if _, err := db.Store.ApplyService(ctx, input); err != nil {
+		t.Fatalf("ApplyService(initial) returned error: %v", err)
+	}
+	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
+		ID:         input.ID,
+		Generation: input.Generation,
+	}); err != nil {
+		t.Fatalf("DeleteService returned error: %v", err)
+	}
+	if _, err := db.Store.ApplyService(ctx, input); err != nil {
+		t.Fatalf("ApplyService(stale) returned error: %v", err)
+	}
+	services, err := db.Store.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("ListServices after stale apply returned error: %v", err)
+	}
+	if serviceByID(services, input.ID) != nil {
+		t.Fatalf("stale apply resurrected deleted service: %+v", services)
+	}
+
+	input.Generation = 2
+	input.DisplayName = "stale apply delete v2"
+	if _, err := db.Store.ApplyService(ctx, input); err != nil {
+		t.Fatalf("ApplyService(new generation) returned error: %v", err)
+	}
+	services, err = db.Store.ListServices(ctx)
+	if err != nil {
+		t.Fatalf("ListServices after new generation apply returned error: %v", err)
+	}
+	service := serviceByID(services, input.ID)
+	if service == nil || service.Generation != input.Generation || service.DisplayName != input.DisplayName {
+		t.Fatalf("new generation service = %+v, services = %+v", service, services)
+	}
+}
+
 func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAgentReport(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)

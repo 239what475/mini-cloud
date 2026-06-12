@@ -56,6 +56,8 @@ func serviceHost(name string, baseDomain string) string {
 
 func (c *ServiceOperations) List(ctx context.Context) ([]model.Service, error) {
 	c.syncRegisteredPlanes(ctx, "listing services")
+	c.advanceAllPendingServices(ctx)
+	c.syncRegisteredPlanes(ctx, "listing services after pending work")
 	return c.store.ListServices(ctx)
 }
 
@@ -110,6 +112,45 @@ func (c *ServiceOperations) syncRegisteredPlanes(ctx context.Context, action str
 	if err := c.planeSyncer.SyncRegisteredPlanes(ctx, RequestPlaneSyncTimeout); err != nil {
 		c.logger.Warn("sync registered planes failed", "action", action, "error", err)
 	}
+}
+
+func (c *ServiceOperations) advanceAllPendingServices(ctx context.Context) {
+	if err := c.advanceAllPendingServiceApplies(ctx); err != nil {
+		c.logger.Warn("advance pending service applies failed", "error", err)
+	}
+	if err := c.advanceAllPendingServiceDeletes(ctx); err != nil {
+		c.logger.Warn("advance pending service deletes failed", "error", err)
+	}
+}
+
+func (c *ServiceOperations) advanceAllPendingServiceApplies(ctx context.Context) error {
+	items, err := c.store.ListPendingApplyServices(ctx)
+	if err != nil {
+		return err
+	}
+	var joinedErr error
+	for _, item := range items {
+		if err := c.applyRemoteService(ctx, item); err != nil {
+			c.logger.Warn("advance pending service apply failed", "service_id", item.Metadata.ID, "error", err)
+			joinedErr = errors.Join(joinedErr, err)
+		}
+	}
+	return joinedErr
+}
+
+func (c *ServiceOperations) advanceAllPendingServiceDeletes(ctx context.Context) error {
+	items, err := c.store.ListDeletingServices(ctx)
+	if err != nil {
+		return err
+	}
+	var joinedErr error
+	for _, item := range items {
+		if err := c.dispatchDeletingService(ctx, item); err != nil {
+			c.logger.Warn("advance pending service delete failed", "service_id", item.Metadata.ID, "error", err)
+			joinedErr = errors.Join(joinedErr, err)
+		}
+	}
+	return joinedErr
 }
 
 func (c *ServiceOperations) advancePendingServiceApply(ctx context.Context, serviceID string) error {

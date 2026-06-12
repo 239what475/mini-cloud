@@ -201,6 +201,9 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		case errors.Is(err, store.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
+		case errors.Is(err, store.ErrServiceDeleting):
+			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
+			return
 		case errors.Is(err, store.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return

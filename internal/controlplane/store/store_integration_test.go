@@ -806,3 +806,58 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("run after delete request = %+v, want pending delete without old run message", deleting.Status.Run)
 	}
 }
+
+func TestIntegrationUpdateDeletingServiceReturnsConflict(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "plane-update-deleting-conflict",
+		DisplayName:  "Plane Update Deleting Conflict",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "plane-update-deleting-conflict.example.test:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "update-deleting-conflict",
+		DisplayName: "Update Deleting Conflict",
+		Host:        "update-deleting-conflict.apps.example.com",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "ghcr.io/example/update-deleting:v1",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	if _, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID); err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	_, err = db.Store.UpdateService(ctx, serviceItem.Metadata.ID, controlplanestore.UpdateServiceInput{
+		DisplayName: "Update Deleting Conflict v2",
+		Spec: model.WorkloadSpec{
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "ghcr.io/example/update-deleting:v2",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if !errors.Is(err, controlplanestore.ErrServiceDeleting) {
+		t.Fatalf("UpdateService error = %v, want ErrServiceDeleting", err)
+	}
+	current, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if current.Status.DesiredState != model.DesiredStateDeleted {
+		t.Fatalf("desired state = %s, want deleted", current.Status.DesiredState)
+	}
+}

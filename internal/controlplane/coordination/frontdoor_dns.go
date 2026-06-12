@@ -26,6 +26,9 @@ func (s *PlaneSyncer) applyFrontDoorDNS(ctx context.Context, planeID string, dom
 			}
 			return err
 		}
+		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
+			continue
+		}
 		if strings.TrimSpace(item.GetVerifySubdomain()) != "" && strings.TrimSpace(item.GetVerifyValue()) != "" {
 			recordType := strings.TrimSpace(item.GetVerifyType())
 			if recordType == "" {
