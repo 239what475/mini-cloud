@@ -41,4 +41,7 @@ func TestMatches(t *testing.T) {
 	if BearerMatches("", "test-token") || BearerMatches("test-token", "") || BearerMatches("wrong", "test-token") {
 		t.Fatal("BearerMatches returned true for non-matching secrets")
 	}
+	if BearerMatches("short", "much-longer-token") {
+		t.Fatal("BearerMatches returned true for different length secrets")
+	}
 }

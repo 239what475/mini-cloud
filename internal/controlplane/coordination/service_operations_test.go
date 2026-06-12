@@ -19,6 +19,8 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -302,6 +304,50 @@ func TestDeleteKeepsServiceDeletingWhenRemoteDispatchFails(t *testing.T) {
 	}
 }
 
+func TestDeleteRemovesBindingAndDNSWhenRemoteServiceAlreadyMissing(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceOperationsPlane(t)
+	planeServer.deleteError = status.Error(codes.NotFound, "service not found")
+	planeItem := mustCreateReadyPlane(t, db, "plane-delete-missing", planeServer.endpoint)
+	dns := &fakeDNSClient{}
+	operations := NewServiceOperations(
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		db.Store,
+		"southbound-token",
+		"apps.example.test",
+		NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", dns),
+	)
+
+	created, err := operations.Create(ctx, createInput(planeItem.ID, "missing-remote", "Missing Remote", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
+		ServiceID:  created.Metadata.ID,
+		Host:       created.Metadata.Host,
+		RecordType: "CNAME",
+		Value:      "missing-remote.apps.example.test.cdn.example.net",
+		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
+	}); err != nil {
+		t.Fatalf("SaveServiceDNSRecord returned error: %v", err)
+	}
+
+	deleting, err := operations.Delete(ctx, created.Metadata.ID)
+	if err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if deleting.Metadata.ID != created.Metadata.ID || deleting.Status.DesiredState != model.DesiredStateDeleted {
+		t.Fatalf("Delete returned %+v, want last deleting service resource", deleting)
+	}
+	if _, err := db.Store.GetService(ctx, created.Metadata.ID); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
+		t.Fatalf("GetService after missing remote delete error = %v, want service not found", err)
+	}
+	if len(dns.deleted) != 1 || dns.deleted[0].host != created.Metadata.Host || dns.deleted[0].recordType != "CNAME" {
+		t.Fatalf("deleted DNS records = %+v, want CNAME cleanup", dns.deleted)
+	}
+}
+
 func TestGetAdvancesOnlyRequestedService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
@@ -449,6 +495,8 @@ type serviceOperationsPlane struct {
 	apply    []*cloudplanev1.ApplyServiceRequest
 	delete   []*cloudplanev1.DeleteServiceRequest
 	snapshot *cloudplanev1.PlaneSnapshot
+
+	deleteError error
 }
 
 func startServiceOperationsPlane(t *testing.T) *serviceOperationsPlane {
@@ -501,6 +549,9 @@ func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplan
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.delete = append(p.delete, req)
+	if p.deleteError != nil {
+		return nil, p.deleteError
+	}
 	return &cloudplanev1.DeleteServiceResponse{}, nil
 }
 

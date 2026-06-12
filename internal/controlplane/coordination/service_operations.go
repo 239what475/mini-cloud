@@ -89,6 +89,9 @@ func (c *ServiceOperations) Delete(ctx context.Context, serviceID string) (model
 	}
 	current, err := c.store.GetService(ctx, deleting.Metadata.ID)
 	if err != nil {
+		if errors.Is(err, store.ErrServiceNotFound) {
+			return deleting, nil
+		}
 		return model.Service{}, err
 	}
 	return current, nil
@@ -175,7 +178,20 @@ func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	if err := c.deleteRemoteService(ctx, planeID, serviceItem.Metadata.ID, serviceItem.Metadata.Generation); err != nil && !errors.Is(err, errPlaneObjectNotFound) {
+	if err := c.deleteRemoteService(ctx, planeID, serviceItem.Metadata.ID, serviceItem.Metadata.Generation); err != nil {
+		if errors.Is(err, errPlaneObjectNotFound) {
+			if c.planeSyncer != nil {
+				if err := c.planeSyncer.deleteServiceDNS(ctx, serviceItem); err != nil {
+					return err
+				}
+			}
+			if err := c.store.DeleteServiceForGeneration(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation); err != nil &&
+				!errors.Is(err, store.ErrServiceNotFound) &&
+				!errors.Is(err, store.ErrServiceGenerationConflict) {
+				return err
+			}
+			return nil
+		}
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
 		return errors.Join(err, statusErr)
 	}

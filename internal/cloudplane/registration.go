@@ -13,7 +13,12 @@ import (
 	"mini-cloud/internal/transport"
 )
 
-const planeRegistrationRetryInterval = 10 * time.Second
+const (
+	planeRegistrationRetryInterval = 10 * time.Second
+	planeRegistrationTimeout       = 10 * time.Second
+)
+
+var planeRegistrationClient = http.Client{Timeout: planeRegistrationTimeout}
 
 type registrationRequest struct {
 	Name         string `json:"name"`
@@ -67,16 +72,14 @@ func registerWithControlPlane(ctx context.Context, cfg cloudplaneconfig.Config) 
 		return fmt.Errorf("marshal plane registration: %w", err)
 	}
 
-	requestCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, cfg.ControlPlane.URL+"/api/v1/internal/planes/register", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.ControlPlane.URL+"/api/v1/internal/planes/register", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build plane registration request: %w", err)
 	}
 	request.Header.Set("Authorization", transport.BearerHeader(cfg.ControlPlane.BearerToken))
 	request.Header.Set("Content-Type", "application/json")
 
-	response, err := http.DefaultClient.Do(request)
+	response, err := planeRegistrationClient.Do(request)
 	if err != nil {
 		return fmt.Errorf("register plane with control-plane: %w", err)
 	}

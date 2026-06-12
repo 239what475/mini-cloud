@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"strings"
 
@@ -47,5 +48,7 @@ func BearerMatches(secret string, expected string) bool {
 	if secret == "" || expected == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(secret), []byte(expected)) == 1
+	secretSum := sha256.Sum256([]byte(secret))
+	expectedSum := sha256.Sum256([]byte(expected))
+	return subtle.ConstantTimeCompare(secretSum[:], expectedSum[:]) == 1
 }
