@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"time"
 
-	"mini-cloud/internal/bearer"
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
+	"mini-cloud/internal/transport"
 )
 
 type registrationRequest struct {
@@ -38,7 +38,7 @@ func registerWithControlPlane(ctx context.Context, cfg cloudplaneconfig.Config) 
 	if err != nil {
 		return fmt.Errorf("build plane registration request: %w", err)
 	}
-	request.Header.Set("Authorization", bearer.Header(cfg.ControlPlane.BearerToken))
+	request.Header.Set("Authorization", transport.BearerHeader(cfg.ControlPlane.BearerToken))
 	request.Header.Set("Content-Type", "application/json")
 
 	response, err := http.DefaultClient.Do(request)

@@ -8,7 +8,6 @@ import (
 
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )
@@ -67,7 +66,6 @@ type nodeInventoryResource struct {
 }
 
 func (h planeHandler) registerPlane(c *gin.Context) {
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 	var request registerPlaneRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
@@ -87,13 +85,13 @@ func (h planeHandler) registerPlane(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		default:
-			logger.Error("register plane failed", "error", err)
+			h.logger.Error("register plane failed", "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
 
-	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
+	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:  "control.plane.register",
 		Message: "registered plane " + registered.Name,
 	})
@@ -102,10 +100,9 @@ func (h planeHandler) registerPlane(c *gin.Context) {
 }
 
 func (h planeHandler) listPlanes(c *gin.Context) {
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
-		logger.Error("list control planes failed", "error", err)
+		h.logger.Error("list control planes failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
@@ -118,10 +115,9 @@ func (h planeHandler) listPlanes(c *gin.Context) {
 }
 
 func (h planeHandler) inventory(c *gin.Context) {
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
-		logger.Error("build control inventory failed", "error", err)
+		h.logger.Error("build control inventory failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
@@ -134,7 +130,7 @@ func (h planeHandler) getPlane(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
 		return
 	}
-	logger := logctx.Logger(c.Request.Context(), h.logger).With("plane_id", planeID)
+	logger := h.logger.With("plane_id", planeID)
 
 	item, err := h.store.GetPlane(c.Request.Context(), planeID)
 	if err != nil {
@@ -158,7 +154,7 @@ func (h planeHandler) deletePlane(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
 		return
 	}
-	logger := logctx.Logger(c.Request.Context(), h.logger).With("plane_id", planeID)
+	logger := h.logger.With("plane_id", planeID)
 
 	plane, err := h.store.GetPlane(c.Request.Context(), planeID)
 	if err != nil {

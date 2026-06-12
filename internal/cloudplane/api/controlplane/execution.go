@@ -8,7 +8,7 @@ import (
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -91,16 +91,16 @@ func (s *executionServer) DeleteExecutionPlan(ctx context.Context, req *cloudpla
 	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: true}, nil
 }
 
-func projectedFilesFromProto(items []*cloudplanev1.ExecutionProjectedFile) []projectedfile.File {
+func projectedFilesFromProto(items []*cloudplanev1.ExecutionProjectedFile) []workload.ProjectedFile {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]projectedfile.File, 0, len(items))
+	out := make([]workload.ProjectedFile, 0, len(items))
 	for _, item := range items {
 		if item == nil {
 			continue
 		}
-		out = append(out, projectedfile.File{
+		out = append(out, workload.ProjectedFile{
 			MountPath: strings.TrimSpace(item.GetMountPath()),
 			Content:   item.GetContent(),
 			Mode:      item.GetMode(),

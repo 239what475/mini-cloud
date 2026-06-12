@@ -9,8 +9,8 @@ import (
 
 	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/projectedfile"
 	"mini-cloud/internal/testutil"
+	"mini-cloud/internal/workload"
 )
 
 func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
@@ -155,7 +155,7 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 				Username: "cliproxy",
 				Password: "registry-token",
 			},
-			Files: []projectedfile.File{
+			Files: []workload.ProjectedFile{
 				{
 					MountPath: "/etc/cliproxy/config.yaml",
 					Content:   "listen: :8317\n",

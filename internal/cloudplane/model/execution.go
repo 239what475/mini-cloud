@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 const (
@@ -36,7 +36,7 @@ type PlanInput struct {
 	Command           []string
 	Args              []string
 	Env               map[string]string
-	ProjectedFiles    []projectedfile.File
+	ProjectedFiles    []workload.ProjectedFile
 	ImageCredential   *ImageCredential
 	ContainerPort     int
 	ReadinessPath     string
@@ -139,7 +139,7 @@ type WorkItem struct {
 	Command             []string
 	Args                []string
 	Env                 map[string]string
-	ProjectedFiles      []projectedfile.File
+	ProjectedFiles      []workload.ProjectedFile
 	ImageCredential     *ImageCredential
 	SupersededExecution *SupersededExecution
 	ContainerPort       int

@@ -7,11 +7,11 @@ import (
 	"maps"
 	"strings"
 
-	"mini-cloud/internal/bearer"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/transport"
+	"mini-cloud/internal/workload"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -42,8 +42,8 @@ func (s *service) requireNodeAgentToken(ctx context.Context) error {
 	if s.token == "" {
 		return status.Error(codes.Unavailable, "node agent token is not configured")
 	}
-	secret, ok := bearer.Incoming(ctx)
-	if !ok || !bearer.Matches(secret, s.token) {
+	secret, ok := transport.BearerFromIncomingContext(ctx)
+	if !ok || !transport.BearerMatches(secret, s.token) {
 		return status.Error(codes.Unauthenticated, "invalid node agent token")
 	}
 	return nil
@@ -117,7 +117,7 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 	}
 
 	projectedFiles := make([]*nodeagentv1.ProjectedFile, 0, len(item.ProjectedFiles))
-	for _, file := range projectedfile.CloneFiles(item.ProjectedFiles) {
+	for _, file := range workload.CloneProjectedFiles(item.ProjectedFiles) {
 		projectedFiles = append(projectedFiles, &nodeagentv1.ProjectedFile{
 			MountPath: file.MountPath,
 			Content:   file.Content,

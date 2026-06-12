@@ -151,6 +151,8 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 - 一个包内文件可以少一点、大一点，只要阅读路径清楚。
 - 相关逻辑尽量放近，例如 service 一个文件、plane 一个文件。
 - 不要因为测试而拆出奇怪的小接口或 fetcher。
+- 跨平面共用的小包必须有明确边界，例如 `transport` 只放 HTTP/gRPC 元信息，`workload` 只放 workload spec 共享模型。
+- 不把业务字段塞进 `context.Context` 做隐式日志传播；request id 可以随 context 传播，业务日志字段就地 `logger.With(...)`。
 
 函数：
 
@@ -214,9 +216,8 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 
 文档只写当前真实设计，不写已经删除的历史方案。
 
-- `docs/v7` 是历史文档，不修改。
-- v8 文档要与当前实现一致。
-- README 和 deploy/lab 文档要能指导真实 e2e。
+- 当前不保留历史 `docs/` 目录，历史设计交给 git。
+- README、REVIEW 和 deploy/lab 示例要能指导真实 e2e。
 - 不保留“暂时兼容”“旧模式仍可用”这类内容。
 - 示例配置不能包含真实 token、真实账号密钥。
 
@@ -240,4 +241,3 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 5. 命名、helper、测试粒度问题。
 
 如果没有发现问题，要明确说“没有发现必须修改的问题”，并列出剩余风险。
-

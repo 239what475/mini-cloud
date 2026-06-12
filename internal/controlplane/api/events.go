@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )
@@ -41,11 +40,9 @@ func recordControlEvent(logger *slog.Logger, stores *store.Store, requestCtx con
 }
 
 func (h eventHandler) listControlEvents(c *gin.Context) {
-	logger := logctx.Logger(c.Request.Context(), h.logger)
-
 	items, err := h.store.ListRecentControlEvents(c.Request.Context())
 	if err != nil {
-		logger.Error("list control events failed", "error", err)
+		h.logger.Error("list control events failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{
 			"error": "internal server error",
 		})

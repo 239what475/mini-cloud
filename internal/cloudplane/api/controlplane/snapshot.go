@@ -12,7 +12,6 @@ import (
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/logctx"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,31 +54,30 @@ func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cl
 }
 
 func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
-	logger := logctx.Logger(ctx, s.logger)
 	checkedAt := time.Now().UTC()
 
 	pingCtx, cancel := context.WithTimeout(ctx, dbPingTimeout)
 	defer cancel()
 	if err := s.db.PingContext(pingCtx); err != nil {
-		logger.Error("cloud-plane snapshot database ping failed", "error", err)
+		s.logger.Error("cloud-plane snapshot database ping failed", "error", err)
 		return nil, fmt.Errorf("%w: %v", errDatabaseUnavailable, err)
 	}
 
 	alertSignal, err := s.store.GetAlertSignal(ctx)
 	if err != nil {
-		logger.Error("load cloud-plane alert signal for snapshot failed", "error", err)
+		s.logger.Error("load cloud-plane alert signal for snapshot failed", "error", err)
 		return nil, fmt.Errorf("load alert signal: %w", err)
 	}
 
 	nodes, err := s.store.ListNodes(ctx)
 	if err != nil {
-		logger.Error("load nodes for snapshot failed", "error", err)
+		s.logger.Error("load nodes for snapshot failed", "error", err)
 		return nil, fmt.Errorf("load nodes: %w", err)
 	}
 
 	executions, err := s.store.ListExecutionSnapshots(ctx)
 	if err != nil {
-		logger.Error("load execution snapshots failed", "error", err)
+		s.logger.Error("load execution snapshots failed", "error", err)
 		return nil, fmt.Errorf("load execution snapshots: %w", err)
 	}
 

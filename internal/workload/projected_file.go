@@ -1,4 +1,4 @@
-package projectedfile
+package workload
 
 import (
 	"errors"
@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	DefaultConfigMode uint32 = 0444
-	DefaultSecretMode uint32 = 0400
+	DefaultConfigFileMode uint32 = 0444
+	DefaultSecretFileMode uint32 = 0400
 )
 
 var (
@@ -21,27 +21,27 @@ var (
 	ErrFileModeInvalid    = errors.New("mode must be between 1 and 0777")
 )
 
-type File struct {
+type ProjectedFile struct {
 	MountPath string `json:"mountPath"`
 	Content   string `json:"content"`
 	Mode      uint32 `json:"mode"`
 	Sensitive bool   `json:"sensitive"`
 }
 
-func (f File) Normalized() File {
+func (f ProjectedFile) Normalized() ProjectedFile {
 	out := f
 	out.MountPath = normalizeMountPath(out.MountPath)
 	if out.Mode == 0 {
 		if out.Sensitive {
-			out.Mode = DefaultSecretMode
+			out.Mode = DefaultSecretFileMode
 		} else {
-			out.Mode = DefaultConfigMode
+			out.Mode = DefaultConfigFileMode
 		}
 	}
 	return out
 }
 
-func (f File) Validate() error {
+func (f ProjectedFile) Validate() error {
 	normalized := f.Normalized()
 	if normalized.MountPath == "" {
 		return ErrMountPathRequired
@@ -61,7 +61,7 @@ func (f File) Validate() error {
 	return nil
 }
 
-func ValidateFiles(items []File) error {
+func ValidateProjectedFiles(items []ProjectedFile) error {
 	if len(items) == 0 {
 		return nil
 	}
@@ -79,11 +79,11 @@ func ValidateFiles(items []File) error {
 	return nil
 }
 
-func CloneFiles(items []File) []File {
+func CloneProjectedFiles(items []ProjectedFile) []ProjectedFile {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]File, len(items))
+	out := make([]ProjectedFile, len(items))
 	for i := range items {
 		out[i] = items[i].Normalized()
 	}

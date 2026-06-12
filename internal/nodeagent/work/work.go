@@ -10,11 +10,11 @@ import (
 	"time"
 
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
-	"mini-cloud/internal/logctx"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/workloadlogs"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/transport"
+	"mini-cloud/internal/workload"
 )
 
 type readinessWaiter interface {
@@ -134,7 +134,7 @@ func (e executor) executeNext(ctx context.Context) (Result, error) {
 	result.WorkFound = true
 	result.WorkItem = item
 	workLogger := e.workLogger(item)
-	workLogger.Info("claimed execution work", "request_id", logctx.RequestID(pollCtx))
+	workLogger.Info("claimed execution work", "request_id", transport.RequestIDFromContext(pollCtx))
 
 	if err := validateWorkItem(item); err != nil {
 		report, reason, reportErr := e.reportValidationFailure(ctx, item, err)
@@ -207,7 +207,7 @@ func (e executor) executeNext(ctx context.Context) (Result, error) {
 }
 
 func (e executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (*nodeagentv1.ReportExecutionResponse, error) {
-	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeStop))
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, item.GetContainerId())
 	cancelStop()
 	if stopErr != nil {
@@ -238,16 +238,13 @@ func (e executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem
 func (e executor) pollWork(ctx context.Context) (*nodeagentv1.WorkItem, context.Context, error) {
 	pollCtx, cancel := context.WithTimeout(ctx, e.timeout(e.opts.Timeouts.PollWork))
 	defer cancel()
-	pollCtx = logctx.WithFields(pollCtx, logctx.Fields{
-		RequestID: logctx.EnsureRequestID(""),
-		NodeID:    e.opts.Node.ID,
-	})
+	pollCtx = transport.ContextWithRequestID(pollCtx, transport.EnsureRequestID(""))
 	item, err := e.client.PollExecutionWork(pollCtx, e.opts.Node.ID)
 	return item, pollCtx, err
 }
 
 func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (runtime.RunResult, error) {
-	runCtx, cancelRun := context.WithTimeout(e.workContext(ctx, item), e.timeout(e.opts.Timeouts.RuntimeStart))
+	runCtx, cancelRun := context.WithTimeout(ctx, e.timeout(e.opts.Timeouts.RuntimeStart))
 	defer cancelRun()
 
 	env := injectTelemetryEnv(item.GetEnv(), item, telemetryEnvOptions{
@@ -331,14 +328,14 @@ func (e executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem
 		return nil
 	}
 
-	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeStop))
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, item.GetSupersededExecution().GetContainerId())
 	cancelStop()
 	if stopErr == nil {
 		return nil
 	}
 
-	cleanupCtx, cancelCleanup := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeStop))
+	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
 	_ = e.containerRuntime.Stop(cleanupCtx, runResult.ContainerID)
 	cancelCleanup()
 
@@ -351,11 +348,11 @@ func (e executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem
 
 func (e executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	logSnippet := ""
-	logCtx, cancelLogs := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeLogs))
+	logCtx, cancelLogs := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeLogs))
 	logSnippet, _ = e.containerRuntime.Logs(logCtx, runResult.ContainerID, e.opts.Observability.LogTail)
 	cancelLogs()
 
-	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeStop))
+	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, runResult.ContainerID)
 	cancelStop()
 
@@ -405,15 +402,9 @@ func (e executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, 
 }
 
 func (e executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
-	reportCtx, cancel := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.Report))
+	reportCtx, cancel := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.Report))
 	defer cancel()
-	reportCtx = logctx.WithFields(reportCtx, logctx.Fields{
-		RequestID:   logctx.EnsureRequestID(""),
-		NodeID:      e.opts.Node.ID,
-		ServiceID:   item.GetServiceId(),
-		PlanID:      item.GetPlanId(),
-		ExecutionID: item.GetExecutionId(),
-	})
+	reportCtx = transport.ContextWithRequestID(reportCtx, transport.EnsureRequestID(""))
 	req.NodeId = e.opts.Node.ID
 	req.ExecutionId = item.GetExecutionId()
 	return e.client.ReportExecution(reportCtx, req)
@@ -435,30 +426,12 @@ func (e executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResu
 }
 
 func (e executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
-	return logctx.WithLoggerFields(e.logger, logctx.Fields{
-		NodeID:      e.opts.Node.ID,
-		ServiceID:   item.GetServiceId(),
-		PlanID:      item.GetPlanId(),
-		ExecutionID: item.GetExecutionId(),
-	})
-}
-
-func (e executor) workContext(ctx context.Context, item *nodeagentv1.WorkItem) context.Context {
-	return logctx.WithFields(ctx, logctx.Fields{
-		NodeID:      e.opts.Node.ID,
-		ServiceID:   item.GetServiceId(),
-		PlanID:      item.GetPlanId(),
-		ExecutionID: item.GetExecutionId(),
-	})
-}
-
-func (e executor) detachedWorkContext(item *nodeagentv1.WorkItem) context.Context {
-	return logctx.WithFields(context.Background(), logctx.Fields{
-		NodeID:      e.opts.Node.ID,
-		ServiceID:   item.GetServiceId(),
-		PlanID:      item.GetPlanId(),
-		ExecutionID: item.GetExecutionId(),
-	})
+	return e.logger.With(
+		"node_id", e.opts.Node.ID,
+		"service_id", item.GetServiceId(),
+		"plan_id", item.GetPlanId(),
+		"execution_id", item.GetExecutionId(),
+	)
 }
 
 func (e executor) logReport(logger *slog.Logger, report *nodeagentv1.ReportExecutionResponse) {
@@ -576,7 +549,7 @@ func validateWorkItem(item *nodeagentv1.WorkItem) error {
 		if item == nil {
 			continue
 		}
-		file := projectedfile.File{
+		file := workload.ProjectedFile{
 			MountPath: item.GetMountPath(),
 			Content:   item.GetContent(),
 			Mode:      item.GetMode(),
@@ -589,16 +562,16 @@ func validateWorkItem(item *nodeagentv1.WorkItem) error {
 	return nil
 }
 
-func projectedFilesFromProto(items []*nodeagentv1.ProjectedFile) []projectedfile.File {
+func projectedFilesFromProto(items []*nodeagentv1.ProjectedFile) []workload.ProjectedFile {
 	if len(items) == 0 {
 		return nil
 	}
-	out := make([]projectedfile.File, 0, len(items))
+	out := make([]workload.ProjectedFile, 0, len(items))
 	for _, item := range items {
 		if item == nil {
 			continue
 		}
-		out = append(out, projectedfile.File{
+		out = append(out, workload.ProjectedFile{
 			MountPath: item.GetMountPath(),
 			Content:   item.GetContent(),
 			Mode:      item.GetMode(),

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
-	"mini-cloud/internal/logctx"
+	"mini-cloud/internal/transport"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -20,7 +20,7 @@ func TestClientAddsRequestIDMetadata(t *testing.T) {
 		var seenRequestID string
 		client := newBufconnClient(t, &testNodeControlService{
 			pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
-				seenRequestID = firstMetadataValue(ctx, strings.ToLower(logctx.HeaderRequestID))
+				seenRequestID = firstMetadataValue(ctx, strings.ToLower(transport.RequestIDHeader))
 				return &nodeagentv1.PollWorkResponse{}, nil
 			},
 		})
@@ -37,12 +37,12 @@ func TestClientAddsRequestIDMetadata(t *testing.T) {
 		var seenRequestID string
 		client := newBufconnClient(t, &testNodeControlService{
 			pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
-				seenRequestID = firstMetadataValue(ctx, strings.ToLower(logctx.HeaderRequestID))
+				seenRequestID = firstMetadataValue(ctx, strings.ToLower(transport.RequestIDHeader))
 				return &nodeagentv1.PollWorkResponse{}, nil
 			},
 		})
 
-		ctx := logctx.WithFields(context.Background(), logctx.Fields{RequestID: "req-from-test"})
+		ctx := transport.ContextWithRequestID(context.Background(), "req-from-test")
 		if _, err := client.PollExecutionWork(ctx, "node-b"); err != nil {
 			t.Fatalf("PollExecutionWork returned error: %v", err)
 		}

@@ -11,7 +11,7 @@ import (
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 var (
@@ -154,7 +154,7 @@ func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplan
 	}
 }
 
-func executionProjectedFiles(files []projectedfile.File) []*cloudplanev1.ExecutionProjectedFile {
+func executionProjectedFiles(files []workload.ProjectedFile) []*cloudplanev1.ExecutionProjectedFile {
 	out := make([]*cloudplanev1.ExecutionProjectedFile, 0, len(files))
 	for _, item := range files {
 		out = append(out, &cloudplanev1.ExecutionProjectedFile{

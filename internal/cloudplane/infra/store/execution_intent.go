@@ -9,7 +9,7 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 var ErrExecutionNotFound = errors.New("execution not found")
@@ -42,9 +42,9 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	if err != nil {
 		return "", fmt.Errorf("marshal execution env: %w", err)
 	}
-	projectedFiles := projectedfile.CloneFiles(input.ProjectedFiles)
+	projectedFiles := workload.CloneProjectedFiles(input.ProjectedFiles)
 	if projectedFiles == nil {
-		projectedFiles = []projectedfile.File{}
+		projectedFiles = []workload.ProjectedFile{}
 	}
 	projectedFilesJSON, err := json.Marshal(projectedFiles)
 	if err != nil {
@@ -678,15 +678,15 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	if work.Env == nil {
 		work.Env = map[string]string{}
 	}
-	work.ProjectedFiles = []projectedfile.File{}
+	work.ProjectedFiles = []workload.ProjectedFile{}
 	if len(projectedFilesJSON) > 0 {
 		if err := json.Unmarshal(projectedFilesJSON, &work.ProjectedFiles); err != nil {
 			return nil, fmt.Errorf("decode execution projected files: %w", err)
 		}
 	}
-	work.ProjectedFiles = projectedfile.CloneFiles(work.ProjectedFiles)
+	work.ProjectedFiles = workload.CloneProjectedFiles(work.ProjectedFiles)
 	if work.ProjectedFiles == nil {
-		work.ProjectedFiles = []projectedfile.File{}
+		work.ProjectedFiles = []workload.ProjectedFile{}
 	}
 	if credentialServer.Valid {
 		work.ImageCredential = &cloudmodel.ImageCredential{

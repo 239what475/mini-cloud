@@ -11,7 +11,6 @@ import (
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/logctx"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
@@ -66,8 +65,7 @@ func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken st
 }
 
 func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
-	ctx = logctx.WithFields(ctx, logctx.Fields{PlaneID: planeID})
-	logger := logctx.Logger(ctx, s.logger)
+	logger := s.logger.With("plane_id", planeID)
 	planeDetail, err := s.store.GetPlane(ctx, planeID)
 	if err != nil {
 		return err

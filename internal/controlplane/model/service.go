@@ -3,7 +3,7 @@ package model
 import (
 	"time"
 
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 const (
@@ -55,7 +55,7 @@ type ServiceSpec struct {
 	Env                map[string]string
 	SecretEnv          map[string]string
 	RegistryCredential *ServiceRegistryCredential
-	Files              []projectedfile.File
+	Files              []workload.ProjectedFile
 }
 
 type ServiceRegistryCredential struct {

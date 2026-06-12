@@ -27,9 +27,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
-
-	"mini-cloud/internal/logctx"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 const (
@@ -112,7 +110,7 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		}
 	}()
 
-	logger := logctx.Logger(ctx, d.logger)
+	logger := d.logger
 	attemptedHostPorts := map[int]struct{}{}
 	var created container.CreateResponse
 	for {
@@ -269,7 +267,7 @@ func (d *Docker) StreamLogs(ctx context.Context, containerID string, emit LogEmi
 	}
 	defer func() {
 		if err := reader.Close(); err != nil {
-			logctx.Logger(ctx, d.logger).Warn("close docker follow logs stream failed", "container_id", containerID, "error", err)
+			d.logger.Warn("close docker follow logs stream failed", "container_id", containerID, "error", err)
 		}
 	}()
 
@@ -351,7 +349,7 @@ func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, regi
 		return fmt.Errorf("docker inspect image failed: %w", err)
 	}
 
-	logger := logctx.Logger(ctx, d.logger)
+	logger := d.logger
 	var lastErr error
 
 	for attempt := 1; attempt <= dockerImagePullAttempts; attempt++ {
@@ -545,7 +543,7 @@ func prepareProjectedMounts(input RunInput) (string, []mount.Mount, error) {
 }
 
 func prepareProjectedMountsInRoot(rootDir string, input RunInput) (string, []mount.Mount, error) {
-	projected := projectedfile.CloneFiles(input.ProjectedFiles)
+	projected := workload.CloneProjectedFiles(input.ProjectedFiles)
 	if len(projected) == 0 {
 		return "", nil, nil
 	}
@@ -686,7 +684,7 @@ func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string)
 	cleanupCtx, cancelCleanup := context.WithTimeout(ctx, dockerCleanupTimeout)
 	defer cancelCleanup()
 	if err := d.client.ContainerRemove(cleanupCtx, containerID, container.RemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
-		logctx.Logger(cleanupCtx, d.logger).Warn("remove created docker container failed",
+		d.logger.Warn("remove created docker container failed",
 			"container_id", containerID,
 			"error", err,
 		)

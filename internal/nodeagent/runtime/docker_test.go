@@ -11,7 +11,7 @@ import (
 
 	"github.com/docker/docker/api/types/registry"
 
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 )
 
 func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T) {
@@ -158,7 +158,7 @@ func TestPrepareProjectedMountsMaterializesReadonlyFiles(t *testing.T) {
 	root := t.TempDir()
 	executionDir, mounts, err := prepareProjectedMountsInRoot(root, RunInput{
 		ExecutionID: "exec-demo",
-		ProjectedFiles: []projectedfile.File{
+		ProjectedFiles: []workload.ProjectedFile{
 			{
 				MountPath: "/etc/cliproxy/config.yaml",
 				Content:   "listen: :8317\n",
@@ -204,8 +204,8 @@ func TestPrepareProjectedMountsMaterializesReadonlyFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Stat(token) returned error: %v", err)
 	}
-	if info.Mode().Perm() != os.FileMode(projectedfile.DefaultSecretMode) {
-		t.Fatalf("token mode = %#o, want %#o", info.Mode().Perm(), projectedfile.DefaultSecretMode)
+	if info.Mode().Perm() != os.FileMode(workload.DefaultSecretFileMode) {
+		t.Fatalf("token mode = %#o, want %#o", info.Mode().Perm(), workload.DefaultSecretFileMode)
 	}
 	entries, err := os.ReadDir(executionDir)
 	if err != nil {
@@ -223,7 +223,7 @@ func TestPrepareProjectedMountsRejectsEmptyRoot(t *testing.T) {
 
 	_, _, err := prepareProjectedMountsInRoot("", RunInput{
 		ExecutionID: "exec-demo",
-		ProjectedFiles: []projectedfile.File{{
+		ProjectedFiles: []workload.ProjectedFile{{
 			MountPath: "/etc/workload/config.yaml",
 			Content:   "demo",
 		}},
@@ -238,7 +238,7 @@ func TestPrepareProjectedMountsRequiresSafeExecutionID(t *testing.T) {
 
 	_, _, err := prepareProjectedMountsInRoot(t.TempDir(), RunInput{
 		ExecutionID: "../exec-demo",
-		ProjectedFiles: []projectedfile.File{{
+		ProjectedFiles: []workload.ProjectedFile{{
 			MountPath: "/etc/workload/config.yaml",
 			Content:   "demo",
 		}},

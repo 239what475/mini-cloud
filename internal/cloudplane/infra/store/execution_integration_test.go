@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/projectedfile"
 	"mini-cloud/internal/testutil"
+	"mini-cloud/internal/workload"
 )
 
 func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
@@ -24,7 +24,7 @@ func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 			"SERVICE_MODE": "plan-v1",
 			"LOG_LEVEL":    "debug",
 		},
-		ProjectedFiles: []projectedfile.File{
+		ProjectedFiles: []workload.ProjectedFile{
 			{MountPath: "/etc/demo/config.yaml", Content: "mode: plan-v1\n", Mode: 0o644},
 			{MountPath: "/etc/demo/token", Content: "token-v1", Mode: 0o400, Sensitive: true},
 		},

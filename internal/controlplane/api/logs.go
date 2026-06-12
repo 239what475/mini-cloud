@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"mini-cloud/internal/controlplane/logquery"
-	"mini-cloud/internal/logctx"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,7 +23,6 @@ func newLogQueryHandler(logger *slog.Logger, service *logquery.Service) logQuery
 }
 
 func (h logQueryHandler) queryControlLogs(c *gin.Context) {
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 	if h.service == nil {
 		c.JSON(http.StatusServiceUnavailable, map[string]any{
 			"error": "log query backend is not configured",
@@ -50,12 +48,12 @@ func (h logQueryHandler) queryControlLogs(c *gin.Context) {
 				"error": inputErr.Error(),
 			})
 		case errors.As(err, &backendErr):
-			logger.Error("query aggregated logs failed", "error", backendErr.Error(), "query", backendErr.Query, "status_code", backendErr.StatusCode)
+			h.logger.Error("query aggregated logs failed", "error", backendErr.Error(), "query", backendErr.Query, "status_code", backendErr.StatusCode)
 			c.JSON(http.StatusBadGateway, map[string]any{
 				"error": "query aggregated logs failed",
 			})
 		default:
-			logger.Error("query aggregated logs failed", "error", err, "query", result.Query)
+			h.logger.Error("query aggregated logs failed", "error", err, "query", result.Query)
 			c.JSON(http.StatusBadGateway, map[string]any{
 				"error": "query aggregated logs failed",
 			})

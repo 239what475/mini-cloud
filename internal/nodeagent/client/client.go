@@ -9,9 +9,8 @@ import (
 	"strings"
 	"sync"
 
-	"mini-cloud/internal/bearer"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
-	"mini-cloud/internal/logctx"
+	"mini-cloud/internal/transport"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -183,14 +182,14 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 }
 
 func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Context {
-	requestID := logctx.EnsureRequestID(logctx.RequestID(ctx))
-	ctx = logctx.WithFields(ctx, logctx.Fields{RequestID: requestID})
+	requestID := transport.EnsureRequestID(transport.RequestIDFromContext(ctx))
+	ctx = transport.ContextWithRequestID(ctx, requestID)
 
 	pairs := []string{
-		strings.ToLower(logctx.HeaderRequestID), requestID,
+		strings.ToLower(transport.RequestIDHeader), requestID,
 	}
 	if token := strings.TrimSpace(bearerToken); token != "" {
-		pairs = append(pairs, bearer.MetadataKey, bearer.Header(token))
+		pairs = append(pairs, transport.BearerMetadataKey, transport.BearerHeader(token))
 	}
 	return metadata.AppendToOutgoingContext(ctx, pairs...)
 }

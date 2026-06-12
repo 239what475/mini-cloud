@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"mini-cloud/internal/bearer"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+	"mini-cloud/internal/transport"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -122,7 +122,7 @@ func resolveTarget(grpcEndpoint string) (string, credentials.TransportCredential
 }
 
 func withAuth(ctx context.Context, bearerToken string) context.Context {
-	return metadata.AppendToOutgoingContext(ctx, bearer.MetadataKey, bearer.Header(bearerToken))
+	return metadata.AppendToOutgoingContext(ctx, transport.BearerMetadataKey, transport.BearerHeader(bearerToken))
 }
 
 func classifyRPCError(err error) error {

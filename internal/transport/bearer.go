@@ -1,4 +1,4 @@
-package bearer
+package transport
 
 import (
 	"context"
@@ -8,13 +8,13 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-const MetadataKey = "authorization"
+const BearerMetadataKey = "authorization"
 
-func Header(token string) string {
+func BearerHeader(token string) string {
 	return "Bearer " + strings.TrimSpace(token)
 }
 
-func Parse(value string) (string, bool) {
+func ParseBearer(value string) (string, bool) {
 	fields := strings.Fields(strings.TrimSpace(value))
 	if len(fields) != 2 {
 		return "", false
@@ -29,19 +29,19 @@ func Parse(value string) (string, bool) {
 	return secret, true
 }
 
-func Incoming(ctx context.Context) (string, bool) {
+func BearerFromIncomingContext(ctx context.Context) (string, bool) {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return "", false
 	}
-	values := md.Get(MetadataKey)
+	values := md.Get(BearerMetadataKey)
 	if len(values) == 0 {
 		return "", false
 	}
-	return Parse(values[0])
+	return ParseBearer(values[0])
 }
 
-func Matches(secret string, expected string) bool {
+func BearerMatches(secret string, expected string) bool {
 	secret = strings.TrimSpace(secret)
 	expected = strings.TrimSpace(expected)
 	if secret == "" || expected == "" {

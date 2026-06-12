@@ -12,8 +12,7 @@ import (
 	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/logctx"
-	"mini-cloud/internal/projectedfile"
+	"mini-cloud/internal/workload"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,7 +29,7 @@ type serviceSpec struct {
 	Env                map[string]string          `json:"env,omitempty"`
 	SecretEnvKeys      []string                   `json:"secretEnvKeys,omitempty"`
 	RegistryCredential *registryCredentialSummary `json:"registryCredential,omitempty"`
-	Files              []projectedfile.File       `json:"files,omitempty"`
+	Files              []workload.ProjectedFile   `json:"files,omitempty"`
 }
 
 type registryCredentialSummary struct {
@@ -81,7 +80,7 @@ type serviceSpecInput struct {
 	Env                map[string]string          `json:"env"`
 	SecretEnv          map[string]string          `json:"secretEnv"`
 	RegistryCredential *registryCredentialRequest `json:"registryCredential"`
-	Files              []projectedfile.File       `json:"files"`
+	Files              []workload.ProjectedFile   `json:"files"`
 }
 
 type registryCredentialRequest struct {
@@ -120,7 +119,7 @@ func newServiceHandler(logger *slog.Logger, stores *store.Store, services *coord
 func (h serviceHandler) listServices(c *gin.Context) {
 	items, err := h.services.List(c.Request.Context())
 	if err != nil {
-		logctx.Logger(c.Request.Context(), h.logger).Error("list services failed", "error", err)
+		h.logger.Error("list services failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
@@ -142,7 +141,6 @@ func (h serviceHandler) createService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	service, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
@@ -157,12 +155,12 @@ func (h serviceHandler) createService(c *gin.Context) {
 			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
-			logger.Error("create service failed", "error", err)
+			h.logger.Error("create service failed", "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
+	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:  "control.service.create",
 		Message: "created service " + service.Metadata.Name,
 	})
@@ -182,7 +180,7 @@ func (h serviceHandler) getService(c *gin.Context) {
 		case errors.Is(err, store.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			logctx.Logger(c.Request.Context(), h.logger).Error("get service failed", "service_id", serviceID, "error", err)
+			h.logger.Error("get service failed", "service_id", serviceID, "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
@@ -206,7 +204,6 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	service, err := h.services.Update(c.Request.Context(), serviceID, input)
 	if err != nil {
@@ -221,12 +218,12 @@ func (h serviceHandler) updateService(c *gin.Context) {
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
-			logger.Error("update service failed", "service_id", serviceID, "error", err)
+			h.logger.Error("update service failed", "service_id", serviceID, "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
 		}
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
+	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:  "control.service.update",
 		Message: "updated service " + service.Metadata.Name,
 	})
@@ -240,7 +237,6 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	logger := logctx.Logger(c.Request.Context(), h.logger)
 
 	service, err := h.services.Delete(c.Request.Context(), serviceID)
 	if err != nil {
@@ -248,12 +244,12 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		case errors.Is(err, store.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
-			logger.Error("delete service failed", "service_id", serviceID, "error", err)
+			h.logger.Error("delete service failed", "service_id", serviceID, "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		}
 		return
 	}
-	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
+	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:  "control.service.delete",
 		Message: "deleted service " + service.Metadata.Name,
 	})
@@ -283,7 +279,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			Env:                service.Spec.Env,
 			SecretEnvKeys:      sortedKeys(service.Spec.SecretEnv),
 			RegistryCredential: buildRegistryCredentialSummary(service.Spec.RegistryCredential),
-			Files:              projectedfile.CloneFiles(service.Spec.Files),
+			Files:              workload.CloneProjectedFiles(service.Spec.Files),
 		},
 		Status: serviceStatus{
 			ObservedGeneration: service.Status.Observed.ObservedGeneration,
@@ -366,7 +362,7 @@ func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 		Env:                s.Env,
 		SecretEnv:          s.SecretEnv,
 		RegistryCredential: s.RegistryCredential.toRegistryCredential(),
-		Files:              projectedfile.CloneFiles(s.Files),
+		Files:              workload.CloneProjectedFiles(s.Files),
 	}
 }
 

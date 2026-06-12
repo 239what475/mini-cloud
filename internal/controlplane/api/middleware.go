@@ -6,21 +6,21 @@ import (
 	"runtime/debug"
 	"time"
 
-	"mini-cloud/internal/logctx"
+	"mini-cloud/internal/transport"
 
 	"github.com/gin-gonic/gin"
 )
 
 func ginRequestLogger(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := logctx.EnsureRequestID(c.GetHeader(logctx.HeaderRequestID))
-		ctx := logctx.WithFields(c.Request.Context(), logctx.Fields{RequestID: requestID})
+		requestID := transport.EnsureRequestID(c.GetHeader(transport.RequestIDHeader))
+		ctx := transport.ContextWithRequestID(c.Request.Context(), requestID)
 		c.Request = c.Request.WithContext(ctx)
-		c.Writer.Header().Set(logctx.HeaderRequestID, requestID)
+		c.Writer.Header().Set(transport.RequestIDHeader, requestID)
 
 		start := time.Now()
 		c.Next()
-		logctx.Logger(ctx, logger).Info("http request",
+		logger.With("request_id", requestID).Info("http request",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
 			"host", c.Request.Host,
@@ -35,7 +35,7 @@ func ginRecoverPanics(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				logctx.Logger(c.Request.Context(), logger).Error("panic while handling request",
+				logger.With("request_id", transport.RequestIDFromContext(c.Request.Context())).Error("panic while handling request",
 					"panic", recovered,
 					"stack", string(debug.Stack()),
 					"method", c.Request.Method,

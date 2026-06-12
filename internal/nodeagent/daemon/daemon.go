@@ -8,11 +8,11 @@ import (
 	"time"
 
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
-	"mini-cloud/internal/logctx"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/work"
 	"mini-cloud/internal/nodeagent/workloadlogs"
+	"mini-cloud/internal/transport"
 )
 
 type Runner struct {
@@ -216,27 +216,19 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		},
 	})
 	if err != nil {
-		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
+		workLogger := r.logger.With("node_id", nodeID)
 		if result.WorkItem != nil {
-			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:   result.WorkItem.GetServiceId(),
-				PlanID:      result.WorkItem.GetPlanId(),
-				ExecutionID: result.WorkItem.GetExecutionId(),
-			})
+			workLogger = withWorkItemLogFields(workLogger, result.WorkItem)
 		}
 		workLogger.Warn("node work execution failed", "error", err)
 		r.handleNodeError(nodeID, err)
 		return
 	}
 	if result.WorkFound {
-		workLogger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
+		workLogger := r.logger.With("node_id", nodeID)
 		reportStatus := ""
 		if result.WorkItem != nil {
-			workLogger = logctx.WithLoggerFields(workLogger, logctx.Fields{
-				ServiceID:   result.WorkItem.GetServiceId(),
-				PlanID:      result.WorkItem.GetPlanId(),
-				ExecutionID: result.WorkItem.GetExecutionId(),
-			})
+			workLogger = withWorkItemLogFields(workLogger, result.WorkItem)
 		}
 		if result.Report != nil {
 			reportStatus = result.Report.GetAck().GetExecution().GetStatus()
@@ -265,9 +257,8 @@ func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
 func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	reqCtx, cancel := context.WithTimeout(ctx, agentconfig.RegisterTimeout)
 	defer cancel()
-	reqCtx = logctx.WithFields(reqCtx, logctx.Fields{
-		RequestID: logctx.EnsureRequestID(""),
-	})
+	requestID := transport.EnsureRequestID("")
+	reqCtx = transport.ContextWithRequestID(reqCtx, requestID)
 	registered, err := r.controlClient.RegisterNode(reqCtx, r.registerRequest())
 	if err != nil {
 		return "", err
@@ -278,22 +269,20 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	r.runtimeResetDone = false
 	r.mu.Unlock()
 
-	logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: registered.GetNodeId()}).Info("node agent registered",
+	r.logger.With("node_id", registered.GetNodeId()).Info("node agent registered",
 		"instance_id", r.cfg.Node.InstanceID,
-		"request_id", logctx.RequestID(reqCtx),
+		"request_id", requestID,
 	)
 	return registered.GetNodeId(), nil
 }
 
 func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
-	logger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
+	logger := r.logger.With("node_id", nodeID)
 
 	reqCtx, cancel := context.WithTimeout(ctx, agentconfig.HeartbeatRequestTimeout)
 	defer cancel()
-	reqCtx = logctx.WithFields(reqCtx, logctx.Fields{
-		RequestID: logctx.EnsureRequestID(""),
-		NodeID:    nodeID,
-	})
+	requestID := transport.EnsureRequestID("")
+	reqCtx = transport.ContextWithRequestID(reqCtx, requestID)
 	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.HeartbeatRequest{
 		NodeId:              nodeID,
 		CpuMilliAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.CPUMilli),
@@ -305,9 +294,20 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 
 	logger.Info("node heartbeat accepted",
 		"status", ack.GetObservedStatus(),
-		"request_id", logctx.RequestID(reqCtx),
+		"request_id", requestID,
 	)
 	return nil
+}
+
+func withWorkItemLogFields(logger *slog.Logger, item *nodeagentv1.WorkItem) *slog.Logger {
+	if item == nil {
+		return logger
+	}
+	return logger.With(
+		"service_id", item.GetServiceId(),
+		"plan_id", item.GetPlanId(),
+		"execution_id", item.GetExecutionId(),
+	)
 }
 
 func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {

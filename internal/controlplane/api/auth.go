@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"mini-cloud/internal/bearer"
+	"mini-cloud/internal/transport"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,11 +25,11 @@ func (a bearerAuth) authenticate(c *gin.Context) (string, bool) {
 		return "bearer token required", false
 	}
 
-	secret, ok := bearer.Parse(authorization)
+	secret, ok := transport.ParseBearer(authorization)
 	if !ok {
 		return "invalid Authorization header; use Bearer <token>", false
 	}
-	if bearer.Matches(secret, a.token) {
+	if transport.BearerMatches(secret, a.token) {
 		return "", true
 	}
 	return "invalid bearer token", false
