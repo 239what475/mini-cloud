@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-var ErrNotConfigured = errors.New("log query backend is not configured")
-
 const (
 	queryLimit     = 200
 	queryDirection = "backward"
@@ -40,11 +38,6 @@ func (e *BackendError) Error() string {
 		return ""
 	}
 	return e.Message
-}
-
-type Backend interface {
-	Configured() bool
-	QueryRange(context.Context, QueryInput) (Result, error)
 }
 
 type Service struct {
@@ -85,11 +78,15 @@ type LogRecord struct {
 }
 
 func NewService(baseURL string, tenantID string, timeout time.Duration) *Service {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return nil
+	}
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
 	return &Service{
-		baseURL:  strings.TrimRight(strings.TrimSpace(baseURL), "/"),
+		baseURL:  baseURL,
 		tenantID: strings.TrimSpace(tenantID),
 		httpClient: &http.Client{
 			Timeout: timeout,
@@ -97,15 +94,7 @@ func NewService(baseURL string, tenantID string, timeout time.Duration) *Service
 	}
 }
 
-func (s *Service) Configured() bool {
-	return s != nil && s.baseURL != ""
-}
-
 func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Result, err error) {
-	if !s.Configured() {
-		return Result{}, ErrNotConfigured
-	}
-
 	normalized, err := normalizeInput(input)
 	if err != nil {
 		return Result{}, err
@@ -198,9 +187,13 @@ func (s *Service) QueryRange(ctx context.Context, input QueryInput) (result Resu
 			if err != nil {
 				return result, fmt.Errorf("parse Loki timestamp %q: %w", pair[0], err)
 			}
+			labels := make(map[string]string, len(stream.Stream))
+			for key, value := range stream.Stream {
+				labels[key] = value
+			}
 			items = append(items, LogRecord{
 				Timestamp: timestamp,
-				Labels:    cloneLabels(stream.Stream),
+				Labels:    labels,
 				Line:      pair[1],
 			})
 		}
@@ -293,15 +286,4 @@ func parseLokiTimestamp(value string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Unix(0, nanos).UTC(), nil
-}
-
-func cloneLabels(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

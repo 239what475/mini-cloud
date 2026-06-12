@@ -9,19 +9,15 @@ import (
 const recentControlEventsLimit = 40
 
 type ControlEvent struct {
-	ID         string    `json:"id"`
-	Action     string    `json:"action"`
-	TargetType string    `json:"targetType"`
-	TargetID   string    `json:"targetID"`
-	TargetName string    `json:"targetName"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID        string
+	Action    string
+	Message   string
+	CreatedAt time.Time
 }
 
 type CreateControlEventInput struct {
-	Action     string
-	TargetType string
-	TargetID   string
-	TargetName string
+	Action  string
+	Message string
 }
 
 func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEventInput) error {
@@ -34,17 +30,13 @@ func (s *Store) CreateControlEvent(ctx context.Context, input CreateControlEvent
 		INSERT INTO control_events (
 			id,
 			action,
-			target_type,
-			target_id,
-			target_name
+			message
 		)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3)
 	`,
 		id,
 		input.Action,
-		input.TargetType,
-		input.TargetID,
-		input.TargetName,
+		input.Message,
 	); err != nil {
 		return fmt.Errorf("insert control event: %w", err)
 	}
@@ -56,9 +48,7 @@ func (s *Store) ListRecentControlEvents(ctx context.Context) ([]ControlEvent, er
 		SELECT
 			id,
 			action,
-			target_type,
-			target_id,
-			target_name,
+			message,
 			created_at
 		FROM control_events
 		ORDER BY created_at DESC, id DESC
@@ -67,7 +57,7 @@ func (s *Store) ListRecentControlEvents(ctx context.Context) ([]ControlEvent, er
 	if err != nil {
 		return nil, fmt.Errorf("query control events: %w", err)
 	}
-	defer closeRows(rows)
+	defer rows.Close()
 
 	items := make([]ControlEvent, 0)
 	for rows.Next() {
@@ -88,9 +78,7 @@ func scanControlEvent(scanner interface{ Scan(dest ...any) error }) (ControlEven
 	if err := scanner.Scan(
 		&item.ID,
 		&item.Action,
-		&item.TargetType,
-		&item.TargetID,
-		&item.TargetName,
+		&item.Message,
 		&item.CreatedAt,
 	); err != nil {
 		return ControlEvent{}, fmt.Errorf("scan control event: %w", err)

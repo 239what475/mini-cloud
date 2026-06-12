@@ -12,10 +12,10 @@ import (
 	agentconfig "mini-cloud/internal/nodeagent/config"
 )
 
-var ErrConfigRequired = errors.New("config is required")
+var errConfigRequired = errors.New("config is required")
 
 func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.Writer) error {
-	configPath, err := ParseConfigPath(args, stderr)
+	configPath, err := parseConfigPath(args, stderr)
 	if err != nil {
 		return err
 	}
@@ -26,9 +26,9 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	}
 
 	logger = logger.With(
-		"platform_name", cfg.PlatformName,
-		"provider", cfg.RegisterInput.GetProvider(),
-		"region", cfg.RegisterInput.GetRegion(),
+		"platform_name", cfg.Platform.Name,
+		"provider", cfg.Node.Provider,
+		"region", cfg.Node.Region,
 	)
 
 	app, err := Build(logger, cfg)
@@ -42,19 +42,19 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	}()
 
 	logger.Info("starting mini-cloud node-agent",
-		"server", cfg.ServerURL,
-		"instance_id", cfg.RegisterInput.GetInstanceId(),
-		"heartbeat_interval", cfg.HeartbeatInterval,
-		"work_interval", cfg.WorkInterval,
+		"server", cfg.Server.URL,
+		"instance_id", cfg.Node.InstanceID,
+		"heartbeat_interval", agentconfig.HeartbeatInterval,
+		"work_interval", agentconfig.WorkInterval,
 	)
 	return app.Run(ctx)
 }
 
-func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
+func parseConfigPath(args []string, stderr io.Writer) (string, error) {
 	fs := flag.NewFlagSet("node-agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		PrintUsage(stderr)
+		printUsage(stderr)
 	}
 	configPath := fs.String("config", "", "path to node-agent YAML config file")
 
@@ -72,12 +72,12 @@ func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
 	}
 	if strings.TrimSpace(*configPath) == "" {
 		fs.Usage()
-		return "", ErrConfigRequired
+		return "", errConfigRequired
 	}
 	return strings.TrimSpace(*configPath), nil
 }
 
-func PrintUsage(stderr io.Writer) {
+func printUsage(stderr io.Writer) {
 	_, _ = fmt.Fprintln(stderr, "usage:")
 	_, _ = fmt.Fprintln(stderr, "  node-agent --config ./node-agent.yaml")
 }

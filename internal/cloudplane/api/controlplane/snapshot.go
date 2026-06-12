@@ -24,22 +24,22 @@ const dbPingTimeout = 5 * time.Second
 
 var errDatabaseUnavailable = errors.New("database unavailable")
 
-type SnapshotServer struct {
+type snapshotServer struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 
 	logger *slog.Logger
 	db     *sql.DB
 	store  *store.Store
 	config cloudplaneconfig.Config
-	auth   Authenticator
+	auth   authenticator
 }
 
-func NewSnapshotServer(logger *slog.Logger, db *sql.DB, stores *store.Store, cfg cloudplaneconfig.Config, auth Authenticator) cloudplanev1.ControlPlaneSnapshotServiceServer {
-	return &SnapshotServer{logger: logger, db: db, store: stores, config: cfg, auth: auth}
+func newSnapshotServer(logger *slog.Logger, db *sql.DB, stores *store.Store, cfg cloudplaneconfig.Config, auth authenticator) cloudplanev1.ControlPlaneSnapshotServiceServer {
+	return &snapshotServer{logger: logger, db: db, store: stores, config: cfg, auth: auth}
 }
 
-func (s *SnapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
-	if err := s.auth.Authorize(ctx); err != nil {
+func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
+	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
 	}
 
@@ -54,7 +54,7 @@ func (s *SnapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cl
 	return snapshot, nil
 }
 
-func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
+func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
 	logger := logctx.Logger(ctx, s.logger)
 	checkedAt := time.Now().UTC()
 
@@ -85,29 +85,23 @@ func (s *SnapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
-			Name:       s.config.Plane.Name,
-			Provider:   s.config.Infrastructure.Provider,
-			Region:     s.config.Infrastructure.RegionID,
-			Configured: true,
+			Name:     s.config.Plane.Name,
+			Provider: s.config.Infrastructure.Provider,
+			Region:   s.config.Infrastructure.RegionID,
 		},
-		Health: &cloudplanev1.PlaneHealth{
-			CheckedAt: protoTimestamp(checkedAt),
-			Service:   "ok",
-			Database:  "ok",
-		},
+		CheckedAt: protoTimestamp(checkedAt),
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: int32(alertSignal.AlertsFiring),
 		},
-		RuntimeInventory: protoRuntimeInventory(checkedAt, nodes),
-		Executions:       protoExecutionSnapshots(executions),
+		NodeInventory: protoNodeInventory(checkedAt, nodes),
+		Executions:    protoExecutionSnapshots(executions),
 	}, nil
 }
 
-func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloudplanev1.PlaneRuntimeInventory {
-	out := &cloudplanev1.PlaneRuntimeInventory{
-		SyncVersion: observedAt.UTC().UnixMicro(),
-		ObservedAt:  protoTimestamp(observedAt),
-		Nodes:       make([]*cloudplanev1.PlaneRuntimeNode, 0, len(nodes)),
+func protoNodeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloudplanev1.PlaneNodeInventory {
+	out := &cloudplanev1.PlaneNodeInventory{
+		ObservedAt: protoTimestamp(observedAt),
+		Nodes:      make([]*cloudplanev1.PlaneNode, 0, len(nodes)),
 	}
 
 	var maxUpdatedAt time.Time
@@ -118,7 +112,7 @@ func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloud
 		if item.UpdatedAt.After(maxUpdatedAt) {
 			maxUpdatedAt = item.UpdatedAt
 		}
-		protoNode := &cloudplanev1.PlaneRuntimeNode{
+		protoNode := &cloudplanev1.PlaneNode{
 			NodeId:              item.ID,
 			Name:                item.Name,
 			Provider:            item.Provider,
@@ -141,7 +135,6 @@ func protoRuntimeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloud
 		out.Nodes = append(out.Nodes, protoNode)
 	}
 	if !maxUpdatedAt.IsZero() {
-		out.SyncVersion = maxUpdatedAt.UTC().UnixMicro()
 		out.ObservedAt = protoTimestamp(maxUpdatedAt)
 	}
 	return out

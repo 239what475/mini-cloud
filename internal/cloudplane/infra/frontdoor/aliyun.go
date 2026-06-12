@@ -30,10 +30,9 @@ type aliyunRawAPI interface {
 }
 
 type aliyunCDNClient struct {
-	client               aliyunCDNAPI
-	rawClient            aliyunRawAPI
-	origin               string
-	originHostConfigured map[string]struct{}
+	client    aliyunCDNAPI
+	rawClient aliyunRawAPI
+	origin    string
 }
 
 func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
@@ -50,54 +49,32 @@ func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
 		return nil, fmt.Errorf("create aliyun CDN client: %w", err)
 	}
 	return &aliyunCDNClient{
-		client:               client,
-		rawClient:            client,
-		origin:               cfg.Ingress.PublicOrigin,
-		originHostConfigured: map[string]struct{}{},
+		client:    client,
+		rawClient: client,
+		origin:    cfg.Ingress.PublicOrigin,
 	}, nil
 }
 
-func (c *aliyunCDNClient) ListDomains(_ context.Context, baseDomain string) ([]CDNDomain, error) {
-	match := "suf_match"
-	pageNumber := int32(1)
-	pageSize := int32(500)
-	resp, err := c.client.DescribeUserDomains(&cdn20180510.DescribeUserDomainsRequest{
-		DomainName:       &baseDomain,
-		DomainSearchType: &match,
-		PageNumber:       &pageNumber,
-		PageSize:         &pageSize,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if resp == nil || resp.Body == nil || resp.Body.Domains == nil {
-		return nil, nil
-	}
-	domains := make([]CDNDomain, 0, len(resp.Body.Domains.PageData))
-	for _, item := range resp.Body.Domains.PageData {
-		if item == nil || item.DomainName == nil {
-			continue
-		}
-		domains = append(domains, CDNDomain{Host: cleanDomain(*item.DomainName), CNAME: trimCNAMEValue(item.Cname)})
-	}
-	return domains, nil
-}
-
-func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) error {
+func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) (*DNSRecord, error) {
 	host = cleanDomain(host)
 	domain, err := c.getDomain(host)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if domain.Host != "" {
-		return nil
+	if domain.Exists {
+		return nil, nil
 	}
 	verify, err := c.domainVerifyData(host)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := dns.EnsureRecord(ctx, verify.host(), "TXT", verify.VerifyCode); err != nil {
-		return err
+	verifyRecord := &DNSRecord{
+		Subdomain: verify.host(),
+		Type:      "TXT",
+		Value:     verify.VerifyCode,
+	}
+	if err := dns.EnsureRecord(ctx, verifyRecord.Subdomain, verifyRecord.Type, verifyRecord.Value); err != nil {
+		return verifyRecord, err
 	}
 	verifyType := "dnsCheck"
 	_, err = c.client.VerifyDomainOwner(&cdn20180510.VerifyDomainOwnerRequest{
@@ -105,9 +82,9 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string, dns dn
 		VerifyType: &verifyType,
 	})
 	if isAliyunPending(err) {
-		return nil
+		return verifyRecord, errDomainVerificationPending
 	}
-	return err
+	return verifyRecord, err
 }
 
 func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string, error) {
@@ -116,7 +93,7 @@ func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string
 	if err != nil {
 		return "", err
 	}
-	if domain.Host == "" {
+	if !domain.Exists {
 		if err := c.addDomain(host); err != nil {
 			if isAliyunPending(err) {
 				return "", nil
@@ -128,17 +105,11 @@ func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string
 	if strings.TrimSpace(domain.CNAME) == "" {
 		return "", nil
 	}
-	if c.originHostConfigured == nil {
-		c.originHostConfigured = map[string]struct{}{}
-	}
-	if _, ok := c.originHostConfigured[host]; !ok {
-		if err := c.setOriginHost(host); err != nil {
-			if isAliyunPending(err) {
-				return "", nil
-			}
-			return "", err
+	if err := c.setOriginHost(host); err != nil {
+		if isAliyunPending(err) {
+			return "", nil
 		}
-		c.originHostConfigured[host] = struct{}{}
+		return "", err
 	}
 	return domain.CNAME, nil
 }
@@ -161,25 +132,25 @@ func (c *aliyunCDNClient) OwnsCNAME(value string) bool {
 	return strings.HasSuffix(trimCNAME(value), ".w.kunlunaq.com")
 }
 
-func (c *aliyunCDNClient) getDomain(host string) (CDNDomain, error) {
+func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
 	match := "full_match"
 	resp, err := c.client.DescribeUserDomains(&cdn20180510.DescribeUserDomainsRequest{
 		DomainName:       &host,
 		DomainSearchType: &match,
 	})
 	if err != nil {
-		return CDNDomain{}, err
+		return cdnDomain{}, err
 	}
 	if resp == nil || resp.Body == nil || resp.Body.Domains == nil {
-		return CDNDomain{}, nil
+		return cdnDomain{}, nil
 	}
 	for _, item := range resp.Body.Domains.PageData {
 		if item == nil || item.DomainName == nil || cleanDomain(*item.DomainName) != host {
 			continue
 		}
-		return CDNDomain{Host: host, CNAME: trimCNAMEValue(item.Cname)}, nil
+		return cdnDomain{Exists: true, CNAME: trimCNAMEValue(item.Cname)}, nil
 	}
-	return CDNDomain{}, nil
+	return cdnDomain{}, nil
 }
 
 func (c *aliyunCDNClient) domainVerifyData(host string) (aliyunDomainVerifyData, error) {

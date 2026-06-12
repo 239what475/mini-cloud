@@ -83,23 +83,23 @@ variable "artifact_http_port" {
   default = 18082
 }
 
-variable "runtime_host_port_min" {
+variable "node_host_port_min" {
   type    = number
   default = 30000
 
   validation {
-    condition     = var.runtime_host_port_min >= 1 && var.runtime_host_port_min <= 65535
-    error_message = "runtime_host_port_min 必须是 1 到 65535 之间的 TCP 端口。"
+    condition     = var.node_host_port_min >= 1 && var.node_host_port_min <= 65535
+    error_message = "node_host_port_min 必须是 1 到 65535 之间的 TCP 端口。"
   }
 }
 
-variable "runtime_host_port_max" {
+variable "node_host_port_max" {
   type    = number
   default = 60999
 
   validation {
-    condition     = var.runtime_host_port_max >= 1 && var.runtime_host_port_max <= 65535
-    error_message = "runtime_host_port_max 必须是 1 到 65535 之间的 TCP 端口。"
+    condition     = var.node_host_port_max >= 1 && var.node_host_port_max <= 65535
+    error_message = "node_host_port_max 必须是 1 到 65535 之间的 TCP 端口。"
   }
 }
 

@@ -25,7 +25,7 @@ cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/tencent.tf
 cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfvars
 ```
 
-`provider_name`、`platform_name`、入口机、VPC、地域和规格等字段必须按 plane 分别填写。不要让两个 plane 共用同一个 Terraform workspace。
+`planes[].region`、`provider_name`、`platform_name`、入口机、VPC、地域和规格等字段必须按 plane 分别填写。不要让两个 plane 共用同一个 Terraform workspace。
 
 腾讯云凭据只从 `provider.tencentCredentialFile` 指向的 JSON 文件读取，并写入远端腾讯云 cloud-plane 配置。不要通过环境变量提供平台 token 或腾讯云 AK/SK。
 
@@ -65,7 +65,7 @@ go run ./cmd/labctl install --config deploy/lab/lab.yaml
 - cloud-plane
 - node-agent artifact server
 
-入口机不运行 `node-agent`，也不承接 workload。动态创建出来的 runtime node 会从对应 cloud-plane 入口机的内网 artifact URL 下载并启动 `node-agent`。
+入口机不运行 `node-agent`，也不承接 workload。动态创建出来的 worker node 会从对应 cloud-plane 入口机的内网 artifact URL 下载并启动 `node-agent`。
 
 ## Destroy
 
@@ -76,9 +76,9 @@ go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 `destroy` 会逐个 plane 回收：
 
 - cloud-plane 入口机上的 cloud-plane、Caddy、Tinyproxy 和 artifact
-- 当前 plane 创建的 runtime node
+- 当前 plane 创建的 worker node
 - 当前 plane 创建的 CDN 域名和 DNSPod 记录
-- Terraform 管理的 runtime 网络资源
+- Terraform 管理的 node 网络资源
 - 腾讯云 Lighthouse 模式下的防火墙规则和 CCN 关联
 
 所有 plane 回收完成后，`destroy` 再卸载 control-plane。

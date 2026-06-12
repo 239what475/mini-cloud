@@ -27,15 +27,15 @@ output "network" {
     vpc_id                     = local.vpc_id
     subnet_id                  = local.subnet_id
     platform_security_group_id = local.platform_security_group_id
-    runtime_security_group_id  = local.runtime_security_group_id
+    node_security_group_id     = local.node_security_group_id
     vpc_cidr_block             = var.vpc_cidr_block
     subnet_cidr_block          = local.subnet_cidr_block
     cloud_plane_grpc_port      = var.cloud_plane_grpc_port
     ingress_http_port          = var.ingress_http_port
     egress_proxy_port          = var.egress_proxy_port
     artifact_http_port         = var.artifact_http_port
-    runtime_host_port_min      = var.runtime_host_port_min
-    runtime_host_port_max      = var.runtime_host_port_max
+    node_host_port_min         = var.node_host_port_min
+    node_host_port_max         = var.node_host_port_max
   }
 }
 
@@ -46,29 +46,29 @@ output "ccn" {
   } : null
 }
 
-output "runtime_provider_spec" {
-  value = jsondecode(local.runtime_provider_spec_json)
+output "node_provider_config" {
+  value = jsondecode(local.node_provider_config_json)
 }
 
 output "install_env" {
   value = {
-    provider                  = local.selected_provider
-    platform_name             = var.platform_name
-    platform_instance_name    = local.platform_instance_name
-    platform_instance_id      = local.platform_instance_id
-    platform_instance_type    = local.platform_instance_type
-    platform_public_ip        = local.platform_public_ip
-    platform_private_ip       = local.platform_private_ip
-    platform_ssh_host         = local.platform_ssh_host
-    region_id                 = local.selected_provider == "aliyun" ? var.aliyun.region_id : var.tencent.region_id
-    zone_id                   = local.selected_provider == "aliyun" ? var.aliyun.zone_id : var.tencent.zone_id
-    cloud_plane_grpc_port     = var.cloud_plane_grpc_port
-    ingress_http_port         = var.ingress_http_port
-    egress_proxy_port         = var.egress_proxy_port
-    artifact_http_port        = var.artifact_http_port
-    runtime_host_port_min     = var.runtime_host_port_min
-    runtime_host_port_max     = var.runtime_host_port_max
-    subnet_cidr_block         = local.subnet_cidr_block
-    runtime_security_group_id = local.runtime_security_group_id
+    provider               = local.selected_provider
+    platform_name          = var.platform_name
+    platform_instance_name = local.platform_instance_name
+    platform_instance_id   = local.platform_instance_id
+    platform_instance_type = local.platform_instance_type
+    platform_public_ip     = local.platform_public_ip
+    platform_private_ip    = local.platform_private_ip
+    platform_ssh_host      = local.platform_ssh_host
+    region_id              = local.selected_provider == "aliyun" ? var.aliyun.region_id : var.tencent.region_id
+    zone_id                = local.selected_provider == "aliyun" ? var.aliyun.zone_id : var.tencent.zone_id
+    cloud_plane_grpc_port  = var.cloud_plane_grpc_port
+    ingress_http_port      = var.ingress_http_port
+    egress_proxy_port      = var.egress_proxy_port
+    artifact_http_port     = var.artifact_http_port
+    node_host_port_min     = var.node_host_port_min
+    node_host_port_max     = var.node_host_port_max
+    subnet_cidr_block      = local.subnet_cidr_block
+    node_security_group_id = local.node_security_group_id
   }
 }

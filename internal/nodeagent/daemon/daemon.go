@@ -11,19 +11,16 @@ import (
 	"mini-cloud/internal/logctx"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
-	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/work"
 	"mini-cloud/internal/nodeagent/workloadlogs"
-
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type Runner struct {
 	logger           *slog.Logger
 	cfg              agentconfig.Config
 	controlClient    *agentclient.Client
-	containerRuntime runtime.Runtime
-	workloadLogs     *workloadlogs.Manager
+	containerRuntime containerRuntime
+	workloadLogs     *workloadlogs.Collector
 
 	registerMu       sync.Mutex
 	mu               sync.Mutex
@@ -34,12 +31,19 @@ type Runner struct {
 	closeErr         error
 }
 
+type containerRuntime interface {
+	work.ContainerRuntime
+	ResetNode(context.Context, string) error
+	GarbageCollect(context.Context) error
+	Close() error
+}
+
 func NewRunner(
 	logger *slog.Logger,
 	cfg agentconfig.Config,
 	controlClient *agentclient.Client,
-	containerRuntime runtime.Runtime,
-	workloadLogs *workloadlogs.Manager,
+	containerRuntime containerRuntime,
+	workloadLogs *workloadlogs.Collector,
 ) *Runner {
 	if logger == nil {
 		logger = slog.Default()
@@ -57,7 +61,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	defer r.Close()
 
 	if nodeID, err := r.registerNode(ctx); err != nil {
-		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
+		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.Node.InstanceID, "error", err)
 	} else if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
 		r.logger.Warn("node agent initial runtime reset failed", "node_id", nodeID, "error", err)
 	}
@@ -76,7 +80,7 @@ func (r *Runner) Run(ctx context.Context) error {
 	<-ctx.Done()
 	r.logger.Info("node agent loop stopped", "reason", ctx.Err())
 
-	shutdownTimer := time.NewTimer(r.timeout(r.cfg.Timeouts.ShutdownGrace))
+	shutdownTimer := time.NewTimer(agentconfig.ShutdownGraceTimeout)
 	defer shutdownTimer.Stop()
 	stopped := make(chan struct{})
 	go func() {
@@ -96,9 +100,9 @@ func (r *Runner) Close() error {
 	r.closeOnce.Do(func() {
 		var errs []error
 		if r.workloadLogs != nil {
-			closeCtx, cancel := context.WithTimeout(context.Background(), r.timeout(r.cfg.Timeouts.CleanupHard))
+			closeCtx, cancel := context.WithTimeout(context.Background(), agentconfig.CleanupHardTimeout)
 			if err := r.workloadLogs.Close(closeCtx); err != nil {
-				r.logger.Warn("close workload log manager failed", "error", err)
+				r.logger.Warn("close workload log collector failed", "error", err)
 				errs = append(errs, err)
 			}
 			cancel()
@@ -122,7 +126,7 @@ func (r *Runner) Close() error {
 
 func (r *Runner) runHeartbeatLoop(ctx context.Context) {
 	r.tryHeartbeatCycle(ctx)
-	ticker := time.NewTicker(r.cfg.HeartbeatInterval)
+	ticker := time.NewTicker(agentconfig.HeartbeatInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -136,7 +140,7 @@ func (r *Runner) runHeartbeatLoop(ctx context.Context) {
 
 func (r *Runner) runWorkerLoop(ctx context.Context) {
 	r.tryWorkCycle(ctx)
-	ticker := time.NewTicker(r.cfg.WorkInterval)
+	ticker := time.NewTicker(agentconfig.WorkInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -151,7 +155,7 @@ func (r *Runner) runWorkerLoop(ctx context.Context) {
 func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
-		r.logger.Warn("node agent registration failed", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
+		r.logger.Warn("node agent registration failed", "instance_id", r.cfg.Node.InstanceID, "error", err)
 		return
 	}
 	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
@@ -168,7 +172,7 @@ func (r *Runner) tryHeartbeatCycle(ctx context.Context) {
 func (r *Runner) tryWorkCycle(ctx context.Context) {
 	nodeID, err := r.ensureNodeRegistration(ctx)
 	if err != nil {
-		r.logger.Warn("node agent registration failed before work poll", "instance_id", r.cfg.RegisterInput.GetInstanceId(), "error", err)
+		r.logger.Warn("node agent registration failed before work poll", "instance_id", r.cfg.Node.InstanceID, "error", err)
 		return
 	}
 	if err := r.resetRuntimeOnce(ctx, nodeID); err != nil {
@@ -179,34 +183,33 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 	result, err := work.ExecuteNext(ctx, r.logger, r.controlClient, r.containerRuntime, work.Options{
 		Node: work.NodeOptions{
 			ID:        nodeID,
-			PrivateIP: r.cfg.RegisterInput.GetPrivateIp(),
+			PrivateIP: r.cfg.Node.PrivateIP,
 		},
 		Runtime: work.RuntimeOptions{
-			HostPortMin: r.cfg.Runtime.HostPortMin,
-			HostPortMax: r.cfg.Runtime.HostPortMax,
+			HostPortMin: agentconfig.RuntimeHostPortMin,
+			HostPortMax: agentconfig.RuntimeHostPortMax,
 		},
 		Readiness: work.ReadinessOptions{
-			Attempts: r.cfg.Work.ReadinessAttempts,
-			Interval: r.cfg.Work.ReadinessInterval,
-			Timeout:  r.cfg.Work.ReadinessTimeout,
+			Attempts: agentconfig.ReadinessAttempts,
+			Interval: agentconfig.ReadinessInterval,
+			Timeout:  agentconfig.ReadinessTimeout,
 		},
 		Timeouts: work.TimeoutOptions{
-			RuntimeStart: r.cfg.Timeouts.RuntimeStart,
-			RuntimeStop:  r.cfg.Timeouts.RuntimeStop,
-			RuntimeLogs:  r.cfg.Timeouts.RuntimeLogs,
-			PollWork:     r.cfg.Timeouts.PollWork,
-			Report:       r.cfg.Timeouts.Report,
-			CleanupHard:  r.cfg.Timeouts.CleanupHard,
+			RuntimeStart: agentconfig.RuntimeStartTimeout,
+			RuntimeStop:  agentconfig.RuntimeStopTimeout,
+			RuntimeLogs:  agentconfig.RuntimeLogsTimeout,
+			PollWork:     agentconfig.PollWorkRequestTimeout,
+			Report:       agentconfig.ReportExecutionTimeout,
+			CleanupHard:  agentconfig.CleanupHardTimeout,
 		},
 		Observability: work.ObservabilityOptions{
-			PlatformName:         r.cfg.Work.PlatformName,
+			PlatformName:         r.cfg.Platform.Name,
 			WorkloadLogs:         r.startWorkloadLogs,
-			WorkloadOTLPEndpoint: r.cfg.Work.WorkloadOTLPEndpoint,
-			LogTail:              r.cfg.Work.LogTail,
+			WorkloadOTLPEndpoint: r.cfg.Observability.WorkloadOTLPEndpoint,
+			LogTail:              agentconfig.WorkloadLogTailLineCount,
 		},
 		Network: work.NetworkOptions{
 			EgressProxy: work.EgressProxyOptions{
-				Enabled:  r.cfg.Network.EgressProxy.Enabled,
 				Endpoint: r.cfg.Network.EgressProxy.Endpoint,
 				NoProxy:  r.cfg.Network.EgressProxy.NoProxy,
 			},
@@ -260,12 +263,12 @@ func (r *Runner) ensureNodeRegistration(ctx context.Context) (string, error) {
 }
 
 func (r *Runner) registerNode(ctx context.Context) (string, error) {
-	reqCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.Register))
+	reqCtx, cancel := context.WithTimeout(ctx, agentconfig.RegisterTimeout)
 	defer cancel()
 	reqCtx = logctx.WithFields(reqCtx, logctx.Fields{
 		RequestID: logctx.EnsureRequestID(""),
 	})
-	registered, err := r.controlClient.RegisterNode(reqCtx, r.cfg.RegisterInput)
+	registered, err := r.controlClient.RegisterNode(reqCtx, r.registerRequest())
 	if err != nil {
 		return "", err
 	}
@@ -275,10 +278,8 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	r.runtimeResetDone = false
 	r.mu.Unlock()
 
-	r.controlClient.SetSessionToken(registered.GetSessionToken())
-
 	logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: registered.GetNodeId()}).Info("node agent registered",
-		"instance_id", r.cfg.RegisterInput.GetInstanceId(),
+		"instance_id", r.cfg.Node.InstanceID,
 		"request_id", logctx.RequestID(reqCtx),
 	)
 	return registered.GetNodeId(), nil
@@ -286,17 +287,8 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 
 func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	logger := logctx.WithLoggerFields(r.logger, logctx.Fields{NodeID: nodeID})
-	runningContainers := 0
-	countCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.RuntimeLogs))
-	count, err := r.containerRuntime.CountRunning(countCtx)
-	cancel()
-	if err != nil {
-		logger.Warn("count running containers failed", "node_id", nodeID, "error", err)
-	} else {
-		runningContainers = count
-	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.Heartbeat))
+	reqCtx, cancel := context.WithTimeout(ctx, agentconfig.HeartbeatRequestTimeout)
 	defer cancel()
 	reqCtx = logctx.WithFields(reqCtx, logctx.Fields{
 		RequestID: logctx.EnsureRequestID(""),
@@ -304,12 +296,8 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	})
 	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.HeartbeatRequest{
 		NodeId:              nodeID,
-		ReportedAt:          timestamppb.New(time.Now().UTC()),
-		AgentVersion:        r.cfg.AgentVersion,
-		CpuMilliAllocatable: int32(r.cfg.CPUMilliAllocatable),
-		MemoryMiAllocatable: int32(r.cfg.MemoryMiAllocatable),
-		RunningContainers:   int32(runningContainers),
-		Status:              r.heartbeatStatus(),
+		CpuMilliAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.CPUMilli),
+		MemoryMiAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.MemoryMi),
 	})
 	if err != nil {
 		return err
@@ -317,14 +305,9 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 
 	logger.Info("node heartbeat accepted",
 		"status", ack.GetObservedStatus(),
-		"running_containers", runningContainers,
 		"request_id", logctx.RequestID(reqCtx),
 	)
 	return nil
-}
-
-func (r *Runner) heartbeatStatus() string {
-	return "ready"
 }
 
 func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
@@ -338,7 +321,7 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 	}
 	r.mu.Unlock()
 
-	gcCtx, cancel := context.WithTimeout(ctx, r.timeout(r.cfg.Timeouts.CleanupHard))
+	gcCtx, cancel := context.WithTimeout(ctx, agentconfig.CleanupHardTimeout)
 	defer cancel()
 	if err := r.containerRuntime.ResetNode(gcCtx, nodeID); err != nil {
 		return err
@@ -353,8 +336,8 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 }
 
 func (r *Runner) handleNodeError(nodeID string, err error) {
-	if agentclient.IsInvalidSession(err) {
-		r.logger.Warn("node session is no longer valid, clearing local state",
+	if agentclient.IsUnknownNode(err) {
+		r.logger.Warn("node is no longer known by cloud-plane, clearing local state",
 			"node_id", nodeID,
 			"error", err,
 		)
@@ -362,7 +345,6 @@ func (r *Runner) handleNodeError(nodeID string, err error) {
 		r.nodeID = ""
 		r.runtimeResetDone = false
 		r.mu.Unlock()
-		r.controlClient.SetSessionToken("")
 		return
 	}
 }
@@ -374,9 +356,15 @@ func (r *Runner) startWorkloadLogs(req workloadlogs.StartRequest) {
 	r.workloadLogs.Start(req)
 }
 
-func (r *Runner) timeout(value time.Duration) time.Duration {
-	if value > 0 {
-		return value
+func (r *Runner) registerRequest() *nodeagentv1.RegisterNodeRequest {
+	return &nodeagentv1.RegisterNodeRequest{
+		Provider:      r.cfg.Node.Provider,
+		Region:        r.cfg.Node.Region,
+		Name:          r.cfg.Node.Name,
+		PrivateIp:     r.cfg.Node.PrivateIP,
+		InstanceId:    r.cfg.Node.InstanceID,
+		InstanceType:  r.cfg.Node.InstanceType,
+		CpuMilliTotal: int32(r.cfg.ResolvedCapacity.Total.CPUMilli),
+		MemoryMiTotal: int32(r.cfg.ResolvedCapacity.Total.MemoryMi),
 	}
-	return time.Second
 }

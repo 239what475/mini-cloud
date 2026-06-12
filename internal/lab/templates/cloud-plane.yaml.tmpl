@@ -14,7 +14,7 @@ controlPlane:
 
 nodeAgent:
   connectEndpoint: {{printf "%q" .NodeAgentConnectEndpoint}}
-  bootstrapToken: {{printf "%q" .NodeAgentBootstrapToken}}
+  token: {{printf "%q" .NodeAgentToken}}
   binaryUrl: {{printf "%q" .NodeAgentBinaryURL}}
 
 infrastructure:
@@ -28,24 +28,45 @@ infrastructure:
     token: {{printf "%q" .TencentCredential.Token}}
 {{- end}}
 
-runtimeProvisioning:
+nodeProvisioning:
   instanceType: {{printf "%q" .InstanceType}}
   registryMirrors:
 {{- range .RegistryMirrors}}
     - {{printf "%q" .}}
 {{- end}}
   workloadEgressProxyEndpoint: {{printf "%q" .WorkloadEgressProxyEndpoint}}
-  providerSpec:
-{{.ProviderSpecYAML}}
+{{- if eq .Provider "aliyun"}}
+  aliyun:
+    imageId: {{printf "%q" .NodeProvider.ImageID}}
+    keyPairName: {{printf "%q" .NodeProvider.KeyPairName}}
+    vSwitchId: {{printf "%q" .NodeProvider.VSwitchID}}
+    securityGroupId: {{printf "%q" .NodeProvider.SecurityGroupID}}
+    systemDiskCategory: {{printf "%q" .NodeProvider.SystemDiskCategory}}
+    systemDiskSizeGiB: {{.NodeProvider.SystemDiskSizeGiB}}
+{{- else if eq .Provider "tencent"}}
+  tencent:
+    imageId: {{printf "%q" .NodeProvider.ImageID}}
+    keyIds:
+{{- range .NodeProvider.KeyIDs}}
+      - {{printf "%q" .}}
+{{- end}}
+    vpcId: {{printf "%q" .NodeProvider.VPCID}}
+    subnetId: {{printf "%q" .NodeProvider.SubnetID}}
+    securityGroupIds:
+{{- range .NodeProvider.SecurityGroupIDs}}
+      - {{printf "%q" .}}
+{{- end}}
+    systemDiskType: {{printf "%q" .NodeProvider.SystemDiskType}}
+    systemDiskSizeGiB: {{.NodeProvider.SystemDiskSizeGiB}}
+{{- end}}
 
 ingress:
   baseDomain: {{printf "%q" .IngressBaseDomain}}
   caddyAdminURL: http://127.0.0.1:2019
   publicOrigin: {{printf "%q" .IngressPublicOrigin}}
+{{- if .DNSPodDomain}}
   frontDoor:
-    enabled: {{.FrontDoorEnabled}}
     dnsPodDomain: {{printf "%q" .DNSPodDomain}}
-{{- if .FrontDoorEnabled}}
     dnsPodCredential:
       secretId: {{printf "%q" .DNSPodCredential.SecretID}}
       secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
@@ -54,4 +75,5 @@ ingress:
 
 observability:
   lokiURL: {{printf "%q" .LokiURL}}
+  lokiTenantID: {{printf "%q" .LokiTenantID}}
   otlpEndpoint: {{printf "%q" .OTLPEndpoint}}

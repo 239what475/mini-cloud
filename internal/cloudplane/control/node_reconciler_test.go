@@ -1,4 +1,4 @@
-package nodepool
+package control
 
 import (
 	"context"
@@ -17,16 +17,16 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestScaleOutCreatesProvisioningNodeWhenPendingExecutionHasNoCapacity(t *testing.T) {
+func TestReconcileCreatesProvisioningNodeWhenPendingExecutionHasNoCapacity(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	seedPendingExecution(t, ctx, db.Store, "scale-out-no-capacity", "medium")
+	seedPendingExecution(t, ctx, db.Store, "needs-new-node", "medium")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
@@ -34,37 +34,37 @@ func TestScaleOutCreatesProvisioningNodeWhenPendingExecutionHasNoCapacity(t *tes
 	if driver.createRequests[0].CPUMilli != 1000 || driver.createRequests[0].MemoryMi != 1024 {
 		t.Fatalf("unexpected create resource request: %+v", driver.createRequests[0])
 	}
-	items, err := db.Store.ListNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
+	items, err := db.Store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
 	if err != nil {
-		t.Fatalf("ListNodesByStatuses returned error: %v", err)
+		t.Fatalf("ListElasticNodesByStatuses returned error: %v", err)
 	}
 	if len(items) != 1 || items[0].InstanceID != "i-created-1" || items[0].InstanceType != "ecs.demo" {
 		t.Fatalf("unexpected nodes: %+v", items)
 	}
 }
 
-func TestScaleOutSkipsWhenReadyNodeHasCapacity(t *testing.T) {
+func TestReconcileSkipsProvisioningWhenReadyNodeHasCapacity(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	seedReadyNode(t, ctx, db.Store, "ready-capacity", 2000, 2048)
-	seedPendingExecution(t, ctx, db.Store, "scale-out-has-capacity", "small")
+	seedPendingExecution(t, ctx, db.Store, "has-capacity", "small")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 0 {
 		t.Fatalf("create requests = %d, want 0", len(driver.createRequests))
 	}
 }
 
-func TestScaleOutSkipsWhenNodeAlreadyProvisioning(t *testing.T) {
+func TestReconcileSkipsProvisioningWhenNodeAlreadyProvisioning(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	if _, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
 		Provider:     "aliyun",
@@ -75,62 +75,62 @@ func TestScaleOutSkipsWhenNodeAlreadyProvisioning(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateProvisioningNode returned error: %v", err)
 	}
-	seedPendingExecution(t, ctx, db.Store, "scale-out-existing-provisioning", "small")
+	seedPendingExecution(t, ctx, db.Store, "existing-provisioning", "small")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 0 {
 		t.Fatalf("create requests = %d, want 0", len(driver.createRequests))
 	}
 }
 
-func TestScaleOutIgnoresProvisioningNodeForDifferentInstanceType(t *testing.T) {
+func TestReconcileCreatesNodeWhenExistingProvisioningNodeUsesDifferentInstanceType(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	if _, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
 		Provider:     "aliyun",
 		Region:       "cn-beijing",
-		Name:         "demo-node-legacy",
-		InstanceType: "ecs.legacy",
-		StatusReason: "stale provisioning node from previous runtime config",
+		Name:         "demo-node-old-type",
+		InstanceType: "ecs.old",
+		StatusReason: "stale provisioning node from previous node provisioning config",
 	}); err != nil {
 		t.Fatalf("CreateProvisioningNode returned error: %v", err)
 	}
-	seedPendingExecution(t, ctx, db.Store, "scale-out-new-runtime-config", "small")
+	seedPendingExecution(t, ctx, db.Store, "new-node-config", "small")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
 	}
 }
 
-func TestScaleOutMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
+func TestReconcileMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{createErr: errors.New("provider unavailable")}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	seedPendingExecution(t, ctx, db.Store, "scale-out-provider-fails", "small")
+	seedPendingExecution(t, ctx, db.Store, "provider-create-fails", "small")
 
-	if err := service.ReconcileOnce(ctx); err == nil {
-		t.Fatal("ReconcileOnce returned nil, want error")
+	if err := service.reconcileOnce(ctx); err == nil {
+		t.Fatal("reconcileOnce returned nil, want error")
 	}
-	items, err := db.Store.ListNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
+	items, err := db.Store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
 	if err != nil {
-		t.Fatalf("ListNodesByStatuses provisioning returned error: %v", err)
+		t.Fatalf("ListElasticNodesByStatuses provisioning returned error: %v", err)
 	}
 	if len(items) != 0 {
 		t.Fatalf("provisioning nodes = %d, want 0", len(items))
 	}
-	items, err = db.Store.ListNodesByStatuses(ctx, cloudmodel.StatusDeleted)
+	items, err = db.Store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDeleted)
 	if err != nil {
-		t.Fatalf("ListNodesByStatuses deleted returned error: %v", err)
+		t.Fatalf("ListElasticNodesByStatuses deleted returned error: %v", err)
 	}
 	if len(items) != 1 || items[0].StatusReason == "" {
 		t.Fatalf("unexpected deleted nodes: %+v", items)
@@ -145,11 +145,63 @@ func TestScaleOutMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests after failed reconcile = %d, want 1", len(driver.createRequests))
 	}
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("second ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("second reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests after second reconcile = %d, want no retry", len(driver.createRequests))
+	}
+}
+
+func TestReconcileDeletesProviderInstanceWhenBindFails(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	driver := &fakeDriver{}
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+
+	existing, err := db.Store.RegisterNode(ctx, cloudmodel.RegisterInput{
+		Provider:      "aliyun",
+		Region:        "cn-beijing",
+		Name:          "existing-instance",
+		PrivateIP:     "10.0.0.9",
+		InstanceID:    "i-created-1",
+		InstanceType:  "ecs.demo",
+		CPUMilliTotal: 1,
+		MemoryMiTotal: 1,
+	})
+	if err != nil {
+		t.Fatalf("RegisterNode returned error: %v", err)
+	}
+	if _, err := db.Store.RecordNodeHeartbeat(ctx, existing.ID, cloudmodel.HeartbeatInput{
+		CPUMilliAllocatable: 1,
+		MemoryMiAllocatable: 1,
+	}); err != nil {
+		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
+	}
+	seedPendingExecution(t, ctx, db.Store, "bind-fails", "small")
+
+	if err := service.reconcileOnce(ctx); err == nil {
+		t.Fatal("reconcileOnce returned nil, want bind error")
+	}
+	if len(driver.createRequests) != 1 {
+		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
+	}
+	if len(driver.deleteRequests) != 1 || driver.deleteRequests[0].InstanceID != "i-created-1" {
+		t.Fatalf("delete requests = %+v, want rollback of created instance", driver.deleteRequests)
+	}
+	nodes, err := db.Store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDeleted)
+	if err != nil {
+		t.Fatalf("ListElasticNodesByStatuses returned error: %v", err)
+	}
+	if len(nodes) != 1 || nodes[0].StatusReason == "" {
+		t.Fatalf("deleted elastic nodes = %+v, want failed provisioning node marked deleted", nodes)
+	}
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
+	}
+	if len(snapshots) != 1 || snapshots[0].Status != cloudmodel.StatusFailed {
+		t.Fatalf("execution snapshots = %+v, want failed", snapshots)
 	}
 }
 
@@ -157,7 +209,7 @@ func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingExecution(t *testin
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 	planID := "stale-provisioning-g1"
 
 	seedPendingExecution(t, ctx, db.Store, "stale-provisioning", "small")
@@ -183,8 +235,8 @@ func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingExecution(t *testin
 		t.Fatalf("seed stale provisioning updated_at: %v", err)
 	}
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.deleteRequests) != 1 || driver.deleteRequests[0].InstanceID != "i-stale-provisioning" {
 		t.Fatalf("delete requests = %+v, want stale provisioning node deletion", driver.deleteRequests)
@@ -209,19 +261,19 @@ func TestReconcileDeletesIdleNode(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	node := seedReadyPoolNode(t, ctx, db.Store, "idle-node", "i-idle-node")
+	node := seedReadyElasticNode(t, ctx, db.Store, "idle-node", "i-idle-node")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.deleteRequests) != 1 || driver.deleteRequests[0].InstanceID != "i-idle-node" {
 		t.Fatalf("delete requests = %+v, want idle node deletion", driver.deleteRequests)
 	}
-	items, err := db.Store.ListNodesByStatuses(ctx, cloudmodel.StatusDeleted)
+	items, err := db.Store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDeleted)
 	if err != nil {
-		t.Fatalf("ListNodesByStatuses deleted returned error: %v", err)
+		t.Fatalf("ListElasticNodesByStatuses deleted returned error: %v", err)
 	}
 	if len(items) != 1 || items[0].ID != node.ID {
 		t.Fatalf("deleted nodes = %+v, want %s", items, node.ID)
@@ -237,35 +289,35 @@ func TestReconcileKeepsIdleFixedNode(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	seedReadyNode(t, ctx, db.Store, "fixed-node", 2000, 2048)
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.deleteRequests) != 0 {
 		t.Fatalf("delete requests = %+v, want no fixed node deletion", driver.deleteRequests)
 	}
 }
 
-func TestReconcileDoesNotDeleteIdleNodeWhenScalingOut(t *testing.T) {
+func TestReconcileDoesNotDeleteIdleNodeInNodeCreationRound(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
-	service := NewService(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
+	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	seedReadyPoolNode(t, ctx, db.Store, "idle-node", "i-idle-node")
-	seedPendingExecution(t, ctx, db.Store, "scale-out-and-idle-node", "large")
+	seedReadyElasticNode(t, ctx, db.Store, "idle-node", "i-idle-node")
+	seedPendingExecution(t, ctx, db.Store, "new-node-and-idle-node", "large")
 
-	if err := service.ReconcileOnce(ctx); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := service.reconcileOnce(ctx); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(driver.createRequests) != 1 {
 		t.Fatalf("create requests = %d, want 1", len(driver.createRequests))
 	}
 	if len(driver.deleteRequests) != 0 {
-		t.Fatalf("delete requests = %+v, want no deletion in scale-out round", driver.deleteRequests)
+		t.Fatalf("delete requests = %+v, want no deletion while creating a node", driver.deleteRequests)
 	}
 }
 
@@ -300,9 +352,13 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 			Provider: "aliyun",
 			RegionID: "cn-beijing",
 		},
-		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
+		NodeProvisioning: cloudplaneconfig.NodeProvisioningConfig{
 			InstanceType: "ecs.demo",
-			ProviderSpec: map[string]any{"imageId": "m-test"},
+			Aliyun: cloudplaneconfig.AliyunNodeConfig{
+				ImageID:         "m-test",
+				VSwitchID:       "vsw-test",
+				SecurityGroupID: "sg-test",
+			},
 		},
 	}
 }
@@ -344,20 +400,16 @@ func seedReadyNode(t *testing.T, ctx context.Context, stores *store.Store, name 
 	if err != nil {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
-	_, _, err = stores.RecordNodeHeartbeat(ctx, nodeItem.ID, cloudmodel.HeartbeatInput{
-		ReportedAt:          time.Now().UTC(),
-		AgentVersion:        "test-agent",
+	_, err = stores.RecordNodeHeartbeat(ctx, nodeItem.ID, cloudmodel.HeartbeatInput{
 		CPUMilliAllocatable: cpuMilli,
 		MemoryMiAllocatable: memoryMi,
-		RunningContainers:   0,
-		Status:              cloudmodel.StatusReady,
 	})
 	if err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
 }
 
-func seedReadyPoolNode(t *testing.T, ctx context.Context, stores *store.Store, name string, instanceID string) cloudmodel.Node {
+func seedReadyElasticNode(t *testing.T, ctx context.Context, stores *store.Store, name string, instanceID string) cloudmodel.Node {
 	t.Helper()
 
 	provisioning, err := stores.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
@@ -390,13 +442,9 @@ func seedReadyPoolNode(t *testing.T, ctx context.Context, stores *store.Store, n
 	if node.ID != provisioning.ID {
 		t.Fatalf("registered node ID = %s, want provisioning node ID %s", node.ID, provisioning.ID)
 	}
-	if _, _, err := stores.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
-		ReportedAt:          time.Now().UTC(),
-		AgentVersion:        "test-agent",
+	if _, err := stores.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
 		CPUMilliAllocatable: 1000,
 		MemoryMiAllocatable: 1024,
-		RunningContainers:   0,
-		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}

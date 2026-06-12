@@ -11,14 +11,7 @@ auth:
   adminToken: {{printf "%q" .AdminToken}}
   southboundToken: {{printf "%q" .SouthboundToken}}
 
-sync:
-  planeIntervalSeconds: 30
-
-service:
-  reconcileTimeoutSeconds: 1200
-
 logs:
   loki:
     url: {{printf "%q" .LokiURL}}
     tenantID: {{printf "%q" .LokiTenantID}}
-    queryTimeoutSeconds: 5

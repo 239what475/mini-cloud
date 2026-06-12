@@ -22,21 +22,18 @@ func Build(logger *slog.Logger, cfg agentconfig.Config) (App, error) {
 		logger = slog.Default()
 	}
 	client := agentclient.New(agentclient.Config{
-		ServerURL:      cfg.ServerURL,
-		BootstrapToken: cfg.BootstrapToken,
+		ServerURL: cfg.Server.URL,
+		Token:     cfg.Auth.Token,
 	})
-	containerRuntime, err := runtime.New(logger, runtime.Config{
-		Type: cfg.Runtime.Type,
-	})
+	containerRuntime, err := runtime.NewDockerEngine(logger)
 	if err != nil {
 		_ = client.Close()
 		return App{}, err
 	}
-	workloadLogs, err := workloadlogs.NewManager(logger, workloadlogs.Config{
-		LokiURL:      cfg.WorkloadLogLokiURL,
-		LokiTenantID: cfg.WorkloadLogLokiTenant,
-		PlatformName: cfg.PlatformName,
-		PushTimeout:  cfg.Logs.PushTimeout,
+	workloadLogs, err := workloadlogs.NewCollector(logger, workloadlogs.Config{
+		LokiURL:      cfg.Observability.WorkloadLogLokiURL,
+		LokiTenantID: cfg.Observability.WorkloadLogLokiTenantID,
+		PlatformName: cfg.Platform.Name,
 	}, containerRuntime)
 	if err != nil {
 		_ = client.Close()

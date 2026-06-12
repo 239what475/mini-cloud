@@ -2,7 +2,7 @@ locals {
   vpc_name                     = var.vpc_name != "" ? var.vpc_name : "${var.platform_name}-vpc"
   subnet_name                  = var.subnet_name != "" ? var.subnet_name : "${var.platform_name}-subnet"
   platform_security_group_name = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-platform-sg" : "${var.platform_name}-platform-sg"
-  runtime_security_group_name  = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-runtime-sg" : "${var.platform_name}-runtime-sg"
+  node_security_group_name  = var.security_group_name_prefix != "" ? "${var.security_group_name_prefix}-node-sg" : "${var.platform_name}-node-sg"
   naming_prefix_raw            = replace(replace(replace(lower(var.platform_name), "_", "-"), ".", "-"), "/", "-")
   naming_prefix                = trim(substr(local.naming_prefix_raw, 0, min(32, length(local.naming_prefix_raw))), "-")
   effective_name_prefix        = local.naming_prefix != "" ? local.naming_prefix : "mini-cloud"
@@ -63,58 +63,58 @@ locals {
     }
   ]
 
-  platform_runtime_ingress_rules = [
+  platform_node_ingress_rules = [
     {
       action             = "ACCEPT"
-      source_security_id = tencentcloud_security_group.runtime.id
+      source_security_id = tencentcloud_security_group.node.id
       protocol           = "TCP"
       port               = tostring(var.cloud_plane_grpc_port)
-      description        = "cloud-plane grpc from runtime security group"
+      description        = "cloud-plane grpc from node security group"
     },
     {
       action             = "ACCEPT"
-      source_security_id = tencentcloud_security_group.runtime.id
+      source_security_id = tencentcloud_security_group.node.id
       protocol           = "TCP"
       port               = tostring(var.egress_proxy_port)
-      description        = "egress proxy from runtime security group"
+      description        = "egress proxy from node security group"
     },
     {
       action             = "ACCEPT"
-      source_security_id = tencentcloud_security_group.runtime.id
+      source_security_id = tencentcloud_security_group.node.id
       protocol           = "TCP"
       port               = tostring(var.artifact_http_port)
-      description        = "node-agent artifact server from runtime security group"
+      description        = "node-agent artifact server from node security group"
     }
   ]
 
-  runtime_ingress_rules = [
+  node_ingress_rules = [
     {
       action             = "ACCEPT"
       source_security_id = one(tencentcloud_security_group.platform[*].id)
       protocol           = "TCP"
-      port               = "${var.runtime_host_port_min}-${var.runtime_host_port_max}"
-      description        = "runtime host ports from platform security group"
+      port               = "${var.node_host_port_min}-${var.node_host_port_max}"
+      description        = "node host ports from platform security group"
     }
   ]
 
-  runtime_ingress_from_platform_cidr_rules = [
+  node_ingress_from_platform_cidr_rules = [
     for cidr in var.platform_private_cidrs : {
       action      = "ACCEPT"
       cidr_block  = cidr
       protocol    = "TCP"
-      port        = "${var.runtime_host_port_min}-${var.runtime_host_port_max}"
-      description = "runtime host ports from platform private cidr"
+      port        = "${var.node_host_port_min}-${var.node_host_port_max}"
+      description = "node host ports from platform private cidr"
     }
   ]
 
-  runtime_egress_to_platform_rules = [
+  node_egress_to_platform_rules = [
     {
       action             = "ACCEPT"
       source_security_id = one(tencentcloud_security_group.platform[*].id)
       protocol           = "TCP"
       port               = tostring(var.cloud_plane_grpc_port)
       policy_index       = 10
-      description        = "runtime to cloud-plane grpc"
+      description        = "node to cloud-plane grpc"
     },
     {
       action             = "ACCEPT"
@@ -122,7 +122,7 @@ locals {
       protocol           = "TCP"
       port               = tostring(var.egress_proxy_port)
       policy_index       = 11
-      description        = "runtime to egress proxy"
+      description        = "node to egress proxy"
     },
     {
       action             = "ACCEPT"
@@ -130,11 +130,11 @@ locals {
       protocol           = "TCP"
       port               = tostring(var.artifact_http_port)
       policy_index       = 12
-      description        = "runtime to node-agent artifact server"
+      description        = "node to node-agent artifact server"
     },
   ]
 
-  runtime_egress_to_platform_cidr_rules = flatten([
+  node_egress_to_platform_cidr_rules = flatten([
     for cidr in var.platform_private_cidrs : [
       {
         action       = "ACCEPT"
@@ -142,7 +142,7 @@ locals {
         protocol     = "TCP"
         port         = tostring(var.cloud_plane_grpc_port)
         policy_index = 20 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "runtime to cloud-plane grpc on platform private cidr"
+        description  = "node to cloud-plane grpc on platform private cidr"
       },
       {
         action       = "ACCEPT"
@@ -150,7 +150,7 @@ locals {
         protocol     = "TCP"
         port         = tostring(var.egress_proxy_port)
         policy_index = 21 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "runtime to egress proxy on platform private cidr"
+        description  = "node to egress proxy on platform private cidr"
       },
       {
         action       = "ACCEPT"
@@ -158,21 +158,21 @@ locals {
         protocol     = "TCP"
         port         = tostring(var.artifact_http_port)
         policy_index = 22 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "runtime to node-agent artifact server on platform private cidr"
+        description  = "node to node-agent artifact server on platform private cidr"
       }
     ]
   ])
 
-  effective_runtime_ingress_rules = concat(
-    var.create_platform_host_resources ? local.runtime_ingress_rules : [],
-    local.runtime_ingress_from_platform_cidr_rules
+  effective_node_ingress_rules = concat(
+    var.create_platform_host_resources ? local.node_ingress_rules : [],
+    local.node_ingress_from_platform_cidr_rules
   )
 
-  effective_runtime_egress_to_platform_rules = var.create_platform_host_resources ? local.runtime_egress_to_platform_rules : []
+  effective_node_egress_to_platform_rules = var.create_platform_host_resources ? local.node_egress_to_platform_rules : []
 
-  runtime_egress_rules = concat(
-    local.effective_runtime_egress_to_platform_rules,
-    local.runtime_egress_to_platform_cidr_rules,
+  node_egress_rules = concat(
+    local.effective_node_egress_to_platform_rules,
+    local.node_egress_to_platform_cidr_rules,
     [
       {
         action       = "ACCEPT"
@@ -180,7 +180,7 @@ locals {
         protocol     = "TCP"
         port         = "80"
         policy_index = 12
-        description  = "runtime to cloud metadata and internal mirrors"
+        description  = "node to cloud metadata and internal mirrors"
       },
       {
         action       = "ACCEPT"
@@ -188,7 +188,7 @@ locals {
         protocol     = "TCP"
         port         = "443"
         policy_index = 13
-        description  = "runtime to internal mirrors and object storage"
+        description  = "node to internal mirrors and object storage"
       },
       {
         action       = "DROP"
@@ -196,15 +196,15 @@ locals {
         protocol     = "ALL"
         port         = "ALL"
         policy_index = 100
-        description  = "deny runtime direct internet egress outside platform proxy"
+        description  = "deny node direct internet egress outside platform proxy"
       }
   ])
 }
 
-check "runtime_host_port_range" {
+check "node_host_port_range" {
   assert {
-    condition     = var.runtime_host_port_min <= var.runtime_host_port_max
-    error_message = "runtime_host_port_min 不能大于 runtime_host_port_max。"
+    condition     = var.node_host_port_min <= var.node_host_port_max
+    error_message = "node_host_port_min 不能大于 node_host_port_max。"
   }
 }
 
@@ -235,10 +235,10 @@ resource "tencentcloud_security_group" "platform" {
   tags        = merge(local.common_tags, { "mini-cloud/security-group-role" = "platform" })
 }
 
-resource "tencentcloud_security_group" "runtime" {
-  name        = local.runtime_security_group_name
-  description = "${var.platform_name} runtime security group"
-  tags        = merge(local.common_tags, { "mini-cloud/security-group-role" = "runtime" })
+resource "tencentcloud_security_group" "node" {
+  name        = local.node_security_group_name
+  description = "${var.platform_name} node security group"
+  tags        = merge(local.common_tags, { "mini-cloud/security-group-role" = "node" })
 }
 
 resource "tencentcloud_security_group_rule_set" "platform" {
@@ -251,7 +251,7 @@ resource "tencentcloud_security_group_rule_set" "platform" {
       local.platform_admin_ingress_rules,
       local.platform_control_plane_ingress_rules,
       local.platform_http_ingress_rules,
-      local.platform_runtime_ingress_rules,
+      local.platform_node_ingress_rules,
     )
 
     content {
@@ -273,11 +273,11 @@ resource "tencentcloud_security_group_rule_set" "platform" {
   }
 }
 
-resource "tencentcloud_security_group_rule_set" "runtime" {
-  security_group_id = tencentcloud_security_group.runtime.id
+resource "tencentcloud_security_group_rule_set" "node" {
+  security_group_id = tencentcloud_security_group.node.id
 
   dynamic "ingress" {
-    for_each = local.effective_runtime_ingress_rules
+    for_each = local.effective_node_ingress_rules
 
     content {
       action             = ingress.value.action
@@ -290,7 +290,7 @@ resource "tencentcloud_security_group_rule_set" "runtime" {
   }
 
   dynamic "egress" {
-    for_each = local.runtime_egress_rules
+    for_each = local.node_egress_rules
 
     content {
       action             = egress.value.action

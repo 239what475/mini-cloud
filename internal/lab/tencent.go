@@ -59,7 +59,7 @@ func (r *Runner) attachLighthouseCCN(ctx context.Context, out TerraformOutput) e
 		return err
 	}
 	if current != "" && current != ccnID {
-		return fmt.Errorf("Lighthouse is already attached to %s; detach it before attaching %s", current, ccnID)
+		return fmt.Errorf("lighthouse is already attached to %s; detach it before attaching %s", current, ccnID)
 	}
 	if current != ccnID {
 		if _, err := runOutput(ctx, "tccli", "lighthouse", "AttachCcn", "--region", regionID, "--CcnId", ccnID); err != nil {
@@ -98,9 +98,9 @@ func (r *Runner) attachLighthouseCCN(ctx context.Context, out TerraformOutput) e
 		time.Sleep(5 * time.Second)
 	}
 	if state == "PENDING" {
-		return fmt.Errorf("Lighthouse CCN attachment is still PENDING after automatic accept attempt")
+		return fmt.Errorf("lighthouse CCN attachment is still PENDING after automatic accept attempt")
 	}
-	return fmt.Errorf("Lighthouse CCN attachment did not become ACTIVE; current state: %s", defaultString(state, "unknown"))
+	return fmt.Errorf("lighthouse CCN attachment did not become ACTIVE; current state: %s", defaultString(state, "unknown"))
 }
 
 func (r *Runner) lighthouseAttachedCCN(ctx context.Context, regionID string) (string, error) {
@@ -154,9 +154,9 @@ func (r *Runner) ensureLighthouseFirewallRules(ctx context.Context, out Terrafor
 		cidr        string
 		description string
 	}{
-		{out.Network.Value.CloudPlaneGRPCPort, subnetCIDR, "mini-cloud runtime to cloud-plane"},
-		{out.Network.Value.EgressProxyPort, subnetCIDR, "mini-cloud runtime to workload egress proxy"},
-		{out.Network.Value.ArtifactHTTPPort, subnetCIDR, "mini-cloud runtime to node-agent artifact server"},
+		{out.Network.Value.CloudPlaneGRPCPort, subnetCIDR, "mini-cloud node to cloud-plane"},
+		{out.Network.Value.EgressProxyPort, subnetCIDR, "mini-cloud node to workload egress proxy"},
+		{out.Network.Value.ArtifactHTTPPort, subnetCIDR, "mini-cloud node to node-agent artifact server"},
 	}
 	if r.controlPlaneHost() == out.platformHost() {
 		controlPlaneHTTPPort, err := strconv.Atoi(portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr))
@@ -284,8 +284,8 @@ func (r *Runner) detachLighthouseCCN(ctx context.Context, out TerraformOutput) e
 	return fmt.Errorf("timed out waiting for Lighthouse to detach from CCN %s", ccnID)
 }
 
-func (r *Runner) deleteTencentRuntimeNodes(ctx context.Context, out TerraformOutput) error {
-	ids, err := r.tencentRuntimeNodeIDs(ctx, out)
+func (r *Runner) deleteTencentWorkerNodes(ctx context.Context, out TerraformOutput) error {
+	ids, err := r.tencentWorkerNodeIDs(ctx, out)
 	if err != nil {
 		return err
 	}
@@ -300,7 +300,7 @@ func (r *Runner) deleteTencentRuntimeNodes(ctx context.Context, out TerraformOut
 		return err
 	}
 	for i := 0; i < 60; i++ {
-		ids, err = r.tencentRuntimeNodeIDs(ctx, out)
+		ids, err = r.tencentWorkerNodeIDs(ctx, out)
 		if err != nil {
 			return err
 		}
@@ -309,10 +309,10 @@ func (r *Runner) deleteTencentRuntimeNodes(ctx context.Context, out TerraformOut
 		}
 		time.Sleep(5 * time.Second)
 	}
-	return fmt.Errorf("timed out waiting for Tencent runtime nodes to terminate: %v", ids)
+	return fmt.Errorf("timed out waiting for Tencent nodes to terminate: %v", ids)
 }
 
-func (r *Runner) tencentRuntimeNodeIDs(ctx context.Context, out TerraformOutput) ([]string, error) {
+func (r *Runner) tencentWorkerNodeIDs(ctx context.Context, out TerraformOutput) ([]string, error) {
 	filters := fmt.Sprintf(`[{"Name":"tag:managed-by","Values":["mini-cloud"]},{"Name":"tag:mini-cloud/platform","Values":["%s"]}]`, out.Platform.Value.Name)
 	var response tencentInstancesResponse
 	if err := runJSON(ctx, &response, "tccli", "cvm", "DescribeInstances", "--region", out.RegionID(), "--Filters", filters); err != nil {

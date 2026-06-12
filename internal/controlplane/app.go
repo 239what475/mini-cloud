@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
 	"mini-cloud/internal/controlplane/api"
@@ -17,17 +18,31 @@ import (
 	"mini-cloud/internal/controlplane/store/migrations"
 )
 
+const (
+	planeSyncIntervalSeconds = 30
+	logQueryTimeout          = 5 * time.Second
+)
+
 type App struct {
 	Config  config.Config
 	Handler http.Handler
 
 	logger *slog.Logger
 	db     *sql.DB
-	cancel context.CancelFunc
+
+	planeSyncer       *coordination.PlaneSyncer
+	serviceController *coordination.ServiceController
+	backgroundCancel  context.CancelFunc
+	backgroundWG      sync.WaitGroup
+	closeOnce         sync.Once
+	closeErr          error
 }
 
 func Build(logger *slog.Logger, cfg config.Config) (App, error) {
-	db, err := store.Open(cfg.DatabaseURL)
+	if logger == nil {
+		logger = slog.Default()
+	}
+	db, err := store.Open(cfg.Database.URL)
 	if err != nil {
 		return App{}, fmt.Errorf("open database: %w", err)
 	}
@@ -38,53 +53,51 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		return App{}, fmt.Errorf("run migrations: %w", err)
 	}
 
-	backgroundCtx, cancel := context.WithCancel(context.Background())
-
 	stores := store.New(db)
 
-	planeSyncer := coordination.NewPlaneSyncer(logger, stores)
-	coordination.StartPlaneSyncLoop(backgroundCtx, logger, planeSyncer, cfg.PlaneSyncIntervalSeconds)
-
-	serviceController := coordination.NewServiceController(logger, stores)
-	serviceController.SetReconcileTimeout(cfg.ServiceReconcileTimeoutSeconds)
-
-	go serviceController.Run(backgroundCtx)
+	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken)
+	serviceController := coordination.NewServiceController(logger, stores, cfg.Auth.SouthboundToken)
 
 	logQueryService := logquery.NewService(
-		cfg.LokiURL,
-		cfg.LokiTenantID,
-		time.Duration(cfg.LokiQueryTimeoutSeconds)*time.Second,
+		cfg.Logs.Loki.URL,
+		cfg.Logs.Loki.TenantID,
+		logQueryTimeout,
 	)
 	handler := api.NewMux(api.Options{
-		AdminToken:        cfg.AdminToken,
-		SouthboundToken:   cfg.SouthboundToken,
-		UIDir:             cfg.UIDir,
+		AdminToken:        cfg.Auth.AdminToken,
+		SouthboundToken:   cfg.Auth.SouthboundToken,
+		UIDir:             cfg.UI.Dir,
 		LogQueryService:   logQueryService,
 		ServiceController: serviceController,
 	}, logger, stores)
 
 	return App{
-		Config:  cfg,
-		Handler: handler,
-		logger:  logger,
-		db:      db,
-		cancel:  cancel,
+		Config:            cfg,
+		Handler:           handler,
+		logger:            logger,
+		db:                db,
+		planeSyncer:       planeSyncer,
+		serviceController: serviceController,
 	}, nil
 }
 
-func (a App) Close() error {
-	if a.cancel != nil {
-		a.cancel()
-	}
-	if a.db == nil {
-		return nil
-	}
-	return a.db.Close()
+func (a *App) Close() error {
+	a.closeOnce.Do(func() {
+		a.stopBackground()
+		if a.db != nil {
+			a.closeErr = a.db.Close()
+		}
+	})
+	return a.closeErr
 }
 
-func (a App) Run(ctx context.Context) error {
+func (a *App) Run(ctx context.Context) error {
+	backgroundCtx, cancelBackground := context.WithCancel(ctx)
+	a.startBackground(backgroundCtx, cancelBackground)
+	defer a.stopBackground()
+
 	server := &http.Server{
-		Addr:    a.Config.HTTPAddr,
+		Addr:    a.Config.Server.HTTPAddr,
 		Handler: a.Handler,
 	}
 	errCh := make(chan error, 1)
@@ -99,6 +112,7 @@ func (a App) Run(ctx context.Context) error {
 		}
 		return err
 	case <-ctx.Done():
+		a.stopBackground()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -110,14 +124,30 @@ func (a App) Run(ctx context.Context) error {
 			}
 			return err
 		}
-		select {
-		case err := <-errCh:
-			if errors.Is(err, http.ErrServerClosed) {
-				return nil
-			}
-			return err
-		default:
+		err := <-errCh
+		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
+		return err
 	}
+}
+
+func (a *App) startBackground(ctx context.Context, cancel context.CancelFunc) {
+	a.backgroundCancel = cancel
+	a.backgroundWG.Add(2)
+	go func() {
+		defer a.backgroundWG.Done()
+		coordination.RunPlaneSyncLoop(ctx, a.logger, a.planeSyncer, planeSyncIntervalSeconds)
+	}()
+	go func() {
+		defer a.backgroundWG.Done()
+		a.serviceController.Run(ctx)
+	}()
+}
+
+func (a *App) stopBackground() {
+	if a.backgroundCancel != nil {
+		a.backgroundCancel()
+	}
+	a.backgroundWG.Wait()
 }

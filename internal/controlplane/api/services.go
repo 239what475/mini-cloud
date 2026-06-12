@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -50,13 +51,9 @@ type serviceStatus struct {
 	ObservedGeneration int64            `json:"observedGeneration"`
 	DesiredState       string           `json:"desiredState"`
 	Phase              string           `json:"phase"`
-	Healthy            bool             `json:"healthy"`
 	Message            string           `json:"message,omitempty"`
 	LastReconciledAt   *time.Time       `json:"lastReconciledAt,omitempty"`
 	Run                serviceRunStatus `json:"run"`
-	AssignedPlaneID    string           `json:"assignedPlaneID,omitempty"`
-	RemoteStatus       string           `json:"remoteStatus,omitempty"`
-	RemoteMessage      string           `json:"remoteMessage,omitempty"`
 }
 
 type serviceMetadata struct {
@@ -70,10 +67,6 @@ type serviceResource struct {
 	Metadata serviceMetadata `json:"metadata"`
 	Spec     serviceSpec     `json:"spec"`
 	Status   serviceStatus   `json:"status"`
-}
-
-type serviceEnvelope struct {
-	Service serviceResource `json:"service"`
 }
 
 type serviceSpecInput struct {
@@ -131,11 +124,9 @@ func (h serviceHandler) listServices(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
-	out := make([]serviceEnvelope, 0, len(items))
+	out := make([]serviceResource, 0, len(items))
 	for _, item := range items {
-		out = append(out, serviceEnvelope{
-			Service: buildServiceResource(item),
-		})
+		out = append(out, buildServiceResource(item))
 	}
 	c.JSON(http.StatusOK, map[string]any{"items": out})
 }
@@ -172,15 +163,11 @@ func (h serviceHandler) createService(c *gin.Context) {
 		}
 	}
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.service.create",
-		TargetType: "service",
-		TargetID:   service.Metadata.ID,
-		TargetName: service.Metadata.Name,
+		Action:  "control.service.create",
+		Message: "created service " + service.Metadata.Name,
 	})
 
-	c.JSON(http.StatusCreated, serviceEnvelope{
-		Service: buildServiceResource(service),
-	})
+	c.JSON(http.StatusCreated, buildServiceResource(service))
 }
 
 func (h serviceHandler) getService(c *gin.Context) {
@@ -200,9 +187,7 @@ func (h serviceHandler) getService(c *gin.Context) {
 		}
 		return
 	}
-	c.JSON(http.StatusOK, serviceEnvelope{
-		Service: buildServiceResource(service),
-	})
+	c.JSON(http.StatusOK, buildServiceResource(service))
 }
 
 func (h serviceHandler) updateService(c *gin.Context) {
@@ -242,15 +227,11 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		}
 	}
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.service.update",
-		TargetType: "service",
-		TargetID:   service.Metadata.ID,
-		TargetName: service.Metadata.Name,
+		Action:  "control.service.update",
+		Message: "updated service " + service.Metadata.Name,
 	})
 
-	c.JSON(http.StatusOK, serviceEnvelope{
-		Service: buildServiceResource(service),
-	})
+	c.JSON(http.StatusOK, buildServiceResource(service))
 }
 
 func (h serviceHandler) deleteService(c *gin.Context) {
@@ -273,10 +254,8 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		return
 	}
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.service.delete",
-		TargetType: "service",
-		TargetID:   service.Metadata.ID,
-		TargetName: service.Metadata.Name,
+		Action:  "control.service.delete",
+		Message: "deleted service " + service.Metadata.Name,
 	})
 	c.JSON(http.StatusOK, map[string]any{
 		"deleted":   true,
@@ -285,7 +264,6 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 }
 
 func buildServiceResource(service model.Service) serviceResource {
-	status := buildServiceStatus(service)
 	return serviceResource{
 		Metadata: serviceMetadata{
 			ID:          service.Metadata.ID,
@@ -298,8 +276,8 @@ func buildServiceResource(service model.Service) serviceResource {
 			InstanceClass:      service.Spec.InstanceClass,
 			Exposure:           service.Spec.Exposure,
 			Image:              service.Spec.Image,
-			Command:            append([]string(nil), service.Spec.Command...),
-			Args:               append([]string(nil), service.Spec.Args...),
+			Command:            slices.Clone(service.Spec.Command),
+			Args:               slices.Clone(service.Spec.Args),
 			DefaultPort:        service.Spec.DefaultPort,
 			ReadinessPath:      service.Spec.ReadinessPath,
 			Env:                service.Spec.Env,
@@ -307,25 +285,15 @@ func buildServiceResource(service model.Service) serviceResource {
 			RegistryCredential: buildRegistryCredentialSummary(service.Spec.RegistryCredential),
 			Files:              projectedfile.CloneFiles(service.Spec.Files),
 		},
-		Status: status,
+		Status: serviceStatus{
+			ObservedGeneration: service.Status.Observed.ObservedGeneration,
+			DesiredState:       service.Status.DesiredState,
+			Phase:              service.Status.Observed.Phase,
+			Message:            service.Status.Observed.Message,
+			LastReconciledAt:   service.Status.Observed.LastReconciledAt,
+			Run:                buildServiceRun(service.Status.Run),
+		},
 	}
-}
-
-func buildServiceStatus(service model.Service) serviceStatus {
-	serviceItem := service
-	status := serviceStatus{
-		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
-		DesiredState:       string(serviceItem.Status.DesiredState),
-		Phase:              serviceItem.Status.Observed.Phase,
-		Healthy:            serviceItem.Status.Observed.Healthy,
-		Message:            serviceItem.Status.Observed.Message,
-		LastReconciledAt:   serviceItem.Status.Observed.LastReconciledAt,
-		Run:                buildServiceRun(serviceItem.Status.Run),
-		AssignedPlaneID:    serviceItem.Status.Observed.AssignedPlaneID,
-		RemoteStatus:       serviceItem.Status.Observed.RemoteStatus,
-		RemoteMessage:      serviceItem.Status.Observed.RemoteMessage,
-	}
-	return status
 }
 
 func buildServiceRun(input model.RunStatus) serviceRunStatus {
@@ -391,8 +359,8 @@ func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 		InstanceClass:      strings.TrimSpace(s.InstanceClass),
 		Exposure:           strings.TrimSpace(s.Exposure),
 		Image:              strings.TrimSpace(s.Image),
-		Command:            append([]string(nil), s.Command...),
-		Args:               append([]string(nil), s.Args...),
+		Command:            slices.Clone(s.Command),
+		Args:               slices.Clone(s.Args),
 		DefaultPort:        s.DefaultPort,
 		ReadinessPath:      strings.TrimSpace(s.ReadinessPath),
 		Env:                s.Env,

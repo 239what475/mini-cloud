@@ -58,15 +58,9 @@ func (c *dnspodClient) ListRecords(ctx context.Context) ([]DNSRecord, error) {
 	}
 	records := make([]DNSRecord, 0, len(resp.Response.RecordList))
 	for _, item := range resp.Response.RecordList {
-		if item == nil || item.RecordId == nil || item.Name == nil || item.Type == nil {
-			continue
+		if record, ok := c.dnsRecord(item); ok {
+			records = append(records, record)
 		}
-		records = append(records, DNSRecord{
-			ID:        *item.RecordId,
-			Subdomain: dnsHost(*item.Name, c.domain),
-			Type:      cleanRecordType(*item.Type),
-			Value:     cleanRecordValue(item.Value, *item.Type),
-		})
 	}
 	return records, nil
 }
@@ -126,17 +120,23 @@ func (c *dnspodClient) recordsForSubdomain(ctx context.Context, subdomain string
 	}
 	records := make([]DNSRecord, 0, len(resp.Response.RecordList))
 	for _, item := range resp.Response.RecordList {
-		if item == nil || item.RecordId == nil || item.Name == nil || item.Type == nil {
-			continue
+		if record, ok := c.dnsRecord(item); ok {
+			records = append(records, record)
 		}
-		records = append(records, DNSRecord{
-			ID:        *item.RecordId,
-			Subdomain: dnsHost(*item.Name, c.domain),
-			Type:      cleanRecordType(*item.Type),
-			Value:     cleanRecordValue(item.Value, *item.Type),
-		})
 	}
 	return records, nil
+}
+
+func (c *dnspodClient) dnsRecord(item *dnspod.RecordListItem) (DNSRecord, bool) {
+	if item == nil || item.RecordId == nil || item.Name == nil || item.Type == nil {
+		return DNSRecord{}, false
+	}
+	return DNSRecord{
+		ID:        *item.RecordId,
+		Subdomain: dnsHost(*item.Name, c.domain),
+		Type:      cleanRecordType(*item.Type),
+		Value:     cleanRecordValue(item.Value, *item.Type),
+	}, true
 }
 
 func (c *dnspodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string) error {

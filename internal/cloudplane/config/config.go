@@ -2,7 +2,6 @@ package config
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/url"
@@ -13,27 +12,23 @@ import (
 )
 
 const (
-	NodeAgentHeartbeatIntervalSeconds = 15
-	NodeAgentWorkIntervalSeconds      = 5
-	NodeAgentHostPortMin              = 30000
-	NodeAgentHostPortMax              = 60999
-	NodeNameSuffix                    = "-node"
-	CaddyListenHTTPAddr               = "0.0.0.0:80"
-	CaddyArtifactListenAddr           = "0.0.0.0:18082"
-	CaddyArtifactRoot                 = "/opt/mini-cloud/artifacts"
+	NodeNameSuffix          = "-node"
+	CaddyListenHTTPAddr     = "0.0.0.0:80"
+	CaddyArtifactListenAddr = "0.0.0.0:18082"
+	CaddyArtifactRoot       = "/opt/mini-cloud/artifacts"
 )
 
 type Config struct {
-	Path                string                    `yaml:"-"`
-	Server              ServerConfig              `yaml:"server"`
-	Database            DatabaseConfig            `yaml:"database"`
-	Plane               PlaneConfig               `yaml:"plane"`
-	ControlPlane        ControlPlaneConfig        `yaml:"controlPlane"`
-	NodeAgent           NodeAgentConfig           `yaml:"nodeAgent"`
-	Infrastructure      InfrastructureConfig      `yaml:"infrastructure"`
-	RuntimeProvisioning RuntimeProvisioningConfig `yaml:"runtimeProvisioning"`
-	Ingress             IngressConfig             `yaml:"ingress"`
-	Observability       ObservabilityConfig       `yaml:"observability"`
+	Path             string                 `yaml:"-"`
+	Server           ServerConfig           `yaml:"server"`
+	Database         DatabaseConfig         `yaml:"database"`
+	Plane            PlaneConfig            `yaml:"plane"`
+	ControlPlane     ControlPlaneConfig     `yaml:"controlPlane"`
+	NodeAgent        NodeAgentConfig        `yaml:"nodeAgent"`
+	Infrastructure   InfrastructureConfig   `yaml:"infrastructure"`
+	NodeProvisioning NodeProvisioningConfig `yaml:"nodeProvisioning"`
+	Ingress          IngressConfig          `yaml:"ingress"`
+	Observability    ObservabilityConfig    `yaml:"observability"`
 }
 
 type ServerConfig struct {
@@ -56,7 +51,7 @@ type ControlPlaneConfig struct {
 
 type NodeAgentConfig struct {
 	ConnectEndpoint string `yaml:"connectEndpoint"`
-	BootstrapToken  string `yaml:"bootstrapToken"`
+	Token           string `yaml:"token"`
 	BinaryURL       string `yaml:"binaryUrl"`
 }
 
@@ -73,27 +68,31 @@ type TencentCredentialConfig struct {
 	Token     string `yaml:"token"`
 }
 
-type RuntimeProvisioningConfig struct {
-	InstanceType                string         `yaml:"instanceType"`
-	RegistryMirrors             []string       `yaml:"registryMirrors"`
-	WorkloadEgressProxyEndpoint string         `yaml:"workloadEgressProxyEndpoint"`
-	ProviderSpec                map[string]any `yaml:"providerSpec"`
+type NodeProvisioningConfig struct {
+	InstanceType                string            `yaml:"instanceType"`
+	RegistryMirrors             []string          `yaml:"registryMirrors"`
+	WorkloadEgressProxyEndpoint string            `yaml:"workloadEgressProxyEndpoint"`
+	Aliyun                      AliyunNodeConfig  `yaml:"aliyun"`
+	Tencent                     TencentNodeConfig `yaml:"tencent"`
 }
 
-func (c RuntimeProvisioningConfig) ParseProviderSpec(target any) error {
-	if len(c.ProviderSpec) == 0 {
-		return fmt.Errorf("runtimeProvisioning.providerSpec is empty")
-	}
-	data, err := json.Marshal(c.ProviderSpec)
-	if err != nil {
-		return fmt.Errorf("parse runtimeProvisioning.providerSpec: %w", err)
-	}
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return fmt.Errorf("parse runtimeProvisioning.providerSpec: %w", err)
-	}
-	return nil
+type AliyunNodeConfig struct {
+	ImageID            string `yaml:"imageId"`
+	KeyPairName        string `yaml:"keyPairName"`
+	VSwitchID          string `yaml:"vSwitchId"`
+	SecurityGroupID    string `yaml:"securityGroupId"`
+	SystemDiskCategory string `yaml:"systemDiskCategory"`
+	SystemDiskSizeGiB  int    `yaml:"systemDiskSizeGiB"`
+}
+
+type TencentNodeConfig struct {
+	ImageID           string   `yaml:"imageId"`
+	KeyIDs            []string `yaml:"keyIds"`
+	VPCID             string   `yaml:"vpcId"`
+	SubnetID          string   `yaml:"subnetId"`
+	SecurityGroupIDs  []string `yaml:"securityGroupIds"`
+	SystemDiskType    string   `yaml:"systemDiskType"`
+	SystemDiskSizeGiB int64    `yaml:"systemDiskSizeGiB"`
 }
 
 type IngressConfig struct {
@@ -104,13 +103,13 @@ type IngressConfig struct {
 }
 
 type FrontDoorConfig struct {
-	Enabled          bool                    `yaml:"enabled"`
 	DNSPodDomain     string                  `yaml:"dnsPodDomain"`
 	DNSPodCredential TencentCredentialConfig `yaml:"dnsPodCredential"`
 }
 
 type ObservabilityConfig struct {
 	LokiURL      string `yaml:"lokiURL"`
+	LokiTenantID string `yaml:"lokiTenantID"`
 	OTLPEndpoint string `yaml:"otlpEndpoint"`
 }
 
@@ -145,26 +144,38 @@ func (c *Config) normalize() {
 	c.Plane.GRPCEndpoint = strings.TrimSpace(c.Plane.GRPCEndpoint)
 	c.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(c.ControlPlane.URL), "/")
 	c.ControlPlane.BearerToken = strings.TrimSpace(c.ControlPlane.BearerToken)
-	c.Infrastructure.Provider = strings.TrimSpace(c.Infrastructure.Provider)
+	c.Infrastructure.Provider = strings.ToLower(strings.TrimSpace(c.Infrastructure.Provider))
 	c.Infrastructure.RegionID = strings.TrimSpace(c.Infrastructure.RegionID)
 	c.Infrastructure.ZoneID = strings.TrimSpace(c.Infrastructure.ZoneID)
 	c.Infrastructure.TencentCredential.SecretID = strings.TrimSpace(c.Infrastructure.TencentCredential.SecretID)
 	c.Infrastructure.TencentCredential.SecretKey = strings.TrimSpace(c.Infrastructure.TencentCredential.SecretKey)
 	c.Infrastructure.TencentCredential.Token = strings.TrimSpace(c.Infrastructure.TencentCredential.Token)
 	c.NodeAgent.ConnectEndpoint = strings.TrimSpace(c.NodeAgent.ConnectEndpoint)
-	c.NodeAgent.BootstrapToken = strings.TrimSpace(c.NodeAgent.BootstrapToken)
+	c.NodeAgent.Token = strings.TrimSpace(c.NodeAgent.Token)
 	c.NodeAgent.BinaryURL = strings.TrimSpace(c.NodeAgent.BinaryURL)
-	c.RuntimeProvisioning.InstanceType = strings.TrimSpace(c.RuntimeProvisioning.InstanceType)
-	c.RuntimeProvisioning.RegistryMirrors = trimStringList(c.RuntimeProvisioning.RegistryMirrors)
-	c.RuntimeProvisioning.WorkloadEgressProxyEndpoint = strings.TrimSpace(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint)
-	c.Ingress.BaseDomain = strings.Trim(strings.TrimSpace(c.Ingress.BaseDomain), ".")
+	c.NodeProvisioning.InstanceType = strings.TrimSpace(c.NodeProvisioning.InstanceType)
+	c.NodeProvisioning.RegistryMirrors = trimStringList(c.NodeProvisioning.RegistryMirrors)
+	c.NodeProvisioning.WorkloadEgressProxyEndpoint = strings.TrimSpace(c.NodeProvisioning.WorkloadEgressProxyEndpoint)
+	c.NodeProvisioning.Aliyun.ImageID = strings.TrimSpace(c.NodeProvisioning.Aliyun.ImageID)
+	c.NodeProvisioning.Aliyun.KeyPairName = strings.TrimSpace(c.NodeProvisioning.Aliyun.KeyPairName)
+	c.NodeProvisioning.Aliyun.VSwitchID = strings.TrimSpace(c.NodeProvisioning.Aliyun.VSwitchID)
+	c.NodeProvisioning.Aliyun.SecurityGroupID = strings.TrimSpace(c.NodeProvisioning.Aliyun.SecurityGroupID)
+	c.NodeProvisioning.Aliyun.SystemDiskCategory = strings.TrimSpace(c.NodeProvisioning.Aliyun.SystemDiskCategory)
+	c.NodeProvisioning.Tencent.ImageID = strings.TrimSpace(c.NodeProvisioning.Tencent.ImageID)
+	c.NodeProvisioning.Tencent.KeyIDs = trimStringList(c.NodeProvisioning.Tencent.KeyIDs)
+	c.NodeProvisioning.Tencent.VPCID = strings.TrimSpace(c.NodeProvisioning.Tencent.VPCID)
+	c.NodeProvisioning.Tencent.SubnetID = strings.TrimSpace(c.NodeProvisioning.Tencent.SubnetID)
+	c.NodeProvisioning.Tencent.SecurityGroupIDs = trimStringList(c.NodeProvisioning.Tencent.SecurityGroupIDs)
+	c.NodeProvisioning.Tencent.SystemDiskType = strings.TrimSpace(c.NodeProvisioning.Tencent.SystemDiskType)
+	c.Ingress.BaseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.Ingress.BaseDomain)), ".")
 	c.Ingress.CaddyAdminURL = strings.TrimSpace(c.Ingress.CaddyAdminURL)
 	c.Ingress.PublicOrigin = strings.TrimSpace(c.Ingress.PublicOrigin)
-	c.Ingress.FrontDoor.DNSPodDomain = strings.Trim(strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain), ".")
+	c.Ingress.FrontDoor.DNSPodDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain)), ".")
 	c.Ingress.FrontDoor.DNSPodCredential.SecretID = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretID)
 	c.Ingress.FrontDoor.DNSPodCredential.SecretKey = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretKey)
 	c.Ingress.FrontDoor.DNSPodCredential.Token = strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.Token)
 	c.Observability.LokiURL = strings.TrimSpace(c.Observability.LokiURL)
+	c.Observability.LokiTenantID = strings.TrimSpace(c.Observability.LokiTenantID)
 	c.Observability.OTLPEndpoint = strings.TrimSpace(c.Observability.OTLPEndpoint)
 }
 
@@ -193,8 +204,8 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.ControlPlane.BearerToken) == "" {
 		return fmt.Errorf("controlPlane.bearerToken is required")
 	}
-	if strings.TrimSpace(c.NodeAgent.BootstrapToken) == "" {
-		return fmt.Errorf("nodeAgent.bootstrapToken is required")
+	if strings.TrimSpace(c.NodeAgent.Token) == "" {
+		return fmt.Errorf("nodeAgent.token is required")
 	}
 	if strings.TrimSpace(c.NodeAgent.ConnectEndpoint) == "" {
 		return fmt.Errorf("nodeAgent.connectEndpoint is required")
@@ -220,14 +231,31 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Infrastructure.RegionID) == "" {
 		return fmt.Errorf("infrastructure.regionId is required")
 	}
-	if strings.TrimSpace(c.RuntimeProvisioning.InstanceType) == "" {
-		return fmt.Errorf("runtimeProvisioning.instanceType is required")
+	if strings.TrimSpace(c.NodeProvisioning.InstanceType) == "" {
+		return fmt.Errorf("nodeProvisioning.instanceType is required")
 	}
-	if len(c.RuntimeProvisioning.ProviderSpec) == 0 {
-		return fmt.Errorf("runtimeProvisioning.providerSpec is required")
+	if provider == "aliyun" {
+		if err := c.NodeProvisioning.Aliyun.Validate(); err != nil {
+			return err
+		}
 	}
-	if strings.TrimSpace(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint) != "" {
-		if err := validateProxyEndpoint(c.RuntimeProvisioning.WorkloadEgressProxyEndpoint); err != nil {
+	if provider == "tencent" {
+		if err := c.NodeProvisioning.Tencent.Validate(); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(c.NodeProvisioning.WorkloadEgressProxyEndpoint) != "" {
+		if err := validateProxyEndpoint(c.NodeProvisioning.WorkloadEgressProxyEndpoint); err != nil {
+			return err
+		}
+	}
+	frontDoorConfigured := strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain) != "" ||
+		strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretID) != "" ||
+		strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretKey) != "" ||
+		strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.Token) != "" ||
+		strings.TrimSpace(c.Ingress.PublicOrigin) != ""
+	if strings.TrimSpace(c.Ingress.CaddyAdminURL) != "" {
+		if err := validateCaddyAdminURL(c.Ingress.CaddyAdminURL); err != nil {
 			return err
 		}
 	}
@@ -235,31 +263,63 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.Ingress.CaddyAdminURL) == "" {
 			return fmt.Errorf("ingress.caddyAdminURL is required when ingress is enabled")
 		}
-		if err := validateCaddyAdminURL(c.Ingress.CaddyAdminURL); err != nil {
-			return err
-		}
-		if c.Ingress.FrontDoor.Enabled {
+		if frontDoorConfigured {
 			if strings.TrimSpace(c.Ingress.PublicOrigin) == "" {
-				return fmt.Errorf("ingress.publicOrigin is required when frontDoor is enabled")
+				return fmt.Errorf("ingress.publicOrigin is required when ingress.frontDoor is configured")
 			}
 			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodDomain) == "" {
-				return fmt.Errorf("ingress.frontDoor.dnsPodDomain is required when frontDoor is enabled")
+				return fmt.Errorf("ingress.frontDoor.dnsPodDomain is required when ingress.frontDoor is configured")
 			}
 			if !domainIsUnder(c.Ingress.BaseDomain, c.Ingress.FrontDoor.DNSPodDomain) {
 				return fmt.Errorf("ingress.baseDomain must be under ingress.frontDoor.dnsPodDomain")
 			}
 			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretID) == "" {
-				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretId is required when frontDoor is enabled")
+				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretId is required when ingress.frontDoor is configured")
 			}
 			if strings.TrimSpace(c.Ingress.FrontDoor.DNSPodCredential.SecretKey) == "" {
-				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretKey is required when frontDoor is enabled")
+				return fmt.Errorf("ingress.frontDoor.dnsPodCredential.secretKey is required when ingress.frontDoor is configured")
 			}
 		}
-	} else if c.Ingress.FrontDoor.Enabled {
-		return fmt.Errorf("ingress.baseDomain is required when frontDoor is enabled")
+	} else if frontDoorConfigured {
+		return fmt.Errorf("ingress.baseDomain is required when ingress.frontDoor is configured")
 	}
 	if strings.TrimSpace(c.NodeAgent.BinaryURL) == "" {
 		return fmt.Errorf("nodeAgent.binaryUrl is required")
+	}
+	return nil
+}
+
+func (c AliyunNodeConfig) Validate() error {
+	if strings.TrimSpace(c.ImageID) == "" {
+		return fmt.Errorf("nodeProvisioning.aliyun.imageId is required")
+	}
+	if strings.TrimSpace(c.VSwitchID) == "" {
+		return fmt.Errorf("nodeProvisioning.aliyun.vSwitchId is required")
+	}
+	if strings.TrimSpace(c.SecurityGroupID) == "" {
+		return fmt.Errorf("nodeProvisioning.aliyun.securityGroupId is required")
+	}
+	if c.SystemDiskSizeGiB < 0 {
+		return fmt.Errorf("nodeProvisioning.aliyun.systemDiskSizeGiB must not be negative")
+	}
+	return nil
+}
+
+func (c TencentNodeConfig) Validate() error {
+	if strings.TrimSpace(c.ImageID) == "" {
+		return fmt.Errorf("nodeProvisioning.tencent.imageId is required")
+	}
+	if strings.TrimSpace(c.VPCID) == "" {
+		return fmt.Errorf("nodeProvisioning.tencent.vpcId is required")
+	}
+	if strings.TrimSpace(c.SubnetID) == "" {
+		return fmt.Errorf("nodeProvisioning.tencent.subnetId is required")
+	}
+	if len(c.SecurityGroupIDs) == 0 {
+		return fmt.Errorf("nodeProvisioning.tencent.securityGroupIds is required")
+	}
+	if c.SystemDiskSizeGiB < 0 {
+		return fmt.Errorf("nodeProvisioning.tencent.systemDiskSizeGiB must not be negative")
 	}
 	return nil
 }
@@ -279,13 +339,13 @@ func trimStringList(values []string) []string {
 func validateProxyEndpoint(value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return fmt.Errorf("parse runtimeProvisioning.workloadEgressProxyEndpoint: %w", err)
+		return fmt.Errorf("parse nodeProvisioning.workloadEgressProxyEndpoint: %w", err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("runtimeProvisioning.workloadEgressProxyEndpoint must use http or https")
+		return fmt.Errorf("nodeProvisioning.workloadEgressProxyEndpoint must use http or https")
 	}
 	if parsed.Host == "" {
-		return fmt.Errorf("runtimeProvisioning.workloadEgressProxyEndpoint must include host")
+		return fmt.Errorf("nodeProvisioning.workloadEgressProxyEndpoint must include host")
 	}
 	return nil
 }
@@ -373,7 +433,7 @@ func validateConnectEndpoint(value string) error {
 		return fmt.Errorf("parse nodeAgent.connectEndpoint: %w", err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("nodeAgent.connectEndpoint must be host:port or use http/https gRPC URI")
+		return fmt.Errorf("nodeAgent.connectEndpoint must be host:port or an http/https target")
 	}
 	if parsed.Host == "" {
 		return fmt.Errorf("nodeAgent.connectEndpoint must include host")

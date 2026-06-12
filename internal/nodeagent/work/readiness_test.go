@@ -10,7 +10,6 @@ import (
 	"time"
 )
 
-// TestWaitEventuallyPasses 验证 readiness 探测在首次成功响应后停止重试。
 func TestWaitEventuallyPasses(t *testing.T) {
 	t.Parallel()
 
@@ -46,7 +45,6 @@ func TestWaitEventuallyPasses(t *testing.T) {
 	}
 }
 
-// TestWaitReturnsFailureAfterAllAttempts 验证 readiness 失败时保留全部观测结果。
 func TestWaitReturnsFailureAfterAllAttempts(t *testing.T) {
 	t.Parallel()
 
@@ -71,7 +69,6 @@ func TestWaitReturnsFailureAfterAllAttempts(t *testing.T) {
 	}
 }
 
-// TestWaitNormalizesInvalidRetryConfig 验证 checker 自身会兜底处理非法重试参数，避免调用方传负数导致 panic。
 func TestWaitNormalizesInvalidRetryConfig(t *testing.T) {
 	t.Parallel()
 
@@ -95,15 +92,11 @@ func TestWaitNormalizesInvalidRetryConfig(t *testing.T) {
 	}
 }
 
-// roundTripFunc 将函数适配为 httpDoer。
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
-// Do 执行测试注入的 HTTP 请求函数。
 func (f roundTripFunc) Do(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
-
-// newHTTPResponse 为 readiness 测试构造最小 HTTP 响应。
 func newHTTPResponse(statusCode int) *http.Response {
 	return &http.Response{
 		StatusCode: statusCode,

@@ -1,4 +1,4 @@
-package ingress
+package control
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
-// TestBuildRoutesPublishesOnlyPublicReadyBackends 验证 ingress 只发布 public service 且只包含 ready node backend。
 func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	t.Parallel()
 
@@ -22,7 +21,7 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 			"node-offline": {ID: "node-offline", PrivateIP: "10.0.1.21", Status: cloudmodel.StatusOffline},
 		},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
+	controller := newIngressReconciler(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -39,7 +38,6 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 	}
 }
 
-// TestBuildRoutesKeepsPublicRouteWithoutReadyBackends 验证 public service 暂无可用 backend 时仍发布 503 route。
 func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 	t.Parallel()
 
@@ -49,7 +47,7 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 		},
 		nodes: map[string]cloudmodel.Node{},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
+	controller := newIngressReconciler(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -66,19 +64,18 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 	}
 }
 
-// TestBuildRoutesUsesSingleManagedServiceHost 验证入口域名只由 serviceName 和 baseDomain 组成。
-func TestBuildRoutesUsesSingleManagedServiceHost(t *testing.T) {
+func TestBuildRoutesUsesServiceNameHost(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
 		sources: []cloudmodel.RouteSource{
-			{ServiceName: "Sub2 API", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
+			{ServiceName: "sub2-api", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
 		},
 		nodes: map[string]cloudmodel.Node{
 			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
 		},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil, nil)
+	controller := newIngressReconciler(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: ".apps.example.test."}}, nil, nil)
 
 	routes, err := controller.buildRoutes(context.Background())
 	if err != nil {
@@ -92,22 +89,38 @@ func TestBuildRoutesUsesSingleManagedServiceHost(t *testing.T) {
 	}
 }
 
-// TestReconcileOnceDisabledDoesNotCallSink 验证 ingress 关闭时不构造或应用路由。
-func TestReconcileOnceDisabledDoesNotCallSink(t *testing.T) {
+func TestIngressReconcileDisabledDoesNotCallSink(t *testing.T) {
 	t.Parallel()
 
 	sink := &fakeSink{}
-	controller := NewController(nil, &fakeStore{}, cloudplaneconfig.Config{}, sink, nil)
-	if err := controller.ReconcileOnce(context.Background()); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	controller := newIngressReconciler(nil, &fakeStore{}, cloudplaneconfig.Config{}, sink, nil)
+	if err := controller.reconcileOnce(context.Background()); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if sink.calls != 0 {
 		t.Fatalf("sink calls = %d, want 0", sink.calls)
 	}
 }
 
-// TestReconcileOnceAppliesRoutes 验证 ingress 将当前路由快照应用到本地入口数据面。
-func TestReconcileOnceAppliesRoutes(t *testing.T) {
+func TestIngressReconcileAppliesEmptyRoutesWhenOnlyCaddyIsConfigured(t *testing.T) {
+	t.Parallel()
+
+	sink := &fakeSink{}
+	controller := newIngressReconciler(nil, &fakeStore{}, cloudplaneconfig.Config{
+		Ingress: cloudplaneconfig.IngressConfig{CaddyAdminURL: "http://127.0.0.1:2019"},
+	}, sink, nil)
+	if err := controller.reconcileOnce(context.Background()); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
+	}
+	if sink.calls != 1 {
+		t.Fatalf("sink calls = %d, want 1", sink.calls)
+	}
+	if len(sink.routes) != 0 {
+		t.Fatalf("routes = %+v, want empty", sink.routes)
+	}
+}
+
+func TestIngressReconcileAppliesRoutes(t *testing.T) {
 	t.Parallel()
 
 	sink := &fakeSink{}
@@ -116,10 +129,10 @@ func TestReconcileOnceAppliesRoutes(t *testing.T) {
 		sources: []cloudmodel.RouteSource{{ServiceName: "api"}},
 		nodes:   map[string]cloudmodel.Node{},
 	}
-	controller := NewController(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink, frontDoor)
+	controller := newIngressReconciler(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink, frontDoor)
 
-	if err := controller.ReconcileOnce(context.Background()); err != nil {
-		t.Fatalf("ReconcileOnce returned error: %v", err)
+	if err := controller.reconcileOnce(context.Background()); err != nil {
+		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if sink.calls != 1 {
 		t.Fatalf("sink calls = %d, want 1", sink.calls)
@@ -129,29 +142,24 @@ func TestReconcileOnceAppliesRoutes(t *testing.T) {
 	}
 }
 
-// fakeStore 是 ingress controller 单测使用的只读状态集合。
 type fakeStore struct {
 	sources []cloudmodel.RouteSource
 	nodes   map[string]cloudmodel.Node
 }
 
-// ListIngressRouteSources 返回预设 ingress route source 列表。
 func (f *fakeStore) ListIngressRouteSources(context.Context) ([]cloudmodel.RouteSource, error) {
 	return f.sources, nil
 }
 
-// GetNode 返回预设 node。
 func (f *fakeStore) GetNode(_ context.Context, id string) (cloudmodel.Node, error) {
 	return f.nodes[id], nil
 }
 
-// fakeSink 记录 Apply 调用次数。
 type fakeSink struct {
 	calls  int
 	routes []cloudmodel.Route
 }
 
-// Apply 记录路由快照。
 func (f *fakeSink) Apply(_ context.Context, routes []cloudmodel.Route) error {
 	f.calls++
 	f.routes = routes

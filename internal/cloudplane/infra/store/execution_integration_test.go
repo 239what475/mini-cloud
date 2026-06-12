@@ -3,15 +3,13 @@ package store_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/projectedfile"
 	"mini-cloud/internal/testutil"
 )
 
-// TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs 验证 work item 直接使用 control-plane 下发的 execution plan 输入。
-func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
+func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-plan-inputs", "i-node-plan-inputs")
@@ -63,7 +61,140 @@ func TestIntegrationCreateExecutionClaimUsesPlanRuntimeInputs(t *testing.T) {
 	}
 }
 
-// TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot 验证 v8 delete plan 会转成原节点 delete work，并在清理上报后形成可完成删除的 snapshot。
+func TestIntegrationApplyExecutionPlanRetriesFailedPlan(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	node := seedReadyNode(t, ctx, db, "node-retry", "i-node-retry")
+	input := cloudmodel.PlanInput{
+		PlanID:            "svc-retry-g1",
+		ServiceID:         "svc-retry",
+		ServiceName:       "retry-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, input); err != nil {
+		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+	}
+	firstWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(first) returned error: %v", err)
+	}
+	if firstWork == nil {
+		t.Fatal("CreateExecutionClaim(first) returned nil work item")
+	}
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, firstWork.ExecutionID, cloudmodel.ReportInput{
+		Status:        cloudmodel.StatusFailed,
+		Reason:        "readiness never passed",
+		ContainerID:   "ctr-retry-1",
+		ContainerName: firstWork.ContainerName,
+		HostPort:      18080,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(failed) returned error: %v", err)
+	}
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, input); err != nil {
+		t.Fatalf("ApplyExecutionPlan(retry) returned error: %v", err)
+	}
+	retryWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(retry) returned error: %v", err)
+	}
+	if retryWork == nil {
+		t.Fatal("CreateExecutionClaim(retry) returned nil work item")
+	}
+	if retryWork.PlanID != input.PlanID || retryWork.ExecutionID != firstWork.ExecutionID {
+		t.Fatalf("retry work = planID %q executionID %q, want planID %q executionID %q", retryWork.PlanID, retryWork.ExecutionID, input.PlanID, firstWork.ExecutionID)
+	}
+	if retryWork.ContainerID != "" || retryWork.HostPort != 0 {
+		t.Fatalf("retry work kept old runtime fields: containerID=%q hostPort=%d", retryWork.ContainerID, retryWork.HostPort)
+	}
+}
+
+func TestIntegrationReplacementRunStaysOnCurrentNode(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	currentNode := seedReadyNode(t, ctx, db, "node-replace-current", "i-node-replace-current")
+	otherNode := seedReadyNode(t, ctx, db, "node-replace-other", "i-node-replace-other")
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
+		PlanID:            "svc-replace-g1",
+		ServiceID:         "svc-replace",
+		ServiceName:       "replace-web",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan(g1) returned error: %v", err)
+	}
+	firstWork, err := db.Store.CreateExecutionClaim(ctx, currentNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(first) returned error: %v", err)
+	}
+	if firstWork == nil {
+		t.Fatal("CreateExecutionClaim(first) returned nil work item")
+	}
+	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, currentNode.ID, firstWork.ExecutionID, cloudmodel.ReportInput{
+		Status:        cloudmodel.StatusRunning,
+		Reason:        "execution is healthy",
+		ContainerID:   "ctr-replace-v1",
+		ContainerName: firstWork.ContainerName,
+		HostPort:      18080,
+	}); err != nil {
+		t.Fatalf("UpdateExecutionFromNodeReport(first running) returned error: %v", err)
+	}
+
+	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
+		PlanID:            "svc-replace-g2",
+		ServiceID:         "svc-replace",
+		ServiceName:       "replace-web",
+		ServiceGeneration: 2,
+		Image:             "nginx:1.28-alpine",
+		ContainerPort:     8080,
+		ReadinessPath:     "/healthz",
+		CPUMilliRequest:   500,
+		MemoryMiRequest:   512,
+		Exposure:          cloudmodel.ExposurePublic,
+	}); err != nil {
+		t.Fatalf("ApplyExecutionPlan(g2) returned error: %v", err)
+	}
+
+	otherWork, err := db.Store.CreateExecutionClaim(ctx, otherNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(other node) returned error: %v", err)
+	}
+	if otherWork != nil {
+		t.Fatalf("other node claimed replacement work: %+v", otherWork)
+	}
+
+	replacementWork, err := db.Store.CreateExecutionClaim(ctx, currentNode.ID)
+	if err != nil {
+		t.Fatalf("CreateExecutionClaim(current node) returned error: %v", err)
+	}
+	if replacementWork == nil {
+		t.Fatal("CreateExecutionClaim(current node) returned nil work item")
+	}
+	if replacementWork.PlanID != "svc-replace-g2" || replacementWork.NodeID != currentNode.ID {
+		t.Fatalf("replacement work = planID %q nodeID %q, want svc-replace-g2 on %s", replacementWork.PlanID, replacementWork.NodeID, currentNode.ID)
+	}
+	if replacementWork.SupersededExecution == nil {
+		t.Fatalf("replacement work did not include superseded execution: %+v", replacementWork)
+	}
+	if replacementWork.SupersededExecution.PlanID != "svc-replace-g1" ||
+		replacementWork.SupersededExecution.ContainerID != "ctr-replace-v1" {
+		t.Fatalf("superseded execution = %+v, want svc-replace-g1/ctr-replace-v1", replacementWork.SupersededExecution)
+	}
+}
+
 func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
@@ -126,17 +257,17 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("delete nodeID = %q, want original node %q", deleteWork.NodeID, node.ID)
 	}
 	if deleteWork.ContainerID != "ctr-delete-0" || deleteWork.ContainerName != runWork.ContainerName || deleteWork.HostPort != 18080 {
-		t.Fatalf("delete work runtime fields = containerID %q containerName %q hostPort %d", deleteWork.ContainerID, deleteWork.ContainerName, deleteWork.HostPort)
+		t.Fatalf("delete work container fields = containerID %q containerName %q hostPort %d", deleteWork.ContainerID, deleteWork.ContainerName, deleteWork.HostPort)
 	}
 
 	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, deleteWork.ExecutionID, cloudmodel.ReportInput{
-		Status:        cloudmodel.StatusSuperseded,
+		Status:        cloudmodel.StatusSucceeded,
 		Reason:        "service deletion stopped container",
 		ContainerID:   deleteWork.ContainerID,
 		ContainerName: deleteWork.ContainerName,
 		HostPort:      deleteWork.HostPort,
 	}); err != nil {
-		t.Fatalf("UpdateExecutionFromNodeReport(delete superseded) returned error: %v", err)
+		t.Fatalf("UpdateExecutionFromNodeReport(delete succeeded) returned error: %v", err)
 	}
 
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
@@ -147,8 +278,8 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	if deleteSnapshot == nil {
 		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
 	}
-	if deleteSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("delete snapshot = %+v, want superseded status", *deleteSnapshot)
+	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
+		t.Fatalf("delete snapshot = %+v, want succeeded status", *deleteSnapshot)
 	}
 }
 
@@ -191,8 +322,8 @@ func TestIntegrationDeletePendingExecutionPlanCompletesWithoutNodeAgent(t *testi
 	if deleteSnapshot == nil {
 		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
 	}
-	if deleteSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("delete snapshot = %+v, want superseded status", *deleteSnapshot)
+	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
+		t.Fatalf("delete snapshot = %+v, want succeeded status", *deleteSnapshot)
 	}
 }
 
@@ -240,8 +371,8 @@ func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNode
 		t.Fatalf("run snapshot = %+v, want superseded", runSnapshot)
 	}
 	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-delete-g2")
-	if deleteSnapshot == nil || deleteSnapshot.Status != cloudmodel.StatusSuperseded {
-		t.Fatalf("delete snapshot = %+v, want superseded", deleteSnapshot)
+	if deleteSnapshot == nil || deleteSnapshot.Status != cloudmodel.StatusSucceeded {
+		t.Fatalf("delete snapshot = %+v, want succeeded", deleteSnapshot)
 	}
 }
 
@@ -253,7 +384,6 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 		Region:        "cn-beijing",
 		Name:          name,
 		PrivateIP:     "10.0.0.10",
-		PublicIP:      "203.0.113.10",
 		InstanceID:    instanceID,
 		InstanceType:  "ecs.u1-c1m1.large",
 		CPUMilliTotal: 2000,
@@ -262,13 +392,9 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 	if err != nil {
 		t.Fatalf("RegisterNode returned error: %v", err)
 	}
-	if _, _, err := db.Store.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
-		ReportedAt:          time.Now().UTC(),
-		AgentVersion:        "test-agent",
+	if _, err := db.Store.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
 		CPUMilliAllocatable: 1500,
 		MemoryMiAllocatable: 3584,
-		RunningContainers:   0,
-		Status:              cloudmodel.StatusReady,
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
+	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/logctx"
 
@@ -31,6 +33,39 @@ type registerPlaneRequest struct {
 	GRPCEndpoint string `json:"grpcEndpoint"`
 }
 
+type planeResource struct {
+	ID                  string                 `json:"id"`
+	Name                string                 `json:"name"`
+	DisplayName         string                 `json:"displayName"`
+	Provider            string                 `json:"provider"`
+	Region              string                 `json:"region"`
+	GRPCEndpoint        string                 `json:"grpcEndpoint"`
+	CreatedAt           time.Time              `json:"createdAt"`
+	Status              planeStatusResource    `json:"status"`
+	LatestNodeInventory *nodeInventoryResource `json:"latestNodeInventory,omitempty"`
+}
+
+type planeStatusResource struct {
+	PlaneID         string     `json:"planeID"`
+	Status          string     `json:"status"`
+	Message         string     `json:"message"`
+	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
+	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
+}
+
+type nodeInventoryResource struct {
+	PlaneID           string    `json:"planeID"`
+	ObservedAt        time.Time `json:"observedAt"`
+	NodesTotal        int       `json:"nodesTotal"`
+	NodesReady        int       `json:"nodesReady"`
+	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
+	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
+	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
+	MemoryMiAllocated int       `json:"memoryMiAllocated"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
 func (h planeHandler) registerPlane(c *gin.Context) {
 	logger := logctx.Logger(c.Request.Context(), h.logger)
 	var request registerPlaneRequest
@@ -39,19 +74,12 @@ func (h planeHandler) registerPlane(c *gin.Context) {
 		return
 	}
 
-	secret, ok := bearerSecret(c.GetHeader("Authorization"))
-	if !ok {
-		c.JSON(http.StatusUnauthorized, map[string]any{"error": "invalid Authorization header; use Bearer <token>"})
-		return
-	}
-
 	registered, err := h.store.RegisterPlane(c.Request.Context(), store.RegisterPlaneInput{
-		Name:            request.Name,
-		DisplayName:     request.DisplayName,
-		Provider:        request.Provider,
-		Region:          request.Region,
-		GRPCEndpoint:    request.GRPCEndpoint,
-		SouthboundToken: secret,
+		Name:         request.Name,
+		DisplayName:  request.DisplayName,
+		Provider:     request.Provider,
+		Region:       request.Region,
+		GRPCEndpoint: request.GRPCEndpoint,
 	})
 	if err != nil {
 		switch {
@@ -66,13 +94,11 @@ func (h planeHandler) registerPlane(c *gin.Context) {
 	}
 
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.plane.register",
-		TargetType: "plane",
-		TargetID:   registered.ID,
-		TargetName: registered.Name,
+		Action:  "control.plane.register",
+		Message: "registered plane " + registered.Name,
 	})
 
-	c.JSON(http.StatusOK, registered)
+	c.JSON(http.StatusOK, buildPlaneResource(registered))
 }
 
 func (h planeHandler) listPlanes(c *gin.Context) {
@@ -84,7 +110,11 @@ func (h planeHandler) listPlanes(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, map[string]any{"items": items})
+	out := make([]planeResource, 0, len(items))
+	for _, item := range items {
+		out = append(out, buildPlaneResource(item))
+	}
+	c.JSON(http.StatusOK, map[string]any{"items": out})
 }
 
 func (h planeHandler) inventory(c *gin.Context) {
@@ -119,7 +149,7 @@ func (h planeHandler) getPlane(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, item)
+	c.JSON(http.StatusOK, buildPlaneResource(item))
 }
 
 func (h planeHandler) deletePlane(c *gin.Context) {
@@ -156,14 +186,47 @@ func (h planeHandler) deletePlane(c *gin.Context) {
 	}
 
 	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:     "control.plane.delete",
-		TargetType: "plane",
-		TargetID:   planeID,
-		TargetName: plane.Name,
+		Action:  "control.plane.delete",
+		Message: "deleted plane " + plane.Name,
 	})
 
 	c.JSON(http.StatusOK, map[string]any{
 		"deleted": true,
 		"id":      planeID,
 	})
+}
+
+func buildPlaneResource(item model.PlaneDetail) planeResource {
+	out := planeResource{
+		ID:           item.ID,
+		Name:         item.Name,
+		DisplayName:  item.DisplayName,
+		Provider:     item.Provider,
+		Region:       item.Region,
+		GRPCEndpoint: item.GRPCEndpoint,
+		CreatedAt:    item.CreatedAt,
+		Status: planeStatusResource{
+			PlaneID:         item.Status.PlaneID,
+			Status:          item.Status.Status,
+			Message:         item.Status.Message,
+			LastHeartbeatAt: item.Status.LastHeartbeatAt,
+			LastSyncAt:      item.Status.LastSyncAt,
+			UpdatedAt:       item.Status.UpdatedAt,
+		},
+	}
+	if item.LatestNodeInventory != nil {
+		inventory := item.LatestNodeInventory
+		out.LatestNodeInventory = &nodeInventoryResource{
+			PlaneID:           inventory.PlaneID,
+			ObservedAt:        inventory.ObservedAt,
+			NodesTotal:        inventory.NodesTotal,
+			NodesReady:        inventory.NodesReady,
+			CPUMilliCapacity:  inventory.CPUMilliCapacity,
+			CPUMilliAllocated: inventory.CPUMilliAllocated,
+			MemoryMiCapacity:  inventory.MemoryMiCapacity,
+			MemoryMiAllocated: inventory.MemoryMiAllocated,
+			UpdatedAt:         inventory.UpdatedAt,
+		}
+	}
+	return out
 }

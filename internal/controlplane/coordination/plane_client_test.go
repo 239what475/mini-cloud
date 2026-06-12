@@ -30,19 +30,14 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 	s.assertAuthorization(ctx)
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
-			Name:       "plane-a",
-			Provider:   "aliyun",
-			Region:     "cn-beijing",
-			Configured: true,
-		},
-		Health: &cloudplanev1.PlaneHealth{
-			Service:  "ok",
-			Database: "ok",
+			Name:     "plane-a",
+			Provider: "aliyun",
+			Region:   "cn-beijing",
 		},
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: 1,
 		},
-		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{},
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
 			{
 				PlanId:            "svc-1-g12",
@@ -67,7 +62,6 @@ func (s *stubControlPlaneSouthbound) ApplyExecutionPlan(ctx context.Context, req
 		s.t.Fatalf("unexpected plan id: %q", req.GetPlanId())
 	}
 	return &cloudplanev1.ApplyExecutionPlanResponse{
-		Action: "accepted",
 		PlanId: req.GetPlanId(),
 	}, nil
 }
@@ -159,7 +153,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
 	}
-	if applyResp.GetAction() != "accepted" || applyResp.GetPlanId() != "svc-1-g12" {
+	if applyResp.GetPlanId() != "svc-1-g12" {
 		t.Fatalf("unexpected execution plan response: %+v", applyResp)
 	}
 

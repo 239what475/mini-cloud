@@ -7,10 +7,9 @@ import (
 	"mini-cloud/internal/controlplane/model"
 )
 
-type Summary struct {
+type inventorySummary struct {
 	PlanesTotal           int     `json:"planesTotal"`
-	PlanesRegistered      int     `json:"planesRegistered"`
-	PlanesRegistering     int     `json:"planesRegistering"`
+	PlanesSyncing         int     `json:"planesSyncing"`
 	PlanesReady           int     `json:"planesReady"`
 	PlanesDegraded        int     `json:"planesDegraded"`
 	PlanesOffline         int     `json:"planesOffline"`
@@ -27,19 +26,18 @@ type Summary struct {
 	MemoryAllocationRatio float64 `json:"memoryAllocationRatio"`
 }
 
-type Group struct {
-	Name    string  `json:"name"`
-	Summary Summary `json:"summary"`
+type inventoryGroup struct {
+	Name    string           `json:"name"`
+	Summary inventorySummary `json:"summary"`
 }
 
-type Plane struct {
+type inventoryPlane struct {
 	ID                 string     `json:"id"`
 	Name               string     `json:"name"`
 	DisplayName        string     `json:"displayName"`
 	Provider           string     `json:"provider"`
 	Region             string     `json:"region"`
 	GRPCEndpoint       string     `json:"grpcEndpoint"`
-	Registered         bool       `json:"registered"`
 	Status             string     `json:"status"`
 	StatusMessage      string     `json:"statusMessage"`
 	LastHeartbeatAt    *time.Time `json:"lastHeartbeatAt,omitempty"`
@@ -56,22 +54,22 @@ type Plane struct {
 	MemoryMiFree       int        `json:"memoryMiFree"`
 }
 
-type View struct {
-	Summary   Summary `json:"summary"`
-	Providers []Group `json:"providers"`
-	Regions   []Group `json:"regions"`
-	Planes    []Plane `json:"planes"`
+type inventoryView struct {
+	Summary   inventorySummary `json:"summary"`
+	Providers []inventoryGroup `json:"providers"`
+	Regions   []inventoryGroup `json:"regions"`
+	Planes    []inventoryPlane `json:"planes"`
 }
 
-func buildInventoryView(items []model.PlaneDetail) View {
-	view := View{
-		Providers: make([]Group, 0),
-		Regions:   make([]Group, 0),
-		Planes:    make([]Plane, 0, len(items)),
+func buildInventoryView(items []model.PlaneDetail) inventoryView {
+	view := inventoryView{
+		Providers: make([]inventoryGroup, 0),
+		Regions:   make([]inventoryGroup, 0),
+		Planes:    make([]inventoryPlane, 0, len(items)),
 	}
 
-	providerGroups := make(map[string]*Summary)
-	regionGroups := make(map[string]*Summary)
+	providerGroups := make(map[string]*inventorySummary)
+	regionGroups := make(map[string]*inventorySummary)
 
 	for _, item := range items {
 		planeView := buildPlane(item)
@@ -80,14 +78,14 @@ func buildInventoryView(items []model.PlaneDetail) View {
 
 		providerSummary := providerGroups[planeView.Provider]
 		if providerSummary == nil {
-			providerSummary = &Summary{}
+			providerSummary = &inventorySummary{}
 			providerGroups[planeView.Provider] = providerSummary
 		}
 		accumulateSummary(providerSummary, planeView)
 
 		regionSummary := regionGroups[planeView.Region]
 		if regionSummary == nil {
-			regionSummary = &Summary{}
+			regionSummary = &inventorySummary{}
 			regionGroups[planeView.Region] = regionSummary
 		}
 		accumulateSummary(regionSummary, planeView)
@@ -96,11 +94,11 @@ func buildInventoryView(items []model.PlaneDetail) View {
 	finalizeSummary(&view.Summary)
 	for name, summary := range providerGroups {
 		finalizeSummary(summary)
-		view.Providers = append(view.Providers, Group{Name: name, Summary: *summary})
+		view.Providers = append(view.Providers, inventoryGroup{Name: name, Summary: *summary})
 	}
 	for name, summary := range regionGroups {
 		finalizeSummary(summary)
-		view.Regions = append(view.Regions, Group{Name: name, Summary: *summary})
+		view.Regions = append(view.Regions, inventoryGroup{Name: name, Summary: *summary})
 	}
 
 	sort.Slice(view.Providers, func(i, j int) bool {
@@ -125,23 +123,22 @@ func buildInventoryView(items []model.PlaneDetail) View {
 	return view
 }
 
-func buildPlane(item model.PlaneDetail) Plane {
-	plane := Plane{
+func buildPlane(item model.PlaneDetail) inventoryPlane {
+	plane := inventoryPlane{
 		ID:              item.ID,
 		Name:            item.Name,
 		DisplayName:     item.DisplayName,
 		Provider:        item.Provider,
 		Region:          item.Region,
 		GRPCEndpoint:    item.GRPCEndpoint,
-		Registered:      item.Registration.Registered,
-		Status:          string(item.Status.Status),
+		Status:          item.Status.Status,
 		StatusMessage:   item.Status.Message,
 		LastHeartbeatAt: item.Status.LastHeartbeatAt,
 		LastSyncAt:      item.Status.LastSyncAt,
 	}
 
-	if item.LatestRuntimeInventory != nil {
-		record := item.LatestRuntimeInventory
+	if item.LatestNodeInventory != nil {
+		record := item.LatestNodeInventory
 		plane.NodesTotal = record.NodesTotal
 		plane.NodesReady = record.NodesReady
 		plane.NodesUnavailable = unavailableNodes(record.NodesTotal, record.NodesReady)
@@ -158,20 +155,17 @@ func buildPlane(item model.PlaneDetail) Plane {
 	return plane
 }
 
-func accumulateSummary(summary *Summary, planeView Plane) {
+func accumulateSummary(summary *inventorySummary, planeView inventoryPlane) {
 	summary.PlanesTotal++
-	if planeView.Registered {
-		summary.PlanesRegistered++
-	}
 
 	switch planeView.Status {
-	case string(model.StatusRegistering):
-		summary.PlanesRegistering++
-	case string(model.StatusReady):
+	case model.StatusSyncing:
+		summary.PlanesSyncing++
+	case model.StatusReady:
 		summary.PlanesReady++
-	case string(model.StatusDegraded):
+	case model.StatusDegraded:
 		summary.PlanesDegraded++
-	case string(model.StatusOffline):
+	case model.StatusOffline:
 		summary.PlanesOffline++
 	}
 	summary.NodesTotal += planeView.NodesTotal
@@ -183,7 +177,7 @@ func accumulateSummary(summary *Summary, planeView Plane) {
 	summary.MemoryMiAllocated += planeView.MemoryMiAllocated
 }
 
-func finalizeSummary(summary *Summary) {
+func finalizeSummary(summary *inventorySummary) {
 	summary.CPUMilliFree = freeCapacity(summary.CPUMilliCapacity, summary.CPUMilliAllocated)
 	summary.MemoryMiFree = freeCapacity(summary.MemoryMiCapacity, summary.MemoryMiAllocated)
 	summary.CPUAllocationRatio = utilizationRatio(summary.CPUMilliAllocated, summary.CPUMilliCapacity)

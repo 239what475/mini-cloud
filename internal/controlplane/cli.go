@@ -12,13 +12,13 @@ import (
 	"mini-cloud/internal/controlplane/config"
 )
 
-var ErrConfigRequired = errors.New("config is required")
+var errConfigRequired = errors.New("config is required")
 
-func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
+func parseConfigPath(args []string, stderr io.Writer) (string, error) {
 	fs := flag.NewFlagSet("control-plane", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		PrintUsage(stderr)
+		printUsage(stderr)
 	}
 	configPath := fs.String("config", "", "path to control-plane YAML config file")
 
@@ -35,13 +35,13 @@ func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
 	}
 	if strings.TrimSpace(*configPath) == "" {
 		fs.Usage()
-		return "", ErrConfigRequired
+		return "", errConfigRequired
 	}
 	return strings.TrimSpace(*configPath), nil
 }
 
 func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.Writer) error {
-	configPath, err := ParseConfigPath(args, stderr)
+	configPath, err := parseConfigPath(args, stderr)
 	if err != nil {
 		return err
 	}
@@ -61,13 +61,13 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 
 	logger.Info("starting mini-cloud control-plane",
 		"config_path", app.Config.Path,
-		"http_addr", app.Config.HTTPAddr,
-		"ui_dir", app.Config.UIDir,
+		"http_addr", app.Config.Server.HTTPAddr,
+		"ui_dir", app.Config.UI.Dir,
 	)
 	return app.Run(ctx)
 }
 
-func PrintUsage(stderr io.Writer) {
+func printUsage(stderr io.Writer) {
 	_, _ = fmt.Fprintln(stderr, "usage:")
 	_, _ = fmt.Fprintln(stderr, "  control-plane --config ./control-plane.yaml")
 }

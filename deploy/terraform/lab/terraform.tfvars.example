@@ -31,10 +31,10 @@ aliyun = {
   region_id     = "cn-beijing"
   zone_id       = "cn-beijing-f"
   instance_type = "ecs.e-c1m1.large"
-  image_id      = "replace-with-runtime-image-id"
+  image_id      = "replace-with-node-image-id"
 }
 
-# Tencent uses an existing Lighthouse entry host and a new runtime CVM VPC.
+# Tencent uses an existing Lighthouse entry host and a new worker-node CVM VPC.
 #
 # provider_name = "tencent"
 # platform_mode = "existing_lighthouse"

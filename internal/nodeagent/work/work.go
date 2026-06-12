@@ -2,6 +2,7 @@ package work
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -16,42 +17,34 @@ import (
 	"mini-cloud/internal/projectedfile"
 )
 
-type ReadinessWaiter interface {
+type readinessWaiter interface {
 	Wait(context.Context, ReadinessConfig) ReadinessResult
+}
+
+type ContainerRuntime interface {
+	Run(context.Context, runtime.RunInput) (runtime.RunResult, error)
+	Stop(context.Context, string) error
+	Logs(context.Context, string, int) (string, error)
 }
 
 type WorkloadLogStarter func(workloadlogs.StartRequest)
 
 const (
+	workActionRun    = "run"
 	workActionDelete = "delete"
 
-	executionStatusFailed     = "failed"
-	executionStatusRunning    = "running"
-	executionStatusSuperseded = "superseded"
-
-	PhasePolled            = "polled"
-	PhaseValidated         = "validated"
-	PhaseDeleting          = "deleting"
-	PhaseDeleteReported    = "delete_reported"
-	PhaseStarting          = "starting"
-	PhaseStarted           = "started"
-	PhaseLogsAttached      = "logs_attached"
-	PhaseReadinessChecking = "readiness_checking"
-	PhasePromoting         = "promoting"
-	PhaseReportingRun      = "reporting_running"
-	PhaseRunningReported   = "running_reported"
-	PhaseCleaningFailed    = "cleaning_failed"
-	PhaseFailedReported    = "failed_reported"
+	executionStatusFailed    = "failed"
+	executionStatusRunning   = "running"
+	executionStatusSucceeded = "succeeded"
 )
 
 type Options struct {
-	Node            NodeOptions
-	Runtime         RuntimeOptions
-	Readiness       ReadinessOptions
-	Timeouts        TimeoutOptions
-	Observability   ObservabilityOptions
-	Network         NetworkOptions
-	ReadinessWaiter ReadinessWaiter
+	Node          NodeOptions
+	Runtime       RuntimeOptions
+	Readiness     ReadinessOptions
+	Timeouts      TimeoutOptions
+	Observability ObservabilityOptions
+	Network       NetworkOptions
 }
 
 type NodeOptions struct {
@@ -91,52 +84,44 @@ type NetworkOptions struct {
 }
 
 type EgressProxyOptions struct {
-	Enabled  bool
 	Endpoint string
 	NoProxy  []string
 }
 
 type Result struct {
-	NodeID     string                               `json:"nodeID"`
-	WorkFound  bool                                 `json:"workFound"`
-	WorkItem   *nodeagentv1.WorkItem                `json:"workItem,omitempty"`
-	RuntimeRun *runtime.RunResult                   `json:"runtimeRun,omitempty"`
-	Readiness  *ReadinessResult                     `json:"readiness,omitempty"`
-	Report     *nodeagentv1.ReportExecutionResponse `json:"report,omitempty"`
-	Phase      string                               `json:"phase,omitempty"`
+	WorkFound bool
+	WorkItem  *nodeagentv1.WorkItem
+	Report    *nodeagentv1.ReportExecutionResponse
 }
 
-type Executor struct {
+type executor struct {
 	logger           *slog.Logger
 	client           *agentclient.Client
-	containerRuntime runtime.Runtime
-	readinessWaiter  ReadinessWaiter
+	containerRuntime ContainerRuntime
+	readinessWaiter  readinessWaiter
 	opts             Options
 }
 
-func NewExecutor(logger *slog.Logger, client *agentclient.Client, containerRuntime runtime.Runtime, opts Options) Executor {
-	readinessWaiter := opts.ReadinessWaiter
+func ExecuteNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime ContainerRuntime, opts Options) (Result, error) {
+	return executeNext(ctx, logger, client, containerRuntime, opts, nil)
+}
+
+func executeNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime ContainerRuntime, opts Options, readinessWaiter readinessWaiter) (Result, error) {
 	if readinessWaiter == nil {
 		readinessWaiter = NewReadinessChecker(nil)
 	}
-	return Executor{
+	return executor{
 		logger:           logger,
 		client:           client,
 		containerRuntime: containerRuntime,
 		readinessWaiter:  readinessWaiter,
 		opts:             opts,
-	}
+	}.executeNext(ctx)
 }
 
-func ExecuteNext(ctx context.Context, logger *slog.Logger, client *agentclient.Client, containerRuntime runtime.Runtime, opts Options) (Result, error) {
-	return NewExecutor(logger, client, containerRuntime, opts).ExecuteNext(ctx)
-}
-
-func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
+func (e executor) executeNext(ctx context.Context) (Result, error) {
 	opts := e.opts
-	result := Result{
-		NodeID: opts.Node.ID,
-	}
+	result := Result{}
 
 	item, pollCtx, err := e.pollWork(ctx)
 	if err != nil {
@@ -148,7 +133,6 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 
 	result.WorkFound = true
 	result.WorkItem = item
-	result.Phase = PhasePolled
 	workLogger := e.workLogger(item)
 	workLogger.Info("claimed execution work", "request_id", logctx.RequestID(pollCtx))
 
@@ -158,25 +142,20 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 			return result, fmt.Errorf("report failed execution after invalid work item: %w", reportErr)
 		}
 		result.Report = report
-		result.Phase = PhaseFailedReported
 		e.logReport(workLogger, report)
-		return result, fmt.Errorf("%s", reason)
+		return result, errors.New(reason)
 	}
-	result.Phase = PhaseValidated
-	if normalizeWorkAction(item.GetAction()) == workActionDelete {
-		result.Phase = PhaseDeleting
+	if strings.TrimSpace(item.GetAction()) == workActionDelete {
 		report, err := e.deleteWorkItem(ctx, item)
 		if err != nil {
 			result.Report = report
 			return result, err
 		}
 		result.Report = report
-		result.Phase = PhaseDeleteReported
 		e.logReport(workLogger, report)
 		return result, nil
 	}
 
-	result.Phase = PhaseStarting
 	runResult, err := e.runWorkItem(ctx, item)
 	if err != nil {
 		report, reason, reportErr := e.reportRuntimeStartFailure(ctx, item, err)
@@ -185,65 +164,55 @@ func (e Executor) ExecuteNext(ctx context.Context) (Result, error) {
 		}
 		result.Report = report
 		e.logReport(workLogger, report)
-		return result, fmt.Errorf("%s", reason)
+		return result, errors.New(reason)
 	}
 
-	result.RuntimeRun = &runResult
-	result.Phase = PhaseStarted
 	workLogger.Info("runtime container started",
 		"container_name", runResult.ContainerName,
 		"container_id", runResult.ContainerID,
 		"host_port", runResult.HostPort,
 	)
 	e.startWorkloadLogForwarding(item, runResult)
-	result.Phase = PhaseLogsAttached
 
 	readinessHost := strings.TrimSpace(opts.Node.PrivateIP)
 	if readinessHost == "" {
 		readinessHost = "127.0.0.1"
 	}
 	readinessURL := fmt.Sprintf("http://%s%s", net.JoinHostPort(readinessHost, fmt.Sprintf("%d", runResult.HostPort)), item.GetReadinessPath())
-	result.Phase = PhaseReadinessChecking
 	readinessResult := e.readinessWaiter.Wait(ctx, ReadinessConfig{
 		URL:      readinessURL,
 		Attempts: opts.Readiness.Attempts,
 		Interval: opts.Readiness.Interval,
 		Timeout:  opts.Readiness.Timeout,
 	})
-	result.Readiness = &readinessResult
 
 	if readinessResult.Passed {
-		result.Phase = PhasePromoting
-		result.Phase = PhaseReportingRun
 		report, err := e.reportRunning(ctx, item, runResult, readinessURL)
 		if err != nil {
 			result.Report = report
 			return result, err
 		}
 		result.Report = report
-		result.Phase = PhaseRunningReported
 		e.logReport(workLogger, report)
 		return result, nil
 	}
 
-	result.Phase = PhaseCleaningFailed
 	report, reason, err := e.cleanupFailedRun(ctx, item, runResult, readinessResult)
 	if err != nil {
 		return result, err
 	}
 	result.Report = report
-	result.Phase = PhaseFailedReported
 	e.logReport(workLogger, report)
-	return result, fmt.Errorf("%s", reason)
+	return result, errors.New(reason)
 }
 
-func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (*nodeagentv1.ReportExecutionResponse, error) {
+func (e executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (*nodeagentv1.ReportExecutionResponse, error) {
 	stopCtx, cancelStop := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeStop))
 	stopErr := e.containerRuntime.Stop(stopCtx, item.GetContainerId())
 	cancelStop()
 	if stopErr != nil {
 		report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
-			Reason:        TruncateReason(fmt.Sprintf("delete execution failed while stopping container %s: %v", item.GetContainerName(), stopErr)),
+			Reason:        truncateReason(fmt.Sprintf("delete execution failed while stopping container %s: %v", item.GetContainerName(), stopErr)),
 			ContainerId:   item.GetContainerId(),
 			ContainerName: item.GetContainerName(),
 			HostPort:      item.GetHostPort(),
@@ -254,7 +223,7 @@ func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem
 		return report, stopErr
 	}
 	report, err := e.report(ctx, item, &nodeagentv1.ReportExecutionRequest{
-		Status:        executionStatusSuperseded,
+		Status:        executionStatusSucceeded,
 		Reason:        fmt.Sprintf("service deletion stopped container %s", item.GetContainerName()),
 		ContainerId:   item.GetContainerId(),
 		ContainerName: item.GetContainerName(),
@@ -266,7 +235,7 @@ func (e Executor) deleteWorkItem(ctx context.Context, item *nodeagentv1.WorkItem
 	return report, nil
 }
 
-func (e Executor) pollWork(ctx context.Context) (*nodeagentv1.WorkItem, context.Context, error) {
+func (e executor) pollWork(ctx context.Context) (*nodeagentv1.WorkItem, context.Context, error) {
 	pollCtx, cancel := context.WithTimeout(ctx, e.timeout(e.opts.Timeouts.PollWork))
 	defer cancel()
 	pollCtx = logctx.WithFields(pollCtx, logctx.Fields{
@@ -277,7 +246,7 @@ func (e Executor) pollWork(ctx context.Context) (*nodeagentv1.WorkItem, context.
 	return item, pollCtx, err
 }
 
-func (e Executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (runtime.RunResult, error) {
+func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (runtime.RunResult, error) {
 	runCtx, cancelRun := context.WithTimeout(e.workContext(ctx, item), e.timeout(e.opts.Timeouts.RuntimeStart))
 	defer cancelRun()
 
@@ -292,7 +261,6 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 		ExecutionID:     item.GetExecutionId(),
 		PlanID:          item.GetPlanId(),
 		ServiceID:       item.GetServiceId(),
-		ProjectionRef:   item.GetExecutionId(),
 		Image:           item.GetImage(),
 		Command:         append([]string(nil), item.GetCommand()...),
 		Args:            append([]string(nil), item.GetArgs()...),
@@ -308,7 +276,7 @@ func (e Executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 
 func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string {
 	proxy := opts.Network.EgressProxy
-	if !proxy.Enabled || strings.TrimSpace(proxy.Endpoint) == "" {
+	if strings.TrimSpace(proxy.Endpoint) == "" {
 		return env
 	}
 	out := make(map[string]string, len(env)+6)
@@ -326,7 +294,7 @@ func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string
 	return out
 }
 
-func (e Executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessURL string) (*nodeagentv1.ReportExecutionResponse, error) {
+func (e executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessURL string) (*nodeagentv1.ReportExecutionResponse, error) {
 	if err := e.stopSuperseded(ctx, item, runResult); err != nil {
 		report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 			Reason:        err.Error(),
@@ -340,13 +308,17 @@ func (e Executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem,
 		return report, err
 	}
 
+	supersededExecutionID := ""
+	if item.GetSupersededExecution() != nil {
+		supersededExecutionID = item.GetSupersededExecution().GetExecutionId()
+	}
 	report, err := e.report(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Status:                executionStatusRunning,
 		Reason:                fmt.Sprintf("readiness check passed at %s", readinessURL),
 		ContainerId:           runResult.ContainerID,
 		ContainerName:         runResult.ContainerName,
 		HostPort:              int32(runResult.HostPort),
-		SupersededExecutionId: supersededExecutionID(item.GetSupersededExecution()),
+		SupersededExecutionId: supersededExecutionID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("report running execution: %w", err)
@@ -354,7 +326,7 @@ func (e Executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem,
 	return report, nil
 }
 
-func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult) error {
+func (e executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult) error {
 	if item.GetSupersededExecution() == nil || item.GetSupersededExecution().GetContainerId() == "" {
 		return nil
 	}
@@ -370,14 +342,14 @@ func (e Executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem
 	_ = e.containerRuntime.Stop(cleanupCtx, runResult.ContainerID)
 	cancelCleanup()
 
-	return fmt.Errorf("%s", TruncateReason(fmt.Sprintf(
+	return errors.New(truncateReason(fmt.Sprintf(
 		"candidate passed readiness, but stopping superseded container %s failed: %v",
 		item.GetSupersededExecution().GetContainerName(),
 		stopErr,
 	)))
 }
 
-func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {
+func (e executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {
 	logSnippet := ""
 	logCtx, cancelLogs := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.RuntimeLogs))
 	logSnippet, _ = e.containerRuntime.Logs(logCtx, runResult.ContainerID, e.opts.Observability.LogTail)
@@ -387,7 +359,7 @@ func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkIt
 	stopErr := e.containerRuntime.Stop(stopCtx, runResult.ContainerID)
 	cancelStop()
 
-	reason := BuildFailedExecutionReason(readinessResult, logSnippet, stopErr)
+	reason := buildFailedExecutionReason(readinessResult, logSnippet, stopErr)
 	report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
 		ContainerId:   runResult.ContainerID,
@@ -400,8 +372,8 @@ func (e Executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkIt
 	return report, reason, nil
 }
 
-func (e Executor) reportRuntimeStartFailure(ctx context.Context, item *nodeagentv1.WorkItem, runErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
-	reason := TruncateReason(fmt.Sprintf("runtime start failed: %v", runErr))
+func (e executor) reportRuntimeStartFailure(ctx context.Context, item *nodeagentv1.WorkItem, runErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
+	reason := truncateReason(fmt.Sprintf("runtime start failed: %v", runErr))
 	report, err := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
 		ContainerName: item.GetContainerName(),
@@ -412,8 +384,8 @@ func (e Executor) reportRuntimeStartFailure(ctx context.Context, item *nodeagent
 	return report, reason, err
 }
 
-func (e Executor) reportValidationFailure(ctx context.Context, item *nodeagentv1.WorkItem, validationErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
-	reason := TruncateReason(fmt.Sprintf("invalid work item: %v", validationErr))
+func (e executor) reportValidationFailure(ctx context.Context, item *nodeagentv1.WorkItem, validationErr error) (*nodeagentv1.ReportExecutionResponse, string, error) {
+	reason := truncateReason(fmt.Sprintf("invalid work item: %v", validationErr))
 	report, err := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
 		Reason:        reason,
 		ContainerName: item.GetContainerName(),
@@ -424,7 +396,7 @@ func (e Executor) reportValidationFailure(ctx context.Context, item *nodeagentv1
 	return report, reason, err
 }
 
-func (e Executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
+func (e executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	req.Status = executionStatusFailed
 	if req.GetReason() == "" {
 		req.Reason = "execution failed"
@@ -432,7 +404,7 @@ func (e Executor) reportFailed(ctx context.Context, item *nodeagentv1.WorkItem, 
 	return e.report(ctx, item, req)
 }
 
-func (e Executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
+func (e executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	reportCtx, cancel := context.WithTimeout(e.detachedWorkContext(item), e.timeout(e.opts.Timeouts.Report))
 	defer cancel()
 	reportCtx = logctx.WithFields(reportCtx, logctx.Fields{
@@ -447,7 +419,7 @@ func (e Executor) report(ctx context.Context, item *nodeagentv1.WorkItem, req *n
 	return e.client.ReportExecution(reportCtx, req)
 }
 
-func (e Executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResult runtime.RunResult) {
+func (e executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResult runtime.RunResult) {
 	if e.opts.Observability.WorkloadLogs == nil {
 		return
 	}
@@ -462,7 +434,7 @@ func (e Executor) startWorkloadLogForwarding(item *nodeagentv1.WorkItem, runResu
 	})
 }
 
-func (e Executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
+func (e executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
 	return logctx.WithLoggerFields(e.logger, logctx.Fields{
 		NodeID:      e.opts.Node.ID,
 		ServiceID:   item.GetServiceId(),
@@ -471,7 +443,7 @@ func (e Executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
 	})
 }
 
-func (e Executor) workContext(ctx context.Context, item *nodeagentv1.WorkItem) context.Context {
+func (e executor) workContext(ctx context.Context, item *nodeagentv1.WorkItem) context.Context {
 	return logctx.WithFields(ctx, logctx.Fields{
 		NodeID:      e.opts.Node.ID,
 		ServiceID:   item.GetServiceId(),
@@ -480,7 +452,7 @@ func (e Executor) workContext(ctx context.Context, item *nodeagentv1.WorkItem) c
 	})
 }
 
-func (e Executor) detachedWorkContext(item *nodeagentv1.WorkItem) context.Context {
+func (e executor) detachedWorkContext(item *nodeagentv1.WorkItem) context.Context {
 	return logctx.WithFields(context.Background(), logctx.Fields{
 		NodeID:      e.opts.Node.ID,
 		ServiceID:   item.GetServiceId(),
@@ -489,11 +461,14 @@ func (e Executor) detachedWorkContext(item *nodeagentv1.WorkItem) context.Contex
 	})
 }
 
-func (e Executor) logReport(logger *slog.Logger, report *nodeagentv1.ReportExecutionResponse) {
+func (e executor) logReport(logger *slog.Logger, report *nodeagentv1.ReportExecutionResponse) {
+	if report == nil {
+		return
+	}
 	logger.Info("reported execution status", "status", report.GetAck().GetExecution().GetStatus())
 }
 
-func (e Executor) timeout(value time.Duration) time.Duration {
+func (e executor) timeout(value time.Duration) time.Duration {
 	if value > 0 {
 		return value
 	}
@@ -506,7 +481,7 @@ func (e Executor) timeout(value time.Duration) time.Duration {
 	return time.Second
 }
 
-func BuildFailedExecutionReason(readinessResult ReadinessResult, logs string, stopErr error) string {
+func buildFailedExecutionReason(readinessResult ReadinessResult, logs string, stopErr error) string {
 	lastObservation := ReadinessObservation{}
 	if len(readinessResult.Observations) > 0 {
 		lastObservation = readinessResult.Observations[len(readinessResult.Observations)-1]
@@ -527,28 +502,21 @@ func BuildFailedExecutionReason(readinessResult ReadinessResult, logs string, st
 	if stopErr != nil {
 		parts = append(parts, fmt.Sprintf("cleanup warning: %v", stopErr))
 	}
-	return TruncateReason(strings.Join(parts, "; "))
+	return truncateReason(strings.Join(parts, "; "))
 }
 
 func compactLogSnippet(value string) string {
 	compact := strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
-	return TruncateReason(compact)
+	return truncateReason(compact)
 }
 
-func TruncateReason(value string) string {
+func truncateReason(value string) string {
 	const maxLen = 400
 	value = strings.TrimSpace(value)
 	if len(value) <= maxLen {
 		return value
 	}
 	return value[:maxLen-3] + "..."
-}
-
-func supersededExecutionID(item *nodeagentv1.SupersededExecution) string {
-	if item == nil {
-		return ""
-	}
-	return item.GetExecutionId()
 }
 
 func convertExecutionImageCredential(value *nodeagentv1.ImageCredential) *runtime.ImageCredential {
@@ -562,23 +530,12 @@ func convertExecutionImageCredential(value *nodeagentv1.ImageCredential) *runtim
 	}
 }
 
-func normalizeWorkAction(action string) string {
-	switch strings.ToLower(strings.TrimSpace(action)) {
-	case "", "run":
-		return "run"
-	case workActionDelete:
-		return workActionDelete
-	default:
-		return strings.ToLower(strings.TrimSpace(action))
-	}
-}
-
 func validateWorkItem(item *nodeagentv1.WorkItem) error {
 	if item == nil {
 		return fmt.Errorf("work item is required")
 	}
-	action := normalizeWorkAction(item.GetAction())
-	if action != "run" && action != workActionDelete {
+	action := strings.TrimSpace(item.GetAction())
+	if action != workActionRun && action != workActionDelete {
 		return fmt.Errorf("work action must be one of run, delete")
 	}
 	if strings.TrimSpace(item.GetExecutionId()) == "" {
@@ -648,5 +605,5 @@ func projectedFilesFromProto(items []*nodeagentv1.ProjectedFile) []projectedfile
 			Sensitive: item.GetSensitive(),
 		})
 	}
-	return projectedfile.CloneFiles(out)
+	return out
 }

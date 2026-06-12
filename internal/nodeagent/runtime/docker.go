@@ -33,61 +33,36 @@ import (
 )
 
 const (
-	// dockerImagePullTimeout 是单次 Docker 拉取镜像操作的超时时间。
-	dockerImagePullTimeout = 5 * time.Minute
-	// dockerImagePullAttempts 是 Docker 拉取镜像的最大总尝试次数。
-	dockerImagePullAttempts = 3
-	// dockerImagePullRetryDelay 是两次 Docker 拉取镜像尝试之间的等待时间。
+	dockerImagePullTimeout    = 5 * time.Minute
+	dockerImagePullAttempts   = 3
 	dockerImagePullRetryDelay = 5 * time.Second
-	// dockerCleanupTimeout 是失败回滚和清理 Docker 资源时使用的超时时间。
-	dockerCleanupTimeout = 10 * time.Second
-	// projectedFilesRootDir 是宿主机上存放投影文件的根目录。
-	projectedFilesRootDir = "/var/lib/mini-cloud/node-agent/projected-files"
-	// projectedExecutionsDir 是投影文件根目录下按执行分组的目录名。
-	projectedExecutionsDir = "executions"
-	// projectedFilesDir 是单个执行目录下真正发布给容器挂载的文件目录名。
-	projectedFilesDir = "files"
-	// projectedStagingPrefix 是投影文件暂存目录前缀。
-	projectedStagingPrefix = ".staging-"
+	dockerCleanupTimeout      = 10 * time.Second
+	projectedFilesRootDir     = "/var/lib/mini-cloud/node-agent/projected-files"
+	projectedExecutionsDir    = "executions"
+	projectedFilesDir         = "files"
+	projectedStagingPrefix    = ".staging-"
 )
 
 const (
-	// dockerLabelManagedBy 标记容器由 mini-cloud node-agent 管理。
-	dockerLabelManagedBy = "mini-cloud.managed-by"
-	// dockerLabelNodeID 保存承载容器的节点 ID。
-	dockerLabelNodeID = "mini-cloud.node-id"
-	// dockerLabelExecutionID 保存容器所属执行 ID。
+	dockerLabelManagedBy   = "mini-cloud.managed-by"
+	dockerLabelNodeID      = "mini-cloud.node-id"
 	dockerLabelExecutionID = "mini-cloud.execution-id"
-	// dockerLabelPlanID 保存容器所属 execution plan ID。
-	dockerLabelPlanID = "mini-cloud.plan-id"
-	// dockerLabelServiceID 保存容器所属服务 ID。
-	dockerLabelServiceID = "mini-cloud.service-id"
-	// dockerLabelProjectionRef 保存容器投影文件引用。
-	dockerLabelProjectionRef = "mini-cloud.projection-ref"
+	dockerLabelPlanID      = "mini-cloud.plan-id"
+	dockerLabelServiceID   = "mini-cloud.service-id"
 )
 
-// Docker 基于 Docker Engine API 实现 Runtime。
 type Docker struct {
-	// logger 记录 Docker 运行时操作日志。
-	logger *slog.Logger
-	// client 是 Docker Engine API 客户端。
-	client *client.Client
-
-	// mu 保护 projectionDirs。
-	mu sync.Mutex
-	// projectionDirs 记录容器 ID 到投影文件目录的映射，用于停止和关闭时清理。
+	logger         *slog.Logger
+	client         *client.Client
+	mu             sync.Mutex
 	projectionDirs map[string]trackedProjection
 }
 
-// trackedProjection 记录一个容器对应的投影文件目录。
 type trackedProjection struct {
-	// ExecutionID 是投影文件目录所属的执行 ID。
 	ExecutionID string
-	// Dir 是宿主机上的投影文件执行目录。
-	Dir string
+	Dir         string
 }
 
-// NewDockerEngine 创建使用环境变量配置的 Docker Engine 客户端。
 func NewDockerEngine(logger *slog.Logger) (*Docker, error) {
 	dockerClient, err := client.NewClientWithOpts(
 		client.FromEnv,
@@ -103,7 +78,6 @@ func NewDockerEngine(logger *slog.Logger) (*Docker, error) {
 	}, nil
 }
 
-// Run 确保镜像可用、创建投影文件挂载、启动 Docker 容器并返回宿主机端口。
 func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	registryAuth, err := buildRegistryAuth(input.ImageCredential)
 	if err != nil {
@@ -113,20 +87,17 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		return RunResult{}, err
 	}
 
-	runInput := input
-	if runInput.HostPort == 0 && (runInput.HostPortMin > 0 || runInput.HostPortMax > 0) {
-		hostPort, err := selectAvailableHostPort(resolveHostBindIP(runInput.HostBindIP), runInput.HostPortMin, runInput.HostPortMax)
-		if err != nil {
-			return RunResult{}, err
-		}
-		runInput.HostPort = hostPort
-	}
-
-	config, hostConfig, portSpec, err := buildContainerCreateConfig(runInput)
+	hostBindIP := resolveHostBindIP(input.HostBindIP)
+	hostPort, err := selectAvailableHostPort(hostBindIP, input.HostPortMin, input.HostPortMax)
 	if err != nil {
 		return RunResult{}, err
 	}
-	projectionDir, mounts, err := prepareProjectedMounts(runInput)
+
+	config, hostConfig, portSpec, err := buildContainerCreateConfig(input, hostPort)
+	if err != nil {
+		return RunResult{}, err
+	}
+	projectionDir, mounts, err := prepareProjectedMounts(input)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -146,28 +117,28 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	var created container.CreateResponse
 	for {
 		logger.Info("runtime docker api create container",
-			"name", runInput.ContainerName,
-			"image", runInput.Image,
-			"container_port", runInput.ContainerPort,
-			"host_port", runInput.HostPort,
+			"name", input.ContainerName,
+			"image", input.Image,
+			"container_port", input.ContainerPort,
+			"host_port", hostPort,
 		)
-		created, err = d.client.ContainerCreate(ctx, config, hostConfig, nil, nil, runInput.ContainerName)
+		created, err = d.client.ContainerCreate(ctx, config, hostConfig, nil, nil, input.ContainerName)
 		if err == nil {
 			break
 		}
-		if !shouldRetryHostPortCreate(err, runInput) {
+		if !shouldRetryHostPortCreate(err) {
 			return RunResult{}, fmt.Errorf("docker container create failed: %w", err)
 		}
-		attemptedHostPorts[runInput.HostPort] = struct{}{}
-		nextPort, selectErr := selectAvailableHostPortExcluding(resolveHostBindIP(runInput.HostBindIP), runInput.HostPortMin, runInput.HostPortMax, attemptedHostPorts)
+		attemptedHostPorts[hostPort] = struct{}{}
+		nextPort, selectErr := selectAvailableHostPortExcluding(hostBindIP, input.HostPortMin, input.HostPortMax, attemptedHostPorts)
 		if selectErr != nil {
 			return RunResult{}, errors.Join(
 				fmt.Errorf("docker container create failed after host port retries: %w", err),
 				selectErr,
 			)
 		}
-		runInput.HostPort = nextPort
-		config, hostConfig, portSpec, err = buildContainerCreateConfig(runInput)
+		hostPort = nextPort
+		config, hostConfig, portSpec, err = buildContainerCreateConfig(input, hostPort)
 		if err != nil {
 			return RunResult{}, err
 		}
@@ -180,7 +151,7 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 		return RunResult{}, fmt.Errorf("docker container start failed: %w", err)
 	}
 
-	hostPort, err := d.detectHostPort(ctx, created.ID, portSpec)
+	detectedHostPort, err := d.detectHostPort(ctx, created.ID, portSpec)
 	if err != nil {
 		cleanupCtx, cancelCleanup := context.WithTimeout(context.WithoutCancel(ctx), dockerCleanupTimeout)
 		_ = d.client.ContainerStop(cleanupCtx, created.ID, container.StopOptions{})
@@ -193,12 +164,11 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 
 	return RunResult{
 		ContainerID:   created.ID,
-		ContainerName: runInput.ContainerName,
-		HostPort:      hostPort,
+		ContainerName: input.ContainerName,
+		HostPort:      detectedHostPort,
 	}, nil
 }
 
-// Stop 停止指定 Docker 容器，并清理该容器关联的投影文件目录。
 func (d *Docker) Stop(ctx context.Context, containerID string) error {
 	defer d.cleanupContainerProjectionDir(containerID)
 	if strings.TrimSpace(containerID) == "" {
@@ -213,7 +183,6 @@ func (d *Docker) Stop(ctx context.Context, containerID string) error {
 	return nil
 }
 
-// ResetNode 停止当前节点上由 mini-cloud 管理的旧工作负载容器。
 func (d *Docker) ResetNode(ctx context.Context, nodeID string) error {
 	if d == nil {
 		return nil
@@ -253,7 +222,6 @@ func (d *Docker) ResetNode(ctx context.Context, nodeID string) error {
 	return nil
 }
 
-// Logs 读取指定 Docker 容器的 stdout/stderr 尾部日志。
 func (d *Docker) Logs(ctx context.Context, containerID string, tail int) (string, error) {
 	if tail <= 0 {
 		tail = 50
@@ -289,7 +257,6 @@ func (d *Docker) Logs(ctx context.Context, containerID string, tail int) (string
 	return strings.Join(parts, "\n"), nil
 }
 
-// StreamLogs 持续读取指定 Docker 容器日志流，并逐行发给 emit。
 func (d *Docker) StreamLogs(ctx context.Context, containerID string, emit LogEmitter) error {
 	reader, err := d.client.ContainerLogs(ctx, containerID, container.LogsOptions{
 		ShowStdout: true,
@@ -317,16 +284,6 @@ func (d *Docker) StreamLogs(ctx context.Context, containerID string, emit LogEmi
 	return nil
 }
 
-// CountRunning 返回 Docker 当前可见的运行中容器数量。
-func (d *Docker) CountRunning(ctx context.Context) (int, error) {
-	items, err := d.client.ContainerList(ctx, container.ListOptions{})
-	if err != nil {
-		return 0, fmt.Errorf("docker list containers failed: %w", err)
-	}
-	return len(items), nil
-}
-
-// Close 清理已跟踪的投影文件目录，并关闭 Docker 客户端。
 func (d *Docker) Close() error {
 	if d == nil {
 		return nil
@@ -341,13 +298,7 @@ func (d *Docker) Close() error {
 	return nil
 }
 
-// GarbageCollect 清理不再被当前跟踪状态或 Docker 容器标签引用的投影文件目录。
 func (d *Docker) GarbageCollect(ctx context.Context) error {
-	return d.CleanupOrphans(ctx)
-}
-
-// CleanupOrphans 删除没有被当前跟踪状态或 Docker 容器标签引用的投影文件目录。
-func (d *Docker) CleanupOrphans(ctx context.Context) error {
 	if d == nil {
 		return nil
 	}
@@ -393,7 +344,6 @@ func (d *Docker) CleanupOrphans(ctx context.Context) error {
 	return nil
 }
 
-// ensureImageAvailable 确保镜像本地可用；不存在时按重试策略拉取镜像。
 func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, registryAuth string) error {
 	if _, err := d.client.ImageInspect(ctx, imageRef); err == nil {
 		return nil
@@ -460,7 +410,6 @@ func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, regi
 	return fmt.Errorf("docker image pull failed after %d attempts: %w", dockerImagePullAttempts, lastErr)
 }
 
-// detectHostPort 轮询 Docker inspect，读取容器端口映射到宿主机后的端口。
 func (d *Docker) detectHostPort(ctx context.Context, containerID string, portSpec nat.Port) (int, error) {
 	var lastErr error
 	for attempt := 1; attempt <= 10; attempt++ {
@@ -498,19 +447,15 @@ func (d *Docker) detectHostPort(ctx context.Context, containerID string, portSpe
 	return 0, fmt.Errorf("detect host port failed: %w", lastErr)
 }
 
-// buildContainerCreateConfig 根据 RunInput 构造 Docker 容器配置、宿主机配置和端口规格。
-func buildContainerCreateConfig(input RunInput) (*container.Config, *container.HostConfig, nat.Port, error) {
+func buildContainerCreateConfig(input RunInput, hostPort int) (*container.Config, *container.HostConfig, nat.Port, error) {
 	if input.ContainerPort <= 0 {
 		return nil, nil, "", fmt.Errorf("container port must be greater than 0")
 	}
 
 	portSpec := nat.Port(fmt.Sprintf("%d/tcp", input.ContainerPort))
 	hostBindIP := resolveHostBindIP(input.HostBindIP)
-	if input.HostPort < 0 {
-		return nil, nil, "", fmt.Errorf("host port must be greater than or equal to 0")
-	}
-	if (input.HostPortMin > 0 || input.HostPortMax > 0) && input.HostPort == 0 {
-		return nil, nil, "", fmt.Errorf("host port must be selected when host port range is configured")
+	if hostPort <= 0 {
+		return nil, nil, "", fmt.Errorf("host port must be greater than 0")
 	}
 	config := &container.Config{
 		Image:        input.Image,
@@ -530,13 +475,8 @@ func buildContainerCreateConfig(input RunInput) (*container.Config, *container.H
 		PortBindings: nat.PortMap{
 			portSpec: []nat.PortBinding{
 				{
-					HostIP: hostBindIP,
-					HostPort: func() string {
-						if input.HostPort <= 0 {
-							return ""
-						}
-						return strconv.Itoa(input.HostPort)
-					}(),
+					HostIP:   hostBindIP,
+					HostPort: strconv.Itoa(hostPort),
 				},
 			},
 		},
@@ -544,7 +484,6 @@ func buildContainerCreateConfig(input RunInput) (*container.Config, *container.H
 	return config, hostConfig, portSpec, nil
 }
 
-// resolveHostBindIP 返回 Docker 宿主机端口绑定地址；空值仅用于本地/测试路径，生产由 node-agent 传入私网 IP。
 func resolveHostBindIP(value string) string {
 	hostBindIP := strings.TrimSpace(value)
 	if hostBindIP == "" {
@@ -553,12 +492,10 @@ func resolveHostBindIP(value string) string {
 	return hostBindIP
 }
 
-// selectAvailableHostPort 在配置端口池中选择一个当前可监听的 hostPort。
 func selectAvailableHostPort(hostBindIP string, minPort int, maxPort int) (int, error) {
 	return selectAvailableHostPortExcluding(hostBindIP, minPort, maxPort, nil)
 }
 
-// selectAvailableHostPortExcluding 在配置端口池中选择一个当前可监听且不在排除集合内的 hostPort。
 func selectAvailableHostPortExcluding(hostBindIP string, minPort int, maxPort int, excluded map[int]struct{}) (int, error) {
 	if minPort <= 0 || maxPort <= 0 {
 		return 0, fmt.Errorf("host port range min and max must be greater than 0")
@@ -582,9 +519,8 @@ func selectAvailableHostPortExcluding(hostBindIP string, minPort int, maxPort in
 	return 0, fmt.Errorf("no available host port in range %d-%d for bind ip %s", minPort, maxPort, hostBindIP)
 }
 
-// shouldRetryHostPortCreate 判断 Docker 创建失败是否可能由 hostPort 竞争导致。
-func shouldRetryHostPortCreate(err error, input RunInput) bool {
-	if err == nil || input.HostPort <= 0 || input.HostPortMin <= 0 || input.HostPortMax <= 0 {
+func shouldRetryHostPortCreate(err error) bool {
+	if err == nil {
 		return false
 	}
 	message := strings.ToLower(err.Error())
@@ -594,7 +530,6 @@ func shouldRetryHostPortCreate(err error, input RunInput) bool {
 		strings.Contains(message, "bind: address already in use")
 }
 
-// isContainerAlreadyStopped 判断 Docker stop 对非运行容器返回的幂等错误。
 func isContainerAlreadyStopped(err error) bool {
 	if err == nil {
 		return false
@@ -605,12 +540,10 @@ func isContainerAlreadyStopped(err error) bool {
 		strings.Contains(message, "already stopped")
 }
 
-// prepareProjectedMounts 在默认投影根目录下准备 Docker bind mount。
 func prepareProjectedMounts(input RunInput) (string, []mount.Mount, error) {
 	return prepareProjectedMountsInRoot(projectedFilesRootDir, input)
 }
 
-// prepareProjectedMountsInRoot 通过暂存目录发布投影文件，并返回对应的 Docker bind mount。
 func prepareProjectedMountsInRoot(rootDir string, input RunInput) (string, []mount.Mount, error) {
 	projected := projectedfile.CloneFiles(input.ProjectedFiles)
 	if len(projected) == 0 {
@@ -671,7 +604,6 @@ func prepareProjectedMountsInRoot(rootDir string, input RunInput) (string, []mou
 	return executionDir, mounts, nil
 }
 
-// buildContainerEnv 将环境变量 map 转换为 Docker 需要的 KEY=VALUE 列表。
 func buildContainerEnv(env map[string]string) []string {
 	values := make([]string, 0, len(env))
 
@@ -687,7 +619,6 @@ func buildContainerEnv(env map[string]string) []string {
 	return values
 }
 
-// buildMiniCloudLabels 根据执行元数据构造 mini-cloud Docker 标签。
 func buildMiniCloudLabels(input RunInput) map[string]string {
 	labels := map[string]string{
 		dockerLabelManagedBy: "node-agent",
@@ -696,22 +627,15 @@ func buildMiniCloudLabels(input RunInput) map[string]string {
 	addLabel(labels, dockerLabelExecutionID, input.ExecutionID)
 	addLabel(labels, dockerLabelPlanID, input.PlanID)
 	addLabel(labels, dockerLabelServiceID, input.ServiceID)
-	projectionRef := strings.TrimSpace(input.ProjectionRef)
-	if projectionRef == "" {
-		projectionRef = strings.TrimSpace(input.ExecutionID)
-	}
-	addLabel(labels, dockerLabelProjectionRef, projectionRef)
 	return labels
 }
 
-// addLabel 在 value 非空时向标签 map 写入键值。
 func addLabel(labels map[string]string, key string, value string) {
 	if value = strings.TrimSpace(value); value != "" {
 		labels[key] = value
 	}
 }
 
-// resolveContainerCommand 合并 Command 和 Args，得到传给 Docker 的容器命令。
 func resolveContainerCommand(input RunInput) []string {
 	if len(input.Command) > 0 {
 		command := make([]string, 0, len(input.Command)+len(input.Args))
@@ -727,7 +651,6 @@ func resolveContainerCommand(input RunInput) []string {
 	return command
 }
 
-// buildRegistryAuth 将镜像认证信息编码为 Docker RegistryAuth 字符串。
 func buildRegistryAuth(credential *ImageCredential) (string, error) {
 	if credential == nil {
 		return "", nil
@@ -744,7 +667,6 @@ func buildRegistryAuth(credential *ImageCredential) (string, error) {
 	return base64.URLEncoding.EncodeToString(payload), nil
 }
 
-// trackProjectionDir 记录容器和投影文件目录的关系，供后续清理使用。
 func (d *Docker) trackProjectionDir(containerID string, dir string) {
 	if strings.TrimSpace(containerID) == "" || strings.TrimSpace(dir) == "" {
 		return
@@ -757,7 +679,6 @@ func (d *Docker) trackProjectionDir(containerID string, dir string) {
 	}
 }
 
-// removeCreatedContainer 强制删除已创建但启动失败的 Docker 容器。
 func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string) {
 	if strings.TrimSpace(containerID) == "" {
 		return
@@ -772,7 +693,6 @@ func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string)
 	}
 }
 
-// cleanupContainerProjectionDir 清理指定容器已跟踪的投影文件目录。
 func (d *Docker) cleanupContainerProjectionDir(containerID string) {
 	if strings.TrimSpace(containerID) == "" {
 		return
@@ -784,7 +704,6 @@ func (d *Docker) cleanupContainerProjectionDir(containerID string) {
 	d.cleanupProjectionDir(containerID, projection.Dir)
 }
 
-// cleanupTrackedProjectionDirs 清理当前进程内仍被跟踪的全部投影文件目录。
 func (d *Docker) cleanupTrackedProjectionDirs() {
 	d.mu.Lock()
 	items := make(map[string]trackedProjection, len(d.projectionDirs))
@@ -798,7 +717,6 @@ func (d *Docker) cleanupTrackedProjectionDirs() {
 	}
 }
 
-// activeTrackedExecutions 返回当前进程内仍被跟踪的执行 ID 集合。
 func (d *Docker) activeTrackedExecutions() map[string]struct{} {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -811,7 +729,6 @@ func (d *Docker) activeTrackedExecutions() map[string]struct{} {
 	return active
 }
 
-// cleanupProjectionDir 删除指定投影文件目录并记录失败日志。
 func (d *Docker) cleanupProjectionDir(containerID string, dir string) {
 	if strings.TrimSpace(dir) == "" {
 		return
@@ -825,7 +742,6 @@ func (d *Docker) cleanupProjectionDir(containerID string, dir string) {
 	}
 }
 
-// isSafePathSegment 判断字符串是否可安全作为单级路径片段使用。
 func isSafePathSegment(value string) bool {
 	if value == "" || value == "." || value == ".." {
 		return false
@@ -833,17 +749,12 @@ func isSafePathSegment(value string) bool {
 	return !strings.ContainsAny(value, `/\`)
 }
 
-// logLineWriter 将解复用后的单路日志字节流拆分为按行的 LogRecord。
 type logLineWriter struct {
-	// stream 是该 writer 对应的日志流名称。
 	stream string
-	// buffer 保存尚未遇到换行符的半行日志。
 	buffer bytes.Buffer
-	// emit 接收解析完成的日志行。
-	emit LogEmitter
+	emit   LogEmitter
 }
 
-// newLogLineWriter 创建指定日志流的行解析 writer。
 func newLogLineWriter(stream string, emit LogEmitter) *logLineWriter {
 	return &logLineWriter{
 		stream: stream,
@@ -851,7 +762,6 @@ func newLogLineWriter(stream string, emit LogEmitter) *logLineWriter {
 	}
 }
 
-// Write 累积字节并在遇到换行符时发出完整日志行。
 func (w *logLineWriter) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return 0, nil
@@ -870,7 +780,6 @@ func (w *logLineWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Flush 发出缓冲区中最后一行未以换行符结尾的日志。
 func (w *logLineWriter) Flush() {
 	if w.buffer.Len() == 0 {
 		return
@@ -880,7 +789,6 @@ func (w *logLineWriter) Flush() {
 	w.emitLine(line)
 }
 
-// emitLine 解析 Docker 日志时间戳前缀并发出一条 LogRecord。
 func (w *logLineWriter) emitLine(line string) {
 	line = strings.TrimRight(line, "\r")
 	if strings.TrimSpace(line) == "" {

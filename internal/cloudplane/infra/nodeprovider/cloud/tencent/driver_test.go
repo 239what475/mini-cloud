@@ -9,11 +9,8 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 )
 
-// testRuntimeConfig 构造 tencent driver 单测用的 cloud-plane 配置。
-func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
-	// 组装 tencent driver 单测所需的公共配置。
+func testDriverConfig(provider cloudplaneconfig.TencentNodeConfig) cloudplaneconfig.Config {
 	return cloudplaneconfig.Config{
-		// plane/infrastructure/node-agent 字段参与 user-data 和实例归属信息生成。
 		Plane:        cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
 		ControlPlane: cloudplaneconfig.ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
@@ -27,63 +24,56 @@ func testRuntimeConfig(spec map[string]any) cloudplaneconfig.Config {
 		},
 		NodeAgent: cloudplaneconfig.NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
-			BootstrapToken:  "bootstrap-token",
+			Token:           "node-agent-token",
 			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
-		RuntimeProvisioning: cloudplaneconfig.RuntimeProvisioningConfig{
+		NodeProvisioning: cloudplaneconfig.NodeProvisioningConfig{
 			InstanceType:                "S5.MEDIUM4",
 			WorkloadEgressProxyEndpoint: "http://10.0.0.10:3128",
-			ProviderSpec:                spec,
+			Tencent:                     provider,
+		},
+		Observability: cloudplaneconfig.ObservabilityConfig{
+			LokiTenantID: "tenant-a",
 		},
 	}
 }
 
-// TestParseRuntimeConfig 验证 tencent runtime config 解析和默认值填充。
-func TestParseRuntimeConfig(t *testing.T) {
-	// 只提供必填 providerSpec 字段，验证默认系统盘参数会按 driver 规则补齐。
-	spec := map[string]any{
-		"imageId":          "img-123",
-		"vpcId":            "vpc-123",
-		"subnetId":         "subnet-123",
-		"securityGroupIds": []string{"sg-123"},
+func TestNewDriverConfig(t *testing.T) {
+	provider := cloudplaneconfig.TencentNodeConfig{
+		ImageID:          "img-123",
+		VPCID:            "vpc-123",
+		SubnetID:         "subnet-123",
+		SecurityGroupIDs: []string{"sg-123"},
 	}
 
-	// 解析完整 runtime config，得到 tencent provider 的强类型配置。
-	typed, err := ParseRuntimeConfig(testRuntimeConfig(spec))
+	typed, err := newDriverConfig(testDriverConfig(provider))
 	if err != nil {
-		t.Fatalf("ParseRuntimeConfig returned error: %v", err)
+		t.Fatalf("newDriverConfig returned error: %v", err)
 	}
-
-	// 默认值应稳定，避免用户配置文件必须重复声明常规磁盘参数。
-	if typed.ProviderSpec.SystemDiskType != "CLOUD_PREMIUM" {
-		t.Fatalf("SystemDiskType = %q, want CLOUD_PREMIUM", typed.ProviderSpec.SystemDiskType)
+	if typed.Provider.SystemDiskType != "CLOUD_PREMIUM" {
+		t.Fatalf("SystemDiskType = %q, want CLOUD_PREMIUM", typed.Provider.SystemDiskType)
 	}
-	if typed.ProviderSpec.SystemDiskSizeGiB != 50 {
-		t.Fatalf("SystemDiskSizeGiB = %d, want 50", typed.ProviderSpec.SystemDiskSizeGiB)
+	if typed.Provider.SystemDiskSizeGiB != 50 {
+		t.Fatalf("SystemDiskSizeGiB = %d, want 50", typed.Provider.SystemDiskSizeGiB)
 	}
 }
 
-// TestParseRuntimeConfigRequiresTencentFields 验证 tencent provider 必填字段缺失时解析失败。
-func TestParseRuntimeConfigRequiresTencentFields(t *testing.T) {
-	spec := map[string]any{"imageId": "img-123"}
+func TestNewDriverConfigRequiresTencentFields(t *testing.T) {
+	provider := cloudplaneconfig.TencentNodeConfig{ImageID: "img-123"}
 
-	if _, err := ParseRuntimeConfig(testRuntimeConfig(spec)); err == nil {
-		t.Fatalf("expected ParseRuntimeConfig to reject missing provider-specific fields")
+	if _, err := newDriverConfig(testDriverConfig(provider)); err == nil {
+		t.Fatalf("expected newDriverConfig to reject missing provider-specific fields")
 	}
 }
 
-// TestBuildNodeUserDataDoesNotTraceBootstrapToken 验证 tencent user-data 不通过 xtrace 暴露 bootstrap token，并限制配置文件权限。
-func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
+func TestBuildNodeUserDataDoesNotTraceNodeAgentToken(t *testing.T) {
 	t.Parallel()
-
-	// 使用最小 driver 配置构造 user-data，不触发真实腾讯云 SDK 调用。
 	driver := providerDriver{
-		config: RuntimeConfig{
-			CloudPlane: testRuntimeConfig(nil),
+		config: driverConfig{
+			CloudPlane: testDriverConfig(cloudplaneconfig.TencentNodeConfig{}),
 		},
 	}
 
-	// 生成 user-data 后先解 base64，检查脚本内容安全属性。
 	script, err := driver.buildNodeUserData("node-a", instanceTypeCapacity{
 		instanceType: "S5.MEDIUM4",
 		cpuMilli:     2000,
@@ -97,11 +87,9 @@ func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 		t.Fatalf("DecodeString returned error: %v", err)
 	}
 	script = string(decodedScript)
-	// user-data 不能开启 xtrace，否则 bootstrap token 可能出现在 cloud-init 日志。
 	if strings.Contains(script, "set -x") || strings.Contains(script, "set -eux") {
 		t.Fatalf("node user-data enables xtrace")
 	}
-	// node-agent 配置包含 bootstrap token，文件权限必须限制为 owner 可读写。
 	if !strings.Contains(script, "chmod 0600 \"$INSTALL_ROOT/node-agent.yaml\"") {
 		t.Fatalf("node user-data does not restrict node-agent.yaml permissions")
 	}
@@ -111,11 +99,14 @@ func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	if strings.Contains(script, "100.100.100.200") || strings.Contains(script, "X-aliyun-ecs-metadata-token") {
 		t.Fatalf("tencent node user-data contains aliyun metadata flow")
 	}
-	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "docker.service.d/mini-cloud-egress-proxy.conf") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
+	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "HTTP_PROXY=") || strings.Contains(script, "HTTPS_PROXY=") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
 		t.Fatalf("tencent node user-data applies workload proxy to bootstrap, docker daemon, or node-agent process")
 	}
 	if !strings.Contains(script, "endpoint: \"http://10.0.0.10:3128\"") {
 		t.Fatalf("tencent node user-data does not pass workload egress proxy to node-agent config")
+	}
+	if !strings.Contains(script, "workloadLogLokiTenantID: \"tenant-a\"") {
+		t.Fatalf("tencent node user-data does not pass workload log Loki tenant to node-agent config")
 	}
 	cmd := exec.Command("bash", "-n")
 	cmd.Stdin = strings.NewReader(script)
@@ -124,7 +115,6 @@ func TestBuildNodeUserDataDoesNotTraceBootstrapToken(t *testing.T) {
 	}
 }
 
-// TestBuildNodeHostName 验证 tencent node hostname 长度限制。
 func TestBuildNodeHostName(t *testing.T) {
 	got := buildNodeHostName("mini-cloud-node-super-long-host-name-for-tencent-provider-test")
 	if len(got) > 60 {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
+	"mini-cloud/internal/nodeagent/capacity"
 	agentclient "mini-cloud/internal/nodeagent/client"
 	agentconfig "mini-cloud/internal/nodeagent/config"
 	"mini-cloud/internal/nodeagent/runtime"
@@ -19,97 +20,89 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
-	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// TestHandleNodeErrorClearsInMemorySessionOnInvalidNodeSession 验证无效节点会话错误会清除内存 nodeID 和 session token。
-func TestHandleNodeErrorClearsInMemorySessionOnInvalidNodeSession(t *testing.T) {
+func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
 	t.Parallel()
 
-	cases := []struct {
-		// name 是当前表驱动用例名称。
-		name string
-		// code 是模拟控制面返回的 gRPC status code。
-		code codes.Code
-		// message 是模拟控制面返回的错误消息。
-		message string
-	}{
-		{
-			name:    "node not found",
-			code:    codes.NotFound,
-			message: "node not found",
-		},
-		{
-			name:    "invalid session",
-			code:    codes.Unauthenticated,
-			message: "invalid node session token",
-		},
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runner := NewRunner(
+		logger,
+		agentconfig.Config{},
+		agentclient.New(agentclient.Config{}),
+		&stubRuntime{},
+		nil,
+	)
+	runner.nodeID = "node_stale"
+	runner.runtimeResetDone = true
+	runner.handleNodeError("node_stale", &agentclient.ControlError{
+		Operation: "send heartbeat",
+		Code:      codes.NotFound,
+		Message:   "node not found",
+	})
+
+	if runner.nodeID != "" {
+		t.Fatalf("nodeID = %q, want empty after unknown node", runner.nodeID)
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			client := agentclient.New(agentclient.Config{})
-			client.SetSessionToken("mcws_stale_secret")
-			runner := NewRunner(
-				logger,
-				agentconfig.Config{},
-				client,
-				&stubRuntime{},
-				nil,
-			)
-			runner.nodeID = "node_stale"
-			runner.runtimeResetDone = true
-			runner.handleNodeError("node_stale", &agentclient.ControlError{
-				Operation: "send heartbeat",
-				Code:      tc.code,
-				Message:   tc.message,
-			})
-
-			if runner.nodeID != "" {
-				t.Fatalf("nodeID = %q, want empty after invalid session", runner.nodeID)
-			}
-			if runner.runtimeResetDone {
-				t.Fatal("runtimeResetDone = true, want false after invalid session")
-			}
-		})
+	if runner.runtimeResetDone {
+		t.Fatal("runtimeResetDone = true, want false after unknown node")
 	}
 }
 
-// TestTryHeartbeatCycleReRegistersAfterInvalidSession 验证心跳发现会话失效后下一轮会重新注册并重置本地 runtime。
-func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
+func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runner := NewRunner(
+		logger,
+		agentconfig.Config{},
+		agentclient.New(agentclient.Config{}),
+		&stubRuntime{},
+		nil,
+	)
+	runner.nodeID = "node-a"
+	runner.runtimeResetDone = true
+	runner.handleNodeError("node-a", &agentclient.ControlError{
+		Operation: "send heartbeat",
+		Code:      codes.Unauthenticated,
+		Message:   "invalid node agent token",
+	})
+
+	if runner.nodeID != "node-a" {
+		t.Fatalf("nodeID = %q, want node-a", runner.nodeID)
+	}
+	if !runner.runtimeResetDone {
+		t.Fatal("runtimeResetDone = false, want true")
+	}
+}
+
+func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 	t.Parallel()
 
 	var registerCalls int
 	var heartbeatCalls int
-	client := newDaemonTestClient(t, agentclient.Config{BootstrapToken: "bootstrap-secret"}, &nodeAgentTestService{
+	client := newDaemonTestClient(t, agentclient.Config{Token: "node-agent-secret"}, &nodeAgentTestService{
 		registerNode: func(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			registerCalls++
-			if firstIncomingMetadata(ctx, "authorization") != "Bearer bootstrap-secret" {
+			if firstIncomingMetadata(ctx, "authorization") != "Bearer node-agent-secret" {
 				t.Fatalf("unexpected register auth header: %q", firstIncomingMetadata(ctx, "authorization"))
 			}
 			return &nodeagentv1.RegisterNodeResponse{
-				NodeId:         "node-renewed",
-				SessionToken:   "session-new",
-				ObservedStatus: "registering",
-				AcceptedAt:     timestamppb.Now(),
+				NodeId: "node-renewed",
 			}, nil
 		},
 		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 			heartbeatCalls++
 			switch req.GetNodeId() {
 			case "node-stale":
-				return nil, status.Error(codes.Unauthenticated, "invalid node session token")
+				return nil, status.Error(codes.NotFound, "node not found")
 			case "node-renewed":
-				if firstIncomingMetadata(ctx, "authorization") != "Bearer session-new" {
+				if firstIncomingMetadata(ctx, "authorization") != "Bearer node-agent-secret" {
 					t.Fatalf("unexpected renewed heartbeat auth header: %q", firstIncomingMetadata(ctx, "authorization"))
 				}
 				return &nodeagentv1.HeartbeatResponse{
 					NodeId:         "node-renewed",
-					Accepted:       true,
 					ObservedStatus: "ready",
-					ReceivedAt:     timestamppb.Now(),
 				}, nil
 			default:
 				t.Fatalf("unexpected node id: %s", req.GetNodeId())
@@ -117,37 +110,32 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 			}
 		},
 	})
-	client.SetSessionToken("stale-session")
 
 	cfg := agentconfig.Config{
-		ServerURL:      "http://bufconn",
-		BootstrapToken: "bootstrap-secret",
-		RegisterInput: &nodeagentv1.RegisterNodeRequest{
-			Provider:      "aliyun",
-			Region:        "cn-beijing",
-			Name:          "node-a",
-			PrivateIp:     "10.0.0.10",
-			InstanceId:    "i-node-a",
-			InstanceType:  "ecs.u1-c1m1.large",
-			CpuMilliTotal: 2000,
-			MemoryMiTotal: 4096,
+		Server: agentconfig.ServerConfig{URL: "http://bufconn"},
+		Auth:   agentconfig.AuthConfig{Token: "node-agent-secret"},
+		Node: agentconfig.NodeConfig{
+			Provider:     "aliyun",
+			Region:       "cn-beijing",
+			Name:         "node-a",
+			PrivateIP:    "10.0.0.10",
+			InstanceID:   "i-node-a",
+			InstanceType: "ecs.u1-c1m1.large",
 		},
-		AgentVersion:        "test-agent",
-		CPUMilliAllocatable: 2000,
-		MemoryMiAllocatable: 4096,
-		Timeouts: agentconfig.TimeoutsConfig{
-			RuntimeStart: time.Second,
+		ResolvedCapacity: capacity.Resolved{
+			Total:       capacity.Resources{CPUMilli: 2000, MemoryMi: 4096},
+			Allocatable: capacity.Resources{CPUMilli: 2000, MemoryMi: 4096},
 		},
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	containerRuntime := &stubRuntime{runningContainers: 0}
+	containerRuntime := &stubRuntime{}
 	runner := NewRunner(logger, cfg, client, containerRuntime, nil)
 	runner.nodeID = "node-stale"
 	runner.runtimeResetDone = true
 
 	runner.tryHeartbeatCycle(context.Background())
 	if runner.nodeID != "" {
-		t.Fatalf("first heartbeat cycle nodeID = %q, want empty string after invalid session", runner.nodeID)
+		t.Fatalf("first heartbeat cycle nodeID = %q, want empty string after unknown node", runner.nodeID)
 	}
 
 	runner.tryHeartbeatCycle(context.Background())
@@ -165,37 +153,29 @@ func TestTryHeartbeatCycleReRegistersAfterInvalidSession(t *testing.T) {
 	}
 }
 
-// TestRunnerRunUsesInjectedComponents 验证 Runner 使用注入组件完成启动周期。
 func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	t.Parallel()
 
 	var registerCalls int
 	var heartbeatCalls int
 	var pollCalls int
-	var lastHeartbeat *nodeagentv1.HeartbeatRequest
 	heartbeatDone := make(chan struct{})
 	pollDone := make(chan struct{})
 	client := newDaemonTestClient(t, agentclient.Config{}, &nodeAgentTestService{
 		registerNode: func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			registerCalls++
 			return &nodeagentv1.RegisterNodeResponse{
-				NodeId:         "node-injected",
-				SessionToken:   "session-injected",
-				ObservedStatus: "registering",
-				AcceptedAt:     timestamppb.Now(),
+				NodeId: "node-injected",
 			}, nil
 		},
-		recordHeartbeat: func(_ context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
+		recordHeartbeat: func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 			heartbeatCalls++
 			if heartbeatCalls == 1 {
 				close(heartbeatDone)
 			}
-			lastHeartbeat = req
 			return &nodeagentv1.HeartbeatResponse{
 				NodeId:         "node-injected",
-				Accepted:       true,
 				ObservedStatus: "ready",
-				ReceivedAt:     timestamppb.Now(),
 			}, nil
 		},
 		pollWork: func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
@@ -206,30 +186,22 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			return &nodeagentv1.PollWorkResponse{}, nil
 		},
 	})
-	workloadLogs, err := workloadlogs.NewManager(testDaemonLogger(), workloadlogs.Config{}, nil)
+	workloadLogs, err := workloadlogs.NewCollector(testDaemonLogger(), workloadlogs.Config{}, nil)
 	if err != nil {
-		t.Fatalf("workloadlogs.NewManager returned error: %v", err)
+		t.Fatalf("workloadlogs.NewCollector returned error: %v", err)
 	}
 	cfg := agentconfig.Config{
-		RegisterInput: &nodeagentv1.RegisterNodeRequest{
-			Provider:      "aliyun",
-			Region:        "cn-beijing",
-			Name:          "node-injected",
-			PrivateIp:     "127.0.0.1",
-			InstanceId:    "i-node-injected",
-			InstanceType:  "ecs.u1-c1m1.large",
-			CpuMilliTotal: 1000,
-			MemoryMiTotal: 1024,
+		Node: agentconfig.NodeConfig{
+			Provider:     "aliyun",
+			Region:       "cn-beijing",
+			Name:         "node-injected",
+			PrivateIP:    "127.0.0.1",
+			InstanceID:   "i-node-injected",
+			InstanceType: "ecs.u1-c1m1.large",
 		},
-		AgentVersion:        "test-agent",
-		CPUMilliAllocatable: 1000,
-		MemoryMiAllocatable: 1024,
-		HeartbeatInterval:   time.Hour,
-		WorkInterval:        time.Hour,
-		Timeouts: agentconfig.TimeoutsConfig{
-			RuntimeStart: time.Millisecond,
-			PollWork:     time.Second,
-			Report:       time.Second,
+		ResolvedCapacity: capacity.Resolved{
+			Total:       capacity.Resources{CPUMilli: 1000, MemoryMi: 1024},
+			Allocatable: capacity.Resources{CPUMilli: 1000, MemoryMi: 1024},
 		},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -239,7 +211,7 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 			testDaemonLogger(),
 			cfg,
 			client,
-			&stubRuntime{runningContainers: 3},
+			&stubRuntime{},
 			workloadLogs,
 		).Run(ctx)
 	}()
@@ -257,53 +229,36 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 	if heartbeatCalls != 1 {
 		t.Fatalf("heartbeatCalls = %d, want 1", heartbeatCalls)
 	}
-	if lastHeartbeat.GetStatus() != "ready" {
-		t.Fatalf("heartbeat status = %q, want ready", lastHeartbeat.GetStatus())
-	}
 	if pollCalls != 1 {
 		t.Fatalf("pollCalls = %d, want 1", pollCalls)
 	}
 }
 
-// stubRuntime 是 daemon 测试用的最小运行时实现。
 type stubRuntime struct {
-	// runningContainers 是 CountRunning 返回的预设值。
-	runningContainers int
-	// resetNodeIDs 记录 ResetNode 调用收到的 nodeID。
 	resetNodeIDs []string
 }
 
-// testDaemonLogger 返回丢弃输出的 daemon 测试 logger。
 func testDaemonLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// nodeAgentTestService 是 daemon 测试用的 gRPC NodeAgentService。
 type nodeAgentTestService struct {
-	// UnimplementedNodeAgentServiceServer 保持测试服务满足生成代码要求的向前兼容嵌入。
 	nodeagentv1.UnimplementedNodeAgentServiceServer
 
-	// registerNode 覆盖注册节点 RPC 行为。
-	registerNode func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
-	// recordHeartbeat 覆盖心跳 RPC 行为。
+	registerNode    func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
 	recordHeartbeat func(context.Context, *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error)
-	// pollWork 覆盖任务拉取 RPC 行为。
-	pollWork func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error)
-	// reportExecution 覆盖执行上报 RPC 行为。
+	pollWork        func(context.Context, *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error)
 	reportExecution func(context.Context, *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error)
 }
 
-// RegisterNode 转发到测试注入的注册回调。
 func (s *nodeAgentTestService) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 	return s.registerNode(ctx, req)
 }
 
-// RecordHeartbeat 转发到测试注入的心跳回调。
 func (s *nodeAgentTestService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 	return s.recordHeartbeat(ctx, req)
 }
 
-// PollWork 转发到测试注入的任务拉取回调。
 func (s *nodeAgentTestService) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 	if s.pollWork != nil {
 		return s.pollWork(ctx, req)
@@ -311,7 +266,6 @@ func (s *nodeAgentTestService) PollWork(ctx context.Context, req *nodeagentv1.Po
 	return &nodeagentv1.PollWorkResponse{}, nil
 }
 
-// ReportExecution 转发到测试注入的执行上报回调。
 func (s *nodeAgentTestService) ReportExecution(ctx context.Context, req *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	if s.reportExecution != nil {
 		return s.reportExecution(ctx, req)
@@ -342,7 +296,6 @@ func newDaemonTestClient(t *testing.T, cfg agentclient.Config, server nodeagentv
 	return agentclient.New(cfg)
 }
 
-// firstIncomingMetadata 返回入站 gRPC metadata 中指定 key 的第一个值。
 func firstIncomingMetadata(ctx context.Context, key string) string {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
@@ -366,43 +319,31 @@ func waitForTestSignal(t *testing.T, signal <-chan struct{}, cancel context.Canc
 	}
 }
 
-// Run 实现测试用运行时启动接口。
 func (s *stubRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
 	return runtime.RunResult{}, nil
 }
 
-// Stop 实现测试用运行时停止接口。
 func (s *stubRuntime) Stop(context.Context, string) error {
 	return nil
 }
 
-// Logs 实现测试用运行时日志接口。
 func (s *stubRuntime) Logs(context.Context, string, int) (string, error) {
 	return "", nil
 }
 
-// CountRunning 返回预设的运行中容器数量。
-func (s *stubRuntime) CountRunning(context.Context) (int, error) {
-	return s.runningContainers, nil
-}
-
-// ResetNode 记录测试中的节点 runtime reset 调用。
 func (s *stubRuntime) ResetNode(_ context.Context, nodeID string) error {
 	s.resetNodeIDs = append(s.resetNodeIDs, nodeID)
 	return nil
 }
 
-// StreamLogs 实现测试用日志跟随接口。
 func (s *stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
 	return nil
 }
 
-// GarbageCollect 实现测试用运行时垃圾回收接口。
 func (s *stubRuntime) GarbageCollect(context.Context) error {
 	return nil
 }
 
-// Close 实现测试用运行时关闭接口。
 func (s *stubRuntime) Close() error {
 	return nil
 }

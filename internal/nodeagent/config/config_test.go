@@ -3,11 +3,10 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
-	"time"
 )
 
-// TestLoadNodeAgentConfig 验证显式 YAML 字段和默认值会共同归一化为 daemon 配置。
 func TestLoadNodeAgentConfig(t *testing.T) {
 	t.Parallel()
 
@@ -15,7 +14,7 @@ func TestLoadNodeAgentConfig(t *testing.T) {
 	data := []byte(`server:
   url: http://127.0.0.1:18081
 auth:
-  bootstrapToken: bootstrap-secret
+  token: node-agent-secret
 platform:
   name: aliyun-plane
 node:
@@ -23,36 +22,19 @@ node:
   region: cn-beijing
   name: aliyun-node-a
   privateIP: 127.0.0.1
-  publicIP: 127.0.0.1
   instanceID: aliyun-node-a
   instanceType: ecs.u1-c1m1.large
 capacity:
   total:
     cpuMilli: 4000
     memoryMi: 8192
-  systemReserved:
-    cpuMilli: 500
-    memoryMi: 1024
-  agentReserved:
-    cpuMilli: 250
-    memoryMi: 256
-  evictionReserved:
-    memoryMi: 512
-agent:
-  version: test-version
-  heartbeatInterval: 10s
-  workInterval: 3s
-runtime:
-  type: docker
-  hostPortRange:
-    min: 31000
-    max: 31999
-work:
-  readinessAttempts: 4
-  readinessInterval: 250ms
-  readinessTimeout: 500ms
-  runtimeTimeout: 30s
-  logTail: 12
+network:
+  egressProxy:
+    endpoint: http://10.1.0.6:3128
+    noProxy:
+      - 127.0.0.1
+      - "  "
+      - 10.0.0.0/8
 observability:
   workloadLogLokiURL: http://127.0.0.1:3100
   workloadLogLokiTenantID: tenant-a
@@ -67,42 +49,32 @@ observability:
 		t.Fatalf("Load returned error: %v", err)
 	}
 
-	if cfg.ServerURL != "http://127.0.0.1:18081" {
-		t.Fatalf("ServerURL = %q", cfg.ServerURL)
+	if cfg.Server.URL != "http://127.0.0.1:18081" {
+		t.Fatalf("server.url = %q", cfg.Server.URL)
 	}
-	if cfg.BootstrapToken != "bootstrap-secret" {
-		t.Fatalf("BootstrapToken = %q", cfg.BootstrapToken)
+	if cfg.Auth.Token != "node-agent-secret" {
+		t.Fatalf("auth.token = %q", cfg.Auth.Token)
 	}
-	if cfg.RegisterInput.GetProvider() != "aliyun" || cfg.RegisterInput.GetInstanceId() != "aliyun-node-a" {
-		t.Fatalf("RegisterInput = %+v", cfg.RegisterInput)
+	if cfg.Node.Provider != "aliyun" || cfg.Node.InstanceID != "aliyun-node-a" {
+		t.Fatalf("node config = %+v", cfg.Node)
 	}
-	if cfg.CPUMilliAllocatable != 3250 {
-		t.Fatalf("CPUMilliAllocatable = %d, want 3250", cfg.CPUMilliAllocatable)
+	if cfg.ResolvedCapacity.Allocatable.CPUMilli != 3800 {
+		t.Fatalf("allocatable cpuMilli = %d, want 3800", cfg.ResolvedCapacity.Allocatable.CPUMilli)
 	}
-	if cfg.MemoryMiAllocatable != 6400 {
-		t.Fatalf("MemoryMiAllocatable = %d, want 6400", cfg.MemoryMiAllocatable)
+	if cfg.ResolvedCapacity.Allocatable.MemoryMi != 7424 {
+		t.Fatalf("allocatable memoryMi = %d, want 7424", cfg.ResolvedCapacity.Allocatable.MemoryMi)
 	}
-	if cfg.AgentVersion != "test-version" {
-		t.Fatalf("agent version = %q", cfg.AgentVersion)
+	if cfg.Network.EgressProxy.Endpoint != "http://10.1.0.6:3128" {
+		t.Fatalf("egress proxy = %+v", cfg.Network.EgressProxy)
 	}
-	if cfg.HeartbeatInterval != 10*time.Second || cfg.WorkInterval != 3*time.Second {
-		t.Fatalf("intervals = %s/%s", cfg.HeartbeatInterval, cfg.WorkInterval)
+	if len(cfg.Network.EgressProxy.NoProxy) != 2 {
+		t.Fatalf("egress proxy noProxy = %+v", cfg.Network.EgressProxy.NoProxy)
 	}
-	if cfg.Runtime.Type != "docker" {
-		t.Fatalf("runtime type = %q, want docker", cfg.Runtime.Type)
-	}
-	if cfg.Runtime.HostPortMin != 31000 || cfg.Runtime.HostPortMax != 31999 {
-		t.Fatalf("runtime hostPortRange = %d-%d, want 31000-31999", cfg.Runtime.HostPortMin, cfg.Runtime.HostPortMax)
-	}
-	if cfg.Work.ReadinessAttempts != 4 || cfg.Work.ReadinessInterval != 250*time.Millisecond {
-		t.Fatalf("work options = %+v", cfg.Work)
-	}
-	if cfg.WorkloadLogLokiURL != "http://127.0.0.1:3100" || cfg.WorkloadLogLokiTenant != "tenant-a" {
-		t.Fatalf("log config = %q/%q", cfg.WorkloadLogLokiURL, cfg.WorkloadLogLokiTenant)
+	if cfg.Observability.WorkloadLogLokiURL != "http://127.0.0.1:3100" || cfg.Observability.WorkloadLogLokiTenantID != "tenant-a" {
+		t.Fatalf("log config = %q/%q", cfg.Observability.WorkloadLogLokiURL, cfg.Observability.WorkloadLogLokiTenantID)
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsUnknownFields 验证严格 YAML 解码会拒绝未知字段。
 func TestLoadNodeAgentConfigRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
@@ -120,71 +92,36 @@ unknown: true
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsOldCapacityFields 验证旧 capacity 字段不再被兼容接受。
-func TestLoadNodeAgentConfigRejectsOldCapacityFields(t *testing.T) {
+func TestLoadNodeAgentConfigRequiresPath(t *testing.T) {
 	t.Parallel()
 
-	path := writeNodeAgentConfigForTest(t, `server:
-  url: http://127.0.0.1:18081
-auth:
-  bootstrapToken: bootstrap-secret
-node:
-  region: cn-beijing
-  name: aliyun-node-a
-  privateIP: 127.0.0.1
-  instanceID: aliyun-node-a
-  instanceType: ecs.u1-c1m1.large
-capacity:
-  cpuMilliCapacity: 4000
-  memoryMiCapacity: 8192
-  cpuMilliReserve: 500
-  memoryMiReserve: 1024
-  cpuMilliAllocatable: 3000
-  memoryMiAllocatable: 6000
-`)
-
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load returned nil error for old capacity fields")
+	if _, err := Load(" "); err == nil || !strings.Contains(err.Error(), "node-agent config path is empty") {
+		t.Fatalf("Load error = %v, want empty path error", err)
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsOldHealthFields 验证旧 health 命名的 work 字段不再被兼容接受。
-func TestLoadNodeAgentConfigRejectsOldHealthFields(t *testing.T) {
+func TestLoadNodeAgentConfigRejectsInternalTuningBlocks(t *testing.T) {
 	t.Parallel()
 
-	path := writeNodeAgentConfigForTest(t, `server:
+	for _, block := range []string{
+		`agent:
+  version: test-version
+`,
+		`runtime:
+  type: docker
+`,
+		`work:
+  readinessAttempts: 4
+`,
+	} {
+		block := block
+		t.Run(strings.Split(block, ":")[0], func(t *testing.T) {
+			t.Parallel()
+
+			path := writeNodeAgentConfigForTest(t, `server:
   url: http://127.0.0.1:18081
 auth:
-  bootstrapToken: bootstrap-secret
-node:
-  region: cn-beijing
-  name: aliyun-node-a
-  privateIP: 127.0.0.1
-  instanceID: aliyun-node-a
-  instanceType: ecs.u1-c1m1.large
-capacity:
-  total:
-    cpuMilli: 4000
-    memoryMi: 8192
-work:
-  healthAttempts: 4
-  healthInterval: 250ms
-  healthTimeout: 500ms
-`)
-
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load returned nil error for old health work fields")
-	}
-}
-
-// TestLoadNodeAgentConfigRejectsAgentStatus 验证节点运行态不再允许从配置文件声明。
-func TestLoadNodeAgentConfigRejectsAgentStatus(t *testing.T) {
-	t.Parallel()
-
-	path := writeNodeAgentConfigForTest(t, `server:
-  url: http://127.0.0.1:18081
-auth:
-  bootstrapToken: bootstrap-secret
+  token: node-agent-secret
 node:
   region: cn-beijing
   name: aliyun-node-a
@@ -195,21 +132,48 @@ capacity:
   total:
     cpuMilli: 4000
     memoryMi: 8192
-agent:
-  status: ready
-`)
+`+block)
 
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load returned nil error for agent.status")
+			if _, err := Load(path); err == nil {
+				t.Fatalf("Load returned nil error for %s block", strings.Split(block, ":")[0])
+			}
+		})
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsMissingServerURL 验证 server.url 必填。
+func TestLoadNodeAgentConfigRejectsCapacityReservationFields(t *testing.T) {
+	t.Parallel()
+
+	path := writeNodeAgentConfigForTest(t, `server:
+  url: http://127.0.0.1:18081
+auth:
+  token: node-agent-secret
+node:
+  provider: aliyun
+  region: cn-beijing
+  name: aliyun-node-a
+  privateIP: 127.0.0.1
+  instanceID: aliyun-node-a
+  instanceType: ecs.u1-c1m1.large
+capacity:
+  total:
+    cpuMilli: 4000
+    memoryMi: 8192
+  agentReserved:
+    cpuMilli: 250
+    memoryMi: 256
+`)
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load returned nil error for capacity.agentReserved")
+	}
+}
+
 func TestLoadNodeAgentConfigRejectsMissingServerURL(t *testing.T) {
 	t.Parallel()
 
 	path := writeNodeAgentConfigForTest(t, `auth:
-  bootstrapToken: bootstrap-secret
+  token: node-agent-secret
 node:
   region: cn-beijing
   name: aliyun-node-a
@@ -227,8 +191,7 @@ capacity:
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsMissingBootstrapToken 验证 auth.bootstrapToken 必填。
-func TestLoadNodeAgentConfigRejectsMissingBootstrapToken(t *testing.T) {
+func TestLoadNodeAgentConfigRejectsMissingToken(t *testing.T) {
 	t.Parallel()
 
 	path := writeNodeAgentConfigForTest(t, `server:
@@ -246,11 +209,10 @@ capacity:
 `)
 
 	if _, err := Load(path); err == nil {
-		t.Fatal("Load returned nil error for missing auth.bootstrapToken")
+		t.Fatal("Load returned nil error for missing auth.token")
 	}
 }
 
-// TestLoadNodeAgentConfigRejectsInvalidServerURL 验证 server.url 必须是明文 gRPC endpoint。
 func TestLoadNodeAgentConfigRejectsInvalidServerURL(t *testing.T) {
 	t.Parallel()
 
@@ -262,7 +224,7 @@ func TestLoadNodeAgentConfigRejectsInvalidServerURL(t *testing.T) {
 			path := writeNodeAgentConfigForTest(t, `server:
   url: `+rawURL+`
 auth:
-  bootstrapToken: bootstrap-secret
+  token: node-agent-secret
 node:
   region: cn-beijing
   name: aliyun-node-a
@@ -282,7 +244,6 @@ capacity:
 	}
 }
 
-// writeNodeAgentConfigForTest 为 config 测试写入临时 node-agent YAML 配置。
 func writeNodeAgentConfigForTest(t *testing.T, data string) string {
 	t.Helper()
 

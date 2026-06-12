@@ -21,7 +21,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// TestExecuteNextReturnsNoWorkWhenPollIsEmpty 验证没有任务时状态机返回无工作结果。
 func TestExecuteNextReturnsNoWorkWhenPollIsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -34,7 +33,6 @@ func TestExecuteNextReturnsNoWorkWhenPollIsEmpty(t *testing.T) {
 	}
 }
 
-// TestExecuteNextReportsFailedWhenRuntimeStartFails 验证容器启动失败会向控制面上报 failed。
 func TestExecuteNextReportsFailedWhenRuntimeStartFails(t *testing.T) {
 	t.Parallel()
 
@@ -61,7 +59,6 @@ func TestExecuteNextReportsFailedWhenRuntimeStartFails(t *testing.T) {
 	}
 }
 
-// TestExecuteNextReportsRunningWhenReadinessPasses 验证容器启动后启动日志采集，readiness 探测通过后上报 running。
 func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	t.Parallel()
 
@@ -71,14 +68,13 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 	opts := testOptions()
 	opts.Observability.WorkloadLogs = workloadLogs.Start
-	opts.ReadinessWaiter = readinessWaiter
 	containerRuntime := &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
 		ContainerName: "svc-web-0",
 		HostPort:      32080,
 	}}
 
-	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
+	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
 	if err != nil {
 		t.Fatalf("ExecuteNext returned error: %v", err)
 	}
@@ -106,7 +102,6 @@ func TestExecuteNextReportsRunningWhenReadinessPasses(t *testing.T) {
 	}
 }
 
-// TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails 验证 readiness 探测失败后会停止容器并上报 failed。
 func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 	t.Parallel()
 
@@ -121,14 +116,14 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 		logs: "workload boot failed",
 	}
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{
+	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{
 		URL: "http://127.0.0.1:32080/healthz",
 		Observations: []ReadinessObservation{
 			{Attempt: 1, StatusCode: http.StatusInternalServerError, Error: "unexpected status 500"},
 		},
 	}}
 
-	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
+	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure", err)
 	}
@@ -143,7 +138,6 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 	}
 }
 
-// TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails 验证旧容器停止失败时会清理新容器并上报 failed。
 func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *testing.T) {
 	t.Parallel()
 
@@ -166,9 +160,9 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 		},
 	}
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
+	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 
-	result, err := ExecuteNext(context.Background(), testLogger(), client, containerRuntime, opts)
+	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
 	if err == nil || !strings.Contains(err.Error(), "stopping superseded container") {
 		t.Fatalf("ExecuteNext error = %v, want superseded stop failure", err)
 	}
@@ -183,8 +177,7 @@ func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *tes
 	}
 }
 
-// TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded 验证 delete work 只停止已有容器并上报 superseded。
-func TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded(t *testing.T) {
+func TestExecuteNextDeleteWorkStopsContainerAndReportsSucceeded(t *testing.T) {
 	t.Parallel()
 
 	item := testWorkItem()
@@ -200,18 +193,17 @@ func TestExecuteNextDeleteWorkStopsContainerAndReportsSuperseded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteNext returned error: %v", err)
 	}
-	if result.Phase != PhaseDeleteReported {
-		t.Fatalf("phase = %q, want %q", result.Phase, PhaseDeleteReported)
+	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusSucceeded {
+		t.Fatalf("result.Report = %+v, want succeeded report", result.Report)
 	}
 	if len(containerRuntime.stops) != 1 || containerRuntime.stops[0] != "container-old" {
 		t.Fatalf("stopped containers = %v, want [container-old]", containerRuntime.stops)
 	}
-	if len(recorder.reports) != 1 || recorder.reports[0].GetStatus() != executionStatusSuperseded {
-		t.Fatalf("reports = %+v, want superseded report", recorder.reports)
+	if len(recorder.reports) != 1 || recorder.reports[0].GetStatus() != executionStatusSucceeded {
+		t.Fatalf("reports = %+v, want succeeded report", recorder.reports)
 	}
 }
 
-// TestExecuteNextReturnsReportError 验证执行结果上报失败会返回错误。
 func TestExecuteNextReturnsReportError(t *testing.T) {
 	t.Parallel()
 
@@ -220,19 +212,18 @@ func TestExecuteNextReturnsReportError(t *testing.T) {
 		reportErr: errors.New("control plane unavailable"),
 	})
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
+	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
 
-	_, err := ExecuteNext(context.Background(), testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
+	_, err := executeNext(context.Background(), testLogger(), client, &fakeRuntime{runResult: runtime.RunResult{
 		ContainerID:   "container-new",
 		ContainerName: "svc-web-0",
 		HostPort:      32080,
-	}}, opts)
+	}}, opts, readinessWaiter)
 	if err == nil || !strings.Contains(err.Error(), "report running execution") {
 		t.Fatalf("ExecuteNext error = %v, want report running error", err)
 	}
 }
 
-// TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness 验证 readiness 探测期间上下文取消后仍会清理并上报失败。
 func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *testing.T) {
 	t.Parallel()
 
@@ -240,7 +231,7 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	recorder := &workTestRecorder{item: testWorkItem()}
 	client := newWorkTestClient(t, recorder)
 	opts := testOptions()
-	opts.ReadinessWaiter = &fakeReadinessWaiter{beforeWait: cancel, result: ReadinessResult{
+	readinessWaiter := &fakeReadinessWaiter{beforeWait: cancel, result: ReadinessResult{
 		URL: "http://127.0.0.1:32080/healthz",
 		Observations: []ReadinessObservation{
 			{Attempt: 1, Error: context.Canceled.Error()},
@@ -252,7 +243,7 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 		HostPort:      32080,
 	}}
 
-	result, err := ExecuteNext(ctx, testLogger(), client, containerRuntime, opts)
+	result, err := executeNext(ctx, testLogger(), client, containerRuntime, opts, readinessWaiter)
 	if err == nil || !strings.Contains(err.Error(), "readiness check never passed") {
 		t.Fatalf("ExecuteNext error = %v, want readiness failure after cancellation", err)
 	}
@@ -264,11 +255,10 @@ func TestExecuteNextCleansUpAndReportsAfterContextCanceledDuringReadiness(t *tes
 	}
 }
 
-// TestBuildFailedExecutionReasonIncludesUsefulContext 验证失败原因包含 readiness 探测、日志和清理错误上下文。
 func TestBuildFailedExecutionReasonIncludesUsefulContext(t *testing.T) {
 	t.Parallel()
 
-	reason := BuildFailedExecutionReason(ReadinessResult{
+	reason := buildFailedExecutionReason(ReadinessResult{
 		URL: "http://127.0.0.1:32774/",
 		Observations: []ReadinessObservation{
 			{
@@ -293,12 +283,10 @@ func TestBuildFailedExecutionReasonIncludesUsefulContext(t *testing.T) {
 	}
 }
 
-// testLogger 返回丢弃输出的测试 logger。
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// testOptions 返回执行状态机测试使用的基础选项。
 func testOptions() Options {
 	return Options{
 		Node: NodeOptions{
@@ -319,9 +307,9 @@ func testOptions() Options {
 	}
 }
 
-// testWorkItem 返回执行状态机测试使用的基础任务。
 func testWorkItem() *nodeagentv1.WorkItem {
 	return &nodeagentv1.WorkItem{
+		Action:        workActionRun,
 		ExecutionId:   "exec-new",
 		PlanId:        "plan-a",
 		NodeId:        "node-a",
@@ -396,38 +384,25 @@ func protoReportAck(executionID string, status string) *nodeagentv1.ReportExecut
 	}
 }
 
-// workTestRecorder 记录执行状态机测试里的控制面交互。
 type workTestRecorder struct {
-	// item 是 PollExecutionWork 返回的预设任务。
-	item *nodeagentv1.WorkItem
-	// pollErr 是 PollExecutionWork 返回的预设错误。
-	pollErr error
-	// reportErr 是 ReportExecution 返回的预设错误。
+	item      *nodeagentv1.WorkItem
+	pollErr   error
 	reportErr error
-	// reports 记录所有执行结果上报请求。
-	reports []*nodeagentv1.ReportExecutionRequest
+	reports   []*nodeagentv1.ReportExecutionRequest
 }
 
-// fakeRuntime 是执行状态机测试用的容器运行时。
 type fakeRuntime struct {
-	// runResult 是 Run 返回的预设结果。
-	runResult runtime.RunResult
-	// runErr 是 Run 返回的预设错误。
-	runErr error
-	// logs 是 Logs 返回的预设日志文本。
-	logs string
-	// stops 记录 Stop 调用收到的容器 ID。
-	stops []string
-	// stopErrByID 按容器 ID 配置 Stop 返回的错误。
+	runResult   runtime.RunResult
+	runErr      error
+	logs        string
+	stops       []string
 	stopErrByID map[string]error
 }
 
-// Run 返回预设的运行时启动结果或错误。
 func (f *fakeRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
 	return f.runResult, f.runErr
 }
 
-// Stop 记录停止的容器 ID，并按容器 ID 返回预设错误。
 func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 	f.stops = append(f.stops, containerID)
 	if f.stopErrByID == nil {
@@ -436,42 +411,16 @@ func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 	return f.stopErrByID[containerID]
 }
 
-// Logs 返回预设的容器日志文本。
 func (f *fakeRuntime) Logs(context.Context, string, int) (string, error) {
 	return f.logs, nil
 }
 
-func (f *fakeRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) error {
-	return nil
-}
-
-func (f *fakeRuntime) CountRunning(context.Context) (int, error) {
-	return 0, nil
-}
-
-func (f *fakeRuntime) ResetNode(context.Context, string) error {
-	return nil
-}
-
-func (f *fakeRuntime) GarbageCollect(context.Context) error {
-	return nil
-}
-
-func (f *fakeRuntime) Close() error {
-	return nil
-}
-
-// fakeReadinessWaiter 是执行状态机测试用的 readiness 探测器。
 type fakeReadinessWaiter struct {
-	// result 是 Wait 返回的预设 readiness 探测结果。
-	result ReadinessResult
-	// beforeWait 是返回结果前执行的测试钩子。
+	result     ReadinessResult
 	beforeWait func()
-	// urls 记录 Wait 收到的 readiness URL。
-	urls []string
+	urls       []string
 }
 
-// Wait 记录 readiness 配置，并返回预设结果。
 func (f *fakeReadinessWaiter) Wait(_ context.Context, cfg ReadinessConfig) ReadinessResult {
 	f.urls = append(f.urls, cfg.URL)
 	if f.beforeWait != nil {
@@ -483,23 +432,19 @@ func (f *fakeReadinessWaiter) Wait(_ context.Context, cfg ReadinessConfig) Readi
 	return f.result
 }
 
-// fakeWorkloadLogs 是执行状态机测试用的工作负载日志启动器。
 type fakeWorkloadLogs struct {
-	// starts 记录所有日志采集启动请求。
 	starts []workloadlogs.StartRequest
 }
 
-// Start 记录日志采集启动请求。
 func (f *fakeWorkloadLogs) Start(req workloadlogs.StartRequest) {
 	f.starts = append(f.starts, req)
 }
 
-// TestTruncateReasonLimitsLength 验证失败原因会被裁剪到固定长度。
 func TestTruncateReasonLimitsLength(t *testing.T) {
 	t.Parallel()
 
 	value := strings.Repeat("a", 500)
-	got := TruncateReason(value)
+	got := truncateReason(value)
 
 	if len(got) != 400 {
 		t.Fatalf("TruncateReason length = %d, want 400", len(got))

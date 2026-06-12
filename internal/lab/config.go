@@ -45,6 +45,7 @@ type ControlPlane struct {
 type Plane struct {
 	Name           string          `yaml:"name"`
 	Provider       string          `yaml:"provider"`
+	Region         string          `yaml:"region"`
 	SSH            SSHConfig       `yaml:"ssh"`
 	Terraform      TerraformConfig `yaml:"terraform"`
 	RegistryMirror string          `yaml:"registryMirror"`
@@ -65,7 +66,7 @@ type BinaryConfig struct {
 type TokenConfig struct {
 	ControlPlaneAdmin      string `yaml:"controlPlaneAdmin"`
 	ControlPlaneSouthbound string `yaml:"controlPlaneSouthbound"`
-	NodeAgentBootstrap     string `yaml:"nodeAgentBootstrap"`
+	NodeAgent              string `yaml:"nodeAgent"`
 }
 
 type ProviderConfig struct {
@@ -113,17 +114,18 @@ func (c *Config) applyDefaults() {
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")
 	c.Binaries.NodeAgent = defaultString(c.Binaries.NodeAgent, "dist/release/linux-amd64/node-agent")
 
-	c.Provider.TencentCredentialFile = defaultString(c.Provider.TencentCredentialFile, filepath.Join(os.Getenv("HOME"), ".tccli/default.credential"))
+	c.Provider.TencentCredentialFile = defaultString(c.Provider.TencentCredentialFile, "~/.tccli/default.credential")
 	c.Provider.TencentCredentialFile = expandHome(c.Provider.TencentCredentialFile)
 
 	c.Tokens.ControlPlaneAdmin = strings.TrimSpace(c.Tokens.ControlPlaneAdmin)
 	c.Tokens.ControlPlaneSouthbound = strings.TrimSpace(c.Tokens.ControlPlaneSouthbound)
-	c.Tokens.NodeAgentBootstrap = strings.TrimSpace(c.Tokens.NodeAgentBootstrap)
+	c.Tokens.NodeAgent = strings.TrimSpace(c.Tokens.NodeAgent)
 
 	for i := range c.Planes {
 		plane := &c.Planes[i]
 		plane.Name = strings.TrimSpace(plane.Name)
 		plane.Provider = strings.ToLower(strings.TrimSpace(plane.Provider))
+		plane.Region = strings.TrimSpace(plane.Region)
 		plane.RegistryMirror = strings.TrimSpace(plane.RegistryMirror)
 		plane.SSH.applyDefaults(c.SSH)
 		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/lab")
@@ -140,11 +142,15 @@ func (c *Config) applyDefaults() {
 
 func expandHome(path string) string {
 	path = strings.TrimSpace(path)
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
 	if path == "~" {
-		return os.Getenv("HOME")
+		return home
 	}
 	if strings.HasPrefix(path, "~/") {
-		return filepath.Join(os.Getenv("HOME"), strings.TrimPrefix(path, "~/"))
+		return filepath.Join(home, strings.TrimPrefix(path, "~/"))
 	}
 	return path
 }
@@ -195,6 +201,9 @@ func (c Config) validateBase() error {
 		if plane.Provider != "aliyun" && plane.Provider != "tencent" {
 			return fmt.Errorf("plane %q provider must be aliyun or tencent", plane.Name)
 		}
+		if strings.TrimSpace(plane.Region) == "" {
+			return fmt.Errorf("plane %q region is required", plane.Name)
+		}
 		if strings.TrimSpace(plane.SSH.Host) == "" {
 			return fmt.Errorf("plane %q ssh.host is required", plane.Name)
 		}
@@ -222,8 +231,8 @@ func (c Config) validateInstall() error {
 	if strings.TrimSpace(c.Tokens.ControlPlaneSouthbound) == "" {
 		return fmt.Errorf("tokens.controlPlaneSouthbound is required")
 	}
-	if strings.TrimSpace(c.Tokens.NodeAgentBootstrap) == "" {
-		return fmt.Errorf("tokens.nodeAgentBootstrap is required")
+	if strings.TrimSpace(c.Tokens.NodeAgent) == "" {
+		return fmt.Errorf("tokens.nodeAgent is required")
 	}
 	if err := requireFile(c.Binaries.ControlPlane); err != nil {
 		return err

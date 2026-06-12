@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,46 +13,31 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T) {
+func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 
 	createdPlane, err := db.Store.RegisterPlane(context.Background(), controlplanestore.RegisterPlaneInput{
-		Name:            "aliyun-bj-primary",
-		DisplayName:     "Aliyun Beijing Primary",
-		Provider:        "aliyun",
-		Region:          "cn-beijing",
-		GRPCEndpoint:    "plane-a.example.com:443",
-		SouthboundToken: "plane-southbound-secret",
+		Name:         "aliyun-bj-primary",
+		DisplayName:  "Aliyun Beijing Primary",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "plane-a.example.com:443",
 	})
 	if err != nil {
 		t.Fatalf("RegisterPlane returned error: %v", err)
 	}
-	if createdPlane.Status.Status != model.StatusRegistering {
-		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, model.StatusRegistering)
+	if createdPlane.Status.Status != model.StatusSyncing {
+		t.Fatalf("initial plane status = %v, want %v", createdPlane.Status.Status, model.StatusSyncing)
 	}
 	if createdPlane.GRPCEndpoint != "plane-a.example.com:443" {
 		t.Fatalf("plane grpcEndpoint = %q", createdPlane.GRPCEndpoint)
 	}
-	if !createdPlane.Registration.Registered {
-		t.Fatalf("expected created plane to have southbound token registration")
-	}
-	verifiedAt := time.Now().UTC().Truncate(time.Second)
-	if err := db.Store.MarkPlaneSouthboundTokenVerified(context.Background(), createdPlane.ID, verifiedAt); err != nil {
-		t.Fatalf("MarkPlaneSouthboundTokenVerified returned error: %v", err)
-	}
-	token, err := db.Store.GetPlaneSouthboundToken(context.Background(), createdPlane.ID)
+	planeIDs, err := db.Store.ListPlaneIDs(context.Background())
 	if err != nil {
-		t.Fatalf("GetPlaneSouthboundToken returned error: %v", err)
+		t.Fatalf("ListPlaneIDs returned error: %v", err)
 	}
-	if token != "plane-southbound-secret" {
-		t.Fatalf("southbound token = %q, want plane-southbound-secret", token)
-	}
-	registeredPlaneIDs, err := db.Store.ListRegisteredPlaneIDs(context.Background())
-	if err != nil {
-		t.Fatalf("ListRegisteredPlaneIDs returned error: %v", err)
-	}
-	if len(registeredPlaneIDs) != 1 || registeredPlaneIDs[0] != createdPlane.ID {
-		t.Fatalf("unexpected registered plane ids: %+v", registeredPlaneIDs)
+	if len(planeIDs) != 1 || planeIDs[0] != createdPlane.ID {
+		t.Fatalf("unexpected plane ids: %+v", planeIDs)
 	}
 
 	if err := db.Store.UpdatePlaneStatus(context.Background(), createdPlane.ID, controlplanestore.UpdatePlaneStatusInput{
@@ -67,11 +53,7 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if gotPlane.Status.Status != model.StatusReady {
 		t.Fatalf("GetPlane status = %v, want ready", gotPlane.Status.Status)
 	}
-	if !gotPlane.Registration.Registered || gotPlane.Registration.LastVerifiedAt == nil {
-		t.Fatalf("expected plane registration metadata to be populated, got %+v", gotPlane.Registration)
-	}
-	if err := db.Store.ReplacePlaneRuntimeInventory(context.Background(), createdPlane.ID, controlplanestore.RecordRuntimeInventoryInput{
-		SyncVersion:       7,
+	if err := db.Store.ReplacePlaneNodeInventory(context.Background(), createdPlane.ID, controlplanestore.RecordNodeInventoryInput{
 		ObservedAt:        time.Now().UTC(),
 		NodesTotal:        2,
 		NodesReady:        2,
@@ -112,17 +94,14 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 			},
 		},
 	}); err != nil {
-		t.Fatalf("ReplacePlaneRuntimeInventory returned error: %v", err)
+		t.Fatalf("ReplacePlaneNodeInventory returned error: %v", err)
 	}
 	gotPlane, err = db.Store.GetPlane(context.Background(), createdPlane.ID)
 	if err != nil {
-		t.Fatalf("GetPlane(after runtime inventory) returned error: %v", err)
+		t.Fatalf("GetPlane(after node inventory) returned error: %v", err)
 	}
-	if gotPlane.LatestRuntimeInventory == nil {
-		t.Fatalf("expected latest runtime inventory to be populated")
-	}
-	if gotPlane.LatestRuntimeInventory.SyncVersion != 7 {
-		t.Fatalf("latest runtime inventory syncVersion = %d, want 7", gotPlane.LatestRuntimeInventory.SyncVersion)
+	if gotPlane.LatestNodeInventory == nil {
+		t.Fatalf("expected latest node inventory to be populated")
 	}
 
 	listedPlanes, err := db.Store.ListPlanes(context.Background())
@@ -132,8 +111,8 @@ func TestIntegrationPlaneStatusCapacityAndRuntimeInventoryLifecycle(t *testing.T
 	if len(listedPlanes) != 1 {
 		t.Fatalf("expected 1 plane, got %d", len(listedPlanes))
 	}
-	if listedPlanes[0].LatestRuntimeInventory == nil {
-		t.Fatalf("expected listed plane runtime inventory to be populated")
+	if listedPlanes[0].LatestNodeInventory == nil {
+		t.Fatalf("expected listed plane node inventory to be populated")
 	}
 
 	if err := db.Store.DeletePlane(context.Background(), createdPlane.ID); err != nil {
@@ -148,12 +127,11 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
-		Name:            "service-plane",
-		DisplayName:     "Service Plane",
-		Provider:        "aliyun",
-		Region:          "cn-beijing",
-		GRPCEndpoint:    "service-model.example.com:443",
-		SouthboundToken: "service-plane-token",
+		Name:         "service-plane",
+		DisplayName:  "Service Plane",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "service-model.example.com:443",
 	})
 	if err != nil {
 		t.Fatalf("RegisterPlane returned error: %v", err)
@@ -221,5 +199,163 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	}
 	if !reloaded.Spec.Files[0].Sensitive {
 		t.Fatalf("first file should be sensitive")
+	}
+}
+
+func TestIntegrationCreateServiceNormalizesStoredSpec(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "normalization-plane",
+		DisplayName:  "Normalization Plane",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "normalization.example.com:443",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        " normalized-api ",
+		DisplayName: " Normalized API ",
+		Spec: model.ServiceSpec{
+			PlaneID:       " " + planeItem.ID + " ",
+			InstanceClass: model.InstanceClassSmall,
+			Image:         " ghcr.io/example/normalized-api:v1 ",
+			DefaultPort:   8080,
+			ReadinessPath: " /healthz ",
+			RegistryCredential: &model.ServiceRegistryCredential{
+				Server:   " ghcr.io ",
+				Username: " normalized-api ",
+				Password: "registry-token",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+
+	if serviceItem.Metadata.Name != "normalized-api" || serviceItem.Metadata.DisplayName != "Normalized API" {
+		t.Fatalf("service metadata was not normalized: %+v", serviceItem.Metadata)
+	}
+	if serviceItem.Spec.PlaneID != planeItem.ID {
+		t.Fatalf("planeID = %q, want %q", serviceItem.Spec.PlaneID, planeItem.ID)
+	}
+	if serviceItem.Spec.Exposure != "public" {
+		t.Fatalf("exposure = %q, want public", serviceItem.Spec.Exposure)
+	}
+	if serviceItem.Spec.Image != "ghcr.io/example/normalized-api:v1" || serviceItem.Spec.ReadinessPath != "/healthz" {
+		t.Fatalf("service spec was not normalized: %+v", serviceItem.Spec)
+	}
+	if serviceItem.Spec.RegistryCredential == nil ||
+		serviceItem.Spec.RegistryCredential.Server != "ghcr.io" ||
+		serviceItem.Spec.RegistryCredential.Username != "normalized-api" {
+		t.Fatalf("registry credential was not normalized: %+v", serviceItem.Spec.RegistryCredential)
+	}
+}
+
+func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "run-reset-plane",
+		DisplayName:  "Run Reset Plane",
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		GRPCEndpoint: "run-reset.example.com:443",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "run-reset-api",
+		DisplayName: "Run Reset API",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "ghcr.io/example/run-reset-api:v1",
+			DefaultPort:   8080,
+			ReadinessPath: "/healthz",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+
+	if err := db.Store.UpdateServiceStatusForGeneration(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
+		ObservedGeneration: serviceItem.Metadata.Generation,
+		Phase:              model.PhaseReady,
+		Message:            "running",
+		Run: &model.RunStatus{
+			CurrentRunID: "old-run",
+			LatestRunID:  "old-run",
+			Phase:        model.RunPhaseRunning,
+			Message:      "old run is running",
+		},
+	}); err != nil {
+		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
+	}
+
+	updated, err := db.Store.UpdateService(ctx, serviceItem.Metadata.ID, controlplanestore.UpdateServiceInput{
+		DisplayName: "Run Reset API v2",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "ghcr.io/example/run-reset-api:v2",
+			DefaultPort:   8080,
+			ReadinessPath: "/healthz",
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdateService returned error: %v", err)
+	}
+	if updated.Status.Run.Phase != model.RunPhasePending ||
+		updated.Status.Run.CurrentRunID != "" ||
+		updated.Status.Run.LatestRunID != "" ||
+		updated.Status.Run.Message != "waiting for service reconcile" {
+		t.Fatalf("run after update = %+v, want pending without old run IDs", updated.Status.Run)
+	}
+
+	if err := db.Store.UpdateServiceStatusForGeneration(ctx, updated.Metadata.ID, updated.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
+		ObservedGeneration: updated.Metadata.Generation,
+		Phase:              model.PhaseReady,
+		Message:            "running",
+		Run: &model.RunStatus{
+			CurrentRunID: "new-run",
+			LatestRunID:  "new-run",
+			Phase:        model.RunPhaseRunning,
+			Message:      "new run is running",
+		},
+	}); err != nil {
+		t.Fatalf("UpdateServiceStatusForGeneration for updated service returned error: %v", err)
+	}
+	var runJSON []byte
+	if err := db.DB.QueryRowContext(ctx, `SELECT status_run_json FROM services WHERE id = $1`, updated.Metadata.ID).Scan(&runJSON); err != nil {
+		t.Fatalf("query service run json returned error: %v", err)
+	}
+	var runRecord map[string]any
+	if err := json.Unmarshal(runJSON, &runRecord); err != nil {
+		t.Fatalf("decode raw service run json returned error: %v", err)
+	}
+	if runRecord["phase"] != model.RunPhaseRunning || runRecord["latestRunID"] != "new-run" {
+		t.Fatalf("raw service run json = %s, want lower-case persistent keys", string(runJSON))
+	}
+	if _, ok := runRecord["Phase"]; ok {
+		t.Fatalf("raw service run json = %s, must not use Go field names", string(runJSON))
+	}
+
+	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+	if deleting.Status.Run.Phase != model.RunPhasePending ||
+		deleting.Status.Run.CurrentRunID != "" ||
+		deleting.Status.Run.LatestRunID != "" ||
+		deleting.Status.Run.Message != "waiting for remote service teardown" {
+		t.Fatalf("run after delete request = %+v, want pending delete without old run IDs", deleting.Status.Run)
 	}
 }

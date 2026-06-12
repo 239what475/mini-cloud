@@ -29,7 +29,7 @@ type cloudPlaneTemplateData struct {
 	ControlPlaneURL             string
 	SouthboundToken             string
 	NodeAgentConnectEndpoint    string
-	NodeAgentBootstrapToken     string
+	NodeAgentToken              string
 	NodeAgentBinaryURL          string
 	Provider                    string
 	RegionID                    string
@@ -38,13 +38,13 @@ type cloudPlaneTemplateData struct {
 	InstanceType                string
 	RegistryMirrors             []string
 	WorkloadEgressProxyEndpoint string
-	ProviderSpecYAML            string
+	NodeProvider                NodeProviderConfig
 	IngressBaseDomain           string
 	IngressPublicOrigin         string
-	FrontDoorEnabled            bool
 	DNSPodDomain                string
 	DNSPodCredential            tencentCredential
 	LokiURL                     string
+	LokiTenantID                string
 	OTLPEndpoint                string
 }
 
@@ -61,7 +61,6 @@ type remoteCloudPlaneInstallTemplateData struct {
 	SubnetCIDRBlock    string
 	RegistryMirror     string
 	CloudPlaneGRPCPort int
-	RemovePostgres     bool
 }
 
 func (r *Runner) Install(ctx context.Context) error {
@@ -201,22 +200,18 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		}
 	}
 
-	spec := cloudPlaneProviderSpec(out.RuntimeProviderSpec.Value)
-	instanceType := stringFromMap(out.RuntimeProviderSpec.Value, "instanceType")
+	nodeProvider := out.NodeProviderConfig.Value
+	if nodeProvider.Provider != "" && nodeProvider.Provider != provider {
+		return installFiles{}, fmt.Errorf("node_provider_config provider %s does not match terraform provider %s", nodeProvider.Provider, provider)
+	}
+	instanceType := strings.TrimSpace(nodeProvider.InstanceType)
 	if instanceType == "" {
-		return installFiles{}, fmt.Errorf("runtime_provider_spec.instanceType is required")
-	}
-	specYAML, err := yamlBlock(spec, 4)
-	if err != nil {
-		return installFiles{}, err
-	}
-	if strings.TrimSpace(specYAML) == "" {
-		specYAML = "    {}"
+		return installFiles{}, fmt.Errorf("node_provider_config.instanceType is required")
 	}
 	tencentProviderCredential := tencentCredential{}
 	dnspodCredential := tencentCredential{}
-	frontDoorEnabled := strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != ""
-	if provider == "tencent" || frontDoorEnabled {
+	ingressEnabled := strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != ""
+	if provider == "tencent" || ingressEnabled {
 		var err error
 		tencentProviderCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
 		if err != nil {
@@ -242,8 +237,8 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 	if platformPublicIP == "" {
 		platformPublicIP = strings.TrimSpace(out.InstallEnv.Value.PlatformPublicIP)
 	}
-	if frontDoorEnabled && platformPublicIP == "" {
-		return installFiles{}, fmt.Errorf("platform public IP is required when ingress frontDoor is enabled")
+	if ingressEnabled && platformPublicIP == "" {
+		return installFiles{}, fmt.Errorf("platform public IP is required when ingress frontDoor is configured")
 	}
 
 	cloudPlaneConfig, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
@@ -253,7 +248,7 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		ControlPlaneURL:             r.cfg.ControlPlane.URL,
 		SouthboundToken:             r.cfg.Tokens.ControlPlaneSouthbound,
 		NodeAgentConnectEndpoint:    nodeAgentConnectEndpoint,
-		NodeAgentBootstrapToken:     r.cfg.Tokens.NodeAgentBootstrap,
+		NodeAgentToken:              r.cfg.Tokens.NodeAgent,
 		NodeAgentBinaryURL:          nodeAgentURL,
 		Provider:                    provider,
 		RegionID:                    out.RegionID(),
@@ -262,13 +257,13 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		InstanceType:                instanceType,
 		RegistryMirrors:             []string{registryMirror},
 		WorkloadEgressProxyEndpoint: fmt.Sprintf("http://%s:%d", platformPrivateIP, proxyPort),
-		ProviderSpecYAML:            specYAML,
+		NodeProvider:                nodeProvider,
 		IngressBaseDomain:           r.cfg.Install.IngressBaseDomain,
 		IngressPublicOrigin:         platformPublicIP,
-		FrontDoorEnabled:            frontDoorEnabled,
 		DNSPodDomain:                rootDomain(r.cfg.Install.IngressBaseDomain),
 		DNSPodCredential:            dnspodCredential,
 		LokiURL:                     r.cfg.Observability.WorkloadLogLokiURL,
+		LokiTenantID:                r.cfg.Observability.WorkloadLogLokiTenantID,
 		OTLPEndpoint:                r.cfg.Observability.WorkloadOTLPEndpoint,
 	})
 	if err != nil {
@@ -357,19 +352,6 @@ func removeFiles(paths []string) {
 		if path != "" {
 			_ = os.Remove(path)
 		}
-	}
-}
-
-func stringFromMap(values map[string]any, key string) string {
-	value, ok := values[key]
-	if !ok {
-		return ""
-	}
-	switch typed := value.(type) {
-	case string:
-		return strings.TrimSpace(typed)
-	default:
-		return strings.TrimSpace(fmt.Sprint(typed))
 	}
 }
 

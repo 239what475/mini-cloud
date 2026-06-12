@@ -14,21 +14,15 @@ import (
 	"mini-cloud/internal/nodeagent/runtime"
 )
 
-// pushPayload 是测试中解码 Loki push 请求体的最小结构。
 type pushPayload struct {
-	// Streams 是请求体中的 Loki stream 列表。
 	Streams []pushPayloadStream `json:"streams"`
 }
 
-// pushPayloadStream 是测试中解码的单个 Loki stream。
 type pushPayloadStream struct {
-	// Stream 是 Loki stream labels。
 	Stream map[string]string `json:"stream"`
-	// Values 是 Loki 日志值数组。
-	Values [][]string `json:"values"`
+	Values [][]string        `json:"values"`
 }
 
-// TestFormatLogfmtLineIncludesExecutionContext 验证 logfmt 行包含执行上下文字段。
 func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 	t.Parallel()
 
@@ -55,7 +49,6 @@ func TestFormatLogfmtLineIncludesExecutionContext(t *testing.T) {
 	}
 }
 
-// TestPushLineSendsStructuredPayloadToLoki 验证单行日志会按 Loki push payload 结构发送。
 func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 	t.Parallel()
 
@@ -82,14 +75,13 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 	}))
 	defer server.Close()
 
-	manager := &Manager{
-		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		platform:    "mini-cloud-lab",
-		loki:        newLokiClient(server.URL, "tenant-demo", server.Client()),
-		pushTimeout: time.Second,
+	collector := &Collector{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		platform: "mini-cloud-lab",
+		loki:     newLokiClient(server.URL, "tenant-demo", server.Client()),
 	}
 
-	manager.pushLine(context.Background(), StartRequest{
+	collector.pushLine(context.Background(), StartRequest{
 		ServiceID:     "svc_demo",
 		ServiceName:   "hello",
 		PlanID:        "plan_demo",
@@ -128,15 +120,11 @@ func TestPushLineSendsStructuredPayloadToLoki(t *testing.T) {
 	}
 }
 
-// fakeLogFollower 是测试用的固定日志记录 LogFollower。
 type fakeLogFollower struct {
-	// records 是 StreamLogs 调用时依次发出的日志记录。
 	records []runtime.LogRecord
-	// done 在所有测试日志记录发出后关闭。
-	done chan struct{}
+	done    chan struct{}
 }
 
-// StreamLogs 实现测试用日志跟随接口。
 func (f fakeLogFollower) StreamLogs(ctx context.Context, containerID string, emit runtime.LogEmitter) error {
 	defer func() {
 		if f.done != nil {
@@ -149,35 +137,6 @@ func (f fakeLogFollower) StreamLogs(ctx context.Context, containerID string, emi
 	return nil
 }
 
-func (f fakeLogFollower) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
-	return runtime.RunResult{}, nil
-}
-
-func (f fakeLogFollower) Stop(context.Context, string) error {
-	return nil
-}
-
-func (f fakeLogFollower) Logs(context.Context, string, int) (string, error) {
-	return "", nil
-}
-
-func (f fakeLogFollower) CountRunning(context.Context) (int, error) {
-	return 0, nil
-}
-
-func (f fakeLogFollower) ResetNode(context.Context, string) error {
-	return nil
-}
-
-func (f fakeLogFollower) GarbageCollect(context.Context) error {
-	return nil
-}
-
-func (f fakeLogFollower) Close() error {
-	return nil
-}
-
-// TestStartStreamsLogsToLoki 验证启动日志采集后会逐行推送到 Loki。
 func TestStartStreamsLogsToLoki(t *testing.T) {
 	t.Parallel()
 
@@ -198,23 +157,22 @@ func TestStartStreamsLogsToLoki(t *testing.T) {
 	defer server.Close()
 
 	followDone := make(chan struct{})
-	manager, err := NewManager(slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
-		LokiURL:     server.URL,
-		PushTimeout: time.Second,
+	collector, err := NewCollector(slog.New(slog.NewTextHandler(io.Discard, nil)), Config{
+		LokiURL: server.URL,
 	}, fakeLogFollower{records: []runtime.LogRecord{
 		{Timestamp: time.Date(2026, 4, 16, 12, 0, 0, 0, time.UTC), Stream: "stdout", Line: "one"},
 		{Timestamp: time.Date(2026, 4, 16, 12, 0, 1, 0, time.UTC), Stream: "stdout", Line: "two"},
 	}, done: followDone})
 	if err != nil {
-		t.Fatalf("NewManager: %v", err)
+		t.Fatalf("NewCollector: %v", err)
 	}
 
-	manager.Start(StartRequest{ExecutionID: "exec_demo", ContainerID: "container_demo"})
+	collector.Start(StartRequest{ExecutionID: "exec_demo", ContainerID: "container_demo"})
 	<-followDone
 	closeCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	if err := manager.Close(closeCtx); err != nil {
-		t.Fatalf("manager.Close: %v", err)
+	if err := collector.Close(closeCtx); err != nil {
+		t.Fatalf("collector.Close: %v", err)
 	}
 
 	for i := 0; i < 2; i++ {

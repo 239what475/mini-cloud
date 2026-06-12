@@ -9,323 +9,130 @@ import (
 	"strings"
 	"time"
 
-	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	"mini-cloud/internal/nodeagent/capacity"
 
 	"gopkg.in/yaml.v3"
 )
 
-type fileConfig struct {
-	Server        serverConfig        `yaml:"server"`
-	Auth          authConfig          `yaml:"auth"`
-	Platform      platformConfig      `yaml:"platform"`
-	Node          nodeConfig          `yaml:"node"`
-	Capacity      capacityConfig      `yaml:"capacity"`
-	Agent         agentConfig         `yaml:"agent"`
-	Runtime       runtimeConfig       `yaml:"runtime"`
-	Network       networkConfig       `yaml:"network"`
-	Work          workConfig          `yaml:"work"`
-	Observability observabilityConfig `yaml:"observability"`
-}
+const (
+	HeartbeatInterval = 15 * time.Second
+	WorkInterval      = 5 * time.Second
 
-type serverConfig struct {
+	ShutdownGraceTimeout = 30 * time.Second
+	CleanupHardTimeout   = 30 * time.Second
+
+	RuntimeHostPortMin       = 30000
+	RuntimeHostPortMax       = 60999
+	RuntimeStartTimeout      = 2 * time.Minute
+	RuntimeStopTimeout       = 30 * time.Second
+	RuntimeLogsTimeout       = 10 * time.Second
+	ReadinessAttempts        = 10
+	ReadinessInterval        = time.Second
+	ReadinessTimeout         = time.Second
+	RegisterTimeout          = 10 * time.Second
+	HeartbeatRequestTimeout  = 5 * time.Second
+	PollWorkRequestTimeout   = 10 * time.Second
+	ReportExecutionTimeout   = 10 * time.Second
+	WorkloadLogTailLineCount = 20
+)
+
+type ServerConfig struct {
 	URL string `yaml:"url"`
 }
 
-type authConfig struct {
-	BootstrapToken string `yaml:"bootstrapToken"`
+type AuthConfig struct {
+	Token string `yaml:"token"`
 }
 
-type platformConfig struct {
+type PlatformConfig struct {
 	Name string `yaml:"name"`
 }
 
-type nodeConfig struct {
+type NodeConfig struct {
 	Provider     string `yaml:"provider"`
 	Region       string `yaml:"region"`
 	Name         string `yaml:"name"`
 	PrivateIP    string `yaml:"privateIP"`
-	PublicIP     string `yaml:"publicIP"`
 	InstanceID   string `yaml:"instanceID"`
 	InstanceType string `yaml:"instanceType"`
 }
 
-type capacityConfig struct {
-	Total            resourceConfig `yaml:"total"`
-	SystemReserved   resourceConfig `yaml:"systemReserved"`
-	AgentReserved    resourceConfig `yaml:"agentReserved"`
-	EvictionReserved resourceConfig `yaml:"evictionReserved"`
+type CapacityConfig struct {
+	Total ResourceConfig `yaml:"total"`
 }
 
-type resourceConfig struct {
+type ResourceConfig struct {
 	CPUMilli int `yaml:"cpuMilli"`
 	MemoryMi int `yaml:"memoryMi"`
 }
 
-type agentConfig struct {
-	Version             string `yaml:"version"`
-	HeartbeatInterval   string `yaml:"heartbeatInterval"`
-	WorkInterval        string `yaml:"workInterval"`
-	ShutdownGracePeriod string `yaml:"shutdownGracePeriod"`
-	CleanupHardTimeout  string `yaml:"cleanupHardTimeout"`
+type ObservabilityConfig struct {
+	WorkloadLogLokiURL      string `yaml:"workloadLogLokiURL"`
+	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
+	WorkloadOTLPEndpoint    string `yaml:"workloadOTLPEndpoint"`
 }
 
-type runtimeConfig struct {
-	Type          string              `yaml:"type"`
-	HostPortRange hostPortRangeConfig `yaml:"hostPortRange"`
+type Config struct {
+	Path          string              `yaml:"-"`
+	Server        ServerConfig        `yaml:"server"`
+	Auth          AuthConfig          `yaml:"auth"`
+	Platform      PlatformConfig      `yaml:"platform"`
+	Node          NodeConfig          `yaml:"node"`
+	Capacity      CapacityConfig      `yaml:"capacity"`
+	Network       NetworkConfig       `yaml:"network"`
+	Observability ObservabilityConfig `yaml:"observability"`
+
+	ResolvedCapacity capacity.Resolved `yaml:"-"`
 }
 
-type hostPortRangeConfig struct {
-	Min int `yaml:"min"`
-	Max int `yaml:"max"`
+type NetworkConfig struct {
+	EgressProxy EgressProxyConfig `yaml:"egressProxy"`
 }
 
-type networkConfig struct {
-	EgressProxy egressProxyConfig `yaml:"egressProxy"`
-}
-
-type egressProxyConfig struct {
-	Enabled  bool     `yaml:"enabled"`
+type EgressProxyConfig struct {
 	Endpoint string   `yaml:"endpoint"`
 	NoProxy  []string `yaml:"noProxy"`
 }
 
-type workConfig struct {
-	ReadinessAttempts  int    `yaml:"readinessAttempts"`
-	ReadinessInterval  string `yaml:"readinessInterval"`
-	ReadinessTimeout   string `yaml:"readinessTimeout"`
-	RuntimeTimeout     string `yaml:"runtimeTimeout"`
-	RuntimeStopTimeout string `yaml:"runtimeStopTimeout"`
-	RuntimeLogsTimeout string `yaml:"runtimeLogsTimeout"`
-	RegisterTimeout    string `yaml:"registerTimeout"`
-	HeartbeatTimeout   string `yaml:"heartbeatTimeout"`
-	PollWorkTimeout    string `yaml:"pollWorkTimeout"`
-	ReportTimeout      string `yaml:"reportTimeout"`
-	LogTail            int    `yaml:"logTail"`
-}
-
-type observabilityConfig struct {
-	WorkloadLogLokiURL      string `yaml:"workloadLogLokiURL"`
-	WorkloadLogLokiTenantID string `yaml:"workloadLogLokiTenantID"`
-	WorkloadOTLPEndpoint    string `yaml:"workloadOTLPEndpoint"`
-	LogPushTimeout          string `yaml:"logPushTimeout"`
-}
-
-type Config struct {
-	PlatformName          string
-	ServerURL             string
-	BootstrapToken        string
-	RegisterInput         *nodeagentv1.RegisterNodeRequest
-	AgentVersion          string
-	CPUMilliAllocatable   int
-	MemoryMiAllocatable   int
-	HeartbeatInterval     time.Duration
-	WorkInterval          time.Duration
-	WorkloadLogLokiURL    string
-	WorkloadLogLokiTenant string
-	Runtime               RuntimeConfig
-	Work                  WorkConfig
-	Network               NetworkConfig
-	Timeouts              TimeoutsConfig
-	Logs                  LogsConfig
-}
-
-type RuntimeConfig struct {
-	Type        string
-	HostPortMin int
-	HostPortMax int
-}
-
-type WorkConfig struct {
-	PlatformName         string
-	ReadinessAttempts    int
-	ReadinessInterval    time.Duration
-	ReadinessTimeout     time.Duration
-	LogTail              int
-	WorkloadOTLPEndpoint string
-}
-
-type NetworkConfig struct {
-	EgressProxy EgressProxyConfig
-}
-
-type EgressProxyConfig struct {
-	Enabled  bool
-	Endpoint string
-	NoProxy  []string
-}
-
-type TimeoutsConfig struct {
-	Register      time.Duration
-	Heartbeat     time.Duration
-	PollWork      time.Duration
-	Report        time.Duration
-	RuntimeStart  time.Duration
-	RuntimeStop   time.Duration
-	RuntimeLogs   time.Duration
-	ShutdownGrace time.Duration
-	CleanupHard   time.Duration
-}
-
-type LogsConfig struct {
-	PushTimeout time.Duration
-}
-
-func defaultFileConfig() fileConfig {
-	return fileConfig{
-		Node: nodeConfig{
-			Provider: "aliyun",
-		},
-		Agent: agentConfig{
-			Version:             "0.1.0",
-			HeartbeatInterval:   "15s",
-			WorkInterval:        "5s",
-			ShutdownGracePeriod: "30s",
-			CleanupHardTimeout:  "30s",
-		},
-		Runtime: runtimeConfig{
-			Type: "docker",
-			HostPortRange: hostPortRangeConfig{
-				Min: 30000,
-				Max: 60999,
-			},
-		},
-		Work: workConfig{
-			ReadinessAttempts:  10,
-			ReadinessInterval:  "1s",
-			ReadinessTimeout:   "1s",
-			RuntimeTimeout:     "2m",
-			RuntimeStopTimeout: "30s",
-			RuntimeLogsTimeout: "10s",
-			RegisterTimeout:    "10s",
-			HeartbeatTimeout:   "5s",
-			PollWorkTimeout:    "10s",
-			ReportTimeout:      "10s",
-			LogTail:            20,
-		},
-		Observability: observabilityConfig{
-			LogPushTimeout: "5s",
-		},
-	}
-}
-
 func Load(path string) (Config, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return Config{}, fmt.Errorf("node-agent config path is empty")
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return Config{}, fmt.Errorf("read node-agent config %q: %w", path, err)
 	}
 
-	fileCfg := defaultFileConfig()
+	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
-	if err := decoder.Decode(&fileCfg); err != nil {
+	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, fmt.Errorf("parse node-agent config %q: %w", path, err)
 	}
 
-	return build(fileCfg)
+	cfg.Path = path
+	return build(cfg)
 }
 
-func build(fileCfg fileConfig) (Config, error) {
-	serverURL, err := validateServerURL(fileCfg.Server.URL)
+func build(cfg Config) (Config, error) {
+	serverURL, err := validateServerURL(cfg.Server.URL)
 	if err != nil {
 		return Config{}, err
 	}
-	bootstrapToken := strings.TrimSpace(fileCfg.Auth.BootstrapToken)
-	if bootstrapToken == "" {
-		return Config{}, fmt.Errorf("auth.bootstrapToken is required")
+	token := strings.TrimSpace(cfg.Auth.Token)
+	if token == "" {
+		return Config{}, fmt.Errorf("auth.token is required")
 	}
 
-	resolvedCapacity, err := capacity.ResolveNodeCapacity(capacity.Input{
-		Total:            toResource(fileCfg.Capacity.Total),
-		SystemReserved:   toResource(fileCfg.Capacity.SystemReserved),
-		AgentReserved:    toResource(fileCfg.Capacity.AgentReserved),
-		EvictionReserved: toResource(fileCfg.Capacity.EvictionReserved),
-	})
+	resolvedCapacity, err := capacity.ResolveNodeCapacity(toResource(cfg.Capacity.Total))
 	if err != nil {
 		return Config{}, err
 	}
 
-	heartbeatInterval, err := parsePositiveDuration("agent.heartbeatInterval", fileCfg.Agent.HeartbeatInterval)
-	if err != nil {
-		return Config{}, err
-	}
-	workInterval, err := parsePositiveDuration("agent.workInterval", fileCfg.Agent.WorkInterval)
-	if err != nil {
-		return Config{}, err
-	}
-	readinessInterval, err := parsePositiveDuration("work.readinessInterval", fileCfg.Work.ReadinessInterval)
-	if err != nil {
-		return Config{}, err
-	}
-	readinessTimeout, err := parsePositiveDuration("work.readinessTimeout", fileCfg.Work.ReadinessTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	runtimeType := strings.TrimSpace(fileCfg.Runtime.Type)
-	if runtimeType == "" {
-		runtimeType = "docker"
-	}
-	if fileCfg.Runtime.HostPortRange.Min <= 0 || fileCfg.Runtime.HostPortRange.Max <= 0 {
-		return Config{}, fmt.Errorf("runtime.hostPortRange min and max must be greater than 0")
-	}
-	if fileCfg.Runtime.HostPortRange.Min > fileCfg.Runtime.HostPortRange.Max {
-		return Config{}, fmt.Errorf("runtime.hostPortRange.min must be less than or equal to runtime.hostPortRange.max")
-	}
-	if fileCfg.Runtime.HostPortRange.Max > 65535 {
-		return Config{}, fmt.Errorf("runtime.hostPortRange.max must be less than or equal to 65535")
-	}
-
-	runtimeTimeout, err := parsePositiveDuration("work.runtimeTimeout", fileCfg.Work.RuntimeTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	runtimeStopTimeout, err := parsePositiveDuration("work.runtimeStopTimeout", fileCfg.Work.RuntimeStopTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	runtimeLogsTimeout, err := parsePositiveDuration("work.runtimeLogsTimeout", fileCfg.Work.RuntimeLogsTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	registerTimeout, err := parsePositiveDuration("work.registerTimeout", fileCfg.Work.RegisterTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	heartbeatTimeout, err := parsePositiveDuration("work.heartbeatTimeout", fileCfg.Work.HeartbeatTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	pollWorkTimeout, err := parsePositiveDuration("work.pollWorkTimeout", fileCfg.Work.PollWorkTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	reportTimeout, err := parsePositiveDuration("work.reportTimeout", fileCfg.Work.ReportTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	shutdownGrace, err := parsePositiveDuration("agent.shutdownGracePeriod", fileCfg.Agent.ShutdownGracePeriod)
-	if err != nil {
-		return Config{}, err
-	}
-	cleanupHard, err := parsePositiveDuration("agent.cleanupHardTimeout", fileCfg.Agent.CleanupHardTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	logPushTimeout, err := parsePositiveDuration("observability.logPushTimeout", fileCfg.Observability.LogPushTimeout)
-	if err != nil {
-		return Config{}, err
-	}
-	if fileCfg.Work.ReadinessAttempts <= 0 {
-		return Config{}, fmt.Errorf("work.readinessAttempts must be greater than 0")
-	}
-	if fileCfg.Work.LogTail < 0 {
-		return Config{}, fmt.Errorf("work.logTail must be greater than or equal to 0")
-	}
-	if fileCfg.Network.EgressProxy.Enabled {
-		endpoint := strings.TrimSpace(fileCfg.Network.EgressProxy.Endpoint)
-		if endpoint == "" {
-			return Config{}, fmt.Errorf("network.egressProxy.endpoint is required when egress proxy is enabled")
-		}
+	endpoint := strings.TrimSpace(cfg.Network.EgressProxy.Endpoint)
+	if endpoint != "" {
 		parsed, err := url.ParseRequestURI(endpoint)
 		if err != nil {
 			return Config{}, fmt.Errorf("network.egressProxy.endpoint must be a valid URL: %w", err)
@@ -337,107 +144,63 @@ func build(fileCfg fileConfig) (Config, error) {
 			return Config{}, fmt.Errorf("network.egressProxy.endpoint must include host")
 		}
 	}
-	registerInput := &nodeagentv1.RegisterNodeRequest{
-		Provider:      fileCfg.Node.Provider,
-		Region:        fileCfg.Node.Region,
-		Name:          fileCfg.Node.Name,
-		PrivateIp:     fileCfg.Node.PrivateIP,
-		PublicIp:      fileCfg.Node.PublicIP,
-		InstanceId:    fileCfg.Node.InstanceID,
-		InstanceType:  fileCfg.Node.InstanceType,
-		CpuMilliTotal: int32(resolvedCapacity.Total.CPUMilli),
-		MemoryMiTotal: int32(resolvedCapacity.Total.MemoryMi),
-	}
-	if err := validateRegisterInput(registerInput); err != nil {
+	cfg.Platform.Name = strings.TrimSpace(cfg.Platform.Name)
+	cfg.Node.Provider = strings.ToLower(strings.TrimSpace(cfg.Node.Provider))
+	cfg.Node.Region = strings.TrimSpace(cfg.Node.Region)
+	cfg.Node.Name = strings.TrimSpace(cfg.Node.Name)
+	cfg.Node.PrivateIP = strings.TrimSpace(cfg.Node.PrivateIP)
+	cfg.Node.InstanceID = strings.TrimSpace(cfg.Node.InstanceID)
+	cfg.Node.InstanceType = strings.TrimSpace(cfg.Node.InstanceType)
+	if err := validateNodeConfig(cfg.Node, resolvedCapacity.Total); err != nil {
 		return Config{}, err
 	}
 
-	return Config{
-		PlatformName:          fileCfg.Platform.Name,
-		ServerURL:             serverURL,
-		BootstrapToken:        bootstrapToken,
-		RegisterInput:         registerInput,
-		AgentVersion:          fileCfg.Agent.Version,
-		CPUMilliAllocatable:   resolvedCapacity.Allocatable.CPUMilli,
-		MemoryMiAllocatable:   resolvedCapacity.Allocatable.MemoryMi,
-		HeartbeatInterval:     heartbeatInterval,
-		WorkInterval:          workInterval,
-		WorkloadLogLokiURL:    fileCfg.Observability.WorkloadLogLokiURL,
-		WorkloadLogLokiTenant: fileCfg.Observability.WorkloadLogLokiTenantID,
-		Runtime: RuntimeConfig{
-			Type:        runtimeType,
-			HostPortMin: fileCfg.Runtime.HostPortRange.Min,
-			HostPortMax: fileCfg.Runtime.HostPortRange.Max,
-		},
-		Work: WorkConfig{
-			PlatformName:         fileCfg.Platform.Name,
-			ReadinessAttempts:    fileCfg.Work.ReadinessAttempts,
-			ReadinessInterval:    readinessInterval,
-			ReadinessTimeout:     readinessTimeout,
-			LogTail:              fileCfg.Work.LogTail,
-			WorkloadOTLPEndpoint: fileCfg.Observability.WorkloadOTLPEndpoint,
-		},
-		Network: NetworkConfig{
-			EgressProxy: EgressProxyConfig{
-				Enabled:  fileCfg.Network.EgressProxy.Enabled,
-				Endpoint: strings.TrimSpace(fileCfg.Network.EgressProxy.Endpoint),
-				NoProxy:  trimStringList(fileCfg.Network.EgressProxy.NoProxy),
-			},
-		},
-		Timeouts: TimeoutsConfig{
-			Register:      registerTimeout,
-			Heartbeat:     heartbeatTimeout,
-			PollWork:      pollWorkTimeout,
-			Report:        reportTimeout,
-			RuntimeStart:  runtimeTimeout,
-			RuntimeStop:   runtimeStopTimeout,
-			RuntimeLogs:   runtimeLogsTimeout,
-			ShutdownGrace: shutdownGrace,
-			CleanupHard:   cleanupHard,
-		},
-		Logs: LogsConfig{
-			PushTimeout: logPushTimeout,
-		},
-	}, nil
+	cfg.Network.EgressProxy.Endpoint = endpoint
+	cfg.Network.EgressProxy.NoProxy = trimStringList(cfg.Network.EgressProxy.NoProxy)
+	cfg.Observability.WorkloadLogLokiURL = strings.TrimSpace(cfg.Observability.WorkloadLogLokiURL)
+	cfg.Observability.WorkloadLogLokiTenantID = strings.TrimSpace(cfg.Observability.WorkloadLogLokiTenantID)
+	cfg.Observability.WorkloadOTLPEndpoint = strings.TrimSpace(cfg.Observability.WorkloadOTLPEndpoint)
+
+	cfg.Server.URL = serverURL
+	cfg.Auth.Token = token
+	cfg.ResolvedCapacity = resolvedCapacity
+	return cfg, nil
 }
 
-func toResource(value resourceConfig) capacity.Resources {
+func toResource(value ResourceConfig) capacity.Resources {
 	return capacity.Resources{
 		CPUMilli: value.CPUMilli,
 		MemoryMi: value.MemoryMi,
 	}
 }
 
-func validateRegisterInput(input *nodeagentv1.RegisterNodeRequest) error {
-	if strings.TrimSpace(input.GetProvider()) == "" {
+func validateNodeConfig(input NodeConfig, total capacity.Resources) error {
+	if strings.TrimSpace(input.Provider) == "" {
 		return fmt.Errorf("node.provider is required")
 	}
-	if strings.TrimSpace(input.GetRegion()) == "" {
+	if strings.TrimSpace(input.Region) == "" {
 		return fmt.Errorf("node.region is required")
 	}
-	if strings.TrimSpace(input.GetName()) == "" {
+	if strings.TrimSpace(input.Name) == "" {
 		return fmt.Errorf("node.name is required")
 	}
-	privateIP := strings.TrimSpace(input.GetPrivateIp())
+	privateIP := strings.TrimSpace(input.PrivateIP)
 	if privateIP == "" {
 		return fmt.Errorf("node.privateIP is required")
 	}
 	if net.ParseIP(privateIP) == nil {
 		return fmt.Errorf("node.privateIP must be a valid IP address")
 	}
-	if publicIP := strings.TrimSpace(input.GetPublicIp()); publicIP != "" && net.ParseIP(publicIP) == nil {
-		return fmt.Errorf("node.publicIP must be a valid IP address")
-	}
-	if strings.TrimSpace(input.GetInstanceId()) == "" {
+	if strings.TrimSpace(input.InstanceID) == "" {
 		return fmt.Errorf("node.instanceID is required")
 	}
-	if strings.TrimSpace(input.GetInstanceType()) == "" {
+	if strings.TrimSpace(input.InstanceType) == "" {
 		return fmt.Errorf("node.instanceType is required")
 	}
-	if input.GetCpuMilliTotal() <= 0 {
+	if total.CPUMilli <= 0 {
 		return fmt.Errorf("capacity total cpuMilli must be greater than 0")
 	}
-	if input.GetMemoryMiTotal() <= 0 {
+	if total.MemoryMi <= 0 {
 		return fmt.Errorf("capacity total memoryMi must be greater than 0")
 	}
 	return nil
@@ -474,15 +237,4 @@ func validateServerURL(value string) (string, error) {
 		return "", fmt.Errorf("server.url must include host")
 	}
 	return trimmed, nil
-}
-
-func parsePositiveDuration(name string, value string) (time.Duration, error) {
-	parsed, err := time.ParseDuration(value)
-	if err != nil {
-		return 0, fmt.Errorf("parse %s: %w", name, err)
-	}
-	if parsed <= 0 {
-		return 0, fmt.Errorf("%s must be greater than 0", name)
-	}
-	return parsed, nil
 }

@@ -2,14 +2,12 @@ package nodeagent
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"log/slog"
 	"maps"
 	"strings"
-	"time"
 
-	cloudplaneidentity "mini-cloud/internal/cloudplane/control/identity"
+	"mini-cloud/internal/bearer"
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
@@ -17,91 +15,42 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type Options struct {
-	Logger         *slog.Logger
-	Store          *store.Store
-	BootstrapToken string
-}
-
-const sessionTTL = 24 * time.Hour
-
-func RegisterGRPC(grpcServer *grpc.Server, opts Options) {
-	logger := opts.Logger
+func RegisterGRPC(grpcServer *grpc.Server, logger *slog.Logger, stores *store.Store, token string) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	nodeagentv1.RegisterNodeAgentServiceServer(grpcServer, &service{
-		logger:          logger,
-		identityService: cloudplaneidentity.NewService(opts.Store),
-		store:           opts.Store,
-		bootstrapToken:  strings.TrimSpace(opts.BootstrapToken),
-		sessionTTL:      sessionTTL,
+		logger: logger,
+		store:  stores,
+		token:  strings.TrimSpace(token),
 	})
 }
 
 type service struct {
 	nodeagentv1.UnimplementedNodeAgentServiceServer
 
-	logger          *slog.Logger
-	identityService *cloudplaneidentity.Service
-	store           *store.Store
-	bootstrapToken  string
-	sessionTTL      time.Duration
+	logger *slog.Logger
+	store  *store.Store
+	token  string
 }
 
-func (s *service) requireBootstrap(ctx context.Context) error {
-	if s.bootstrapToken == "" {
-		return status.Error(codes.Unavailable, "node agent bootstrap token is not configured")
+func (s *service) requireNodeAgentToken(ctx context.Context) error {
+	if s.token == "" {
+		return status.Error(codes.Unavailable, "node agent token is not configured")
 	}
-	secret, ok := bearerToken(ctx)
-	if !ok || subtle.ConstantTimeCompare([]byte(secret), []byte(s.bootstrapToken)) != 1 {
-		return status.Error(codes.Unauthenticated, "invalid node agent bootstrap token")
+	secret, ok := bearer.Incoming(ctx)
+	if !ok || !bearer.Matches(secret, s.token) {
+		return status.Error(codes.Unauthenticated, "invalid node agent token")
 	}
 	return nil
-}
-
-func (s *service) requireNodeAgentSession(ctx context.Context, nodeID string) error {
-	secret, ok := bearerToken(ctx)
-	if !ok {
-		return status.Error(codes.Unauthenticated, "invalid node agent session token")
-	}
-
-	resolvedNodeID, err := s.identityService.ResolveNodeAgentSessionTokenBySecret(ctx, secret)
-	if err != nil {
-		if errors.Is(err, store.ErrNodeAgentSessionTokenNotFound) {
-			return status.Error(codes.Unauthenticated, "invalid node agent session token")
-		}
-		return status.Error(codes.Internal, "internal server error")
-	}
-	if subtle.ConstantTimeCompare([]byte(resolvedNodeID), []byte(nodeID)) != 1 {
-		return status.Error(codes.PermissionDenied, "node agent session token does not match nodeID")
-	}
-	return nil
-}
-
-func bearerToken(ctx context.Context) (string, bool) {
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return "", false
-	}
-	values := md.Get("authorization")
-	if len(values) == 0 {
-		return "", false
-	}
-	parts := strings.Fields(strings.TrimSpace(values[0]))
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || strings.TrimSpace(parts[1]) == "" {
-		return "", false
-	}
-	return strings.TrimSpace(parts[1]), true
 }
 
 func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
-	if err := s.requireBootstrap(ctx); err != nil {
+	if err := s.requireNodeAgentToken(ctx); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +59,6 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		Region:        req.GetRegion(),
 		Name:          req.GetName(),
 		PrivateIP:     req.GetPrivateIp(),
-		PublicIP:      req.GetPublicIp(),
 		InstanceID:    req.GetInstanceId(),
 		InstanceType:  req.GetInstanceType(),
 		CPUMilliTotal: int(req.GetCpuMilliTotal()),
@@ -120,16 +68,8 @@ func (s *service) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNod
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	sessionToken, err := s.identityService.IssueNodeAgentSessionToken(ctx, registered.ID, s.sessionTTL)
-	if err != nil {
-		return nil, status.Error(codes.Internal, "issue node agent session token failed")
-	}
-
 	return &nodeagentv1.RegisterNodeResponse{
-		NodeId:         registered.ID,
-		SessionToken:   sessionToken,
-		ObservedStatus: registered.Status,
-		AcceptedAt:     timestamppb.New(time.Now().UTC()),
+		NodeId: registered.ID,
 	}, nil
 }
 
@@ -138,20 +78,12 @@ func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.Heartbea
 	if nodeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "nodeID is required")
 	}
-	if err := s.requireNodeAgentSession(ctx, nodeID); err != nil {
+	if err := s.requireNodeAgentToken(ctx); err != nil {
 		return nil, err
 	}
-	if req.GetReportedAt() == nil {
-		return nil, status.Error(codes.InvalidArgument, "reportedAt is required")
-	}
-
-	summary, receivedAt, err := s.store.RecordNodeHeartbeat(ctx, nodeID, cloudmodel.HeartbeatInput{
-		ReportedAt:          req.GetReportedAt().AsTime(),
-		AgentVersion:        req.GetAgentVersion(),
+	observedStatus, err := s.store.RecordNodeHeartbeat(ctx, nodeID, cloudmodel.HeartbeatInput{
 		CPUMilliAllocatable: int(req.GetCpuMilliAllocatable()),
 		MemoryMiAllocatable: int(req.GetMemoryMiAllocatable()),
-		RunningContainers:   int(req.GetRunningContainers()),
-		Status:              req.GetStatus(),
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrNodeNotFound) {
@@ -162,9 +94,7 @@ func (s *service) RecordHeartbeat(ctx context.Context, req *nodeagentv1.Heartbea
 
 	return &nodeagentv1.HeartbeatResponse{
 		NodeId:         nodeID,
-		Accepted:       true,
-		ObservedStatus: summary.Status,
-		ReceivedAt:     timestamppb.New(receivedAt.UTC()),
+		ObservedStatus: observedStatus,
 	}, nil
 }
 
@@ -173,7 +103,7 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 	if nodeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "nodeID is required")
 	}
-	if err := s.requireNodeAgentSession(ctx, nodeID); err != nil {
+	if err := s.requireNodeAgentToken(ctx); err != nil {
 		return nil, err
 	}
 
@@ -237,7 +167,7 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 	if nodeID == "" {
 		return nil, status.Error(codes.InvalidArgument, "nodeID is required")
 	}
-	if err := s.requireNodeAgentSession(ctx, nodeID); err != nil {
+	if err := s.requireNodeAgentToken(ctx); err != nil {
 		return nil, err
 	}
 

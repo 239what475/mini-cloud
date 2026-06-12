@@ -1,5 +1,4 @@
-// Package nodepool 承载执行 node 池的后台收敛控制用例。
-package nodepool
+package control
 
 import (
 	"context"
@@ -16,46 +15,39 @@ import (
 
 const provisioningNodeTimeout = 10 * time.Minute
 
-type Service struct {
-	// logger 记录 node 池收敛过程中的单节点失败。
+type nodeReconciler struct {
 	logger *slog.Logger
-	// store 提供 node 和 execution intent 的持久化访问。
-	store *store.Store
-	// driver 调用云厂商 API 创建和删除 node 对应的云实例。
+	store  *store.Store
 	driver infranodeprovider.Driver
 	config cloudplaneconfig.Config
 }
 
-func NewService(logger *slog.Logger, stores *store.Store, driver infranodeprovider.Driver, cfg cloudplaneconfig.Config) *Service {
+func newNodeReconciler(logger *slog.Logger, stores *store.Store, driver infranodeprovider.Driver, cfg cloudplaneconfig.Config) *nodeReconciler {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{logger: logger, store: stores, driver: driver, config: cfg}
+	return &nodeReconciler{logger: logger, store: stores, driver: driver, config: cfg}
 }
 
-// ReconcileOnce 将 node 池收敛到当前 execution 需求。
-func (s *Service) ReconcileOnce(ctx context.Context) error {
-	if s == nil || s.store == nil || s.driver == nil {
-		return nil
-	}
+func (s *nodeReconciler) reconcileOnce(ctx context.Context) error {
 	if err := s.reconcileTerminatingNodes(ctx); err != nil {
 		return err
 	}
 	if err := s.reconcileStaleProvisioningNodes(ctx); err != nil {
 		return err
 	}
-	scaledOut, err := s.reconcileCapacityShortage(ctx)
+	createdNode, err := s.reconcilePendingExecutionCapacity(ctx)
 	if err != nil {
 		return err
 	}
-	if scaledOut {
+	if createdNode {
 		return nil
 	}
 	return s.reconcileIdleNodes(ctx)
 }
 
-func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
-	candidate, err := s.store.GetNodeScaleOutCandidate(ctx, s.config.Plane.Name+cloudplaneconfig.NodeNameSuffix, s.config.RuntimeProvisioning.InstanceType)
+func (s *nodeReconciler) reconcilePendingExecutionCapacity(ctx context.Context) (bool, error) {
+	candidate, err := s.store.GetNodeProvisioningCandidate(ctx, s.config.Plane.Name+cloudplaneconfig.NodeNameSuffix, s.config.NodeProvisioning.InstanceType)
 	if err != nil {
 		return false, err
 	}
@@ -68,7 +60,7 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 		Region:       s.config.Infrastructure.RegionID,
 		Name:         candidate.NodeName,
 		InstanceType: candidate.InstanceType,
-		StatusReason: "pending execution requires more runtime capacity",
+		StatusReason: "pending execution requires more node capacity",
 	})
 	if err != nil {
 		return false, err
@@ -91,7 +83,7 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
 		return false, errors.Join(err, cleanupErr, failErr)
 	}
-	_, err = s.store.BindProvisionedNode(
+	if _, err := s.store.BindProvisionedNode(
 		ctx,
 		node.ID,
 		result.InstanceID,
@@ -99,11 +91,17 @@ func (s *Service) reconcileCapacityShortage(ctx context.Context) (bool, error) {
 		result.InstanceType,
 		"provider accepted node creation",
 		time.Now().UTC(),
-	)
-	return err == nil, err
+	); err != nil {
+		reason := "provider node was created but cloud-plane failed to bind it: " + err.Error()
+		deleteErr := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: result.InstanceID})
+		_, cleanupErr := s.store.MarkNodeDeleted(ctx, node.ID, reason, time.Now().UTC())
+		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
+		return false, errors.Join(err, deleteErr, cleanupErr, failErr)
+	}
+	return true, nil
 }
 
-func (s *Service) reconcileStaleProvisioningNodes(ctx context.Context) error {
+func (s *nodeReconciler) reconcileStaleProvisioningNodes(ctx context.Context) error {
 	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusProvisioning)
 	if err != nil {
 		return err
@@ -128,11 +126,11 @@ func (s *Service) reconcileStaleProvisioningNodes(ctx context.Context) error {
 	return joinedErr
 }
 
-func (s *Service) reconcileStaleProvisioningNode(ctx context.Context, nodeNamePrefix string, item cloudmodel.Node) error {
+func (s *nodeReconciler) reconcileStaleProvisioningNode(ctx context.Context, nodeNamePrefix string, item cloudmodel.Node) error {
 	if item.Status != cloudmodel.StatusProvisioning || !item.Elastic {
 		return nil
 	}
-	reason := "runtime node did not register before provisioning timeout"
+	reason := "node did not register before provisioning timeout"
 	if strings.TrimSpace(item.InstanceID) != "" {
 		if err := s.driver.Delete(ctx, infranodeprovider.DeleteRequest{InstanceID: item.InstanceID}); err != nil {
 			return err
@@ -143,15 +141,7 @@ func (s *Service) reconcileStaleProvisioningNode(ctx context.Context, nodeNamePr
 	return errors.Join(nodeErr, planErr)
 }
 
-func (s *Service) reconcileTerminatingNodes(ctx context.Context) error {
-	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDraining)
-	if err != nil {
-		return err
-	}
-	return s.reconcileDeletableNodes(ctx, items)
-}
-
-func (s *Service) reconcileIdleNodes(ctx context.Context) error {
+func (s *nodeReconciler) reconcileIdleNodes(ctx context.Context) error {
 	unsettled, err := s.store.HasUnsettledExecutionIntents(ctx)
 	if err != nil {
 		return err
@@ -167,7 +157,15 @@ func (s *Service) reconcileIdleNodes(ctx context.Context) error {
 	return s.reconcileDeletableNodes(ctx, items)
 }
 
-func (s *Service) reconcileDeletableNodes(ctx context.Context, items []cloudmodel.Node) error {
+func (s *nodeReconciler) reconcileTerminatingNodes(ctx context.Context) error {
+	items, err := s.store.ListElasticNodesByStatuses(ctx, cloudmodel.StatusDraining)
+	if err != nil {
+		return err
+	}
+	return s.reconcileDeletableNodes(ctx, items)
+}
+
+func (s *nodeReconciler) reconcileDeletableNodes(ctx context.Context, items []cloudmodel.Node) error {
 	var joinedErr error
 	for _, item := range items {
 		if strings.TrimSpace(item.InstanceID) == "" {
@@ -188,9 +186,7 @@ func (s *Service) reconcileDeletableNodes(ctx context.Context, items []cloudmode
 	return joinedErr
 }
 
-// reconcileNodeDeletion 推进单个 idle node 的删除流程。
-func (s *Service) reconcileNodeDeletion(ctx context.Context, item cloudmodel.Node) error {
-	// 已经 deleted 的记录不会被扫描到；如果并发状态变化导致输入不再可删除，直接跳过。
+func (s *nodeReconciler) reconcileNodeDeletion(ctx context.Context, item cloudmodel.Node) error {
 	if item.Status != cloudmodel.StatusReady && item.Status != cloudmodel.StatusDraining {
 		return nil
 	}
@@ -198,7 +194,7 @@ func (s *Service) reconcileNodeDeletion(ctx context.Context, item cloudmodel.Nod
 		return nil
 	}
 
-	draining, changed, err := s.store.MarkNodeDraining(
+	draining, deletable, err := s.store.PrepareNodeDeletion(
 		ctx,
 		item.ID,
 		"node has no active execution and cloud-plane is deleting the provider instance",
@@ -207,7 +203,7 @@ func (s *Service) reconcileNodeDeletion(ctx context.Context, item cloudmodel.Nod
 	if err != nil {
 		return err
 	}
-	if !changed {
+	if !deletable {
 		return nil
 	}
 

@@ -12,13 +12,13 @@ import (
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 )
 
-var ErrConfigRequired = errors.New("config is required")
+var errConfigRequired = errors.New("config is required")
 
-func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
+func parseConfigPath(args []string, stderr io.Writer) (string, error) {
 	fs := flag.NewFlagSet("cloud-plane", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	fs.Usage = func() {
-		PrintUsage(stderr)
+		printUsage(stderr)
 	}
 	configPath := fs.String("config", "", "path to cloud-plane YAML config file")
 
@@ -35,13 +35,13 @@ func ParseConfigPath(args []string, stderr io.Writer) (string, error) {
 	}
 	if strings.TrimSpace(*configPath) == "" {
 		fs.Usage()
-		return "", ErrConfigRequired
+		return "", errConfigRequired
 	}
 	return strings.TrimSpace(*configPath), nil
 }
 
 func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.Writer) error {
-	configPath, err := ParseConfigPath(args, stderr)
+	configPath, err := parseConfigPath(args, stderr)
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func RunCLI(ctx context.Context, logger *slog.Logger, args []string, stderr io.W
 	return app.Run(ctx)
 }
 
-func PrintUsage(stderr io.Writer) {
+func printUsage(stderr io.Writer) {
 	_, _ = fmt.Fprintln(stderr, "usage:")
 	_, _ = fmt.Fprintln(stderr, "  cloud-plane --config ./cloud-plane.yaml")
 }

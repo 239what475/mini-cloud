@@ -26,10 +26,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				LastHeartbeatAt: &now,
 				LastSyncAt:      &now,
 			},
-			Registration: model.PlaneRegistration{
-				Registered: true,
-			},
-			LatestRuntimeInventory: &model.RuntimeInventorySnapshot{
+			LatestNodeInventory: &model.NodeInventorySnapshot{
 				NodesTotal:        2,
 				NodesReady:        2,
 				CPUMilliCapacity:  4000,
@@ -54,10 +51,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				LastHeartbeatAt: &now,
 				LastSyncAt:      &now,
 			},
-			Registration: model.PlaneRegistration{
-				Registered: true,
-			},
-			LatestRuntimeInventory: &model.RuntimeInventorySnapshot{
+			LatestNodeInventory: &model.NodeInventorySnapshot{
 				NodesTotal:        1,
 				NodesReady:        0,
 				CPUMilliCapacity:  2000,
@@ -77,11 +71,8 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 				GRPCEndpoint: "plane-c.example.com:443",
 			},
 			Status: model.PlaneStatus{
-				Status:  model.StatusRegistering,
-				Message: "awaiting registration handshake",
-			},
-			Registration: model.PlaneRegistration{
-				Registered: false,
+				Status:  model.StatusSyncing,
+				Message: "awaiting first sync",
 			},
 		},
 	})
@@ -89,10 +80,7 @@ func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	if view.Summary.PlanesTotal != 3 {
 		t.Fatalf("planesTotal = %d, want 3", view.Summary.PlanesTotal)
 	}
-	if view.Summary.PlanesRegistered != 2 {
-		t.Fatalf("planesRegistered = %d, want 2", view.Summary.PlanesRegistered)
-	}
-	if view.Summary.PlanesReady != 1 || view.Summary.PlanesDegraded != 1 || view.Summary.PlanesRegistering != 1 {
+	if view.Summary.PlanesReady != 1 || view.Summary.PlanesDegraded != 1 || view.Summary.PlanesSyncing != 1 {
 		t.Fatalf("unexpected plane status summary: %+v", view.Summary)
 	}
 	if view.Summary.NodesTotal != 3 || view.Summary.NodesReady != 2 || view.Summary.NodesUnavailable != 1 {

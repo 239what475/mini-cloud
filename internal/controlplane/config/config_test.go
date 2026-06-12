@@ -18,15 +18,10 @@ database:
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
-sync:
-  planeIntervalSeconds: 15
-service:
-  reconcileTimeoutSeconds: 300
 logs:
   loki:
     url: http://127.0.0.1:3100
     tenantID: tenant-a
-    queryTimeoutSeconds: 9
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -38,28 +33,22 @@ logs:
 	if cfg.Path != path {
 		t.Fatalf("Path = %q, want %q", cfg.Path, path)
 	}
-	if cfg.HTTPAddr != "127.0.0.1:18080" {
-		t.Fatalf("HTTPAddr = %q", cfg.HTTPAddr)
+	if cfg.Server.HTTPAddr != "127.0.0.1:18080" {
+		t.Fatalf("server.httpAddr = %q", cfg.Server.HTTPAddr)
 	}
-	if cfg.UIDir != "/opt/mini-cloud/control-plane/web" {
-		t.Fatalf("UIDir = %q", cfg.UIDir)
+	if cfg.UI.Dir != "/opt/mini-cloud/control-plane/web" {
+		t.Fatalf("ui.dir = %q", cfg.UI.Dir)
 	}
-	if cfg.DatabaseURL == "" {
-		t.Fatalf("DatabaseURL is empty")
+	if cfg.Database.URL == "" {
+		t.Fatalf("database.url is empty")
 	}
-	if cfg.AdminToken != "admin-secret" {
-		t.Fatalf("AdminToken = %q", cfg.AdminToken)
+	if cfg.Auth.AdminToken != "admin-secret" {
+		t.Fatalf("auth.adminToken = %q", cfg.Auth.AdminToken)
 	}
-	if cfg.SouthboundToken != "southbound-secret" {
-		t.Fatalf("SouthboundToken = %q", cfg.SouthboundToken)
+	if cfg.Auth.SouthboundToken != "southbound-secret" {
+		t.Fatalf("auth.southboundToken = %q", cfg.Auth.SouthboundToken)
 	}
-	if cfg.PlaneSyncIntervalSeconds != 15 {
-		t.Fatalf("PlaneSyncIntervalSeconds = %d", cfg.PlaneSyncIntervalSeconds)
-	}
-	if cfg.ServiceReconcileTimeoutSeconds != 300 {
-		t.Fatalf("ServiceReconcileTimeoutSeconds = %d", cfg.ServiceReconcileTimeoutSeconds)
-	}
-	if cfg.LokiURL != "http://127.0.0.1:3100" || cfg.LokiTenantID != "tenant-a" || cfg.LokiQueryTimeoutSeconds != 9 {
+	if cfg.Logs.Loki.URL != "http://127.0.0.1:3100" || cfg.Logs.Loki.TenantID != "tenant-a" {
 		t.Fatalf("unexpected Loki config: %+v", cfg)
 	}
 }
@@ -87,7 +76,7 @@ auth:
 	}
 }
 
-func TestLoadRejectsNegativeDurations(t *testing.T) {
+func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
 database:
@@ -96,12 +85,12 @@ auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
 sync:
-  planeIntervalSeconds: -1
+  planeIntervalSeconds: 30
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 
 	if _, err := Load(path); err == nil {
-		t.Fatalf("Load returned nil error, want validation error")
+		t.Fatalf("Load returned nil error, want unknown field error")
 	}
 }

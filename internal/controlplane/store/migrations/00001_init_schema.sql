@@ -2,9 +2,7 @@
 CREATE TABLE IF NOT EXISTS control_events (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    target_id TEXT NOT NULL DEFAULT '',
-    target_name TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -14,7 +12,7 @@ CREATE INDEX IF NOT EXISTS idx_control_events_created_at
 CREATE INDEX IF NOT EXISTS idx_control_events_action_created_at
     ON control_events (action, created_at DESC, id DESC);
 
-CREATE TABLE IF NOT EXISTS fleet_planes (
+CREATE TABLE IF NOT EXISTS planes (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
@@ -24,25 +22,16 @@ CREATE TABLE IF NOT EXISTS fleet_planes (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS fleet_plane_statuses (
-    plane_id TEXT PRIMARY KEY REFERENCES fleet_planes(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS plane_statuses (
+    plane_id TEXT PRIMARY KEY REFERENCES planes(id) ON DELETE CASCADE,
     status TEXT NOT NULL,
     message TEXT NOT NULL DEFAULT '',
     last_heartbeat_at TIMESTAMPTZ NULL,
     last_sync_at TIMESTAMPTZ NULL,
-    last_inventory_version BIGINT NOT NULL DEFAULT 0,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS plane_southbound_tokens (
-    plane_id TEXT PRIMARY KEY REFERENCES fleet_planes(id) ON DELETE CASCADE,
-    southbound_token TEXT NOT NULL,
-    last_verified_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS fleet_services (
+CREATE TABLE IF NOT EXISTS services (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
@@ -65,27 +54,20 @@ CREATE TABLE IF NOT EXISTS fleet_services (
     status_desired_state TEXT NOT NULL DEFAULT 'active',
     status_observed_generation BIGINT NOT NULL DEFAULT 0,
     status_phase TEXT NOT NULL DEFAULT 'pending',
-    status_healthy BOOLEAN NOT NULL DEFAULT false,
     status_message TEXT NOT NULL DEFAULT '',
     status_last_reconciled_at TIMESTAMPTZ NULL,
-    status_assigned_plane_id TEXT NULL,
-    status_remote_status TEXT NOT NULL DEFAULT '',
-    status_remote_message TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT fleet_services_name_key UNIQUE (name),
-    CONSTRAINT fleet_services_plane_fk
-        FOREIGN KEY (spec_plane_id) REFERENCES fleet_planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED,
-    CONSTRAINT fleet_services_assigned_plane_fk
-        FOREIGN KEY (status_assigned_plane_id) REFERENCES fleet_planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
+    CONSTRAINT services_name_key UNIQUE (name),
+    CONSTRAINT services_plane_fk
+        FOREIGN KEY (spec_plane_id) REFERENCES planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );
 
-CREATE INDEX IF NOT EXISTS idx_fleet_services_created_at
-    ON fleet_services (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_services_created_at
+    ON services (created_at DESC);
 
-CREATE TABLE IF NOT EXISTS fleet_plane_runtime_inventory_states (
-    plane_id TEXT PRIMARY KEY REFERENCES fleet_planes(id) ON DELETE CASCADE,
-    sync_version BIGINT NOT NULL,
+CREATE TABLE IF NOT EXISTS plane_node_inventory_states (
+    plane_id TEXT PRIMARY KEY REFERENCES planes(id) ON DELETE CASCADE,
     observed_at TIMESTAMPTZ NOT NULL,
     nodes_total INTEGER NOT NULL,
     nodes_ready INTEGER NOT NULL,
@@ -96,8 +78,8 @@ CREATE TABLE IF NOT EXISTS fleet_plane_runtime_inventory_states (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
-    plane_id TEXT NOT NULL REFERENCES fleet_planes(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS plane_nodes (
+    plane_id TEXT NOT NULL REFERENCES planes(id) ON DELETE CASCADE,
     node_id TEXT NOT NULL,
     name TEXT NOT NULL,
     provider TEXT NOT NULL,
@@ -117,18 +99,17 @@ CREATE TABLE IF NOT EXISTS fleet_plane_nodes (
     PRIMARY KEY (plane_id, node_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_fleet_plane_nodes_plane_status
-    ON fleet_plane_nodes (plane_id, status, schedulable);
+CREATE INDEX IF NOT EXISTS idx_plane_nodes_plane_status
+    ON plane_nodes (plane_id, status, schedulable);
 
 -- +goose Down
-DROP INDEX IF EXISTS idx_fleet_plane_nodes_plane_status;
-DROP TABLE IF EXISTS fleet_plane_nodes;
-DROP TABLE IF EXISTS fleet_plane_runtime_inventory_states;
-DROP INDEX IF EXISTS idx_fleet_services_created_at;
-DROP TABLE IF EXISTS fleet_services;
-DROP TABLE IF EXISTS plane_southbound_tokens;
-DROP TABLE IF EXISTS fleet_plane_statuses;
-DROP TABLE IF EXISTS fleet_planes;
+DROP INDEX IF EXISTS idx_plane_nodes_plane_status;
+DROP TABLE IF EXISTS plane_nodes;
+DROP TABLE IF EXISTS plane_node_inventory_states;
+DROP INDEX IF EXISTS idx_services_created_at;
+DROP TABLE IF EXISTS services;
+DROP TABLE IF EXISTS plane_statuses;
+DROP TABLE IF EXISTS planes;
 DROP INDEX IF EXISTS idx_control_events_action_created_at;
 DROP INDEX IF EXISTS idx_control_events_created_at;
 DROP TABLE IF EXISTS control_events;

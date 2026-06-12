@@ -1,130 +1,45 @@
 package runtime
 
 import (
-	"context"
-	"fmt"
-	"log/slog"
-	"strings"
 	"time"
 
 	"mini-cloud/internal/projectedfile"
 )
 
-const (
-	// TypeDocker 表示使用本机 Docker Engine 作为工作负载运行时。
-	TypeDocker = "docker"
-)
-
-// Config 配置 node-agent 使用的工作负载运行时。
-type Config struct {
-	// Type 是运行时类型；为空时默认使用 docker。
-	Type string
-}
-
-// RunInput 描述一次工作负载容器启动请求。
 type RunInput struct {
-	// ContainerName 是运行时创建容器时使用的容器名称。
-	ContainerName string `json:"containerName"`
-
-	// NodeID 是拥有该容器的 node-agent 节点 ID，会写入运行时标签。
-	NodeID string `json:"nodeID,omitempty"`
-	// ExecutionID 是拥有该容器的执行 ID，会用于运行时标签和投影文件路径。
-	ExecutionID string `json:"executionID,omitempty"`
-	// PlanID 是执行所属 execution plan ID，会写入运行时标签。
-	PlanID string `json:"planID,omitempty"`
-	// ServiceID 是执行所属服务 ID，会写入运行时标签。
-	ServiceID string `json:"serviceID,omitempty"`
-	// ProjectionRef 是写入运行时标签的投影文件引用；为空时标签使用 ExecutionID。
-	ProjectionRef string `json:"projectionRef,omitempty"`
-
-	// Image 是要运行的容器镜像。
-	Image string `json:"image"`
-	// Command 是写入 Docker Cmd 的命令前缀，不覆盖镜像 Entrypoint。
-	Command []string `json:"command"`
-	// Args 是追加到 Command 后或单独作为容器命令的参数。
-	Args []string `json:"args"`
-	// Env 是注入容器的环境变量。
-	Env map[string]string `json:"env"`
-	// ProjectedFiles 是以只读 bind mount 方式投影进容器的文件。
-	ProjectedFiles []projectedfile.File `json:"projectedFiles,omitempty"`
-	// ImageCredential 是拉取私有镜像时使用的认证信息。
-	ImageCredential *ImageCredential `json:"imageCredential,omitempty"`
-	// ContainerPort 是容器内需要暴露并映射到宿主机的 TCP 端口。
-	ContainerPort int `json:"containerPort"`
-	// HostBindIP 是宿主机端口绑定地址；生产路径使用节点私网 IP，避免 workload 监听到所有网卡。
-	HostBindIP string `json:"hostBindIP"`
-	// HostPortMin 是可分配宿主机端口池最小值；和 HostPortMax 同时配置时 Docker 绑定显式端口。
-	HostPortMin int `json:"hostPortMin"`
-	// HostPortMax 是可分配宿主机端口池最大值；和 HostPortMin 同时配置时 Docker 绑定显式端口。
-	HostPortMax int `json:"hostPortMax"`
-	// HostPort 是本次启动指定的宿主机端口；为空时由 runtime 在 HostPortMin/Max 内选择。
-	HostPort int `json:"hostPort"`
+	ContainerName   string
+	NodeID          string
+	ExecutionID     string
+	PlanID          string
+	ServiceID       string
+	Image           string
+	Command         []string
+	Args            []string
+	Env             map[string]string
+	ProjectedFiles  []projectedfile.File
+	ImageCredential *ImageCredential
+	ContainerPort   int
+	HostBindIP      string
+	HostPortMin     int
+	HostPortMax     int
 }
 
-// RunResult 描述运行时成功启动容器后的结果。
 type RunResult struct {
-	// ContainerID 是运行时返回的容器 ID。
-	ContainerID string `json:"containerID"`
-	// ContainerName 是实际创建的容器名称。
-	ContainerName string `json:"containerName"`
-	// HostPort 是映射到宿主机上的端口。
-	HostPort int `json:"hostPort"`
+	ContainerID   string
+	ContainerName string
+	HostPort      int
 }
 
-// LogRecord 表示从运行时日志流中解析出的一行容器日志。
 type LogRecord struct {
-	// Timestamp 是日志记录时间。
 	Timestamp time.Time
-	// Stream 是日志流名称，例如 stdout 或 stderr。
-	Stream string
-	// Line 是不含末尾换行符的日志内容。
-	Line string
+	Stream    string
+	Line      string
 }
 
-// LogEmitter 接收运行时解析出的容器日志记录。
 type LogEmitter func(LogRecord)
 
-// Runtime 表示 node-agent 支持的工作负载运行时能力。
-type Runtime interface {
-	// Run 创建并启动一个工作负载容器。
-	Run(context.Context, RunInput) (RunResult, error)
-	// Stop 停止指定容器。
-	Stop(context.Context, string) error
-	// Logs 返回指定容器尾部日志文本。
-	Logs(context.Context, string, int) (string, error)
-	// StreamLogs 从指定容器读取持续日志流，并将每行日志交给 emit。
-	StreamLogs(context.Context, string, LogEmitter) error
-	// CountRunning 汇报当前 runtime 可见的所有运行中容器。
-	CountRunning(context.Context) (int, error)
-	// ResetNode 停止当前节点上由 mini-cloud 管理的旧工作负载容器。
-	ResetNode(context.Context, string) error
-	// GarbageCollect 清理 runtime 本地孤儿资源。
-	GarbageCollect(context.Context) error
-	// Close 释放运行时客户端资源和本地跟踪的临时资源。
-	Close() error
-}
-
-// ImageCredential 描述拉取私有镜像时使用的 registry 认证信息。
 type ImageCredential struct {
-	// Server 是 registry server 地址。
-	Server string `json:"server"`
-	// Username 是 registry 用户名。
-	Username string `json:"username"`
-	// Password 是 registry 密码或访问令牌。
-	Password string `json:"password"`
-}
-
-// New 根据配置创建工作负载运行时实现。
-func New(logger *slog.Logger, cfg Config) (*Docker, error) {
-	runtimeType := strings.TrimSpace(cfg.Type)
-	if runtimeType == "" {
-		runtimeType = TypeDocker
-	}
-
-	switch runtimeType {
-	case TypeDocker:
-		return NewDockerEngine(logger)
-	default:
-		return nil, fmt.Errorf("unsupported node runtime type %q", runtimeType)
-	}
+	Server   string
+	Username string
+	Password string
 }

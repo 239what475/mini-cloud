@@ -4,10 +4,8 @@ set -euo pipefail
 INSTALL_ROOT={{.InstallRoot}}
 AGENT_BINARY_URL={{.AgentBinaryURL}}
 DOCKER_DAEMON_JSON_BASE64={{.DockerDaemonJSONBase64}}
-WORKLOAD_EGRESS_PROXY_ENABLED={{.WorkloadEgressProxyEnabledShell}}
 WORKLOAD_EGRESS_PROXY_ENDPOINT={{.WorkloadEgressProxyEndpoint}}
-NO_PROXY_VALUE={{.NoProxyValue}}
-NODE_AGENT_BOOTSTRAP_TOKEN={{.BootstrapToken}}
+NODE_AGENT_TOKEN={{.Token}}
 BOOTSTRAP_LOG={{.BootstrapLog}}
 METADATA_BASE={{.MetadataBase}}
 
@@ -15,18 +13,7 @@ log() {
   printf '[mini-cloud node agent bootstrap] %s\n' "$1" | tee -a "$BOOTSTRAP_LOG"
 }
 
-metadata_token() {
-  curl -fsS -X PUT "$METADATA_BASE/api/token" -H 'X-aliyun-ecs-metadata-token-ttl-seconds: 21600'
-}
-
-metadata_get() {
-  local path="$1"
-  if [[ -n "${METADATA_TOKEN:-}" ]]; then
-    curl -fsS -H "X-aliyun-ecs-metadata-token: $METADATA_TOKEN" "$METADATA_BASE/meta-data/$path"
-    return
-  fi
-  curl -fsS "$METADATA_BASE/meta-data/$path"
-}
+{{.MetadataGetFunction}}
 
 if ! command -v apt-get >/dev/null 2>&1; then
   log 'image does not provide apt-get; node agent bootstrap currently expects a Debian/Ubuntu style image'
@@ -38,10 +25,11 @@ apt-get update
 apt-get install -y curl ca-certificates
 
 touch "$BOOTSTRAP_LOG"
-METADATA_TOKEN="$(metadata_token || true)"
-INSTANCE_ID="$(metadata_get instance-id)"
-PRIVATE_IP="$(metadata_get private-ipv4)"
-PUBLIC_IP="$(metadata_get public-ipv4 || metadata_get eipv4 || true)"
+{{- if .MetadataInit}}
+{{.MetadataInit}}
+{{- end}}
+INSTANCE_ID="$(metadata_get {{.MetadataInstanceIDPath}})"
+PRIVATE_IP="$(metadata_get {{.MetadataPrivateIPPath}})"
 INSTANCE_NAME={{.InstanceName}}
 
 apt-get install -y docker.io
@@ -49,16 +37,6 @@ install -d -m 0755 "$INSTALL_ROOT/bin" /var/lib/mini-cloud-node-agent /etc/docke
 
 if [[ -n "$DOCKER_DAEMON_JSON_BASE64" ]]; then
   printf '%s' "$DOCKER_DAEMON_JSON_BASE64" | base64 -d >/etc/docker/daemon.json
-fi
-
-if [[ "$WORKLOAD_EGRESS_PROXY_ENABLED" == "true" ]]; then
-  install -d -m 0755 /etc/systemd/system/docker.service.d
-  cat >/etc/systemd/system/docker.service.d/mini-cloud-proxy.conf <<EOF_DOCKER_PROXY
-[Service]
-Environment="HTTP_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"
-Environment="HTTPS_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"
-Environment="NO_PROXY=$NO_PROXY_VALUE"
-EOF_DOCKER_PROXY
 fi
 
 systemctl daemon-reload || true
@@ -73,7 +51,7 @@ cat >"$INSTALL_ROOT/node-agent.yaml" <<EOF_NODE_AGENT_CONFIG
 server:
   url: {{.ConnectEndpoint}}
 auth:
-  bootstrapToken: "$NODE_AGENT_BOOTSTRAP_TOKEN"
+  token: "$NODE_AGENT_TOKEN"
 platform:
   name: {{.PlatformName}}
 node:
@@ -81,30 +59,14 @@ node:
   region: {{.Region}}
   name: "$INSTANCE_NAME"
   privateIP: "$PRIVATE_IP"
-  publicIP: "$PUBLIC_IP"
   instanceID: "$INSTANCE_ID"
   instanceType: {{.InstanceType}}
 capacity:
   total:
     cpuMilli: {{.CPUMilli}}
     memoryMi: {{.MemoryMi}}
-  agentReserved:
-    cpuMilli: 200
-    memoryMi: 256
-  evictionReserved:
-    memoryMi: 512
-agent:
-  version: 0.1.0
-  heartbeatInterval: {{.HeartbeatInterval}}
-  workInterval: {{.WorkInterval}}
-runtime:
-  type: docker
-  hostPortRange:
-    min: {{.HostPortMin}}
-    max: {{.HostPortMax}}
 network:
   egressProxy:
-    enabled: {{.WorkloadEgressProxyEnabledYAML}}
     endpoint: {{.WorkloadEgressProxyEndpoint}}
     noProxy:
 {{range .NoProxyItems}}      - {{.}}

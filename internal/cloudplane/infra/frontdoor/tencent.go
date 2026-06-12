@@ -45,56 +45,35 @@ func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error)
 	return &tencentCDNClient{client: client, origin: cfg.Ingress.PublicOrigin, dnsPodDomain: cfg.Ingress.FrontDoor.DNSPodDomain}, nil
 }
 
-func (c *tencentCDNClient) ListDomains(ctx context.Context, baseDomain string) ([]CDNDomain, error) {
-	req := cdn.NewDescribeDomainsRequest()
-	req.Offset = tccommon.Int64Ptr(0)
-	req.Limit = tccommon.Int64Ptr(1000)
-	req.Filters = []*cdn.DomainFilter{{
-		Name:  tccommon.StringPtr("domain"),
-		Value: []*string{tccommon.StringPtr(baseDomain)},
-		Fuzzy: tccommon.BoolPtr(true),
-	}}
-	resp, err := c.client.DescribeDomainsWithContext(ctx, req)
-	if err != nil {
-		return nil, err
-	}
-	if resp.Response == nil {
-		return nil, nil
-	}
-	domains := make([]CDNDomain, 0, len(resp.Response.Domains))
-	for _, item := range resp.Response.Domains {
-		if item == nil || item.Domain == nil {
-			continue
-		}
-		domains = append(domains, CDNDomain{Host: cleanDomain(*item.Domain), CNAME: trimCNAMEValue(item.Cname)})
-	}
-	return domains, nil
-}
-
-func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) error {
+func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) (*DNSRecord, error) {
 	host = cleanDomain(host)
 	if host == "" {
-		return nil
+		return nil, nil
 	}
 	domain, err := c.getDomain(ctx, host)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if domain.Host != "" {
-		return nil
+	if domain.Exists {
+		return nil, nil
 	}
 	recordReq := cdn.NewCreateVerifyRecordRequest()
 	recordReq.Domain = tccommon.StringPtr(host)
 	recordResp, err := c.client.CreateVerifyRecordWithContext(ctx, recordReq)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if recordResp == nil || recordResp.Response == nil || recordResp.Response.SubDomain == nil || recordResp.Response.Record == nil || recordResp.Response.RecordType == nil {
-		return fmt.Errorf("Tencent CDN verify record response is incomplete")
+		return nil, fmt.Errorf("tencent CDN verify record response is incomplete")
 	}
 	verifyHost := cleanDomain(*recordResp.Response.SubDomain + "." + c.dnsPodDomain)
-	if err := dns.EnsureRecord(ctx, verifyHost, *recordResp.Response.RecordType, *recordResp.Response.Record); err != nil {
-		return err
+	verifyRecord := &DNSRecord{
+		Subdomain: verifyHost,
+		Type:      *recordResp.Response.RecordType,
+		Value:     *recordResp.Response.Record,
+	}
+	if err := dns.EnsureRecord(ctx, verifyRecord.Subdomain, verifyRecord.Type, verifyRecord.Value); err != nil {
+		return verifyRecord, err
 	}
 	verifyType := "dns"
 	verifyReq := cdn.NewVerifyDomainRecordRequest()
@@ -103,14 +82,14 @@ func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns d
 	verifyResp, err := c.client.VerifyDomainRecordWithContext(ctx, verifyReq)
 	if err != nil {
 		if isTencentVerifyPending(err) {
-			return fmt.Errorf("Tencent CDN domain verification is pending")
+			return verifyRecord, errDomainVerificationPending
 		}
-		return err
+		return verifyRecord, err
 	}
 	if verifyResp == nil || verifyResp.Response == nil || verifyResp.Response.Result == nil || !*verifyResp.Response.Result {
-		return fmt.Errorf("Tencent CDN domain verification is pending")
+		return verifyRecord, errDomainVerificationPending
 	}
-	return nil
+	return verifyRecord, nil
 }
 
 func (c *tencentCDNClient) EnsureDomain(ctx context.Context, host string) (string, error) {
@@ -119,7 +98,7 @@ func (c *tencentCDNClient) EnsureDomain(ctx context.Context, host string) (strin
 	if err != nil {
 		return "", err
 	}
-	if domain.Host == "" {
+	if !domain.Exists {
 		if err := c.addDomain(ctx, host); err != nil {
 			if isTencentPending(err) {
 				return "", nil
@@ -156,7 +135,7 @@ func (c *tencentCDNClient) OwnsCNAME(value string) bool {
 	return strings.HasSuffix(trimCNAME(value), ".cdn.dnsv1.com")
 }
 
-func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (CDNDomain, error) {
+func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (cdnDomain, error) {
 	req := cdn.NewDescribeDomainsRequest()
 	req.Offset = tccommon.Int64Ptr(0)
 	req.Limit = tccommon.Int64Ptr(10)
@@ -166,18 +145,18 @@ func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (CDNDomai
 	}}
 	resp, err := c.client.DescribeDomainsWithContext(ctx, req)
 	if err != nil {
-		return CDNDomain{}, err
+		return cdnDomain{}, err
 	}
 	if resp.Response == nil {
-		return CDNDomain{}, nil
+		return cdnDomain{}, nil
 	}
 	for _, item := range resp.Response.Domains {
 		if item == nil || item.Domain == nil || cleanDomain(*item.Domain) != host {
 			continue
 		}
-		return CDNDomain{Host: host, CNAME: trimCNAMEValue(item.Cname)}, nil
+		return cdnDomain{Exists: true, CNAME: trimCNAMEValue(item.Cname)}, nil
 	}
-	return CDNDomain{}, nil
+	return cdnDomain{}, nil
 }
 
 func (c *tencentCDNClient) addDomain(ctx context.Context, host string) error {

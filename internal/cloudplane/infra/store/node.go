@@ -26,7 +26,6 @@ const nodeSelectColumns = `
 	region,
 	name,
 	private_ip,
-	public_ip,
 	instance_id,
 	instance_type,
 	cpu_milli_total,
@@ -120,7 +119,6 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 			region,
 			name,
 			private_ip,
-			public_ip,
 			instance_id,
 			instance_type,
 			cpu_milli_total,
@@ -134,26 +132,25 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 			schedulable,
 			elastic
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''), $8, $9, $10, 0, 0, 0, 0, $11, '', TRUE, FALSE)
+		VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''), $7, $8, $9, 0, 0, 0, 0, $10, '', TRUE, FALSE)
 		ON CONFLICT (provider, instance_id) DO UPDATE
 		SET
 			region = EXCLUDED.region,
 			name = EXCLUDED.name,
 			private_ip = EXCLUDED.private_ip,
-			public_ip = EXCLUDED.public_ip,
 			instance_type = EXCLUDED.instance_type,
 			cpu_milli_total = EXCLUDED.cpu_milli_total,
 			memory_mi_total = EXCLUDED.memory_mi_total,
 			status = CASE
-				WHEN nodes.status IN ($12, $13) THEN nodes.status
-				ELSE $11
+				WHEN nodes.status IN ($11, $12) THEN nodes.status
+				ELSE $10
 			END,
 			status_reason = CASE
-				WHEN nodes.status IN ($12, $13) THEN nodes.status_reason
+				WHEN nodes.status IN ($11, $12) THEN nodes.status_reason
 				ELSE ''
 			END,
 			schedulable = CASE
-				WHEN nodes.status IN ($12, $13) THEN FALSE
+				WHEN nodes.status IN ($11, $12) THEN FALSE
 				ELSE TRUE
 			END,
 			updated_at = now()
@@ -164,7 +161,6 @@ func (s *Store) RegisterNode(ctx context.Context, input cloudmodel.RegisterInput
 		input.Region,
 		input.Name,
 		input.PrivateIP,
-		input.PublicIP,
 		input.InstanceID,
 		input.InstanceType,
 		input.CPUMilliTotal,
@@ -209,35 +205,6 @@ func (s *Store) ListNodes(ctx context.Context) ([]cloudmodel.Node, error) {
 	return items, nil
 }
 
-func (s *Store) ListNodesByStatuses(ctx context.Context, statuses ...string) ([]cloudmodel.Node, error) {
-	if len(statuses) == 0 {
-		return nil, nil
-	}
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+nodeSelectColumns+`
-		FROM nodes
-		WHERE status = ANY($1::text[])
-		ORDER BY created_at ASC, id ASC
-	`, statuses)
-	if err != nil {
-		return nil, fmt.Errorf("query nodes by statuses: %w", err)
-	}
-	defer rows.Close()
-
-	items := make([]cloudmodel.Node, 0)
-	for rows.Next() {
-		item, err := scanNode(rows)
-		if err != nil {
-			return nil, fmt.Errorf("scan node by statuses: %w", err)
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate nodes by statuses: %w", err)
-	}
-	return items, nil
-}
-
 func (s *Store) ListElasticNodesByStatuses(ctx context.Context, statuses ...string) ([]cloudmodel.Node, error) {
 	if len(statuses) == 0 {
 		return nil, nil
@@ -268,14 +235,14 @@ func (s *Store) ListElasticNodesByStatuses(ctx context.Context, statuses ...stri
 	return items, nil
 }
 
-func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cloudmodel.HeartbeatInput) (cloudmodel.HeartbeatSummary, time.Time, error) {
+func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cloudmodel.HeartbeatInput) (string, error) {
 	if err := input.Validate(); err != nil {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, err
+		return "", err
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("begin heartbeat tx: %w", err)
+		return "", fmt.Errorf("begin heartbeat tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -288,22 +255,21 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cl
 		WHERE id = $1
 	`, nodeID).Scan(&cpuTotal, &memoryTotal, &currentStatus); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return cloudmodel.HeartbeatSummary{}, time.Time{}, ErrNodeNotFound
+			return "", ErrNodeNotFound
 		}
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("load node capacity: %w", err)
+		return "", fmt.Errorf("load node capacity: %w", err)
 	}
 
 	if input.CPUMilliAllocatable > cpuTotal {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, ErrHeartbeatCPUMilliAllocatableTooLarge
+		return "", ErrHeartbeatCPUMilliAllocatableTooLarge
 	}
 	if input.MemoryMiAllocatable > memoryTotal {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, ErrHeartbeatMemoryMiAllocatableTooLarge
+		return "", ErrHeartbeatMemoryMiAllocatableTooLarge
 	}
 
-	reportedAt := input.ReportedAt.UTC()
 	receivedAt := time.Now().UTC()
-	nextStatus := input.Status
-	nextSchedulable := input.Status == cloudmodel.StatusReady
+	nextStatus := cloudmodel.StatusReady
+	nextSchedulable := true
 	switch currentStatus {
 	case cloudmodel.StatusDraining:
 		nextStatus = cloudmodel.StatusDraining
@@ -332,20 +298,13 @@ func (s *Store) RecordNodeHeartbeat(ctx context.Context, nodeID string, input cl
 			END
 		WHERE id = $1
 	`, nodeID, input.CPUMilliAllocatable, input.MemoryMiAllocatable, nextStatus, nextSchedulable, receivedAt); err != nil {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("update node summary from heartbeat: %w", err)
+		return "", fmt.Errorf("update node summary from heartbeat: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return cloudmodel.HeartbeatSummary{}, time.Time{}, fmt.Errorf("commit heartbeat tx: %w", err)
+		return "", fmt.Errorf("commit heartbeat tx: %w", err)
 	}
-	return cloudmodel.HeartbeatSummary{
-		ReportedAt:          reportedAt,
-		AgentVersion:        input.AgentVersion,
-		CPUMilliAllocatable: input.CPUMilliAllocatable,
-		MemoryMiAllocatable: input.MemoryMiAllocatable,
-		RunningContainers:   input.RunningContainers,
-		Status:              nextStatus,
-	}, receivedAt, nil
+	return nextStatus, nil
 }
 
 func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, error) {
@@ -365,7 +324,7 @@ func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, er
 	return item, nil
 }
 
-type NodeScaleOutCandidate struct {
+type NodeProvisioningCandidate struct {
 	PlanID          string
 	ServiceID       string
 	CPUMilli        int
@@ -377,8 +336,8 @@ type NodeScaleOutCandidate struct {
 	HasProvisioning bool
 }
 
-func (s *Store) GetNodeScaleOutCandidate(ctx context.Context, nodeNamePrefix string, instanceType string) (*NodeScaleOutCandidate, error) {
-	var candidate NodeScaleOutCandidate
+func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix string, instanceType string) (*NodeProvisioningCandidate, error) {
+	var candidate NodeProvisioningCandidate
 	err := s.db.QueryRowContext(ctx, `
 		WITH pending AS (
 			SELECT
@@ -440,7 +399,7 @@ func (s *Store) GetNodeScaleOutCandidate(ctx context.Context, nodeNamePrefix str
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil
 		}
-		return nil, fmt.Errorf("query node scale-out candidate: %w", err)
+		return nil, fmt.Errorf("query node provisioning candidate: %w", err)
 	}
 	return &candidate, nil
 }
@@ -459,14 +418,14 @@ func (s *Store) HasUnsettledExecutionIntents(ctx context.Context) (bool, error) 
 	return exists, nil
 }
 
-func (s *Store) MarkNodeDraining(ctx context.Context, nodeID string, reason string, observedAt time.Time) (cloudmodel.Node, bool, error) {
+func (s *Store) PrepareNodeDeletion(ctx context.Context, nodeID string, reason string, observedAt time.Time) (cloudmodel.Node, bool, error) {
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return cloudmodel.Node{}, false, fmt.Errorf("begin node draining tx: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("begin node deletion tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -481,7 +440,7 @@ func (s *Store) MarkNodeDraining(ctx context.Context, nodeID string, reason stri
 		if errors.Is(err, sql.ErrNoRows) {
 			return cloudmodel.Node{}, false, ErrNodeNotFound
 		}
-		return cloudmodel.Node{}, false, fmt.Errorf("load node for draining: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("load node for deletion: %w", err)
 	}
 	if current.Status == cloudmodel.StatusDraining {
 		return current, true, nil
@@ -497,7 +456,7 @@ func (s *Store) MarkNodeDraining(ctx context.Context, nodeID string, reason stri
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
 	`, current.ID, cloudmodel.StatusDeploying, cloudmodel.StatusRunning).Scan(&activeCount); err != nil {
-		return cloudmodel.Node{}, false, fmt.Errorf("count active executions before node draining: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("count active executions before node deletion: %w", err)
 	}
 	if activeCount > 0 {
 		return current, false, nil
@@ -515,10 +474,10 @@ func (s *Store) MarkNodeDraining(ctx context.Context, nodeID string, reason stri
 	`, nodeID, cloudmodel.StatusDraining, reason, observedAt.UTC())
 	item, err := scanNode(row)
 	if err != nil {
-		return cloudmodel.Node{}, false, fmt.Errorf("mark node draining: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("prepare node deletion: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return cloudmodel.Node{}, false, fmt.Errorf("commit node draining tx: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("commit node deletion tx: %w", err)
 	}
 	return item, true, nil
 }
@@ -535,10 +494,6 @@ func (s *Store) MarkNodeDeleted(ctx context.Context, nodeID string, reason strin
 			schedulable = FALSE,
 			cpu_milli_allocated = 0,
 			memory_mi_allocated = 0,
-			session_token_prefix = '',
-			session_token_hash = NULL,
-			session_last_used_at = NULL,
-			session_expires_at = NULL,
 			updated_at = $4
 		WHERE id = $1
 		RETURNING `+nodeSelectColumns+`
@@ -553,25 +508,24 @@ func (s *Store) MarkNodeDeleted(ctx context.Context, nodeID string, reason strin
 	return item, nil
 }
 
-// ErrHeartbeatStaleAfterInvalid 表示 stale heartbeat 判定窗口非法。
 var ErrHeartbeatStaleAfterInvalid = errors.New("staleAfter must be greater than 0")
 
-func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter time.Duration) (cloudmodel.HeartbeatReconcileResult, error) {
+type StaleNodeHeartbeatResult struct {
+	OfflineNodes     int
+	FailedExecutions int
+}
+
+func (s *Store) MarkStaleNodeHeartbeatsOffline(ctx context.Context, staleAfter time.Duration) (StaleNodeHeartbeatResult, error) {
 	if staleAfter <= 0 {
-		return cloudmodel.HeartbeatReconcileResult{}, ErrHeartbeatStaleAfterInvalid
+		return StaleNodeHeartbeatResult{}, ErrHeartbeatStaleAfterInvalid
 	}
 
 	cutoffTime := time.Now().UTC().Add(-staleAfter)
-	result := cloudmodel.HeartbeatReconcileResult{
-		StaleAfterSeconds:  int(staleAfter / time.Second),
-		CutoffTime:         cutoffTime,
-		NodesMarkedOffline: []cloudmodel.Node{},
-		ImpactedPlans:      []cloudmodel.ReconcileImpact{},
-	}
+	var result StaleNodeHeartbeatResult
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("begin reconcile stale heartbeats tx: %w", err)
+		return StaleNodeHeartbeatResult{}, fmt.Errorf("begin reconcile stale heartbeats tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -587,7 +541,7 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		FOR UPDATE
 	`, cutoffTime, cloudmodel.StatusOffline, cloudmodel.StatusDraining, cloudmodel.StatusDeleted)
 	if err != nil {
-		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("query stale nodes: %w", err)
+		return StaleNodeHeartbeatResult{}, fmt.Errorf("query stale nodes: %w", err)
 	}
 
 	var staleNodes []cloudmodel.Node
@@ -595,20 +549,20 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 		item, scanErr := scanNode(rows)
 		if scanErr != nil {
 			_ = rows.Close()
-			return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("scan stale node: %w", scanErr)
+			return StaleNodeHeartbeatResult{}, fmt.Errorf("scan stale node: %w", scanErr)
 		}
 		staleNodes = append(staleNodes, item)
 	}
 	if err := rows.Err(); err != nil {
 		_ = rows.Close()
-		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("iterate stale nodes: %w", err)
+		return StaleNodeHeartbeatResult{}, fmt.Errorf("iterate stale nodes: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("close stale node rows: %w", err)
+		return StaleNodeHeartbeatResult{}, fmt.Errorf("close stale node rows: %w", err)
 	}
 
 	for _, staleNode := range staleNodes {
-		updatedRow := tx.QueryRowContext(ctx, `
+		if _, err := tx.ExecContext(ctx, `
 			UPDATE nodes
 			SET
 				status = $2,
@@ -616,14 +570,10 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 				schedulable = FALSE,
 				updated_at = now()
 			WHERE id = $1
-			RETURNING `+nodeSelectColumns+`
-		`, staleNode.ID, cloudmodel.StatusOffline, "node heartbeat timed out")
-
-		updatedNode, err := scanNode(updatedRow)
-		if err != nil {
-			return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("mark stale node offline: %w", err)
+		`, staleNode.ID, cloudmodel.StatusOffline, "node heartbeat timed out"); err != nil {
+			return StaleNodeHeartbeatResult{}, fmt.Errorf("mark stale node offline: %w", err)
 		}
-		result.NodesMarkedOffline = append(result.NodesMarkedOffline, updatedNode)
+		result.OfflineNodes++
 
 		reason := fmt.Sprintf(
 			"node %s marked offline because no heartbeat arrived after %s",
@@ -631,44 +581,29 @@ func (s *Store) UpdateStaleNodeHeartbeatState(ctx context.Context, staleAfter ti
 			cutoffTime.Format(time.RFC3339),
 		)
 
-		impactedIntents, err := failExecutionIntentsForOfflineNode(ctx, tx, staleNode, reason)
+		failedExecutions, err := failExecutionIntentsForOfflineNode(ctx, tx, staleNode, reason)
 		if err != nil {
-			return cloudmodel.HeartbeatReconcileResult{}, err
+			return StaleNodeHeartbeatResult{}, err
 		}
-		for _, item := range impactedIntents {
-			result.ImpactedPlans = append(result.ImpactedPlans, cloudmodel.ReconcileImpact{
-				NodeID:      staleNode.ID,
-				NodeName:    staleNode.Name,
-				PlanID:      item.PlanID,
-				ServiceID:   item.ServiceID,
-				ServiceName: item.ServiceName,
-				Reason:      reason,
-			})
-		}
+		result.FailedExecutions += failedExecutions
 	}
 
 	if err := tx.Commit(); err != nil {
-		return cloudmodel.HeartbeatReconcileResult{}, fmt.Errorf("commit reconcile stale heartbeats tx: %w", err)
+		return StaleNodeHeartbeatResult{}, fmt.Errorf("commit reconcile stale heartbeats tx: %w", err)
 	}
 	return result, nil
 }
 
 type impactedExecutionIntent struct {
-	ID              string
-	PlanID          string
-	ServiceID       string
-	ServiceName     string
 	CPUMilliRequest int
 	MemoryMiRequest int
+	ID              string
 }
 
-func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode cloudmodel.Node, reason string) ([]impactedExecutionIntent, error) {
+func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode cloudmodel.Node, reason string) (int, error) {
 	intentRows, err := tx.QueryContext(ctx, `
 		SELECT
 			id,
-			plan_id,
-			service_id,
-			service_name,
 			cpu_milli_request,
 			memory_mi_request
 		FROM execution_intents
@@ -678,20 +613,24 @@ func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNo
 		FOR UPDATE
 	`, staleNode.ID, cloudmodel.StatusPending, cloudmodel.StatusDeploying, cloudmodel.StatusRunning)
 	if err != nil {
-		return nil, fmt.Errorf("query impacted execution intents: %w", err)
+		return 0, fmt.Errorf("query impacted execution intents: %w", err)
 	}
-	defer intentRows.Close()
 
 	var impacted []impactedExecutionIntent
 	for intentRows.Next() {
 		var item impactedExecutionIntent
-		if err := intentRows.Scan(&item.ID, &item.PlanID, &item.ServiceID, &item.ServiceName, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
-			return nil, fmt.Errorf("scan impacted execution intent: %w", err)
+		if err := intentRows.Scan(&item.ID, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
+			_ = intentRows.Close()
+			return 0, fmt.Errorf("scan impacted execution intent: %w", err)
 		}
 		impacted = append(impacted, item)
 	}
 	if err := intentRows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate impacted execution intents: %w", err)
+		_ = intentRows.Close()
+		return 0, fmt.Errorf("iterate impacted execution intents: %w", err)
+	}
+	if err := intentRows.Close(); err != nil {
+		return 0, fmt.Errorf("close impacted execution intent rows: %w", err)
 	}
 
 	for _, item := range impacted {
@@ -704,91 +643,13 @@ func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNo
 				updated_at = now()
 			WHERE id = $1
 		`, item.ID, cloudmodel.StatusFailed, reason); err != nil {
-			return nil, fmt.Errorf("mark execution intent failed during node offline reconcile: %w", err)
+			return 0, fmt.Errorf("mark execution intent failed during node offline reconcile: %w", err)
 		}
 		if err := freeNodeAllocation(ctx, tx, staleNode.ID, item.CPUMilliRequest, item.MemoryMiRequest); err != nil {
-			return nil, err
+			return 0, err
 		}
 	}
-	return impacted, nil
-}
-
-// ErrNodeAgentSessionTokenNotFound 表示 node-agent session token 不存在、为空或已过期。
-var ErrNodeAgentSessionTokenNotFound = errors.New("node agent session token not found")
-
-// NodeAgentSessionTokenRecord 是写入 node-agent session token 时需要持久化的字段。
-type NodeAgentSessionTokenRecord struct {
-	// NodeID 是 token 绑定的 node 唯一标识。
-	NodeID string
-	// TokenPrefix 是可安全展示的令牌前缀。
-	TokenPrefix string
-	// TokenHash 是明文令牌的不可逆哈希。
-	TokenHash string
-	// ExpiresAt 是 token 过期时间；nil 表示不过期。
-	ExpiresAt *time.Time
-}
-
-func (s *Store) UpsertNodeAgentSessionToken(ctx context.Context, record NodeAgentSessionTokenRecord) error {
-	if strings.TrimSpace(record.NodeID) == "" {
-		return ErrNodeNotFound
-	}
-	if strings.TrimSpace(record.TokenHash) == "" {
-		return errors.New("node agent session token hash is required")
-	}
-	if strings.TrimSpace(record.TokenPrefix) == "" {
-		return errors.New("node agent session token prefix is required")
-	}
-
-	var expiresAt any
-	if record.ExpiresAt != nil && !record.ExpiresAt.IsZero() {
-		expiresAt = record.ExpiresAt.UTC()
-	}
-
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE nodes
-		SET
-			session_token_prefix = $2,
-			session_token_hash = $3,
-			session_expires_at = $4,
-			session_last_used_at = NULL,
-			updated_at = now()
-		WHERE id = $1
-	`, strings.TrimSpace(record.NodeID), strings.TrimSpace(record.TokenPrefix), strings.TrimSpace(record.TokenHash), expiresAt)
-	if err != nil {
-		return fmt.Errorf("upsert node agent session token: %w", err)
-	}
-	if affected, err := result.RowsAffected(); err != nil {
-		return fmt.Errorf("read node agent session token update result: %w", err)
-	} else if affected == 0 {
-		return ErrNodeNotFound
-	}
-	return nil
-}
-
-func (s *Store) ResolveNodeAgentSessionTokenByHash(ctx context.Context, tokenHash string) (string, error) {
-	trimmed := strings.TrimSpace(tokenHash)
-	if trimmed == "" {
-		return "", ErrNodeAgentSessionTokenNotFound
-	}
-
-	var nodeID string
-	err := s.db.QueryRowContext(ctx, `
-		UPDATE nodes
-		SET
-			session_last_used_at = now(),
-			updated_at = now()
-		WHERE session_token_hash = $1
-		  AND (session_expires_at IS NULL OR session_expires_at > now())
-		  AND status <> $2
-		RETURNING id
-	`, trimmed, cloudmodel.StatusDeleted).Scan(&nodeID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return "", ErrNodeAgentSessionTokenNotFound
-		}
-		return "", fmt.Errorf("resolve node agent session token by hash: %w", err)
-	}
-	return nodeID, nil
+	return len(impacted), nil
 }
 
 func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, error) {
@@ -802,7 +663,6 @@ func scanNode(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Node, er
 		&item.Region,
 		&item.Name,
 		&item.PrivateIP,
-		&item.PublicIP,
 		&instanceID,
 		&item.InstanceType,
 		&item.CPUMilliTotal,

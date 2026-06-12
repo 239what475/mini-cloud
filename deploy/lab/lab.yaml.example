@@ -9,6 +9,7 @@ controlPlane:
 planes:
   - name: mini-cloud-tencent-lab
     provider: tencent
+    region: ap-guangzhou
     ssh:
       host: myserver
     terraform:
@@ -20,6 +21,7 @@ planes:
 
   - name: mini-cloud-aliyun-lab
     provider: aliyun
+    region: cn-beijing
     ssh:
       host: myserver2
     terraform:
@@ -42,7 +44,7 @@ binaries:
 tokens:
   controlPlaneAdmin: ""
   controlPlaneSouthbound: ""
-  nodeAgentBootstrap: ""
+  nodeAgent: ""
 
 provider:
   tencentCredentialFile: ~/.tccli/default.credential

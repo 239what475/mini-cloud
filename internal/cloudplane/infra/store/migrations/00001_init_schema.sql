@@ -1,6 +1,6 @@
 -- +goose Up
--- 当前仍处于开发期，cloud-plane 不保留旧 schema 的升级历史。
--- 这个 baseline 直接描述当前代码需要的完整数据库结构；已有开发库需要重建。
+-- cloud-plane is still pre-release, so this baseline describes the current schema directly.
+-- Existing development databases should be rebuilt instead of migrated through old shapes.
 
 CREATE TABLE IF NOT EXISTS nodes (
     id TEXT PRIMARY KEY,
@@ -8,7 +8,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     region TEXT NOT NULL,
     name TEXT NOT NULL,
     private_ip TEXT NOT NULL DEFAULT '',
-    public_ip TEXT NOT NULL DEFAULT '',
     instance_id TEXT NULL,
     instance_type TEXT NOT NULL,
     cpu_milli_total INTEGER NOT NULL DEFAULT 0 CHECK (cpu_milli_total >= 0),
@@ -22,10 +21,6 @@ CREATE TABLE IF NOT EXISTS nodes (
     schedulable BOOLEAN NOT NULL DEFAULT TRUE,
     elastic BOOLEAN NOT NULL DEFAULT FALSE,
     last_heartbeat_at TIMESTAMPTZ NULL,
-    session_token_prefix TEXT NOT NULL DEFAULT '',
-    session_token_hash TEXT NULL UNIQUE,
-    session_last_used_at TIMESTAMPTZ NULL,
-    session_expires_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (provider, instance_id)
@@ -33,12 +28,6 @@ CREATE TABLE IF NOT EXISTS nodes (
 
 CREATE INDEX IF NOT EXISTS idx_nodes_status_created_at
     ON nodes (status, created_at ASC, id ASC);
-
-CREATE INDEX IF NOT EXISTS idx_nodes_session_last_used_at
-    ON nodes (session_last_used_at);
-
-CREATE INDEX IF NOT EXISTS idx_nodes_session_expires_at
-    ON nodes (session_expires_at);
 
 CREATE TABLE IF NOT EXISTS execution_intents (
     id TEXT PRIMARY KEY,
@@ -79,6 +68,17 @@ CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at
 CREATE INDEX IF NOT EXISTS idx_execution_intents_service_status
     ON execution_intents (service_id, status, updated_at DESC);
 
+CREATE TABLE IF NOT EXISTS frontdoor_domains (
+    host TEXT PRIMARY KEY,
+    cname TEXT NOT NULL DEFAULT '',
+    verify_subdomain TEXT NOT NULL DEFAULT '',
+    verify_type TEXT NOT NULL DEFAULT '',
+    verify_value TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- +goose Down
+DROP TABLE IF EXISTS frontdoor_domains;
 DROP TABLE IF EXISTS execution_intents;
 DROP TABLE IF EXISTS nodes;

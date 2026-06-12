@@ -54,17 +54,17 @@ func (r *Runner) Destroy(ctx context.Context) error {
 func (r *Runner) destroyPlaneCloudResources(ctx context.Context, plane Plane, out TerraformOutput) error {
 	switch out.ProviderName() {
 	case "aliyun":
-		if err := r.deleteServiceFrontDoors(ctx, plane, out); err != nil {
+		if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
 			return err
 		}
-		if err := r.deleteAliyunRuntimeNodes(ctx, out); err != nil {
+		if err := r.deleteAliyunWorkerNodes(ctx, out); err != nil {
 			return err
 		}
 	case "tencent":
-		if err := r.deleteServiceFrontDoors(ctx, plane, out); err != nil {
+		if err := r.deleteServiceFrontDoors(ctx, out); err != nil {
 			return err
 		}
-		if err := r.deleteTencentRuntimeNodes(ctx, out); err != nil {
+		if err := r.deleteTencentWorkerNodes(ctx, out); err != nil {
 			return err
 		}
 		if out.PlatformModeName() == "existing_lighthouse" {
@@ -87,7 +87,20 @@ func (r *Runner) tryTerraformOutput(ctx context.Context, plane Plane) (Terraform
 		}
 		return out, true, nil
 	}
+	if !terraformOutputUnavailable(err) {
+		return TerraformOutput{}, false, err
+	}
 	return TerraformOutput{}, false, nil
+}
+
+func terraformOutputUnavailable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no state file was found") ||
+		strings.Contains(message, "state file either has no outputs") ||
+		strings.Contains(message, "has no outputs")
 }
 
 func (r *Runner) uninstallCloudPlane(ctx context.Context, plane Plane, out TerraformOutput) error {
@@ -127,8 +140,8 @@ func (r *Runner) controlPlaneHost() string {
 	return strings.TrimSpace(r.cfg.ControlPlane.SSH.Host)
 }
 
-func (r *Runner) deleteAliyunRuntimeNodes(ctx context.Context, out TerraformOutput) error {
-	ids, err := r.aliyunRuntimeNodeIDs(ctx, out)
+func (r *Runner) deleteAliyunWorkerNodes(ctx context.Context, out TerraformOutput) error {
+	ids, err := r.aliyunWorkerNodeIDs(ctx, out)
 	if err != nil {
 		return err
 	}
@@ -143,7 +156,7 @@ func (r *Runner) deleteAliyunRuntimeNodes(ctx context.Context, out TerraformOutp
 	return err
 }
 
-func (r *Runner) aliyunRuntimeNodeIDs(ctx context.Context, out TerraformOutput) ([]string, error) {
+func (r *Runner) aliyunWorkerNodeIDs(ctx context.Context, out TerraformOutput) ([]string, error) {
 	var response aliyunInstancesResponse
 	err := runJSON(ctx, &response, "aliyun", "ecs", "DescribeInstances",
 		"--RegionId", out.RegionID(),

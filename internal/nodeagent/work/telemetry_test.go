@@ -7,7 +7,6 @@ import (
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 )
 
-// TestInjectTelemetryEnvSetsDefaults 验证默认 OTEL exporter 和资源属性注入。
 func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -53,7 +52,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	}
 }
 
-// TestInjectTelemetryEnvKeepsUserProvidedIdentityFields 验证用户服务名保留、保留资源属性覆盖同名已有值，并覆盖 OTLP endpoint。
 func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 	t.Parallel()
 
@@ -90,7 +88,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 	}
 }
 
-// TestMergeOTelResourceAttributesKeepsEscapedUserValues 验证合并资源属性时保留用户值中的转义逗号和等号。
 func TestMergeOTelResourceAttributesKeepsEscapedUserValues(t *testing.T) {
 	t.Parallel()
 
@@ -110,7 +107,6 @@ func TestMergeOTelResourceAttributesKeepsEscapedUserValues(t *testing.T) {
 	}
 }
 
-// TestMergeOTelResourceAttributesKeepsEscapedBackslashValues 验证合并资源属性时保留用户值中的转义反斜杠。
 func TestMergeOTelResourceAttributesKeepsEscapedBackslashValues(t *testing.T) {
 	t.Parallel()
 

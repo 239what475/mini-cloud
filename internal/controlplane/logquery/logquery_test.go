@@ -79,12 +79,11 @@ func TestServiceQueryRange(t *testing.T) {
 	}
 }
 
-func TestServiceQueryRangeRequiresBackend(t *testing.T) {
+func TestNewServiceReturnsNilWithoutBackend(t *testing.T) {
 	t.Parallel()
 
 	service := NewService("", "", time.Second)
-	_, err := service.QueryRange(context.Background(), QueryInput{})
-	if err == nil || err != ErrNotConfigured {
-		t.Fatalf("QueryRange error = %v, want ErrNotConfigured", err)
+	if service != nil {
+		t.Fatalf("NewService returned %+v, want nil", service)
 	}
 }

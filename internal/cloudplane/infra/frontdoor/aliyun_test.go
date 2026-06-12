@@ -2,6 +2,8 @@ package frontdoor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 
 	cdn20180510 "github.com/alibabacloud-go/cdn-20180510/v5/client"
@@ -22,9 +24,12 @@ func TestAliyunPrepareDomainWritesOwnerVerifyTXT(t *testing.T) {
 	dns := &fakeDNS{records: map[string]DNSRecord{}}
 	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
 
-	err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn", dns)
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn", dns)
 	if err != nil {
 		t.Fatalf("PrepareDomain returned error: %v", err)
+	}
+	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" || verification.Type != "TXT" || verification.Value != "verify_test" {
+		t.Fatalf("verification = %+v", verification)
 	}
 	record := dns.records["verification.whatcloud.cn"]
 	if record.Type != "TXT" || record.Value != "verify_test" {
@@ -35,9 +40,36 @@ func TestAliyunPrepareDomainWritesOwnerVerifyTXT(t *testing.T) {
 	}
 }
 
+func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.T) {
+	t.Parallel()
+
+	api := &fakeAliyunCDN{
+		verifyContent: map[string]interface{}{
+			"RootDomain": "whatcloud.cn",
+			"verifyCode": "verify_test",
+			"verifyKey":  "verification",
+		},
+		verifyErr: fmt.Errorf("DomainOwnerVerifyFail: owner verification pending"),
+	}
+	dns := &fakeDNS{records: map[string]DNSRecord{}}
+	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
+
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn", dns)
+	if !errors.Is(err, errDomainVerificationPending) {
+		t.Fatalf("PrepareDomain error = %v, want errDomainVerificationPending", err)
+	}
+	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" {
+		t.Fatalf("verification = %+v", verification)
+	}
+	if dns.records["verification.whatcloud.cn"].Value != "verify_test" {
+		t.Fatalf("verify record = %+v", dns.records)
+	}
+}
+
 type fakeAliyunCDN struct {
 	verifyContent  map[string]interface{}
 	verifiedDomain string
+	verifyErr      error
 }
 
 func (f *fakeAliyunCDN) AddCdnDomain(*cdn20180510.AddCdnDomainRequest) (*cdn20180510.AddCdnDomainResponse, error) {
@@ -72,5 +104,5 @@ func (f *fakeAliyunCDN) VerifyDomainOwner(req *cdn20180510.VerifyDomainOwnerRequ
 	if req != nil && req.DomainName != nil {
 		f.verifiedDomain = *req.DomainName
 	}
-	return nil, nil
+	return nil, f.verifyErr
 }

@@ -28,11 +28,10 @@ type RegisterNodeRequest struct {
 	Region        string                 `protobuf:"bytes,2,opt,name=region,proto3" json:"region,omitempty"`
 	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
 	PrivateIp     string                 `protobuf:"bytes,4,opt,name=private_ip,json=privateIP,proto3" json:"private_ip,omitempty"`
-	PublicIp      string                 `protobuf:"bytes,5,opt,name=public_ip,json=publicIP,proto3" json:"public_ip,omitempty"`
-	InstanceId    string                 `protobuf:"bytes,6,opt,name=instance_id,json=instanceID,proto3" json:"instance_id,omitempty"`
-	InstanceType  string                 `protobuf:"bytes,7,opt,name=instance_type,json=instanceType,proto3" json:"instance_type,omitempty"`
-	CpuMilliTotal int32                  `protobuf:"varint,10,opt,name=cpu_milli_total,json=cpuMilliTotal,proto3" json:"cpu_milli_total,omitempty"`
-	MemoryMiTotal int32                  `protobuf:"varint,11,opt,name=memory_mi_total,json=memoryMiTotal,proto3" json:"memory_mi_total,omitempty"`
+	InstanceId    string                 `protobuf:"bytes,5,opt,name=instance_id,json=instanceID,proto3" json:"instance_id,omitempty"`
+	InstanceType  string                 `protobuf:"bytes,6,opt,name=instance_type,json=instanceType,proto3" json:"instance_type,omitempty"`
+	CpuMilliTotal int32                  `protobuf:"varint,7,opt,name=cpu_milli_total,json=cpuMilliTotal,proto3" json:"cpu_milli_total,omitempty"`
+	MemoryMiTotal int32                  `protobuf:"varint,8,opt,name=memory_mi_total,json=memoryMiTotal,proto3" json:"memory_mi_total,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -95,13 +94,6 @@ func (x *RegisterNodeRequest) GetPrivateIp() string {
 	return ""
 }
 
-func (x *RegisterNodeRequest) GetPublicIp() string {
-	if x != nil {
-		return x.PublicIp
-	}
-	return ""
-}
-
 func (x *RegisterNodeRequest) GetInstanceId() string {
 	if x != nil {
 		return x.InstanceId
@@ -131,13 +123,10 @@ func (x *RegisterNodeRequest) GetMemoryMiTotal() int32 {
 }
 
 type RegisterNodeResponse struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	SessionToken   string                 `protobuf:"bytes,2,opt,name=session_token,json=sessionToken,proto3" json:"session_token,omitempty"`
-	ObservedStatus string                 `protobuf:"bytes,3,opt,name=observed_status,json=observedStatus,proto3" json:"observed_status,omitempty"`
-	AcceptedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=accepted_at,json=acceptedAt,proto3" json:"accepted_at,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RegisterNodeResponse) Reset() {
@@ -177,36 +166,11 @@ func (x *RegisterNodeResponse) GetNodeId() string {
 	return ""
 }
 
-func (x *RegisterNodeResponse) GetSessionToken() string {
-	if x != nil {
-		return x.SessionToken
-	}
-	return ""
-}
-
-func (x *RegisterNodeResponse) GetObservedStatus() string {
-	if x != nil {
-		return x.ObservedStatus
-	}
-	return ""
-}
-
-func (x *RegisterNodeResponse) GetAcceptedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.AcceptedAt
-	}
-	return nil
-}
-
 type HeartbeatRequest struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	NodeId              string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	ReportedAt          *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=reported_at,json=reportedAt,proto3" json:"reported_at,omitempty"`
-	AgentVersion        string                 `protobuf:"bytes,3,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
-	RunningContainers   int32                  `protobuf:"varint,6,opt,name=running_containers,json=runningContainers,proto3" json:"running_containers,omitempty"`
-	Status              string                 `protobuf:"bytes,7,opt,name=status,proto3" json:"status,omitempty"`
-	CpuMilliAllocatable int32                  `protobuf:"varint,8,opt,name=cpu_milli_allocatable,json=cpuMilliAllocatable,proto3" json:"cpu_milli_allocatable,omitempty"`
-	MemoryMiAllocatable int32                  `protobuf:"varint,9,opt,name=memory_mi_allocatable,json=memoryMiAllocatable,proto3" json:"memory_mi_allocatable,omitempty"`
+	CpuMilliAllocatable int32                  `protobuf:"varint,2,opt,name=cpu_milli_allocatable,json=cpuMilliAllocatable,proto3" json:"cpu_milli_allocatable,omitempty"`
+	MemoryMiAllocatable int32                  `protobuf:"varint,3,opt,name=memory_mi_allocatable,json=memoryMiAllocatable,proto3" json:"memory_mi_allocatable,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -248,34 +212,6 @@ func (x *HeartbeatRequest) GetNodeId() string {
 	return ""
 }
 
-func (x *HeartbeatRequest) GetReportedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.ReportedAt
-	}
-	return nil
-}
-
-func (x *HeartbeatRequest) GetAgentVersion() string {
-	if x != nil {
-		return x.AgentVersion
-	}
-	return ""
-}
-
-func (x *HeartbeatRequest) GetRunningContainers() int32 {
-	if x != nil {
-		return x.RunningContainers
-	}
-	return 0
-}
-
-func (x *HeartbeatRequest) GetStatus() string {
-	if x != nil {
-		return x.Status
-	}
-	return ""
-}
-
 func (x *HeartbeatRequest) GetCpuMilliAllocatable() int32 {
 	if x != nil {
 		return x.CpuMilliAllocatable
@@ -293,9 +229,7 @@ func (x *HeartbeatRequest) GetMemoryMiAllocatable() int32 {
 type HeartbeatResponse struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	NodeId         string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	Accepted       bool                   `protobuf:"varint,2,opt,name=accepted,proto3" json:"accepted,omitempty"`
-	ObservedStatus string                 `protobuf:"bytes,3,opt,name=observed_status,json=observedStatus,proto3" json:"observed_status,omitempty"`
-	ReceivedAt     *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=received_at,json=receivedAt,proto3" json:"received_at,omitempty"`
+	ObservedStatus string                 `protobuf:"bytes,2,opt,name=observed_status,json=observedStatus,proto3" json:"observed_status,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -337,25 +271,11 @@ func (x *HeartbeatResponse) GetNodeId() string {
 	return ""
 }
 
-func (x *HeartbeatResponse) GetAccepted() bool {
-	if x != nil {
-		return x.Accepted
-	}
-	return false
-}
-
 func (x *HeartbeatResponse) GetObservedStatus() string {
 	if x != nil {
 		return x.ObservedStatus
 	}
 	return ""
-}
-
-func (x *HeartbeatResponse) GetReceivedAt() *timestamppb.Timestamp {
-	if x != nil {
-		return x.ReceivedAt
-	}
-	return nil
 }
 
 type ImageCredential struct {
@@ -558,22 +478,22 @@ type WorkItem struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ExecutionId         string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
 	PlanId              string                 `protobuf:"bytes,2,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
-	NodeId              string                 `protobuf:"bytes,4,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	ServiceId           string                 `protobuf:"bytes,6,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	ServiceName         string                 `protobuf:"bytes,7,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	Image               string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"`
-	Command             []string               `protobuf:"bytes,11,rep,name=command,proto3" json:"command,omitempty"`
-	Args                []string               `protobuf:"bytes,12,rep,name=args,proto3" json:"args,omitempty"`
-	Env                 map[string]string      `protobuf:"bytes,13,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ImageCredential     *ImageCredential       `protobuf:"bytes,14,opt,name=image_credential,json=imageCredential,proto3" json:"image_credential,omitempty"`
-	SupersededExecution *SupersededExecution   `protobuf:"bytes,15,opt,name=superseded_execution,json=supersededExecution,proto3" json:"superseded_execution,omitempty"`
-	ContainerPort       int32                  `protobuf:"varint,16,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
-	ReadinessPath       string                 `protobuf:"bytes,17,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	ContainerName       string                 `protobuf:"bytes,18,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
-	ProjectedFiles      []*ProjectedFile       `protobuf:"bytes,19,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
-	Action              string                 `protobuf:"bytes,21,opt,name=action,proto3" json:"action,omitempty"`
-	ContainerId         string                 `protobuf:"bytes,22,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
-	HostPort            int32                  `protobuf:"varint,23,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
+	NodeId              string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
+	ServiceId           string                 `protobuf:"bytes,4,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceName         string                 `protobuf:"bytes,5,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Image               string                 `protobuf:"bytes,6,opt,name=image,proto3" json:"image,omitempty"`
+	Command             []string               `protobuf:"bytes,7,rep,name=command,proto3" json:"command,omitempty"`
+	Args                []string               `protobuf:"bytes,8,rep,name=args,proto3" json:"args,omitempty"`
+	Env                 map[string]string      `protobuf:"bytes,9,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ImageCredential     *ImageCredential       `protobuf:"bytes,10,opt,name=image_credential,json=imageCredential,proto3" json:"image_credential,omitempty"`
+	SupersededExecution *SupersededExecution   `protobuf:"bytes,11,opt,name=superseded_execution,json=supersededExecution,proto3" json:"superseded_execution,omitempty"`
+	ContainerPort       int32                  `protobuf:"varint,12,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	ReadinessPath       string                 `protobuf:"bytes,13,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	ContainerName       string                 `protobuf:"bytes,14,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
+	ProjectedFiles      []*ProjectedFile       `protobuf:"bytes,15,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
+	Action              string                 `protobuf:"bytes,16,opt,name=action,proto3" json:"action,omitempty"`
+	ContainerId         string                 `protobuf:"bytes,17,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
+	HostPort            int32                  `protobuf:"varint,18,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
 }
@@ -1178,42 +1098,27 @@ var File_minicloud_nodeagent_v1_node_agent_proto protoreflect.FileDescriptor
 
 const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\n" +
-	"'minicloud/nodeagent/v1/node_agent.proto\x12\x16minicloud.nodeagent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbb\x02\n" +
+	"'minicloud/nodeagent/v1/node_agent.proto\x12\x16minicloud.nodeagent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x92\x02\n" +
 	"\x13RegisterNodeRequest\x12\x1a\n" +
 	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x16\n" +
 	"\x06region\x18\x02 \x01(\tR\x06region\x12\x12\n" +
 	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
-	"private_ip\x18\x04 \x01(\tR\tprivateIP\x12\x1b\n" +
-	"\tpublic_ip\x18\x05 \x01(\tR\bpublicIP\x12\x1f\n" +
-	"\vinstance_id\x18\x06 \x01(\tR\n" +
+	"private_ip\x18\x04 \x01(\tR\tprivateIP\x12\x1f\n" +
+	"\vinstance_id\x18\x05 \x01(\tR\n" +
 	"instanceID\x12#\n" +
-	"\rinstance_type\x18\a \x01(\tR\finstanceType\x12&\n" +
-	"\x0fcpu_milli_total\x18\n" +
-	" \x01(\x05R\rcpuMilliTotal\x12&\n" +
-	"\x0fmemory_mi_total\x18\v \x01(\x05R\rmemoryMiTotalJ\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"\"\xba\x01\n" +
+	"\rinstance_type\x18\x06 \x01(\tR\finstanceType\x12&\n" +
+	"\x0fcpu_milli_total\x18\a \x01(\x05R\rcpuMilliTotal\x12&\n" +
+	"\x0fmemory_mi_total\x18\b \x01(\x05R\rmemoryMiTotal\"/\n" +
 	"\x14RegisterNodeResponse\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12#\n" +
-	"\rsession_token\x18\x02 \x01(\tR\fsessionToken\x12'\n" +
-	"\x0fobserved_status\x18\x03 \x01(\tR\x0eobservedStatus\x12;\n" +
-	"\vaccepted_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"acceptedAt\"\xc8\x02\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"\x93\x01\n" +
 	"\x10HeartbeatRequest\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12;\n" +
-	"\vreported_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"reportedAt\x12#\n" +
-	"\ragent_version\x18\x03 \x01(\tR\fagentVersion\x12-\n" +
-	"\x12running_containers\x18\x06 \x01(\x05R\x11runningContainers\x12\x16\n" +
-	"\x06status\x18\a \x01(\tR\x06status\x122\n" +
-	"\x15cpu_milli_allocatable\x18\b \x01(\x05R\x13cpuMilliAllocatable\x122\n" +
-	"\x15memory_mi_allocatable\x18\t \x01(\x05R\x13memoryMiAllocatableJ\x04\b\x04\x10\x05J\x04\b\x05\x10\x06\"\xae\x01\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x122\n" +
+	"\x15cpu_milli_allocatable\x18\x02 \x01(\x05R\x13cpuMilliAllocatable\x122\n" +
+	"\x15memory_mi_allocatable\x18\x03 \x01(\x05R\x13memoryMiAllocatable\"U\n" +
 	"\x11HeartbeatResponse\x12\x17\n" +
-	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12\x1a\n" +
-	"\baccepted\x18\x02 \x01(\bR\baccepted\x12'\n" +
-	"\x0fobserved_status\x18\x03 \x01(\tR\x0eobservedStatus\x12;\n" +
-	"\vreceived_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"receivedAt\"a\n" +
+	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12'\n" +
+	"\x0fobserved_status\x18\x02 \x01(\tR\x0eobservedStatus\"a\n" +
 	"\x0fImageCredential\x12\x16\n" +
 	"\x06server\x18\x01 \x01(\tR\x06server\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x1a\n" +
@@ -1228,33 +1133,31 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"mount_path\x18\x01 \x01(\tR\tmountPath\x12\x18\n" +
 	"\acontent\x18\x02 \x01(\tR\acontent\x12\x12\n" +
 	"\x04mode\x18\x03 \x01(\rR\x04mode\x12\x1c\n" +
-	"\tsensitive\x18\x04 \x01(\bR\tsensitive\"\xe6\x06\n" +
+	"\tsensitive\x18\x04 \x01(\bR\tsensitive\"\xab\x06\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12\x17\n" +
 	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
-	"\anode_id\x18\x04 \x01(\tR\x06nodeID\x12\x1d\n" +
+	"\anode_id\x18\x03 \x01(\tR\x06nodeID\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x06 \x01(\tR\tserviceID\x12!\n" +
-	"\fservice_name\x18\a \x01(\tR\vserviceName\x12\x14\n" +
-	"\x05image\x18\n" +
-	" \x01(\tR\x05image\x12\x18\n" +
-	"\acommand\x18\v \x03(\tR\acommand\x12\x12\n" +
-	"\x04args\x18\f \x03(\tR\x04args\x12;\n" +
-	"\x03env\x18\r \x03(\v2).minicloud.nodeagent.v1.WorkItem.EnvEntryR\x03env\x12R\n" +
-	"\x10image_credential\x18\x0e \x01(\v2'.minicloud.nodeagent.v1.ImageCredentialR\x0fimageCredential\x12^\n" +
-	"\x14superseded_execution\x18\x0f \x01(\v2+.minicloud.nodeagent.v1.SupersededExecutionR\x13supersededExecution\x12%\n" +
-	"\x0econtainer_port\x18\x10 \x01(\x05R\rcontainerPort\x12%\n" +
-	"\x0ereadiness_path\x18\x11 \x01(\tR\rreadinessPath\x12%\n" +
-	"\x0econtainer_name\x18\x12 \x01(\tR\rcontainerName\x12N\n" +
-	"\x0fprojected_files\x18\x13 \x03(\v2%.minicloud.nodeagent.v1.ProjectedFileR\x0eprojectedFiles\x12\x16\n" +
-	"\x06action\x18\x15 \x01(\tR\x06action\x12!\n" +
-	"\fcontainer_id\x18\x16 \x01(\tR\vcontainerID\x12\x1b\n" +
-	"\thost_port\x18\x17 \x01(\x05R\bhostPort\x1a6\n" +
+	"service_id\x18\x04 \x01(\tR\tserviceID\x12!\n" +
+	"\fservice_name\x18\x05 \x01(\tR\vserviceName\x12\x14\n" +
+	"\x05image\x18\x06 \x01(\tR\x05image\x12\x18\n" +
+	"\acommand\x18\a \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\b \x03(\tR\x04args\x12;\n" +
+	"\x03env\x18\t \x03(\v2).minicloud.nodeagent.v1.WorkItem.EnvEntryR\x03env\x12R\n" +
+	"\x10image_credential\x18\n" +
+	" \x01(\v2'.minicloud.nodeagent.v1.ImageCredentialR\x0fimageCredential\x12^\n" +
+	"\x14superseded_execution\x18\v \x01(\v2+.minicloud.nodeagent.v1.SupersededExecutionR\x13supersededExecution\x12%\n" +
+	"\x0econtainer_port\x18\f \x01(\x05R\rcontainerPort\x12%\n" +
+	"\x0ereadiness_path\x18\r \x01(\tR\rreadinessPath\x12%\n" +
+	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\x12N\n" +
+	"\x0fprojected_files\x18\x0f \x03(\v2%.minicloud.nodeagent.v1.ProjectedFileR\x0eprojectedFiles\x12\x16\n" +
+	"\x06action\x18\x10 \x01(\tR\x06action\x12!\n" +
+	"\fcontainer_id\x18\x11 \x01(\tR\vcontainerID\x12\x1b\n" +
+	"\thost_port\x18\x12 \x01(\x05R\bhostPort\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01J\x04\b\x05\x10\x06J\x04\b\b\x10\tJ\x04\b\t\x10\n" +
-	"R\n" +
-	"project_idR\vrevision_idR\x0erevision_label\"*\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
 	"\x0fPollWorkRequest\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\"H\n" +
 	"\x10PollWorkResponse\x124\n" +
@@ -1333,34 +1236,31 @@ var file_minicloud_nodeagent_v1_node_agent_proto_goTypes = []any{
 	(*timestamppb.Timestamp)(nil),   // 15: google.protobuf.Timestamp
 }
 var file_minicloud_nodeagent_v1_node_agent_proto_depIdxs = []int32{
-	15, // 0: minicloud.nodeagent.v1.RegisterNodeResponse.accepted_at:type_name -> google.protobuf.Timestamp
-	15, // 1: minicloud.nodeagent.v1.HeartbeatRequest.reported_at:type_name -> google.protobuf.Timestamp
-	15, // 2: minicloud.nodeagent.v1.HeartbeatResponse.received_at:type_name -> google.protobuf.Timestamp
-	14, // 3: minicloud.nodeagent.v1.WorkItem.env:type_name -> minicloud.nodeagent.v1.WorkItem.EnvEntry
-	4,  // 4: minicloud.nodeagent.v1.WorkItem.image_credential:type_name -> minicloud.nodeagent.v1.ImageCredential
-	5,  // 5: minicloud.nodeagent.v1.WorkItem.superseded_execution:type_name -> minicloud.nodeagent.v1.SupersededExecution
-	6,  // 6: minicloud.nodeagent.v1.WorkItem.projected_files:type_name -> minicloud.nodeagent.v1.ProjectedFile
-	7,  // 7: minicloud.nodeagent.v1.PollWorkResponse.item:type_name -> minicloud.nodeagent.v1.WorkItem
-	15, // 8: minicloud.nodeagent.v1.ExecutionRecord.started_at:type_name -> google.protobuf.Timestamp
-	15, // 9: minicloud.nodeagent.v1.ExecutionRecord.finished_at:type_name -> google.protobuf.Timestamp
-	15, // 10: minicloud.nodeagent.v1.ExecutionRecord.created_at:type_name -> google.protobuf.Timestamp
-	15, // 11: minicloud.nodeagent.v1.ExecutionRecord.updated_at:type_name -> google.protobuf.Timestamp
-	11, // 12: minicloud.nodeagent.v1.ReportExecutionAck.execution:type_name -> minicloud.nodeagent.v1.ExecutionRecord
-	15, // 13: minicloud.nodeagent.v1.ReportExecutionAck.observed_at:type_name -> google.protobuf.Timestamp
-	12, // 14: minicloud.nodeagent.v1.ReportExecutionResponse.ack:type_name -> minicloud.nodeagent.v1.ReportExecutionAck
-	0,  // 15: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:input_type -> minicloud.nodeagent.v1.RegisterNodeRequest
-	2,  // 16: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.HeartbeatRequest
-	8,  // 17: minicloud.nodeagent.v1.NodeAgentService.PollWork:input_type -> minicloud.nodeagent.v1.PollWorkRequest
-	10, // 18: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:input_type -> minicloud.nodeagent.v1.ReportExecutionRequest
-	1,  // 19: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:output_type -> minicloud.nodeagent.v1.RegisterNodeResponse
-	3,  // 20: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.HeartbeatResponse
-	9,  // 21: minicloud.nodeagent.v1.NodeAgentService.PollWork:output_type -> minicloud.nodeagent.v1.PollWorkResponse
-	13, // 22: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:output_type -> minicloud.nodeagent.v1.ReportExecutionResponse
-	19, // [19:23] is the sub-list for method output_type
-	15, // [15:19] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	14, // 0: minicloud.nodeagent.v1.WorkItem.env:type_name -> minicloud.nodeagent.v1.WorkItem.EnvEntry
+	4,  // 1: minicloud.nodeagent.v1.WorkItem.image_credential:type_name -> minicloud.nodeagent.v1.ImageCredential
+	5,  // 2: minicloud.nodeagent.v1.WorkItem.superseded_execution:type_name -> minicloud.nodeagent.v1.SupersededExecution
+	6,  // 3: minicloud.nodeagent.v1.WorkItem.projected_files:type_name -> minicloud.nodeagent.v1.ProjectedFile
+	7,  // 4: minicloud.nodeagent.v1.PollWorkResponse.item:type_name -> minicloud.nodeagent.v1.WorkItem
+	15, // 5: minicloud.nodeagent.v1.ExecutionRecord.started_at:type_name -> google.protobuf.Timestamp
+	15, // 6: minicloud.nodeagent.v1.ExecutionRecord.finished_at:type_name -> google.protobuf.Timestamp
+	15, // 7: minicloud.nodeagent.v1.ExecutionRecord.created_at:type_name -> google.protobuf.Timestamp
+	15, // 8: minicloud.nodeagent.v1.ExecutionRecord.updated_at:type_name -> google.protobuf.Timestamp
+	11, // 9: minicloud.nodeagent.v1.ReportExecutionAck.execution:type_name -> minicloud.nodeagent.v1.ExecutionRecord
+	15, // 10: minicloud.nodeagent.v1.ReportExecutionAck.observed_at:type_name -> google.protobuf.Timestamp
+	12, // 11: minicloud.nodeagent.v1.ReportExecutionResponse.ack:type_name -> minicloud.nodeagent.v1.ReportExecutionAck
+	0,  // 12: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:input_type -> minicloud.nodeagent.v1.RegisterNodeRequest
+	2,  // 13: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.HeartbeatRequest
+	8,  // 14: minicloud.nodeagent.v1.NodeAgentService.PollWork:input_type -> minicloud.nodeagent.v1.PollWorkRequest
+	10, // 15: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:input_type -> minicloud.nodeagent.v1.ReportExecutionRequest
+	1,  // 16: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:output_type -> minicloud.nodeagent.v1.RegisterNodeResponse
+	3,  // 17: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.HeartbeatResponse
+	9,  // 18: minicloud.nodeagent.v1.NodeAgentService.PollWork:output_type -> minicloud.nodeagent.v1.PollWorkResponse
+	13, // 19: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:output_type -> minicloud.nodeagent.v1.ReportExecutionResponse
+	16, // [16:20] is the sub-list for method output_type
+	12, // [12:16] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_minicloud_nodeagent_v1_node_agent_proto_init() }

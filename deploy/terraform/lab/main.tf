@@ -37,22 +37,22 @@ locals {
   platform_security_group_id = local.use_existing_ecs ? (
     trimspace(var.existing_ecs_security_group_id)
   ) : module.tencent_network_base[0].platform_security_group_id
-  runtime_security_group_id = local.selected_provider == "aliyun" ? (
-    module.aliyun_network_base[0].runtime_security_group_id
-  ) : module.tencent_network_base[0].runtime_security_group_id
+  node_security_group_id = local.selected_provider == "aliyun" ? (
+    module.aliyun_network_base[0].node_security_group_id
+  ) : module.tencent_network_base[0].node_security_group_id
   platform_key_name = local.selected_provider == "aliyun" ? (
     module.aliyun_network_base[0].platform_key_pair_name
   ) : module.tencent_network_base[0].platform_key_name
 
   cloud_plane_grpc_endpoint = "${local.platform_public_ip}:${var.cloud_plane_grpc_port}"
 
-  runtime_provider_spec_json = local.selected_provider == "aliyun" ? jsonencode({
+  node_provider_config_json = local.selected_provider == "aliyun" ? jsonencode({
     provider           = "aliyun"
     instanceType       = var.aliyun.instance_type
     imageId            = var.aliyun.image_id
     keyPairName        = module.aliyun_network_base[0].platform_key_pair_name
     vSwitchId          = module.aliyun_network_base[0].vswitch_id
-    securityGroupId    = module.aliyun_network_base[0].runtime_security_group_id
+    securityGroupId    = module.aliyun_network_base[0].node_security_group_id
     systemDiskCategory = var.aliyun.system_disk_category
     systemDiskSizeGiB  = var.aliyun.system_disk_size
     }) : jsonencode({
@@ -62,7 +62,7 @@ locals {
     keyIds            = [module.tencent_network_base[0].platform_key_id]
     vpcId             = module.tencent_network_base[0].vpc_id
     subnetId          = module.tencent_network_base[0].subnet_id
-    securityGroupIds  = [module.tencent_network_base[0].runtime_security_group_id]
+    securityGroupIds  = [module.tencent_network_base[0].node_security_group_id]
     systemDiskType    = var.tencent.system_disk_type
     systemDiskSizeGiB = var.tencent.system_disk_size
   })
@@ -116,8 +116,8 @@ check "selected_provider_config" {
   }
 
   assert {
-    condition     = var.runtime_host_port_min <= var.runtime_host_port_max
-    error_message = "runtime_host_port_min must not be greater than runtime_host_port_max."
+    condition     = var.node_host_port_min <= var.node_host_port_max
+    error_message = "node_host_port_min must not be greater than node_host_port_max."
   }
 }
 
@@ -142,8 +142,8 @@ module "aliyun_network_base" {
   ingress_http_port          = var.ingress_http_port
   egress_proxy_port          = var.egress_proxy_port
   artifact_http_port         = var.artifact_http_port
-  runtime_host_port_min      = var.runtime_host_port_min
-  runtime_host_port_max      = var.runtime_host_port_max
+  node_host_port_min         = var.node_host_port_min
+  node_host_port_max         = var.node_host_port_max
   ssh_public_key             = local.effective_ssh_public_key
 }
 
@@ -169,19 +169,19 @@ module "tencent_network_base" {
   ingress_http_port              = var.ingress_http_port
   egress_proxy_port              = var.egress_proxy_port
   artifact_http_port             = var.artifact_http_port
-  runtime_host_port_min          = var.runtime_host_port_min
-  runtime_host_port_max          = var.runtime_host_port_max
+  node_host_port_min             = var.node_host_port_min
+  node_host_port_max             = var.node_host_port_max
   platform_role_policy_names     = var.tencent.platform_role_policy_names
   platform_private_cidrs         = ["${trimspace(var.existing_lighthouse_private_ip)}/32"]
   ssh_public_key                 = local.effective_ssh_public_key
 }
 
-resource "tencentcloud_ccn_attachment_v2" "runtime_vpc" {
+resource "tencentcloud_ccn_attachment_v2" "node_vpc" {
   count = local.use_existing_lighthouse ? 1 : 0
 
   ccn_id          = local.existing_ccn_id
   instance_id     = module.tencent_network_base[0].vpc_id
   instance_region = var.tencent.region_id
   instance_type   = "VPC"
-  description     = "mini-cloud runtime vpc"
+  description     = "mini-cloud node vpc"
 }

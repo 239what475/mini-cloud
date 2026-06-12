@@ -7,19 +7,15 @@ import (
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 )
 
-// telemetryEnvOptions 配置注入到工作负载环境变量中的遥测元数据。
 type telemetryEnvOptions struct {
-	// PlatformName 是写入 OTEL_RESOURCE_ATTRIBUTES 的平台名称。
-	PlatformName string
-	// WorkloadOTLPEndpoint 是写入 OTEL_EXPORTER_OTLP_ENDPOINT 的 OTLP HTTP endpoint。
+	PlatformName         string
 	WorkloadOTLPEndpoint string
 }
 
-// injectTelemetryEnv 按需注入 OpenTelemetry exporter 默认配置，并写入 mini-cloud 资源属性。
 func injectTelemetryEnv(base map[string]string, item *nodeagentv1.WorkItem, opts telemetryEnvOptions) map[string]string {
-	env := cloneStringMap(base)
-	if env == nil {
-		env = map[string]string{}
+	env := make(map[string]string, len(base)+4)
+	for key, value := range base {
+		env[key] = value
 	}
 	if item == nil {
 		return env
@@ -45,7 +41,6 @@ func injectTelemetryEnv(base map[string]string, item *nodeagentv1.WorkItem, opts
 	return env
 }
 
-// sanitizeOTelResourceValue 清理 OTEL resource attribute 值，空值替换为 unknown。
 func sanitizeOTelResourceValue(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -55,7 +50,6 @@ func sanitizeOTelResourceValue(value string) string {
 	return replacer.Replace(value)
 }
 
-// mergeOTelResourceAttributes 合并已有资源属性和平台保留资源属性，保留属性覆盖同名已有值。
 func mergeOTelResourceAttributes(existing string, reserved map[string]string) string {
 	values := parseOTelResourceAttributes(existing)
 	for key, value := range reserved {
@@ -78,7 +72,6 @@ func mergeOTelResourceAttributes(existing string, reserved map[string]string) st
 	return strings.Join(parts, ",")
 }
 
-// parseOTelResourceAttributes 解析 OTEL_RESOURCE_ATTRIBUTES 字符串为键值映射。
 func parseOTelResourceAttributes(raw string) map[string]string {
 	values := map[string]string{}
 	for _, part := range splitOTelResourceAttributes(raw) {
@@ -97,7 +90,7 @@ func parseOTelResourceAttributes(raw string) map[string]string {
 	return values
 }
 
-// splitOTelResourceAttributes 按未转义逗号拆分 OTEL resource attribute 字符串。
+// splitOTelResourceAttributes splits on unescaped commas.
 func splitOTelResourceAttributes(raw string) []string {
 	parts := make([]string, 0, 4)
 	var current strings.Builder
@@ -126,7 +119,7 @@ func splitOTelResourceAttributes(raw string) []string {
 	return parts
 }
 
-// cutUnescapedOTelAttribute 按第一个未转义等号拆分单个 resource attribute。
+// cutUnescapedOTelAttribute splits on the first unescaped equals sign.
 func cutUnescapedOTelAttribute(part string) (string, string, bool) {
 	escaped := false
 	for i, r := range part {
@@ -145,7 +138,6 @@ func cutUnescapedOTelAttribute(part string) (string, string, bool) {
 	return "", "", false
 }
 
-// unescapeOTelResourceAttribute 还原 resource attribute 中的反斜杠转义。
 func unescapeOTelResourceAttribute(value string) string {
 	var builder strings.Builder
 	escaped := false
@@ -167,20 +159,7 @@ func unescapeOTelResourceAttribute(value string) string {
 	return builder.String()
 }
 
-// escapeOTelResourceAttribute 转义 resource attribute 中的反斜杠、逗号和等号。
 func escapeOTelResourceAttribute(value string) string {
 	replacer := strings.NewReplacer(`\`, `\\`, ",", `\,`, "=", `\=`)
 	return replacer.Replace(value)
-}
-
-// cloneStringMap 复制字符串 map，空输入返回空 map。
-func cloneStringMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(input))
-	for key, value := range input {
-		out[key] = value
-	}
-	return out
 }

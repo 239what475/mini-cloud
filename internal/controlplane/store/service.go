@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -31,7 +32,10 @@ var (
 	errRegistryUsernameRequired  = errors.New("registryCredential.username is required")
 	errRegistryPasswordRequired  = errors.New("registryCredential.password is required")
 	errPlaneIDRequired           = errors.New("planeID is required")
+	errServicePlaneImmutable     = errors.New("planeID cannot be changed after service creation")
 	errInvalidInstanceClass      = errors.New("instanceClass must be one of small, medium, large")
+	errInvalidServicePhase       = errors.New("service phase is invalid")
+	errInvalidServiceRunPhase    = errors.New("service run phase is invalid")
 	serviceNamePattern           = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
@@ -58,12 +62,8 @@ const serviceSelectColumns = `
 	status_desired_state,
 	status_observed_generation,
 	status_phase,
-	status_healthy,
 	status_message,
 	status_last_reconciled_at,
-	status_assigned_plane_id,
-	status_remote_status,
-	status_remote_message,
 	created_at,
 	updated_at
 `
@@ -82,13 +82,9 @@ type UpdateServiceInput struct {
 type UpdateServiceStatusInput struct {
 	ObservedGeneration int64
 	Phase              string
-	Healthy            bool
 	Message            string
 	LastReconciledAt   *time.Time
 	Run                *model.RunStatus
-	AssignedPlaneID    *string
-	RemoteStatus       *string
-	RemoteMessage      *string
 }
 
 type serviceSpecColumns struct {
@@ -108,6 +104,14 @@ type serviceSpecColumns struct {
 	FilesJSON                []byte
 }
 
+type serviceRunRecord struct {
+	CurrentRunID   string     `json:"currentRunID,omitempty"`
+	LatestRunID    string     `json:"latestRunID,omitempty"`
+	Phase          string     `json:"phase"`
+	Message        string     `json:"message,omitempty"`
+	LastObservedAt *time.Time `json:"lastObservedAt,omitempty"`
+}
+
 func (in CreateServiceInput) validate() error {
 	if strings.TrimSpace(in.Name) == "" {
 		return invalidInput(errServiceNameRequired)
@@ -121,15 +125,18 @@ func (in CreateServiceInput) validate() error {
 	return validateServiceSpec(in.Spec)
 }
 
-func (in UpdateServiceInput) validate(serviceName string) error {
-	if strings.TrimSpace(serviceName) == "" {
+func (in UpdateServiceInput) validate(current model.Service) error {
+	if strings.TrimSpace(current.Metadata.Name) == "" {
 		return invalidInput(errServiceNameRequired)
 	}
-	if !serviceNamePattern.MatchString(strings.TrimSpace(serviceName)) {
+	if !serviceNamePattern.MatchString(strings.TrimSpace(current.Metadata.Name)) {
 		return invalidInput(errInvalidServiceName)
 	}
 	if strings.TrimSpace(in.DisplayName) == "" {
 		return invalidInput(errDisplayNameRequired)
+	}
+	if strings.TrimSpace(in.Spec.PlaneID) != strings.TrimSpace(current.Spec.PlaneID) {
+		return invalidInput(errServicePlaneImmutable)
 	}
 	return validateServiceSpec(in.Spec)
 }
@@ -142,7 +149,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, specColumns.PlaneID); err != nil {
+	if _, err := s.GetPlane(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
 
@@ -152,14 +159,13 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	}
 
 	initialStatus := model.PendingServiceStatus(0, "waiting for service reconcile")
-	initialRun := model.RunStatus{Phase: model.RunPhasePending}
-	runJSON, err := marshalJSON(initialRun, model.RunStatus{Phase: model.RunPhasePending})
+	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for service reconcile"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
 
 	item, err := scanService(s.db.QueryRowContext(ctx, `
-		INSERT INTO fleet_services (
+		INSERT INTO services (
 			id,
 			name,
 			display_name,
@@ -182,19 +188,15 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			status_desired_state,
 			status_observed_generation,
 			status_phase,
-			status_healthy,
 			status_message,
-			status_last_reconciled_at,
-			status_assigned_plane_id,
-			status_remote_status,
-			status_remote_message
+			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, $23, NULL, NULL, '', '')
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
-		input.Name,
-		input.DisplayName,
+		strings.TrimSpace(input.Name),
+		strings.TrimSpace(input.DisplayName),
 		specColumns.PlaneID,
 		specColumns.InstanceClass,
 		specColumns.Exposure,
@@ -213,7 +215,6 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		model.DesiredStateActive,
 		initialStatus.ObservedGeneration,
 		initialStatus.Phase,
-		initialStatus.Healthy,
 		initialStatus.Message,
 	))
 	if err != nil {
@@ -232,13 +233,13 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM fleet_services
+		FROM services
 		ORDER BY created_at ASC, id ASC
 	`)
 	if err != nil {
 		return nil, fmt.Errorf("query services: %w", err)
 	}
-	defer closeRows(rows)
+	defer rows.Close()
 
 	items := make([]model.Service, 0)
 	for rows.Next() {
@@ -257,7 +258,7 @@ func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 func (s *Store) GetService(ctx context.Context, serviceID string) (model.Service, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM fleet_services
+		FROM services
 		WHERE id = $1
 	`, serviceID))
 	if err != nil {
@@ -272,7 +273,7 @@ func (s *Store) GetService(ctx context.Context, serviceID string) (model.Service
 func getServiceForUpdateTx(ctx context.Context, tx *sql.Tx, serviceID string) (model.Service, error) {
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
-		FROM fleet_services
+		FROM services
 		WHERE id = $1
 		FOR UPDATE
 	`, serviceID))
@@ -298,17 +299,17 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := input.validate(current.Metadata.Name); err != nil {
+	if err := input.validate(current); err != nil {
 		return model.Service{}, err
 	}
 	specColumns, err := buildServiceSpecColumns(input.Spec)
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := s.ensureServiceReferencesResolved(ctx, specColumns.PlaneID); err != nil {
+	if _, err := s.GetPlane(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
-	currentRunJSON, err := marshalJSON(current.Status.Run, model.RunStatus{Phase: model.RunPhasePending})
+	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for service reconcile"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
@@ -317,7 +318,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
-		UPDATE fleet_services
+		UPDATE services
 		SET
 			display_name = $2,
 			spec_plane_id = $3,
@@ -339,18 +340,15 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 			status_desired_state = $19,
 			status_observed_generation = $20,
 			status_phase = $21,
-			status_healthy = $22,
-			status_message = $23,
+			status_message = $22,
 			status_last_reconciled_at = NULL,
-			status_remote_status = '',
-			status_remote_message = '',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $24
+			AND generation = $23
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
-		input.DisplayName,
+		strings.TrimSpace(input.DisplayName),
 		specColumns.PlaneID,
 		specColumns.InstanceClass,
 		specColumns.Exposure,
@@ -365,12 +363,11 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 		specColumns.RegistryCredentialUser,
 		specColumns.RegistryCredentialPass,
 		specColumns.FilesJSON,
-		currentRunJSON,
+		pendingRunJSON,
 		nextGeneration,
 		model.DesiredStateActive,
 		pendingStatus.ObservedGeneration,
 		pendingStatus.Phase,
-		pendingStatus.Healthy,
 		pendingStatus.Message,
 		current.Metadata.Generation,
 	))
@@ -406,27 +403,24 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 
 	nextGeneration := current.Metadata.Generation + 1
 	deletingStatus := model.DeletingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for remote service teardown")
-	currentRunJSON, err := marshalJSON(current.Status.Run, model.RunStatus{Phase: model.RunPhasePending})
+	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for remote service teardown"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for delete: %w", err)
 	}
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
-		UPDATE fleet_services
+		UPDATE services
 		SET
 			generation = $2,
 			status_desired_state = $3,
 			status_observed_generation = $4,
 			status_phase = $5,
-			status_healthy = $6,
-			status_message = $7,
-			status_run_json = $8,
+			status_message = $6,
+			status_run_json = $7,
 			status_last_reconciled_at = NULL,
-			status_remote_status = 'deleting',
-			status_remote_message = 'waiting for remote service teardown',
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $9
+			AND generation = $8
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -434,9 +428,8 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 		model.DesiredStateDeleted,
 		deletingStatus.ObservedGeneration,
 		deletingStatus.Phase,
-		deletingStatus.Healthy,
 		deletingStatus.Message,
-		currentRunJSON,
+		pendingRunJSON,
 		current.Metadata.Generation,
 	))
 	if err != nil {
@@ -453,6 +446,9 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 }
 
 func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID string, expectedGeneration int64, input UpdateServiceStatusInput) error {
+	if !model.IsServicePhase(input.Phase) {
+		return errInvalidServicePhase
+	}
 	current, err := s.GetService(ctx, serviceID)
 	if err != nil {
 		return err
@@ -465,38 +461,32 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	if input.Run != nil {
 		nextRun = model.CloneRunStatus(*input.Run)
 	}
-	runJSON, err := marshalJSON(nextRun, model.RunStatus{Phase: model.RunPhasePending})
+	if !model.IsRunPhase(nextRun.Phase) {
+		return errInvalidServiceRunPhase
+	}
+	runJSON, err := encodeServiceRun(nextRun)
 	if err != nil {
 		return fmt.Errorf("marshal service run status: %w", err)
 	}
-
 	query := `
-		UPDATE fleet_services
+		UPDATE services
 		SET
 			status_observed_generation = $2,
 			status_phase = $3,
-			status_healthy = $4,
-			status_message = $5,
-			status_last_reconciled_at = $6,
-			status_run_json = $7,
-			status_assigned_plane_id = COALESCE($8, status_assigned_plane_id),
-			status_remote_status = COALESCE($9, status_remote_status),
-		status_remote_message = COALESCE($10, status_remote_message),
-		updated_at = now()
-	WHERE id = $1
-		AND generation = $11
+			status_message = $4,
+			status_last_reconciled_at = $5,
+			status_run_json = $6,
+			updated_at = now()
+		WHERE id = $1
+			AND generation = $7
 	`
 	args := []any{
 		serviceID,
 		input.ObservedGeneration,
 		input.Phase,
-		input.Healthy,
 		input.Message,
 		input.LastReconciledAt,
 		runJSON,
-		nullableOptionalString(input.AssignedPlaneID),
-		nullableOptionalString(input.RemoteStatus),
-		nullableOptionalString(input.RemoteMessage),
 		expectedGeneration,
 	}
 	result, err := s.db.ExecContext(ctx, query, args...)
@@ -511,7 +501,7 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 
 func (s *Store) DeleteServiceForGeneration(ctx context.Context, serviceID string, expectedGeneration int64) error {
 	row := s.db.QueryRowContext(ctx, `
-		DELETE FROM fleet_services
+		DELETE FROM services
 		WHERE id = $1
 			AND generation = $2
 		RETURNING id
@@ -549,7 +539,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 	var filesJSON []byte
 	var runJSON []byte
 	var lastReconciledAt sql.NullTime
-	var assignedPlaneID sql.NullString
 	if err := scanner.Scan(
 		&item.Metadata.ID,
 		&item.Metadata.Name,
@@ -573,86 +562,119 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		&item.Status.DesiredState,
 		&item.Status.Observed.ObservedGeneration,
 		&item.Status.Observed.Phase,
-		&item.Status.Observed.Healthy,
 		&item.Status.Observed.Message,
 		&lastReconciledAt,
-		&assignedPlaneID,
-		&item.Status.Observed.RemoteStatus,
-		&item.Status.Observed.RemoteMessage,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
 		return model.Service{}, err
 	}
-	if err := unmarshalJSON(commandJSON, &item.Spec.Command, []string{}); err != nil {
-		return model.Service{}, fmt.Errorf("decode service command: %w", err)
+	item.Spec.Command = []string{}
+	if len(commandJSON) > 0 {
+		if err := json.Unmarshal(commandJSON, &item.Spec.Command); err != nil {
+			return model.Service{}, fmt.Errorf("decode service command: %w", err)
+		}
 	}
-	if err := unmarshalJSON(argsJSON, &item.Spec.Args, []string{}); err != nil {
-		return model.Service{}, fmt.Errorf("decode service args: %w", err)
+	if item.Spec.Command == nil {
+		item.Spec.Command = []string{}
 	}
-	if err := unmarshalJSON(envJSON, &item.Spec.Env, map[string]string{}); err != nil {
-		return model.Service{}, fmt.Errorf("decode service env: %w", err)
+	item.Spec.Args = []string{}
+	if len(argsJSON) > 0 {
+		if err := json.Unmarshal(argsJSON, &item.Spec.Args); err != nil {
+			return model.Service{}, fmt.Errorf("decode service args: %w", err)
+		}
 	}
-	if err := unmarshalJSON(secretEnvJSON, &item.Spec.SecretEnv, map[string]string{}); err != nil {
-		return model.Service{}, fmt.Errorf("decode service secret env: %w", err)
+	if item.Spec.Args == nil {
+		item.Spec.Args = []string{}
 	}
-	if err := unmarshalJSON(filesJSON, &item.Spec.Files, []projectedfile.File{}); err != nil {
-		return model.Service{}, fmt.Errorf("decode service files: %w", err)
+	item.Spec.Env = map[string]string{}
+	if len(envJSON) > 0 {
+		if err := json.Unmarshal(envJSON, &item.Spec.Env); err != nil {
+			return model.Service{}, fmt.Errorf("decode service env: %w", err)
+		}
+	}
+	if item.Spec.Env == nil {
+		item.Spec.Env = map[string]string{}
+	}
+	item.Spec.SecretEnv = map[string]string{}
+	if len(secretEnvJSON) > 0 {
+		if err := json.Unmarshal(secretEnvJSON, &item.Spec.SecretEnv); err != nil {
+			return model.Service{}, fmt.Errorf("decode service secret env: %w", err)
+		}
+	}
+	if item.Spec.SecretEnv == nil {
+		item.Spec.SecretEnv = map[string]string{}
+	}
+	item.Spec.Files = []projectedfile.File{}
+	if len(filesJSON) > 0 {
+		if err := json.Unmarshal(filesJSON, &item.Spec.Files); err != nil {
+			return model.Service{}, fmt.Errorf("decode service files: %w", err)
+		}
 	}
 	item.Spec.Files = projectedfile.CloneFiles(item.Spec.Files)
-	item.Spec.RegistryCredential = registryCredentialFromColumns(registryServerValue, registryUsernameValue, registryPasswordValue)
-	if err := unmarshalJSON(runJSON, &item.Status.Run, model.RunStatus{Phase: model.RunPhasePending}); err != nil {
+	if strings.TrimSpace(registryServerValue) != "" || strings.TrimSpace(registryUsernameValue) != "" || registryPasswordValue != "" {
+		item.Spec.RegistryCredential = &model.ServiceRegistryCredential{
+			Server:   registryServerValue,
+			Username: registryUsernameValue,
+			Password: registryPasswordValue,
+		}
+	}
+	if len(runJSON) == 0 {
+		return model.Service{}, fmt.Errorf("service run status is missing")
+	}
+	runStatus, err := decodeServiceRun(runJSON)
+	if err != nil {
 		return model.Service{}, fmt.Errorf("decode service run status: %w", err)
 	}
-	item.Status.Run.Phase = normalizeRunPhase(item.Status.Run.Phase)
+	item.Status.Run = runStatus
 	if lastReconciledAt.Valid {
 		lastValue := lastReconciledAt.Time.UTC()
 		item.Status.Observed.LastReconciledAt = &lastValue
 	}
-	if assignedPlaneID.Valid {
-		item.Status.Observed.AssignedPlaneID = assignedPlaneID.String
-	}
 	return item, nil
 }
 
-func nullableString(value string) any {
-	if strings.TrimSpace(value) == "" {
-		return nil
+func encodeServiceRun(input model.RunStatus) ([]byte, error) {
+	record := serviceRunRecord{
+		CurrentRunID:   strings.TrimSpace(input.CurrentRunID),
+		LatestRunID:    strings.TrimSpace(input.LatestRunID),
+		Phase:          strings.TrimSpace(input.Phase),
+		Message:        input.Message,
+		LastObservedAt: input.LastObservedAt,
 	}
-	return strings.TrimSpace(value)
+	if !model.IsRunPhase(record.Phase) {
+		return nil, errInvalidServiceRunPhase
+	}
+	if record.LastObservedAt != nil {
+		value := record.LastObservedAt.UTC()
+		record.LastObservedAt = &value
+	}
+	return json.Marshal(record)
 }
 
-func normalizeRunPhase(phase string) string {
-	value := strings.ToLower(strings.TrimSpace(phase))
-	if value == "" {
-		return model.RunPhasePending
+func decodeServiceRun(data []byte) (model.RunStatus, error) {
+	if len(data) == 0 {
+		return model.RunStatus{}, fmt.Errorf("service run status is missing")
 	}
-	return value
-}
-
-func nullableOptionalString(value *string) any {
-	if value == nil {
-		return nil
+	var record serviceRunRecord
+	if err := json.Unmarshal(data, &record); err != nil {
+		return model.RunStatus{}, err
 	}
-	return strings.TrimSpace(*value)
-}
-
-func (s *Store) ensureServiceReferencesResolved(ctx context.Context, planeID string) error {
-	if _, err := s.GetPlane(ctx, planeID); err != nil {
-		return err
+	if !model.IsRunPhase(record.Phase) {
+		return model.RunStatus{}, errInvalidServiceRunPhase
 	}
-	return nil
-}
-
-func registryCredentialFromColumns(server string, username string, password string) *model.ServiceRegistryCredential {
-	if strings.TrimSpace(server) == "" && strings.TrimSpace(username) == "" && password == "" {
-		return nil
+	out := model.RunStatus{
+		CurrentRunID:   record.CurrentRunID,
+		LatestRunID:    record.LatestRunID,
+		Phase:          record.Phase,
+		Message:        record.Message,
+		LastObservedAt: record.LastObservedAt,
 	}
-	return &model.ServiceRegistryCredential{
-		Server:   server,
-		Username: username,
-		Password: password,
+	if out.LastObservedAt != nil {
+		value := out.LastObservedAt.UTC()
+		out.LastObservedAt = &value
 	}
+	return out, nil
 }
 
 func validateServiceSpec(spec model.ServiceSpec) error {
@@ -661,9 +683,9 @@ func validateServiceSpec(spec model.ServiceSpec) error {
 	}
 	resolvedExposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
 	if resolvedExposure == "" {
-		resolvedExposure = "public"
+		resolvedExposure = model.ExposurePublic
 	}
-	if resolvedExposure != "public" && resolvedExposure != "private" {
+	if !model.IsServiceExposure(resolvedExposure) {
 		return invalidInput(errInvalidExposure)
 	}
 	if strings.TrimSpace(spec.Image) == "" {
@@ -715,23 +737,47 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 	if err != nil {
 		return serviceSpecColumns{}, err
 	}
-	commandJSON, err := marshalJSON(spec.Command, []string{})
+	exposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
+	if exposure == "" {
+		exposure = model.ExposurePublic
+	}
+	command := spec.Command
+	if command == nil {
+		command = []string{}
+	}
+	commandJSON, err := json.Marshal(command)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service command: %w", err)
 	}
-	argsJSON, err := marshalJSON(spec.Args, []string{})
+	args := spec.Args
+	if args == nil {
+		args = []string{}
+	}
+	argsJSON, err := json.Marshal(args)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service args: %w", err)
 	}
-	envJSON, err := marshalJSON(spec.Env, map[string]string{})
+	env := spec.Env
+	if env == nil {
+		env = map[string]string{}
+	}
+	envJSON, err := json.Marshal(env)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service env: %w", err)
 	}
-	secretEnvJSON, err := marshalJSON(spec.SecretEnv, map[string]string{})
+	secretEnv := spec.SecretEnv
+	if secretEnv == nil {
+		secretEnv = map[string]string{}
+	}
+	secretEnvJSON, err := json.Marshal(secretEnv)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service secret env: %w", err)
 	}
-	filesJSON, err := marshalJSON(projectedfile.CloneFiles(spec.Files), []projectedfile.File{})
+	files := projectedfile.CloneFiles(spec.Files)
+	if files == nil {
+		files = []projectedfile.File{}
+	}
+	filesJSON, err := json.Marshal(files)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service files: %w", err)
 	}
@@ -739,19 +785,19 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 	out := serviceSpecColumns{
 		PlaneID:       planeID,
 		InstanceClass: instanceClass,
-		Exposure:      spec.Exposure,
-		Image:         spec.Image,
+		Exposure:      exposure,
+		Image:         strings.TrimSpace(spec.Image),
 		CommandJSON:   commandJSON,
 		ArgsJSON:      argsJSON,
 		DefaultPort:   spec.DefaultPort,
-		ReadinessPath: spec.ReadinessPath,
+		ReadinessPath: strings.TrimSpace(spec.ReadinessPath),
 		EnvJSON:       envJSON,
 		SecretEnvJSON: secretEnvJSON,
 		FilesJSON:     filesJSON,
 	}
 	if spec.RegistryCredential != nil {
-		out.RegistryCredentialServer = spec.RegistryCredential.Server
-		out.RegistryCredentialUser = spec.RegistryCredential.Username
+		out.RegistryCredentialServer = strings.TrimSpace(spec.RegistryCredential.Server)
+		out.RegistryCredentialUser = strings.TrimSpace(spec.RegistryCredential.Username)
 		out.RegistryCredentialPass = spec.RegistryCredential.Password
 	}
 	return out, nil

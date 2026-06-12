@@ -14,16 +14,7 @@ import (
 
 func NewGRPCServer(cfg cloudplaneconfig.Config, logger *slog.Logger, db *sql.DB, stores *store.Store) *grpc.Server {
 	grpcServer := grpc.NewServer()
-	controlplane.RegisterGRPC(grpcServer, controlplane.Options{
-		Logger: logger,
-		DB:     db,
-		Store:  stores,
-		Config: cfg,
-	})
-	nodeagent.RegisterGRPC(grpcServer, nodeagent.Options{
-		Logger:         logger,
-		Store:          stores,
-		BootstrapToken: cfg.NodeAgent.BootstrapToken,
-	})
+	controlplane.RegisterGRPC(grpcServer, logger, db, stores, cfg)
+	nodeagent.RegisterGRPC(grpcServer, logger, stores, cfg.NodeAgent.Token)
 	return grpcServer
 }

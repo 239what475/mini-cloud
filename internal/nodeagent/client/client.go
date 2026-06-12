@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"mini-cloud/internal/bearer"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	"mini-cloud/internal/logctx"
 
@@ -19,55 +20,34 @@ import (
 	grpcstatus "google.golang.org/grpc/status"
 )
 
-// Client 是 node-agent 访问控制面 NodeAgentService 的 gRPC 客户端。
 type Client struct {
-	// target 是 gRPC dial 使用的 host 或 passthrough 目标。
 	target string
-	// bootstrapToken 是节点注册前使用的启动令牌。
-	bootstrapToken string
-	// sessionToken 是注册成功后用于心跳、拉取任务和上报结果的节点会话令牌。
-	sessionToken string
-	// dialer 是测试可注入的 gRPC 底层连接建立函数。
+	token  string
 	dialer func(context.Context, string) (net.Conn, error)
 
-	// mu 保护 sessionToken 和 conn 的并发访问。
-	mu sync.Mutex
-	// conn 是复用的 gRPC 客户端连接。
+	mu   sync.Mutex
 	conn *grpc.ClientConn
 }
 
-// Config 配置 node-agent 控制面客户端。
 type Config struct {
-	// ServerURL 是控制面的内网明文 gRPC 地址，可使用 host:port 或 http://host:port。
 	ServerURL string
-	// BootstrapToken 是首次注册节点时发送的启动令牌。
-	BootstrapToken string
-	// Dialer 覆盖 gRPC 底层连接建立函数，主要用于测试内存连接。
-	Dialer func(context.Context, string) (net.Conn, error)
+	Token     string
+	Dialer    func(context.Context, string) (net.Conn, error)
 }
 
 const (
-	// operationRegisterNode 标识节点注册请求。
-	operationRegisterNode = "register node"
-	// operationSendHeartbeat 标识节点心跳请求。
-	operationSendHeartbeat = "send heartbeat"
-	// operationPollExecutionWork 标识执行任务拉取请求。
+	operationRegisterNode      = "register node"
+	operationSendHeartbeat     = "send heartbeat"
 	operationPollExecutionWork = "poll execution work"
-	// operationReportExecution 标识执行结果上报请求。
-	operationReportExecution = "report execution"
+	operationReportExecution   = "report execution"
 )
 
-// ControlError 表示控制面 gRPC status 错误。
 type ControlError struct {
-	// Operation 是失败的控制面操作名称。
 	Operation string
-	// Code 是控制面返回的 gRPC status code。
-	Code codes.Code
-	// Message 是 gRPC status message。
-	Message string
+	Code      codes.Code
+	Message   string
 }
 
-// Error 返回包含控制面操作和 gRPC 错误信息的字符串。
 func (e *ControlError) Error() string {
 	if e == nil {
 		return ""
@@ -78,30 +58,14 @@ func (e *ControlError) Error() string {
 	return fmt.Sprintf("%s failed with grpc code %s", e.Operation, e.Code)
 }
 
-// New 根据控制面地址和启动令牌创建客户端。
 func New(cfg Config) *Client {
 	return &Client{
-		target:         normalizeTarget(cfg.ServerURL),
-		bootstrapToken: strings.TrimSpace(cfg.BootstrapToken),
-		dialer:         cfg.Dialer,
+		target: normalizeTarget(cfg.ServerURL),
+		token:  strings.TrimSpace(cfg.Token),
+		dialer: cfg.Dialer,
 	}
 }
 
-// SetSessionToken 设置后续节点级请求使用的会话令牌。
-func (c *Client) SetSessionToken(secret string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.sessionToken = strings.TrimSpace(secret)
-}
-
-// getSessionToken 返回当前会话令牌。
-func (c *Client) getSessionToken() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.sessionToken
-}
-
-// Close 关闭当前 gRPC 连接。
 func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -113,71 +77,58 @@ func (c *Client) Close() error {
 	return conn.Close()
 }
 
-// IsInvalidSession 判断错误是否表示本地节点会话不再被控制面接受。
-func IsInvalidSession(err error) bool {
+func IsUnknownNode(err error) bool {
 	var controlErr *ControlError
 	if !errors.As(err, &controlErr) {
 		return false
 	}
-	switch controlErr.Code {
-	case codes.Unauthenticated, codes.PermissionDenied:
-		return true
-	case codes.NotFound:
-		// NotFound 只有在节点级请求上才表示本地节点身份已失效。
-		// 例如 report execution 的 NotFound 可能只是执行不存在，不能清空节点会话。
-		return controlErr.Operation == operationSendHeartbeat ||
-			controlErr.Operation == operationPollExecutionWork
-	default:
-		return false
-	}
+	return controlErr.Code == codes.NotFound &&
+		(controlErr.Operation == operationSendHeartbeat ||
+			controlErr.Operation == operationPollExecutionWork)
 }
 
-// RegisterNode 使用启动令牌向控制面注册节点，并保存返回的会话令牌。
 func (c *Client) RegisterNode(ctx context.Context, input *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.RegisterNode(withOutgoingMetadata(ctx, c.bootstrapToken), input)
+	resp, err := client.RegisterNode(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
 		return nil, grpcControlError(err, operationRegisterNode)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid register response: empty response")
 	}
-	if strings.TrimSpace(resp.GetNodeId()) == "" || strings.TrimSpace(resp.GetSessionToken()) == "" || resp.GetAcceptedAt() == nil {
+	if strings.TrimSpace(resp.GetNodeId()) == "" {
 		return nil, errors.New("invalid register response")
 	}
-	c.SetSessionToken(resp.GetSessionToken())
 	return resp, nil
 }
 
-// SendHeartbeat 使用节点会话令牌向控制面上报一次节点心跳。
 func (c *Client) SendHeartbeat(ctx context.Context, input *nodeagentv1.HeartbeatRequest) (*nodeagentv1.HeartbeatResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.RecordHeartbeat(withOutgoingMetadata(ctx, c.getSessionToken()), input)
+	resp, err := client.RecordHeartbeat(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
 		return nil, grpcControlError(err, operationSendHeartbeat)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid heartbeat response: empty response")
 	}
-	if strings.TrimSpace(resp.GetNodeId()) == "" || strings.TrimSpace(resp.GetObservedStatus()) == "" || resp.GetReceivedAt() == nil {
+	if strings.TrimSpace(resp.GetNodeId()) == "" || strings.TrimSpace(resp.GetObservedStatus()) == "" {
 		return nil, errors.New("invalid heartbeat response")
 	}
 	return resp, nil
 }
 
-// PollExecutionWork 从控制面拉取当前节点的下一项执行任务。
 func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeagentv1.WorkItem, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.PollWork(withOutgoingMetadata(ctx, c.getSessionToken()), &nodeagentv1.PollWorkRequest{
+	resp, err := client.PollWork(withOutgoingMetadata(ctx, c.token), &nodeagentv1.PollWorkRequest{
 		NodeId: nodeID,
 	})
 	if err != nil {
@@ -189,13 +140,12 @@ func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeage
 	return resp.GetItem(), nil
 }
 
-// ReportExecution 向控制面上报指定执行的运行中或终态结果。
 func (c *Client) ReportExecution(ctx context.Context, input *nodeagentv1.ReportExecutionRequest) (*nodeagentv1.ReportExecutionResponse, error) {
 	client, err := c.grpcClient()
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.ReportExecution(withOutgoingMetadata(ctx, c.getSessionToken()), input)
+	resp, err := client.ReportExecution(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
 		return nil, grpcControlError(err, operationReportExecution)
 	}
@@ -208,7 +158,6 @@ func (c *Client) ReportExecution(ctx context.Context, input *nodeagentv1.ReportE
 	return resp, nil
 }
 
-// grpcClient 返回基于复用 ClientConn 的 NodeAgentService gRPC stub。
 func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -233,7 +182,6 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 	return nodeagentv1.NewNodeAgentServiceClient(conn), nil
 }
 
-// withOutgoingMetadata 在 gRPC metadata 中追加 request id 和可选 bearer token。
 func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Context {
 	requestID := logctx.EnsureRequestID(logctx.RequestID(ctx))
 	ctx = logctx.WithFields(ctx, logctx.Fields{RequestID: requestID})
@@ -242,12 +190,11 @@ func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Conte
 		strings.ToLower(logctx.HeaderRequestID), requestID,
 	}
 	if token := strings.TrimSpace(bearerToken); token != "" {
-		pairs = append(pairs, "authorization", "Bearer "+token)
+		pairs = append(pairs, bearer.MetadataKey, bearer.Header(token))
 	}
 	return metadata.AppendToOutgoingContext(ctx, pairs...)
 }
 
-// grpcControlError 将 gRPC status error 转换为控制面语义错误。
 func grpcControlError(err error, operation string) error {
 	st, ok := grpcstatus.FromError(err)
 	if !ok {
@@ -260,7 +207,6 @@ func grpcControlError(err error, operation string) error {
 	}
 }
 
-// normalizeTarget 从控制面服务地址中提取明文 gRPC dial target。
 func normalizeTarget(serverURL string) string {
 	trimmed := strings.TrimSpace(serverURL)
 	if trimmed == "" {

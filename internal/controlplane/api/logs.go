@@ -13,10 +13,10 @@ import (
 
 type logQueryHandler struct {
 	logger  *slog.Logger
-	service logquery.Backend
+	service *logquery.Service
 }
 
-func newLogQueryHandler(logger *slog.Logger, service logquery.Backend) logQueryHandler {
+func newLogQueryHandler(logger *slog.Logger, service *logquery.Service) logQueryHandler {
 	return logQueryHandler{
 		logger:  logger,
 		service: service,
@@ -25,7 +25,7 @@ func newLogQueryHandler(logger *slog.Logger, service logquery.Backend) logQueryH
 
 func (h logQueryHandler) queryControlLogs(c *gin.Context) {
 	logger := logctx.Logger(c.Request.Context(), h.logger)
-	if h.service == nil || !h.service.Configured() {
+	if h.service == nil {
 		c.JSON(http.StatusServiceUnavailable, map[string]any{
 			"error": "log query backend is not configured",
 		})
@@ -45,10 +45,6 @@ func (h logQueryHandler) queryControlLogs(c *gin.Context) {
 		var inputErr *logquery.InputError
 		var backendErr *logquery.BackendError
 		switch {
-		case errors.Is(err, logquery.ErrNotConfigured):
-			c.JSON(http.StatusServiceUnavailable, map[string]any{
-				"error": err.Error(),
-			})
 		case errors.As(err, &inputErr):
 			c.JSON(http.StatusBadRequest, map[string]any{
 				"error": inputErr.Error(),

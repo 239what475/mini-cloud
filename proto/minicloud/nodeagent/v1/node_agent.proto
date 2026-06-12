@@ -7,43 +7,29 @@ option go_package = "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1;nodeag
 import "google/protobuf/timestamp.proto";
 
 message RegisterNodeRequest {
-  reserved 8, 9;
-
   string provider = 1;
   string region = 2;
   string name = 3;
   string private_ip = 4 [json_name = "privateIP"];
-  string public_ip = 5 [json_name = "publicIP"];
-  string instance_id = 6 [json_name = "instanceID"];
-  string instance_type = 7 [json_name = "instanceType"];
-  int32 cpu_milli_total = 10 [json_name = "cpuMilliTotal"];
-  int32 memory_mi_total = 11 [json_name = "memoryMiTotal"];
+  string instance_id = 5 [json_name = "instanceID"];
+  string instance_type = 6 [json_name = "instanceType"];
+  int32 cpu_milli_total = 7 [json_name = "cpuMilliTotal"];
+  int32 memory_mi_total = 8 [json_name = "memoryMiTotal"];
 }
 
 message RegisterNodeResponse {
   string node_id = 1 [json_name = "nodeID"];
-  string session_token = 2 [json_name = "sessionToken"];
-  string observed_status = 3 [json_name = "observedStatus"];
-  google.protobuf.Timestamp accepted_at = 4 [json_name = "acceptedAt"];
 }
 
 message HeartbeatRequest {
-  reserved 4, 5;
-
   string node_id = 1 [json_name = "nodeID"];
-  google.protobuf.Timestamp reported_at = 2 [json_name = "reportedAt"];
-  string agent_version = 3 [json_name = "agentVersion"];
-  int32 running_containers = 6 [json_name = "runningContainers"];
-  string status = 7;
-  int32 cpu_milli_allocatable = 8 [json_name = "cpuMilliAllocatable"];
-  int32 memory_mi_allocatable = 9 [json_name = "memoryMiAllocatable"];
+  int32 cpu_milli_allocatable = 2 [json_name = "cpuMilliAllocatable"];
+  int32 memory_mi_allocatable = 3 [json_name = "memoryMiAllocatable"];
 }
 
 message HeartbeatResponse {
   string node_id = 1 [json_name = "nodeID"];
-  bool accepted = 2;
-  string observed_status = 3 [json_name = "observedStatus"];
-  google.protobuf.Timestamp received_at = 4 [json_name = "receivedAt"];
+  string observed_status = 2 [json_name = "observedStatus"];
 }
 
 message ImageCredential {
@@ -67,29 +53,24 @@ message ProjectedFile {
 }
 
 message WorkItem {
-  reserved 5;
-  reserved "project_id";
-
   string execution_id = 1 [json_name = "executionID"];
   string plan_id = 2 [json_name = "planID"];
-  string node_id = 4 [json_name = "nodeID"];
-  string service_id = 6 [json_name = "serviceID"];
-  string service_name = 7 [json_name = "serviceName"];
-  reserved 8, 9;
-  reserved "revision_id", "revision_label";
-  string image = 10;
-  repeated string command = 11;
-  repeated string args = 12;
-  map<string, string> env = 13;
-  ImageCredential image_credential = 14 [json_name = "imageCredential"];
-  SupersededExecution superseded_execution = 15 [json_name = "supersededExecution"];
-  int32 container_port = 16 [json_name = "containerPort"];
-  string readiness_path = 17 [json_name = "readinessPath"];
-  string container_name = 18 [json_name = "containerName"];
-  repeated ProjectedFile projected_files = 19 [json_name = "projectedFiles"];
-  string action = 21;
-  string container_id = 22 [json_name = "containerID"];
-  int32 host_port = 23 [json_name = "hostPort"];
+  string node_id = 3 [json_name = "nodeID"];
+  string service_id = 4 [json_name = "serviceID"];
+  string service_name = 5 [json_name = "serviceName"];
+  string image = 6;
+  repeated string command = 7;
+  repeated string args = 8;
+  map<string, string> env = 9;
+  ImageCredential image_credential = 10 [json_name = "imageCredential"];
+  SupersededExecution superseded_execution = 11 [json_name = "supersededExecution"];
+  int32 container_port = 12 [json_name = "containerPort"];
+  string readiness_path = 13 [json_name = "readinessPath"];
+  string container_name = 14 [json_name = "containerName"];
+  repeated ProjectedFile projected_files = 15 [json_name = "projectedFiles"];
+  string action = 16;
+  string container_id = 17 [json_name = "containerID"];
+  int32 host_port = 18 [json_name = "hostPort"];
 }
 
 message PollWorkRequest {

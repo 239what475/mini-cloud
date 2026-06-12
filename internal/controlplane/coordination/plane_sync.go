@@ -16,99 +16,74 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-var (
-	errPlaneSyncNotRegistered = errors.New("plane southbound token is not configured")
-)
-
 const (
 	backgroundPlaneSyncPerPlaneTimeout = 30 * time.Second
 )
 
+const (
+	planeExecutionStatusFailed     = "failed"
+	planeExecutionStatusRunning    = "running"
+	planeExecutionStatusSucceeded  = "succeeded"
+	planeExecutionStatusSuperseded = "superseded"
+)
+
 type PlaneSyncer struct {
-	logger *slog.Logger
-	store  *store.Store
-	now    func() time.Time
-}
-
-type planeSyncResult struct {
-	Plane            model.PlaneDetail `json:"plane"`
-	ObservedProvider string            `json:"observedProvider"`
-	ObservedRegion   string            `json:"observedRegion"`
-	HealthCheckedAt  time.Time         `json:"healthCheckedAt"`
-	SyncedAt         time.Time         `json:"syncedAt"`
-	Overview         syncOverview      `json:"overview"`
-	AlertsFiring     int               `json:"alertsFiring"`
-}
-
-type planeSyncOutcome struct {
-	PlaneID         string           `json:"planeID"`
-	planeSyncResult *planeSyncResult `json:"result,omitempty"`
-	Error           string           `json:"error,omitempty"`
+	logger          *slog.Logger
+	store           *store.Store
+	southboundToken string
+	now             func() time.Time
 }
 
 type syncOverview struct {
 	NodesTotal          int
 	NodesReady          int
-	NodesNotReady       int
 	NodesDraining       int
 	NodesOffline        int
 	ExecutionPlansTotal int
 }
 
 type syncError struct {
-	status          string
-	message         string
-	lastHeartbeatAt *time.Time
+	status  string
+	message string
 }
 
 func (e *syncError) Error() string {
 	return e.message
 }
 
-func NewPlaneSyncer(logger *slog.Logger, stores *store.Store) *PlaneSyncer {
+func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &PlaneSyncer{
-		logger: logger,
-		store:  stores,
+		logger:          logger,
+		store:           stores,
+		southboundToken: strings.TrimSpace(southboundToken),
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
 	}
 }
 
-func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncResult, error) {
-	token, err := s.store.GetPlaneSouthboundToken(ctx, planeID)
-	if err != nil {
-		if errors.Is(err, store.ErrPlaneSouthboundTokenNotFound) {
-			return planeSyncResult{}, errPlaneSyncNotRegistered
-		}
-		return planeSyncResult{}, err
-	}
+func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 	ctx = logctx.WithFields(ctx, logctx.Fields{PlaneID: planeID})
 	logger := logctx.Logger(ctx, s.logger)
 	planeDetail, err := s.store.GetPlane(ctx, planeID)
 	if err != nil {
-		return planeSyncResult{}, err
+		return err
 	}
 
 	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
-	client, err := newPlaneClient(grpcEndpoint, token)
+	client, err := newPlaneClient(grpcEndpoint, s.southboundToken)
 	if err != nil {
-		err = &syncError{
+		syncErr := &syncError{
 			status:  model.StatusOffline,
 			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
 		}
-	}
-	if err != nil {
-		var syncErr *syncError
-		if errors.As(err, &syncErr) {
-			if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
-				logger.Error("update failed plane status failed", "error", updateErr)
-			}
+		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
+			logger.Error("update failed plane status failed", "error", updateErr)
 		}
-		return planeSyncResult{}, err
+		return syncErr
 	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
@@ -125,105 +100,75 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) (planeSyncR
 		if updateErr := s.updateFailedPlaneStatus(ctx, planeID, syncErr); updateErr != nil {
 			logger.Error("update failed plane status failed", "error", updateErr)
 		}
-		return planeSyncResult{}, syncErr
+		return syncErr
 	}
-	healthCheckedAt := protoTime(snapshot.GetHealth().GetCheckedAt())
+	checkedAt := protoTime(snapshot.GetCheckedAt())
 
-	if err := s.store.MarkPlaneSouthboundTokenVerified(ctx, planeID, healthCheckedAt); err != nil {
-		return planeSyncResult{}, err
-	}
 	syncedAt := s.now()
-	status, message, alertsFiring := derivePlaneStatus(planeDetail, snapshot)
+	status, message := derivePlaneStatus(planeDetail, snapshot)
 	if err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
 		Status:          status,
 		Message:         message,
-		LastHeartbeatAt: &healthCheckedAt,
+		LastHeartbeatAt: &checkedAt,
 		LastSyncAt:      &syncedAt,
 	}); err != nil {
-		return planeSyncResult{}, err
+		return err
 	}
-	if err := s.store.ReplacePlaneRuntimeInventory(ctx, planeID, buildRuntimeInventory(snapshot)); err != nil {
-		return planeSyncResult{}, err
+	if err := s.store.ReplacePlaneNodeInventory(ctx, planeID, buildNodeInventory(snapshot)); err != nil {
+		return err
 	}
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
-		return planeSyncResult{}, err
+		return err
 	}
-
-	detail, err := s.store.GetPlane(ctx, planeID)
-	if err != nil {
-		return planeSyncResult{}, err
-	}
-
-	return planeSyncResult{
-		Plane:            detail,
-		ObservedProvider: snapshot.GetPlane().GetProvider(),
-		ObservedRegion:   snapshot.GetPlane().GetRegion(),
-		HealthCheckedAt:  healthCheckedAt,
-		SyncedAt:         syncedAt,
-		Overview:         snapshotOverview(snapshot),
-		AlertsFiring:     alertsFiring,
-	}, nil
+	return nil
 }
 
-func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) ([]planeSyncOutcome, error) {
-	planeIDs, err := s.store.ListRegisteredPlaneIDs(ctx)
+func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
+	planeIDs, err := s.store.ListPlaneIDs(ctx)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	outcomes := make([]planeSyncOutcome, 0, len(planeIDs))
 	for _, planeID := range planeIDs {
 		planeCtx := ctx
 		cancel := func() {}
 		if perPlaneTimeout > 0 {
 			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
 		}
-		result, err := s.syncPlane(planeCtx, planeID)
+		err := s.syncPlane(planeCtx, planeID)
 		cancel()
-		outcome := planeSyncOutcome{PlaneID: planeID}
 		if err != nil {
-			outcome.Error = err.Error()
-		} else {
-			outcome.planeSyncResult = &result
+			s.logger.Warn("plane sync failed", "plane_id", planeID, "error", err)
 		}
-		outcomes = append(outcomes, outcome)
 		if ctx.Err() != nil {
-			return outcomes, ctx.Err()
+			return ctx.Err()
 		}
 	}
-	return outcomes, nil
+	return nil
 }
 
-func StartPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneSyncer, interval int) {
-	if syncer == nil || interval <= 0 {
-		return
-	}
+func RunPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneSyncer, interval int) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
-	go func() {
-		ticker := time.NewTicker(time.Duration(interval) * time.Second)
-		defer ticker.Stop()
+	if err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout); err != nil && !errors.Is(err, context.Canceled) {
+		logger.Error("plane background sync failed", "error", err)
+	}
 
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				outcomes, err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout)
-				if err != nil {
-					logger.Error("plane background sync failed", "error", err)
-					continue
-				}
-				for _, outcome := range outcomes {
-					if outcome.Error != "" {
-						logger.Warn("plane sync failed", "plane_id", outcome.PlaneID, "error", outcome.Error)
-					}
-				}
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout); err != nil {
+				logger.Error("plane background sync failed", "error", err)
 			}
 		}
-	}()
+	}
 }
 
 func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot) error {
@@ -238,14 +183,14 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 			}
 			return err
 		}
-		if strings.TrimSpace(serviceItem.Status.Observed.AssignedPlaneID) != planeID {
+		if strings.TrimSpace(serviceItem.Spec.PlaneID) != planeID {
 			continue
 		}
 		if item.GetServiceGeneration() != serviceItem.Metadata.Generation {
 			continue
 		}
 		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
-			if deleteExecutionPlanComplete(item) {
+			if strings.TrimSpace(item.GetStatus()) == planeExecutionStatusSucceeded {
 				if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
 					!errors.Is(err, store.ErrServiceNotFound) &&
 					!errors.Is(err, store.ErrServiceGenerationConflict) {
@@ -258,12 +203,9 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration(), store.UpdateServiceStatusInput{
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
-			Healthy:            status.Observed.Healthy,
 			Message:            status.Observed.Message,
 			LastReconciledAt:   status.Observed.LastReconciledAt,
 			Run:                &status.Run,
-			RemoteStatus:       &status.Observed.RemoteStatus,
-			RemoteMessage:      &status.Observed.RemoteMessage,
 		}); err != nil {
 			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
 				continue
@@ -272,10 +214,6 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 		}
 	}
 	return nil
-}
-
-func deleteExecutionPlanComplete(item *cloudplanev1.PlaneExecutionSnapshot) bool {
-	return strings.TrimSpace(item.GetStatus()) == "superseded"
 }
 
 type executionDerivedStatus struct {
@@ -290,18 +228,16 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudpl
 	}
 	message := executionSnapshotMessage(item)
 	phase := model.PhaseProgressing
-	healthy := false
 	runPhase := model.RunPhaseDispatching
 
 	switch strings.TrimSpace(item.GetStatus()) {
-	case "failed":
+	case planeExecutionStatusFailed:
 		phase = model.PhaseDegraded
 		runPhase = model.RunPhaseFailed
-	case "running":
+	case planeExecutionStatusRunning:
 		phase = model.PhaseReady
-		healthy = true
 		runPhase = model.RunPhaseRunning
-	case "superseded":
+	case planeExecutionStatusSuperseded:
 		runPhase = model.RunPhaseSuperseded
 	}
 	runStatus := model.CloneRunStatus(serviceItem.Status.Run)
@@ -317,10 +253,7 @@ func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudpl
 		Observed: model.ServiceObservedStatus{
 			ObservedGeneration: item.GetServiceGeneration(),
 			Phase:              phase,
-			Healthy:            healthy,
 			Message:            message,
-			RemoteStatus:       strings.TrimSpace(item.GetStatus()),
-			RemoteMessage:      message,
 			LastReconciledAt:   &now,
 		},
 		Run: runStatus,
@@ -332,11 +265,13 @@ func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string 
 		return item.GetLastStatusReason()
 	}
 	switch strings.TrimSpace(item.GetStatus()) {
-	case "failed":
+	case planeExecutionStatusFailed:
 		return fmt.Sprintf("execution plan %s failed", item.GetPlanId())
-	case "running":
+	case planeExecutionStatusRunning:
 		return fmt.Sprintf("execution plan %s is running", item.GetPlanId())
-	case "superseded":
+	case planeExecutionStatusSucceeded:
+		return fmt.Sprintf("execution plan %s succeeded", item.GetPlanId())
+	case planeExecutionStatusSuperseded:
 		return fmt.Sprintf("execution plan %s is superseded", item.GetPlanId())
 	default:
 		return fmt.Sprintf("execution plan %s is %s", item.GetPlanId(), strings.TrimSpace(item.GetStatus()))
@@ -346,28 +281,18 @@ func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string 
 func (s *PlaneSyncer) updateFailedPlaneStatus(ctx context.Context, planeID string, syncErr *syncError) error {
 	syncedAt := s.now()
 	err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-		Status:          syncErr.status,
-		Message:         syncErr.message,
-		LastHeartbeatAt: syncErr.lastHeartbeatAt,
-		LastSyncAt:      &syncedAt,
+		Status:     syncErr.status,
+		Message:    syncErr.message,
+		LastSyncAt: &syncedAt,
 	})
 	return err
 }
 
-func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.PlaneSnapshot) (string, string, int) {
+func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.PlaneSnapshot) (string, string) {
 	overview := snapshotOverview(snapshot)
 	alertsFiring := int(snapshot.GetReliability().GetAlertsFiring())
 
 	issues := make([]string, 0, 3)
-	if snapshot.GetHealth().GetService() != "" && snapshot.GetHealth().GetService() != "ok" {
-		issues = append(issues, fmt.Sprintf("remote plane service health is %s", snapshot.GetHealth().GetService()))
-	}
-	if snapshot.GetHealth().GetDatabase() != "" && snapshot.GetHealth().GetDatabase() != "ok" {
-		issues = append(issues, fmt.Sprintf("remote plane database health is %s", snapshot.GetHealth().GetDatabase()))
-	}
-	if !snapshot.GetPlane().GetConfigured() {
-		issues = append(issues, "remote plane config is not fully configured")
-	}
 	if snapshot.GetPlane().GetProvider() != "" && snapshot.GetPlane().GetProvider() != planeDetail.Provider {
 		issues = append(issues, fmt.Sprintf("provider mismatch: expected %s but remote reports %s", planeDetail.Provider, snapshot.GetPlane().GetProvider()))
 	}
@@ -375,7 +300,7 @@ func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.Pla
 		issues = append(issues, fmt.Sprintf("region mismatch: expected %s but remote reports %s", planeDetail.Region, snapshot.GetPlane().GetRegion()))
 	}
 
-	unhealthyNodes := overview.NodesNotReady + overview.NodesOffline + overview.NodesDraining
+	unhealthyNodes := overview.NodesOffline + overview.NodesDraining
 	if unhealthyNodes > 0 {
 		issues = append(issues, fmt.Sprintf("%d node(s) are not ready/offline/draining", unhealthyNodes))
 	}
@@ -388,20 +313,19 @@ func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.Pla
 			"sync healthy: %d nodes, %d execution plans",
 			overview.NodesTotal,
 			overview.ExecutionPlansTotal,
-		), alertsFiring
+		)
 	}
 
-	return model.StatusDegraded, "sync degraded: " + strings.Join(issues, "; "), alertsFiring
+	return model.StatusDegraded, "sync degraded: " + strings.Join(issues, "; ")
 }
 
-func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRuntimeInventoryInput {
-	runtimeInventory := snapshot.GetRuntimeInventory()
-	out := store.RecordRuntimeInventoryInput{
-		SyncVersion: runtimeInventory.GetSyncVersion(),
-		ObservedAt:  protoTime(runtimeInventory.GetObservedAt()),
-		Nodes:       make([]model.PlaneNode, 0, len(runtimeInventory.GetNodes())),
+func buildNodeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordNodeInventoryInput {
+	nodeInventory := snapshot.GetNodeInventory()
+	out := store.RecordNodeInventoryInput{
+		ObservedAt: protoTime(nodeInventory.GetObservedAt()),
+		Nodes:      make([]model.PlaneNode, 0, len(nodeInventory.GetNodes())),
 	}
-	for _, item := range runtimeInventory.GetNodes() {
+	for _, item := range nodeInventory.GetNodes() {
 		if item == nil {
 			continue
 		}
@@ -435,7 +359,7 @@ func buildRuntimeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordRun
 
 func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {
 	out := syncOverview{ExecutionPlansTotal: len(snapshot.GetExecutions())}
-	for _, item := range snapshot.GetRuntimeInventory().GetNodes() {
+	for _, item := range snapshot.GetNodeInventory().GetNodes() {
 		if item == nil {
 			continue
 		}
@@ -443,8 +367,6 @@ func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {
 		switch strings.TrimSpace(item.GetStatus()) {
 		case "ready":
 			out.NodesReady++
-		case "not_ready":
-			out.NodesNotReady++
 		case "draining":
 			out.NodesDraining++
 		case "offline":

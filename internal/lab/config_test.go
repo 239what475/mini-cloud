@@ -33,6 +33,7 @@ controlPlane:
 planes:
   - name: a
     provider: aliyun
+    region: cn-beijing
     ssh:
       host: same
     terraform:
@@ -40,6 +41,7 @@ planes:
       varFile: a.tfvars
   - name: b
     provider: tencent
+    region: ap-guangzhou
     ssh:
       host: same
     terraform:

@@ -10,7 +10,6 @@ import (
 	cloudplaneapi "mini-cloud/internal/cloudplane/api"
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
 	cloudplanecontrol "mini-cloud/internal/cloudplane/control"
-	cloudplaneingress "mini-cloud/internal/cloudplane/control/ingress"
 	frontdoor "mini-cloud/internal/cloudplane/infra/frontdoor"
 	caddyingress "mini-cloud/internal/cloudplane/infra/ingress/caddy"
 	nodeprovidercloud "mini-cloud/internal/cloudplane/infra/nodeprovider/cloud"
@@ -23,9 +22,9 @@ import (
 type App struct {
 	Config cloudplaneconfig.Config
 
-	db      *sql.DB
-	manager *cloudplanecontrol.Manager
-	server  *grpc.Server
+	db         *sql.DB
+	reconciler *cloudplanecontrol.Reconciler
+	server     *grpc.Server
 }
 
 func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
@@ -54,25 +53,28 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 		"region", cfg.Infrastructure.RegionID,
 	)
 	stores := store.New(db)
-	frontDoorService, err := frontdoor.NewService(logger, cfg)
+	frontDoorService, err := frontdoor.NewService(logger, cfg, stores)
 	if err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			return App{}, errors.Join(err, closeErr)
 		}
 		return App{}, err
 	}
-	ingressController := cloudplaneingress.NewController(logger, stores, cfg, caddyingress.NewSink(logger, caddyingress.Config{
-		ListenHTTPAddr:       cloudplaneconfig.CaddyListenHTTPAddr,
-		ArtifactListenAddr:   cloudplaneconfig.CaddyArtifactListenAddr,
-		ArtifactDocumentRoot: cloudplaneconfig.CaddyArtifactRoot,
-		AdminURL:             cfg.Ingress.CaddyAdminURL,
-	}), frontDoorService)
+	var localIngress cloudplanecontrol.RouteSink
+	if cfg.Ingress.CaddyAdminURL != "" {
+		localIngress = caddyingress.NewSink(logger, caddyingress.Config{
+			ListenHTTPAddr:       cloudplaneconfig.CaddyListenHTTPAddr,
+			ArtifactListenAddr:   cloudplaneconfig.CaddyArtifactListenAddr,
+			ArtifactDocumentRoot: cloudplaneconfig.CaddyArtifactRoot,
+			AdminURL:             cfg.Ingress.CaddyAdminURL,
+		})
+	}
 
 	return App{
-		Config:  cfg,
-		db:      db,
-		manager: cloudplanecontrol.NewManager(logger, stores, driver, ingressController, cfg),
-		server:  cloudplaneapi.NewGRPCServer(cfg, logger, db, stores),
+		Config:     cfg,
+		db:         db,
+		reconciler: cloudplanecontrol.NewReconciler(logger, stores, driver, localIngress, frontDoorService, cfg),
+		server:     cloudplaneapi.NewGRPCServer(cfg, logger, db, stores),
 	}, nil
 }
 
@@ -84,8 +86,8 @@ func (a App) Run(ctx context.Context) error {
 	defer listener.Close()
 
 	runCtx, cancel := context.WithCancel(ctx)
-	a.manager.Start(runCtx)
-	defer a.manager.Wait()
+	a.reconciler.Start(runCtx)
+	defer a.reconciler.Wait()
 	defer cancel()
 
 	errCh := make(chan error, 1)
@@ -96,6 +98,11 @@ func (a App) Run(ctx context.Context) error {
 	if err := registerWithControlPlane(runCtx, a.Config); err != nil {
 		cancel()
 		a.server.GracefulStop()
+		if serverErr := <-errCh; serverErr != nil &&
+			!errors.Is(serverErr, grpc.ErrServerStopped) &&
+			!errors.Is(serverErr, net.ErrClosed) {
+			return errors.Join(err, serverErr)
+		}
 		return err
 	}
 
@@ -109,15 +116,11 @@ func (a App) Run(ctx context.Context) error {
 	case <-ctx.Done():
 		cancel()
 		a.server.GracefulStop()
-		select {
-		case err := <-errCh:
-			if errors.Is(err, grpc.ErrServerStopped) || errors.Is(err, net.ErrClosed) {
-				return nil
-			}
-			return err
-		default:
+		err := <-errCh
+		if errors.Is(err, grpc.ErrServerStopped) || errors.Is(err, net.ErrClosed) {
 			return nil
 		}
+		return err
 	}
 }
 

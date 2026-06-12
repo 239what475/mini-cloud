@@ -19,14 +19,13 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 		},
 	}
 
-	readyStatus, readyMessage, readyAlerts := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
+	readyStatus, readyMessage := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
-			Configured: true,
-			Provider:   "aliyun",
-			Region:     "cn-beijing",
+			Provider: "aliyun",
+			Region:   "cn-beijing",
 		},
-		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
-			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{
+			Nodes: []*cloudplanev1.PlaneNode{
 				{Status: "ready"},
 			},
 		},
@@ -39,26 +38,19 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	if readyStatus != model.StatusReady {
 		t.Fatalf("ready status = %v, want ready", readyStatus)
 	}
-	if readyAlerts != 0 {
-		t.Fatalf("ready alerts = %d, want 0", readyAlerts)
-	}
 	if !strings.Contains(readyMessage, "sync healthy") {
 		t.Fatalf("ready message = %q", readyMessage)
 	}
 
-	degradedStatus, degradedMessage, degradedAlerts := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
+	degradedStatus, degradedMessage := derivePlaneStatus(planeDetail, &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
-			Configured: true,
-			Provider:   "tencent",
-			Region:     "ap-beijing",
+			Provider: "tencent",
+			Region:   "ap-beijing",
 		},
-		Health: &cloudplanev1.PlaneHealth{
-			Service: "degraded",
-		},
-		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
-			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{
+			Nodes: []*cloudplanev1.PlaneNode{
 				{Status: "ready"},
-				{Status: "not_ready"},
+				{Status: "offline"},
 			},
 		},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
@@ -71,21 +63,17 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	if degradedStatus != model.StatusDegraded {
 		t.Fatalf("degraded status = %v, want degraded", degradedStatus)
 	}
-	if degradedAlerts != 1 {
-		t.Fatalf("degraded alerts = %d, want 1", degradedAlerts)
-	}
-	if !strings.Contains(degradedMessage, "provider mismatch") || !strings.Contains(degradedMessage, "reliability alert") || !strings.Contains(degradedMessage, "remote plane service health is degraded") {
+	if !strings.Contains(degradedMessage, "provider mismatch") || !strings.Contains(degradedMessage, "reliability alert") {
 		t.Fatalf("unexpected degraded message: %q", degradedMessage)
 	}
 }
 
-func TestBuildRuntimeInventoryIncludesElasticNodeSource(t *testing.T) {
+func TestBuildNodeInventoryIncludesElasticNodeSource(t *testing.T) {
 	observedAt := time.Now().UTC()
-	input := buildRuntimeInventory(&cloudplanev1.PlaneSnapshot{
-		RuntimeInventory: &cloudplanev1.PlaneRuntimeInventory{
-			SyncVersion: 12,
-			ObservedAt:  timestamppb.New(observedAt),
-			Nodes: []*cloudplanev1.PlaneRuntimeNode{
+	input := buildNodeInventory(&cloudplanev1.PlaneSnapshot{
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{
+			ObservedAt: timestamppb.New(observedAt),
+			Nodes: []*cloudplanev1.PlaneNode{
 				{
 					NodeId:              "node-a",
 					Name:                "node-a",
@@ -103,7 +91,7 @@ func TestBuildRuntimeInventoryIncludesElasticNodeSource(t *testing.T) {
 		t.Fatalf("observedAt = %v, want %v", input.ObservedAt, observedAt)
 	}
 	if len(input.Nodes) != 1 || !input.Nodes[0].Elastic {
-		t.Fatalf("runtime inventory nodes = %+v, want elastic node", input.Nodes)
+		t.Fatalf("node inventory nodes = %+v, want elastic node", input.Nodes)
 	}
 }
 
@@ -127,8 +115,8 @@ func TestServiceStatusFromExecutionSnapshotRunningPromotesCurrentRun(t *testing.
 		ObservedAt:        timestamppb.New(observedAt),
 	})
 
-	if status.Observed.Phase != model.PhaseReady || !status.Observed.Healthy {
-		t.Fatalf("status = %+v, want ready healthy", status.Observed)
+	if status.Observed.Phase != model.PhaseReady {
+		t.Fatalf("status = %+v, want ready", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g2" || status.Run.LatestRunID != "svc-api-g2" {
 		t.Fatalf("run ids = %+v, want current/latest g2", status.Run)
@@ -158,8 +146,8 @@ func TestServiceStatusFromExecutionSnapshotFailedDoesNotRollbackCurrentRun(t *te
 		ObservedAt:        timestamppb.New(observedAt),
 	})
 
-	if status.Observed.Phase != model.PhaseDegraded || status.Observed.Healthy {
-		t.Fatalf("status = %+v, want degraded unhealthy", status.Observed)
+	if status.Observed.Phase != model.PhaseDegraded {
+		t.Fatalf("status = %+v, want degraded", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g1" {
 		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)
@@ -189,8 +177,8 @@ func TestServiceStatusFromExecutionSnapshotProgressingKeepsCurrentRun(t *testing
 		ObservedAt:        timestamppb.New(observedAt),
 	})
 
-	if status.Observed.Phase != model.PhaseProgressing || status.Observed.Healthy {
-		t.Fatalf("status = %+v, want progressing unhealthy", status.Observed)
+	if status.Observed.Phase != model.PhaseProgressing {
+		t.Fatalf("status = %+v, want progressing", status.Observed)
 	}
 	if status.Run.CurrentRunID != "svc-api-g1" {
 		t.Fatalf("current run = %q, want previous successful run", status.Run.CurrentRunID)

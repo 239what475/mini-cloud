@@ -22,12 +22,12 @@ output "platform_security_group_id" {
   value = var.platform_security_group_id
 }
 
-output "runtime_security_group_id" {
-  value = alicloud_security_group.runtime.id
+output "node_security_group_id" {
+  value = alicloud_security_group.node.id
 }
 
-output "runtime_security_group_name" {
-  value = alicloud_security_group.runtime.security_group_name
+output "node_security_group_name" {
+  value = alicloud_security_group.node.security_group_name
 }
 
 output "platform_key_pair_name" {

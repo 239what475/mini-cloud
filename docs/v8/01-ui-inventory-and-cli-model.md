@@ -243,8 +243,7 @@ metadata:
   name: demo-web
   displayName: Demo Web
 spec:
-  provider: aliyun
-  region: cn-beijing
+  planeID: plane_aliyun_beijing
   instanceClass: small
   exposure: public
   image: nginx:1.27-alpine
@@ -252,15 +251,13 @@ spec:
   readinessPath: /healthz
   env:
     PORT: "8080"
-  configSetID: ""
-  secretSetID: ""
   registryCredential:
     server: registry.example.com
     username: demo
     password: ""
 ```
 
-service 内联 `registryCredential`，不再提供独立 registry credential 资源。CLI 实现时可以支持 `registryCredential.passwordFrom`，例如从环境变量、stdin 或本地文件读取，避免 shell history 和 Git 泄漏。
+service 必须显式指定 `planeID`，不做自动 cloud-plane 选择。service 内联 `registryCredential`，不再提供独立 registry credential 资源。CLI 实现时可以支持 `registryCredential.passwordFrom`，例如从环境变量、stdin 或本地文件读取，避免 shell history 和 Git 泄漏。
 
 ### Logs
 
@@ -274,7 +271,7 @@ minicloud logs plane <plane> --since 30m
 
 - `GET /api/v1/control/logs`
 
-当前 log query handler 支持 query 参数解析，具体字段以 `httpx.ParseLogQueryInput` 为准。CLI 应把常用过滤器转换成 HTTP query。
+当前 log query handler 支持 `start`、`end`、`since` 和常用过滤字段，CLI 应把常用过滤器转换成 HTTP query。
 
 ### Plane
 

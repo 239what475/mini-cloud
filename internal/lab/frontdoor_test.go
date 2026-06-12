@@ -1,6 +1,9 @@
 package lab
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestDNSPodRecordHost(t *testing.T) {
 	t.Parallel()
@@ -47,5 +50,16 @@ func TestProviderOwnsCNAME(t *testing.T) {
 	}
 	if providerOwnsCNAME("tencent", "demo.w.kunlunaq.com.") {
 		t.Fatal("Tencent must not own Aliyun CDN CNAME")
+	}
+}
+
+func TestCommandOutputIndicatesMissingResourceDoesNotHideAuthorizationErrors(t *testing.T) {
+	t.Parallel()
+
+	if !commandOutputIndicatesMissingResource(errors.New("ResourceNotFound: domain does not exist")) {
+		t.Fatal("expected missing resource error")
+	}
+	if commandOutputIndicatesMissingResource(errors.New("not authorized to delete domain")) {
+		t.Fatal("authorization errors must not be treated as missing resources")
 	}
 }

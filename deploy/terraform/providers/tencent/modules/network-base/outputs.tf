@@ -30,12 +30,12 @@ output "platform_security_group_name" {
   value = var.create_platform_host_resources ? tencentcloud_security_group.platform[0].name : ""
 }
 
-output "runtime_security_group_id" {
-  value = tencentcloud_security_group.runtime.id
+output "node_security_group_id" {
+  value = tencentcloud_security_group.node.id
 }
 
-output "runtime_security_group_name" {
-  value = tencentcloud_security_group.runtime.name
+output "node_security_group_name" {
+  value = tencentcloud_security_group.node.name
 }
 
 output "platform_key_id" {

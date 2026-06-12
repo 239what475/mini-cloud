@@ -14,7 +14,6 @@ import (
 	"mini-cloud/internal/projectedfile"
 )
 
-// TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove 验证容器创建配置包含端口发布、自动删除和 mini-cloud 标签。
 func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T) {
 	t.Parallel()
 
@@ -22,16 +21,14 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 		NodeID:        "node-a",
 		ExecutionID:   "exec-a",
 		PlanID:        "plan-a",
-		ProjectionRef: "proj-a",
 		Image:         "nginx:1.27-alpine",
 		ContainerPort: 80,
 		HostBindIP:    "10.0.0.20",
-		HostPort:      31080,
 		Env: map[string]string{
 			"Z_KEY": "z",
 			"A_KEY": "a",
 		},
-	})
+	}, 31080)
 	if err != nil {
 		t.Fatalf("buildContainerCreateConfig returned error: %v", err)
 	}
@@ -45,8 +42,7 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 	if config.Labels[dockerLabelManagedBy] != "node-agent" ||
 		config.Labels[dockerLabelNodeID] != "node-a" ||
 		config.Labels[dockerLabelExecutionID] != "exec-a" ||
-		config.Labels[dockerLabelPlanID] != "plan-a" ||
-		config.Labels[dockerLabelProjectionRef] != "proj-a" {
+		config.Labels[dockerLabelPlanID] != "plan-a" {
 		t.Fatalf("unexpected mini-cloud labels: %+v", config.Labels)
 	}
 	if !hostConfig.AutoRemove {
@@ -61,23 +57,19 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 	}
 }
 
-// TestBuildContainerCreateConfigRequiresSelectedPortForRange 验证配置 hostPortRange 后必须先选择具体端口。
-func TestBuildContainerCreateConfigRequiresSelectedPortForRange(t *testing.T) {
+func TestBuildContainerCreateConfigRequiresHostPort(t *testing.T) {
 	t.Parallel()
 
 	_, _, _, err := buildContainerCreateConfig(RunInput{
 		Image:         "nginx:1.27-alpine",
 		ContainerPort: 80,
 		HostBindIP:    "127.0.0.1",
-		HostPortMin:   30000,
-		HostPortMax:   30999,
-	})
+	}, 0)
 	if err == nil {
-		t.Fatal("buildContainerCreateConfig returned nil error for range without selected host port")
+		t.Fatal("buildContainerCreateConfig returned nil error without host port")
 	}
 }
 
-// TestSelectAvailableHostPortRejectsInvalidRange 验证 hostPort 选择器拒绝非法端口范围。
 func TestSelectAvailableHostPortRejectsInvalidRange(t *testing.T) {
 	t.Parallel()
 
@@ -86,16 +78,6 @@ func TestSelectAvailableHostPortRejectsInvalidRange(t *testing.T) {
 	}
 }
 
-// TestNewRejectsUnsupportedRuntimeType 验证未知运行时类型会被拒绝。
-func TestNewRejectsUnsupportedRuntimeType(t *testing.T) {
-	t.Parallel()
-
-	if _, err := New(nil, Config{Type: "containerd"}); err == nil {
-		t.Fatal("New returned nil error for unsupported runtime type")
-	}
-}
-
-// TestResolveContainerCommandKeepsCurrentCliSemantics 验证 Command 和 Args 的组合语义保持不变。
 func TestResolveContainerCommandKeepsCurrentCliSemantics(t *testing.T) {
 	t.Parallel()
 
@@ -115,7 +97,6 @@ func TestResolveContainerCommandKeepsCurrentCliSemantics(t *testing.T) {
 	}
 }
 
-// TestBuildRegistryAuthEncodesCredential 验证镜像仓库认证信息会编码为 Docker RegistryAuth。
 func TestBuildRegistryAuthEncodesCredential(t *testing.T) {
 	t.Parallel()
 
@@ -142,7 +123,6 @@ func TestBuildRegistryAuthEncodesCredential(t *testing.T) {
 	}
 }
 
-// TestLogLineWriterParsesTimestampedLinesAcrossWrites 验证日志行 writer 可以跨 Write 解析带时间戳日志。
 func TestLogLineWriterParsesTimestampedLinesAcrossWrites(t *testing.T) {
 	t.Parallel()
 
@@ -172,7 +152,6 @@ func TestLogLineWriterParsesTimestampedLinesAcrossWrites(t *testing.T) {
 	}
 }
 
-// TestPrepareProjectedMountsMaterializesReadonlyFiles 验证投影文件会落盘并生成只读 bind mount。
 func TestPrepareProjectedMountsMaterializesReadonlyFiles(t *testing.T) {
 	t.Parallel()
 
@@ -239,7 +218,6 @@ func TestPrepareProjectedMountsMaterializesReadonlyFiles(t *testing.T) {
 	}
 }
 
-// TestPrepareProjectedMountsRejectsEmptyRoot 验证投影文件根目录为空时会报错。
 func TestPrepareProjectedMountsRejectsEmptyRoot(t *testing.T) {
 	t.Parallel()
 
@@ -255,7 +233,6 @@ func TestPrepareProjectedMountsRejectsEmptyRoot(t *testing.T) {
 	}
 }
 
-// TestPrepareProjectedMountsRequiresSafeExecutionID 验证投影文件路径要求安全的 executionID。
 func TestPrepareProjectedMountsRequiresSafeExecutionID(t *testing.T) {
 	t.Parallel()
 
@@ -271,7 +248,6 @@ func TestPrepareProjectedMountsRequiresSafeExecutionID(t *testing.T) {
 	}
 }
 
-// TestDockerEngineCloseCleansTrackedProjectionDirs 验证关闭 DockerEngine 会清理已跟踪的投影目录。
 func TestDockerEngineCloseCleansTrackedProjectionDirs(t *testing.T) {
 	t.Parallel()
 
