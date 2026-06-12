@@ -98,7 +98,10 @@ func (s ServiceSpec) Validate() error {
 		return errors.New("containerPort must be between 1 and 65535")
 	}
 	readinessPath := strings.TrimSpace(s.ReadinessPath)
-	if readinessPath != "" && !strings.HasPrefix(readinessPath, "/") {
+	if readinessPath == "" {
+		return errors.New("readinessPath is required")
+	}
+	if !strings.HasPrefix(readinessPath, "/") {
 		return errors.New("readinessPath must start with /")
 	}
 	for key := range s.Env {

@@ -168,7 +168,7 @@ function defaultCreateServiceForm(): ServiceFormState {
     commandText: "",
     argsText: "",
     defaultPort: "80",
-    readinessPath: "",
+    readinessPath: "/",
     envText: "",
   };
 }
@@ -182,7 +182,7 @@ function defaultEditServiceForm(): ServiceEditFormState {
     commandText: "",
     argsText: "",
     defaultPort: "80",
-    readinessPath: "",
+    readinessPath: "/",
     envText: "",
   };
 }
@@ -452,9 +452,10 @@ function App() {
       return;
     }
     if (!serviceItems.some((item) => item.metadata.id === selectedServiceID)) {
+      queryClient.removeQueries({ queryKey: ["service", selectedServiceID] });
       setSelectedServiceID(serviceItems[0].metadata.id);
     }
-  }, [serviceItems, selectedServiceID]);
+  }, [queryClient, serviceItems, selectedServiceID]);
 
   useEffect(() => {
     if (!currentService) {
@@ -525,16 +526,17 @@ function App() {
 
   const deleteService = useMutation({
     mutationFn: (serviceID: string) =>
-      fetchJSON<{ deleted: boolean; serviceID: string }>(
+      fetchJSON<ServiceResource>(
         `/api/v1/services/${serviceID}`,
         { method: "DELETE" },
         adminToken,
       ),
-    onSuccess: async (_response, serviceID) => {
-      if (selectedServiceID === serviceID) {
-        setSelectedServiceID("");
-      }
-      await invalidateServiceArea(serviceID);
+    onSuccess: async (response) => {
+      queryClient.setQueryData<ServiceResource>(
+        ["service", response.metadata.id],
+        response,
+      );
+      await invalidateServiceArea(response.metadata.id);
     },
   });
 

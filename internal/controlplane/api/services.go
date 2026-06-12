@@ -241,12 +241,9 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 	}
 	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
 		Action:  "control.service.delete",
-		Message: "deleted service " + service.Metadata.Name,
+		Message: "requested service deletion " + service.Metadata.Name,
 	})
-	c.JSON(http.StatusOK, map[string]any{
-		"deleted":   true,
-		"serviceID": serviceID,
-	})
+	c.JSON(http.StatusOK, buildServiceResource(service))
 }
 
 func buildServiceResource(service model.Service) serviceResource {

@@ -27,3 +27,24 @@ func TestDeleteServiceReturnsNotFoundForMissingService(t *testing.T) {
 		t.Fatalf("DeleteService error = %v, want NotFound", err)
 	}
 }
+
+func TestApplyServiceRequiresReadinessPath(t *testing.T) {
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.BearerMetadataKey, transport.BearerHeader("southbound-token")))
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+	server := newExecutionServer(slog.Default(), db.Store, newAuthenticator("southbound-token"))
+
+	_, err := server.ApplyService(ctx, &cloudplanev1.ApplyServiceRequest{
+		ServiceId:         "svc-missing-readiness",
+		ServiceName:       "missing-readiness",
+		DisplayName:       "Missing Readiness",
+		Host:              "missing-readiness.apps.example.com",
+		ServiceGeneration: 1,
+		Image:             "nginx:1.27-alpine",
+		ContainerPort:     80,
+		InstanceClass:     "small",
+		Exposure:          "public",
+	})
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("ApplyService error = %v, want InvalidArgument", err)
+	}
+}
