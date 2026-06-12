@@ -163,6 +163,16 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 
 	current, err := getServiceTx(ctx, tx, input.ID)
 	if err != nil {
+		if errors.Is(err, ErrServiceNotFound) {
+			if ok, completedErr := completedDeletePlanExistsTx(ctx, tx, input.ID, input.Generation); completedErr != nil {
+				return completedErr
+			} else if ok {
+				if err := tx.Commit(); err != nil {
+					return fmt.Errorf("commit completed delete service tx: %w", err)
+				}
+				return nil
+			}
+		}
 		return err
 	}
 	generation := input.Generation
@@ -322,4 +332,22 @@ func runPlanID(serviceID string, generation int64) string {
 
 func deletePlanID(serviceID string, generation int64) string {
 	return fmt.Sprintf("%s-delete-g%d", strings.TrimSpace(serviceID), generation)
+}
+
+func completedDeletePlanExistsTx(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) (bool, error) {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND service_generation = $2
+			  AND plan_id = $3
+			  AND work_action = $4
+			  AND status = $5
+		)
+	`, strings.TrimSpace(serviceID), generation, deletePlanID(serviceID, generation), cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check completed delete service plan: %w", err)
+	}
+	return exists, nil
 }

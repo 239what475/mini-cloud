@@ -114,7 +114,7 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	if err := s.syncExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
 		return err
 	}
-	if err := s.applyFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
+	if err := s.syncFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
 		return err
 	}
 	return nil

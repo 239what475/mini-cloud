@@ -63,6 +63,9 @@ func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 	if !strings.Contains(body, "API_TOKEN") || !strings.Contains(body, "service-token") {
 		t.Fatalf("service resource did not include env: %s", body)
 	}
+	if !strings.Contains(body, `"generation":1`) || !strings.Contains(body, `"observedGeneration":0`) {
+		t.Fatalf("service resource did not include generation state: %s", body)
+	}
 }
 
 func TestUpdateServiceRejectsPlaneIDInRequest(t *testing.T) {
@@ -224,8 +227,8 @@ func TestDeleteServiceReturnsDeletingServiceResource(t *testing.T) {
 }
 
 type serviceAPIPlane struct {
-	cloudplanev1.UnimplementedControlPlaneServiceServer
-	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
+	cloudplanev1.UnimplementedCloudPlaneServiceServer
+	cloudplanev1.UnimplementedCloudPlaneSnapshotServiceServer
 
 	mu       sync.Mutex
 	endpoint string
@@ -236,8 +239,8 @@ func startServiceAPIPlane(t *testing.T) *serviceAPIPlane {
 
 	grpcServer := grpc.NewServer()
 	plane := &serviceAPIPlane{}
-	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, plane)
-	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, plane)
+	cloudplanev1.RegisterCloudPlaneServiceServer(grpcServer, plane)
+	cloudplanev1.RegisterCloudPlaneSnapshotServiceServer(grpcServer, plane)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	t.Cleanup(func() {

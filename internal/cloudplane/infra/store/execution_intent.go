@@ -363,35 +363,24 @@ func insertCompletedDeleteExecutionSnapshot(ctx context.Context, tx *sql.Tx, inp
 
 func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.RouteSource, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		WITH latest_plan AS (
-			SELECT DISTINCT ON (service_id)
-				execution_intents.service_id,
-				execution_intents.service_name,
-				services.host,
-				service_exposure,
-				plan_id
-			FROM execution_intents
-			JOIN services ON services.id = execution_intents.service_id
-			WHERE work_action = $2
-			  AND status = $1
-			  AND services.desired_state = $3
-			ORDER BY service_id, service_generation DESC, updated_at DESC, plan_id DESC
-		)
 		SELECT
-			p.service_name,
-			p.host,
+			services.name,
+			services.host,
 			e.node_id,
 			COALESCE(e.host_port, 0),
 			(e.id IS NOT NULL) AS has_backend
-		FROM latest_plan p
+		FROM services
 		LEFT JOIN execution_intents e
-			ON e.plan_id = p.plan_id
+			ON e.service_id = services.id
+		   AND e.service_generation = services.generation
+		   AND e.work_action = $2
 		   AND e.status = $1
 		   AND e.node_id IS NOT NULL
 		   AND e.host_port > 0
-		WHERE p.service_exposure = 'public'
-		ORDER BY p.service_name ASC, p.plan_id ASC, e.id ASC
-	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.ServiceDesiredActive)
+		WHERE services.desired_state = $3
+		  AND services.exposure = $4
+		ORDER BY services.name ASC, services.id ASC, e.id ASC
+	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.ServiceDesiredActive, cloudmodel.ExposurePublic)
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}

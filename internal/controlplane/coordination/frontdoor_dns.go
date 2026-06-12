@@ -11,7 +11,7 @@ import (
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 )
 
-func (s *PlaneSyncer) applyFrontDoorDNS(ctx context.Context, planeID string, domains []*cloudplanev1.PlaneFrontDoorDomain) error {
+func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, domains []*cloudplanev1.PlaneFrontDoorDomain) error {
 	if s.dns == nil {
 		return nil
 	}

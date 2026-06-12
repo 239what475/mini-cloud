@@ -17,7 +17,7 @@ import (
 )
 
 type snapshotServer struct {
-	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
+	cloudplanev1.UnimplementedCloudPlaneSnapshotServiceServer
 
 	logger *slog.Logger
 	store  *store.Store
@@ -25,7 +25,7 @@ type snapshotServer struct {
 	auth   authenticator
 }
 
-func newSnapshotServer(logger *slog.Logger, stores *store.Store, cfg cloudplaneconfig.Config, auth authenticator) cloudplanev1.ControlPlaneSnapshotServiceServer {
+func newSnapshotServer(logger *slog.Logger, stores *store.Store, cfg cloudplaneconfig.Config, auth authenticator) cloudplanev1.CloudPlaneSnapshotServiceServer {
 	return &snapshotServer{logger: logger, store: stores, config: cfg, auth: auth}
 }
 

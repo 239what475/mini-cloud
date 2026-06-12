@@ -53,6 +53,8 @@ func (c *ServiceOperations) Create(ctx context.Context, input store.CreateServic
 	}
 	if err := c.dispatchServiceSpec(ctx, created); err != nil {
 		c.logger.Warn("initial service dispatch failed; service remains pending", "service_id", created.Metadata.ID, "error", err)
+	} else {
+		c.syncServicePlane(ctx, created.Metadata.ID, created.Spec.PlaneID)
 	}
 	return c.store.GetService(ctx, created.Metadata.ID)
 }
@@ -86,6 +88,8 @@ func (c *ServiceOperations) Update(ctx context.Context, serviceID string, input 
 	}
 	if err := c.dispatchServiceSpec(ctx, updated); err != nil {
 		c.logger.Warn("service update dispatch failed; service remains pending", "service_id", updated.Metadata.ID, "error", err)
+	} else {
+		c.syncServicePlane(ctx, updated.Metadata.ID, updated.Spec.PlaneID)
 	}
 	return c.store.GetService(ctx, updated.Metadata.ID)
 }
@@ -98,6 +102,8 @@ func (c *ServiceOperations) Delete(ctx context.Context, serviceID string) (model
 	}
 	if err := c.dispatchDeletingService(ctx, deleting); err != nil {
 		c.logger.Warn("service delete dispatch failed; service remains deleting", "service_id", deleting.Metadata.ID, "error", err)
+	} else {
+		c.syncServicePlane(ctx, deleting.Metadata.ID, deleting.Spec.PlaneID)
 	}
 	current, err := c.store.GetService(ctx, deleting.Metadata.ID)
 	if err != nil {
@@ -239,6 +245,14 @@ func (c *ServiceOperations) syncServicePlaneForRequest(ctx context.Context, serv
 		return
 	}
 	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
+	c.syncServicePlane(ctx, serviceID, planeID)
+}
+
+func (c *ServiceOperations) syncServicePlane(ctx context.Context, serviceID string, planeID string) {
+	if c.planeSyncer == nil {
+		return
+	}
+	planeID = strings.TrimSpace(planeID)
 	if planeID == "" {
 		return
 	}

@@ -109,11 +109,11 @@ message DeleteServiceRequest {
 
 message DeleteServiceResponse {}
 
-service ControlPlaneSnapshotService {
+service CloudPlaneSnapshotService {
   rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
 }
 
-service ControlPlaneService {
+service CloudPlaneService {
   rpc UpsertService(UpsertServiceRequest) returns (UpsertServiceResponse);
 
   rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);

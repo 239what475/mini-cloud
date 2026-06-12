@@ -32,10 +32,11 @@ type serviceRunStatus struct {
 }
 
 type serviceStatus struct {
-	Phase          string           `json:"phase"`
-	Message        string           `json:"message,omitempty"`
-	LastObservedAt *time.Time       `json:"lastObservedAt,omitempty"`
-	Run            serviceRunStatus `json:"run"`
+	Phase              string           `json:"phase"`
+	Message            string           `json:"message,omitempty"`
+	ObservedGeneration int64            `json:"observedGeneration"`
+	LastObservedAt     *time.Time       `json:"lastObservedAt,omitempty"`
+	Run                serviceRunStatus `json:"run"`
 }
 
 type serviceMetadata struct {
@@ -43,6 +44,7 @@ type serviceMetadata struct {
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
 	Host        string `json:"host"`
+	Generation  int64  `json:"generation"`
 }
 
 type serviceResource struct {
@@ -253,6 +255,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			Name:        service.Metadata.Name,
 			DisplayName: service.Metadata.DisplayName,
 			Host:        service.Metadata.Host,
+			Generation:  service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
 			PlaneID:       service.Spec.PlaneID,
@@ -266,10 +269,11 @@ func buildServiceResource(service model.Service) serviceResource {
 			Env:           service.Spec.Env,
 		},
 		Status: serviceStatus{
-			Phase:          service.Status.Observed.Phase,
-			Message:        service.Status.Observed.Message,
-			LastObservedAt: service.Status.Observed.LastObservedAt,
-			Run:            buildServiceRun(service.Status.Run),
+			Phase:              service.Status.Observed.Phase,
+			Message:            service.Status.Observed.Message,
+			ObservedGeneration: service.Status.Observed.ObservedGeneration,
+			LastObservedAt:     service.Status.Observed.LastObservedAt,
+			Run:                buildServiceRun(service.Status.Run),
 		},
 	}
 }

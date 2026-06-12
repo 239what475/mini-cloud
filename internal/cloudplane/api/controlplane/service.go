@@ -15,14 +15,14 @@ import (
 )
 
 type serviceServer struct {
-	cloudplanev1.UnimplementedControlPlaneServiceServer
+	cloudplanev1.UnimplementedCloudPlaneServiceServer
 
 	logger *slog.Logger
 	store  *store.Store
 	auth   authenticator
 }
 
-func newServiceServer(logger *slog.Logger, stores *store.Store, auth authenticator) cloudplanev1.ControlPlaneServiceServer {
+func newServiceServer(logger *slog.Logger, stores *store.Store, auth authenticator) cloudplanev1.CloudPlaneServiceServer {
 	return &serviceServer{logger: logger, store: stores, auth: auth}
 }
 

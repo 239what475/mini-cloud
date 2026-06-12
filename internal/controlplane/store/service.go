@@ -183,7 +183,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		}
 		return model.Service{}, fmt.Errorf("insert service binding: %w", err)
 	}
-	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+	if err := upsertServiceStateTx(ctx, tx, serviceStateInput{
 		ServiceID:          id,
 		Spec:               specColumns,
 		RunJSON:            runJSON,
@@ -333,7 +333,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	}
 	runJSON, err := encodeServiceRun(model.PendingRunStatus(message))
 	if err != nil {
-		return fmt.Errorf("marshal service cache run: %w", err)
+		return fmt.Errorf("marshal service state run: %w", err)
 	}
 	desiredState := strings.TrimSpace(input.DesiredState)
 	if desiredState == "" {
@@ -347,7 +347,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin upsert service cache tx: %w", err)
+		return fmt.Errorf("begin upsert service state tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -371,7 +371,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 		return err
 	}
 
-	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+	if err := upsertServiceStateTx(ctx, tx, serviceStateInput{
 		ServiceID:          input.ServiceID,
 		Spec:               specColumns,
 		RunJSON:            runJSON,
@@ -383,7 +383,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit upsert service cache tx: %w", err)
+		return fmt.Errorf("commit upsert service state tx: %w", err)
 	}
 	return nil
 }
@@ -492,7 +492,7 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 	}
-	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
+	if err := upsertServiceStateTx(ctx, tx, serviceStateInput{
 		ServiceID:          serviceID,
 		Spec:               specColumns,
 		RunJSON:            pendingRunJSON,
@@ -545,7 +545,7 @@ func (s *Store) MarkServiceDeletionRequested(ctx context.Context, serviceID stri
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return model.Service{}, classifyServiceGenerationConflict(ctx, s, serviceID, current.Metadata.Generation)
 	}
-	if err := updateServiceCacheStatusTx(ctx, tx, serviceID, updateCacheStatusInput{
+	if err := updateServiceObservedStatusTx(ctx, tx, serviceID, updateObservedStatusInput{
 		ObservedGeneration: deletingStatus.ObservedGeneration,
 		Phase:              deletingStatus.Phase,
 		Message:            deletingStatus.Message,
@@ -566,7 +566,7 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("begin update service cache status tx: %w", err)
+		return fmt.Errorf("begin update service observed status tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -588,7 +588,7 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	if err != nil {
 		return fmt.Errorf("marshal service run status: %w", err)
 	}
-	if err := updateServiceCacheStatusTx(ctx, tx, serviceID, updateCacheStatusInput{
+	if err := updateServiceObservedStatusTx(ctx, tx, serviceID, updateObservedStatusInput{
 		ObservedGeneration: input.ObservedGeneration,
 		Phase:              input.Phase,
 		Message:            input.Message,
@@ -598,7 +598,7 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit update service cache status tx: %w", err)
+		return fmt.Errorf("commit update service observed status tx: %w", err)
 	}
 	return nil
 }
@@ -631,7 +631,7 @@ func classifyServiceGenerationConflict(ctx context.Context, stores *Store, servi
 	return ErrServiceNotFound
 }
 
-type serviceCacheInput struct {
+type serviceStateInput struct {
 	ServiceID          string
 	Spec               serviceSpecColumns
 	RunJSON            []byte
@@ -641,7 +641,7 @@ type serviceCacheInput struct {
 	LastObservedAt     *time.Time
 }
 
-func upsertServiceCacheTx(ctx context.Context, tx *sql.Tx, input serviceCacheInput) error {
+func upsertServiceStateTx(ctx context.Context, tx *sql.Tx, input serviceStateInput) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO service_caches (
 			service_id,
@@ -692,12 +692,12 @@ func upsertServiceCacheTx(ctx context.Context, tx *sql.Tx, input serviceCacheInp
 		input.LastObservedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert service cache: %w", err)
+		return fmt.Errorf("upsert service state: %w", err)
 	}
 	return nil
 }
 
-type updateCacheStatusInput struct {
+type updateObservedStatusInput struct {
 	ObservedGeneration int64
 	Phase              string
 	Message            string
@@ -705,7 +705,7 @@ type updateCacheStatusInput struct {
 	RunJSON            []byte
 }
 
-func updateServiceCacheStatusTx(ctx context.Context, tx *sql.Tx, serviceID string, input updateCacheStatusInput) error {
+func updateServiceObservedStatusTx(ctx context.Context, tx *sql.Tx, serviceID string, input updateObservedStatusInput) error {
 	result, err := tx.ExecContext(ctx, `
 		UPDATE service_caches
 		SET
@@ -718,7 +718,7 @@ func updateServiceCacheStatusTx(ctx context.Context, tx *sql.Tx, serviceID strin
 		WHERE service_id = $1
 	`, strings.TrimSpace(serviceID), input.ObservedGeneration, input.Phase, input.Message, input.LastObservedAt, input.RunJSON)
 	if err != nil {
-		return fmt.Errorf("update service cache status: %w", err)
+		return fmt.Errorf("update service observed status: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return ErrServiceNotFound

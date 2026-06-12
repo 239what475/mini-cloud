@@ -15,6 +15,6 @@ func RegisterGRPC(grpcServer *grpc.Server, logger *slog.Logger, stores *store.St
 		logger = slog.Default()
 	}
 	auth := newAuthenticator(cfg.ControlPlane.BearerToken)
-	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, newSnapshotServer(logger, stores, cfg, auth))
-	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, newServiceServer(logger, stores, auth))
+	cloudplanev1.RegisterCloudPlaneSnapshotServiceServer(grpcServer, newSnapshotServer(logger, stores, cfg, auth))
+	cloudplanev1.RegisterCloudPlaneServiceServer(grpcServer, newServiceServer(logger, stores, auth))
 }

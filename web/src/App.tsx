@@ -85,6 +85,7 @@ type ServiceRunStatus = {
 type ServiceStatus = {
   phase: string;
   message?: string;
+  observedGeneration: number;
   lastObservedAt?: string;
   run: ServiceRunStatus;
 };
@@ -94,6 +95,7 @@ type ServiceMetadata = {
   name: string;
   displayName: string;
   host: string;
+  generation: number;
 };
 
 type ServiceResource = {
@@ -333,6 +335,13 @@ function phaseText(status?: ServiceStatus | null): string {
     return "-";
   }
   return `${status.phase} / ${status.run.phase}`;
+}
+
+function generationText(service?: ServiceResource | null): string {
+  if (!service) {
+    return "-";
+  }
+  return `gen ${service.status.observedGeneration}/${service.metadata.generation}`;
 }
 
 function planeLabel(planes: PlaneResource[], planeID: string): string {
@@ -891,7 +900,8 @@ function App() {
                   <div>
                     <strong>{service.metadata.displayName}</strong>
                     <p>
-                      {service.metadata.name} · {phaseText(service.status)}
+                      {service.metadata.name} · {phaseText(service.status)} ·{" "}
+                      {generationText(service)}
                     </p>
                   </div>
                   <button
@@ -919,6 +929,7 @@ function App() {
                   <p className="app-card__section-title">status</p>
                   <p>{service.status.message || "-"}</p>
                   <p>run phase {service.status.run.phase}</p>
+                  <p>{generationText(service)}</p>
                 </div>
               </article>
             ))}
@@ -953,6 +964,11 @@ function App() {
                   <span className="status-card__label">Phase</span>
                   <strong>{selectedStatus?.phase ?? "-"}</strong>
                   <p>{selectedStatus?.message ?? "-"}</p>
+                </div>
+                <div className="status-card">
+                  <span className="status-card__label">Generation</span>
+                  <strong>{generationText(currentService)}</strong>
+                  <p>observed / desired</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Run</span>

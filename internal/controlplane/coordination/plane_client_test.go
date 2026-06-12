@@ -18,8 +18,8 @@ import (
 )
 
 type stubControlPlaneSouthbound struct {
-	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
-	cloudplanev1.UnimplementedControlPlaneServiceServer
+	cloudplanev1.UnimplementedCloudPlaneSnapshotServiceServer
+	cloudplanev1.UnimplementedCloudPlaneServiceServer
 
 	t                 *testing.T
 	wantAuthorization string
@@ -84,7 +84,7 @@ func (s *stubControlPlaneSouthbound) assertAuthorization(ctx context.Context) {
 }
 
 type notFoundControlPlaneSouthbound struct {
-	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
+	cloudplanev1.UnimplementedCloudPlaneSnapshotServiceServer
 }
 
 func (notFoundControlPlaneSouthbound) GetSnapshot(context.Context, *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
@@ -97,8 +97,8 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t:                 t,
 		wantAuthorization: "Bearer test-token",
 	}
-	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, stub)
-	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, stub)
+	cloudplanev1.RegisterCloudPlaneSnapshotServiceServer(grpcServer, stub)
+	cloudplanev1.RegisterCloudPlaneServiceServer(grpcServer, stub)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	defer server.Close()
@@ -148,7 +148,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 
 func TestClientMapsNotFound(t *testing.T) {
 	grpcServer := grpc.NewServer()
-	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, notFoundControlPlaneSouthbound{})
+	cloudplanev1.RegisterCloudPlaneSnapshotServiceServer(grpcServer, notFoundControlPlaneSouthbound{})
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	defer server.Close()

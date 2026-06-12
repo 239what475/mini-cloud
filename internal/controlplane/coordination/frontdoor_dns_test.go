@@ -9,7 +9,7 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestApplyFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
+func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-a")
@@ -17,7 +17,7 @@ func TestApplyFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	err := syncer.applyFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
 		{
 			Host:            "api.apps.example.com",
 			Cname:           "api.apps.example.com.cdn.example.net",
@@ -27,7 +27,7 @@ func TestApplyFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 		},
 	})
 	if err != nil {
-		t.Fatalf("applyFrontDoorDNS returned error: %v", err)
+		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
 	}
 	if len(dns.records) != 2 {
 		t.Fatalf("records = %+v, want verification and CNAME", dns.records)
@@ -50,7 +50,7 @@ func TestApplyFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	}
 }
 
-func TestApplyFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) {
+func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-cname-ready")
@@ -67,13 +67,13 @@ func TestApplyFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T)
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.applyFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
 		{
 			Host:  "ready.apps.example.com",
 			Cname: "ready.apps.example.com.cdn.example.net",
 		},
 	}); err != nil {
-		t.Fatalf("applyFrontDoorDNS returned error: %v", err)
+		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
 	}
 	if len(dns.deleted) != 1 || dns.deleted[0].host != "_cdnauth.ready.apps.example.com" || dns.deleted[0].value != "old-verify-token" {
 		t.Fatalf("deleted records = %+v, want stored verification deletion", dns.deleted)
@@ -87,7 +87,7 @@ func TestApplyFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T)
 	}
 }
 
-func TestApplyFrontDoorDNSSkipsDeletingService(t *testing.T) {
+func TestSyncFrontDoorDNSSkipsDeletingService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-deleting-frontdoor")
@@ -98,7 +98,7 @@ func TestApplyFrontDoorDNSSkipsDeletingService(t *testing.T) {
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.applyFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
 		{
 			Host:            "deleting-frontdoor.apps.example.com",
 			Cname:           "deleting-frontdoor.apps.example.com.cdn.example.net",
@@ -107,7 +107,7 @@ func TestApplyFrontDoorDNSSkipsDeletingService(t *testing.T) {
 			VerifyValue:     "verify-token",
 		},
 	}); err != nil {
-		t.Fatalf("applyFrontDoorDNS returned error: %v", err)
+		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
 	}
 	if len(dns.records) != 0 || len(dns.deleted) != 0 {
 		t.Fatalf("DNS operations = create %+v delete %+v, want none for deleting service", dns.records, dns.deleted)

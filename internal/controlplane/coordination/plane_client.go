@@ -23,8 +23,8 @@ var errPlaneObjectNotFound = errors.New("plane api object not found")
 type planeClient struct {
 	bearerToken string
 	conn        *grpc.ClientConn
-	snapshotRPC cloudplanev1.ControlPlaneSnapshotServiceClient
-	serviceRPC  cloudplanev1.ControlPlaneServiceClient
+	snapshotRPC cloudplanev1.CloudPlaneSnapshotServiceClient
+	serviceRPC  cloudplanev1.CloudPlaneServiceClient
 }
 
 func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, error) {
@@ -43,8 +43,8 @@ func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, erro
 	return &planeClient{
 		bearerToken: strings.TrimSpace(bearerToken),
 		conn:        conn,
-		snapshotRPC: cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
-		serviceRPC:  cloudplanev1.NewControlPlaneServiceClient(conn),
+		snapshotRPC: cloudplanev1.NewCloudPlaneSnapshotServiceClient(conn),
+		serviceRPC:  cloudplanev1.NewCloudPlaneServiceClient(conn),
 	}, nil
 }
 

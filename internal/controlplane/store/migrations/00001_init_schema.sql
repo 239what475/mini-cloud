@@ -50,6 +50,8 @@ CREATE TABLE IF NOT EXISTS service_bindings (
 CREATE INDEX IF NOT EXISTS idx_service_bindings_created_at
     ON service_bindings (created_at DESC);
 
+-- service_caches stores the control-plane dispatch payload and display status.
+-- Cloud-plane remains the runtime truth after a service spec is accepted.
 CREATE TABLE IF NOT EXISTS service_caches (
     service_id TEXT PRIMARY KEY REFERENCES service_bindings(id) ON DELETE CASCADE,
     instance_class TEXT NOT NULL DEFAULT 'small',
