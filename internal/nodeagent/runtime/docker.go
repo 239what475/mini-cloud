@@ -60,6 +60,9 @@ func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
 	if err := d.ensureImageAvailable(ctx, input.Image); err != nil {
 		return RunResult{}, err
 	}
+	if err := d.stopServiceContainers(ctx, input.NodeID, input.ServiceID, input.ExecutionID); err != nil {
+		return RunResult{}, err
+	}
 
 	hostBindIP := resolveHostBindIP(input.HostBindIP)
 	hostPort, err := selectAvailableHostPort(hostBindIP, input.HostPortMin, input.HostPortMax)
@@ -167,6 +170,46 @@ func (d *Docker) ResetNode(ctx context.Context, nodeID string) error {
 		}
 		d.logger.Info("stopped stale mini-cloud container during node runtime reset",
 			"node_id", nodeID,
+			"container_id", item.ID,
+			"execution_id", item.Labels[dockerLabelExecutionID],
+		)
+	}
+	return nil
+}
+
+func (d *Docker) stopServiceContainers(ctx context.Context, nodeID string, serviceID string, currentExecutionID string) error {
+	nodeID = strings.TrimSpace(nodeID)
+	serviceID = strings.TrimSpace(serviceID)
+	currentExecutionID = strings.TrimSpace(currentExecutionID)
+	if nodeID == "" || serviceID == "" {
+		return nil
+	}
+	filter := filters.NewArgs()
+	filter.Add("label", dockerLabelManagedBy+"=node-agent")
+	filter.Add("label", dockerLabelNodeID+"="+nodeID)
+	filter.Add("label", dockerLabelServiceID+"="+serviceID)
+	items, err := d.client.ContainerList(ctx, container.ListOptions{
+		All:     true,
+		Filters: filter,
+	})
+	if err != nil {
+		return fmt.Errorf("docker list mini-cloud service containers failed: %w", err)
+	}
+	for _, item := range items {
+		if item.Labels[dockerLabelExecutionID] == currentExecutionID {
+			continue
+		}
+		if err := d.client.ContainerStop(ctx, item.ID, container.StopOptions{}); err != nil {
+			if !cerrdefs.IsNotFound(err) && !isContainerAlreadyStopped(err) {
+				return fmt.Errorf("docker stop old service container %s failed: %w", item.ID, err)
+			}
+		}
+		if err := d.client.ContainerRemove(ctx, item.ID, container.RemoveOptions{Force: true}); err != nil && !cerrdefs.IsNotFound(err) {
+			return fmt.Errorf("docker remove old service container %s failed: %w", item.ID, err)
+		}
+		d.logger.Info("stopped old mini-cloud service container before replacement",
+			"node_id", nodeID,
+			"service_id", serviceID,
 			"container_id", item.ID,
 			"execution_id", item.Labels[dockerLabelExecutionID],
 		)

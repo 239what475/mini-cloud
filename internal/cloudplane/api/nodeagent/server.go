@@ -132,14 +132,6 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 		ContainerId:   item.ContainerID,
 		HostPort:      int32(item.HostPort),
 	}
-	if item.SupersededExecution != nil {
-		work.SupersededExecution = &nodeagentv1.SupersededExecution{
-			PlanId:        item.SupersededExecution.PlanID,
-			ExecutionId:   item.SupersededExecution.ExecutionID,
-			ContainerId:   item.SupersededExecution.ContainerID,
-			ContainerName: item.SupersededExecution.ContainerName,
-		}
-	}
 	return &nodeagentv1.PollWorkResponse{Item: work}, nil
 }
 
@@ -158,12 +150,11 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 	}
 
 	ack, err := s.store.UpdateExecutionFromNodeReport(ctx, nodeID, executionID, cloudmodel.ReportInput{
-		Status:                req.GetStatus(),
-		Reason:                req.GetReason(),
-		ContainerID:           req.GetContainerId(),
-		ContainerName:         req.GetContainerName(),
-		HostPort:              int(req.GetHostPort()),
-		SupersededExecutionID: req.GetSupersededExecutionId(),
+		Status:        req.GetStatus(),
+		Reason:        req.GetReason(),
+		ContainerID:   req.GetContainerId(),
+		ContainerName: req.GetContainerName(),
+		HostPort:      int(req.GetHostPort()),
 	})
 	if err != nil {
 		if errors.Is(err, store.ErrExecutionNotFound) {

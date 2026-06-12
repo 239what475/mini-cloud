@@ -120,29 +120,21 @@ func ParseExposure(value string) (string, error) {
 }
 
 type WorkItem struct {
-	Action              string
-	ExecutionID         string
-	PlanID              string
-	NodeID              string
-	ServiceID           string
-	ServiceName         string
-	Image               string
-	Command             []string
-	Args                []string
-	Env                 map[string]string
-	SupersededExecution *SupersededExecution
-	ContainerPort       int
-	ReadinessPath       string
-	ContainerName       string
-	ContainerID         string
-	HostPort            int
-}
-
-type SupersededExecution struct {
-	PlanID        string
+	Action        string
 	ExecutionID   string
-	ContainerID   string
+	PlanID        string
+	NodeID        string
+	ServiceID     string
+	ServiceName   string
+	Image         string
+	Command       []string
+	Args          []string
+	Env           map[string]string
+	ContainerPort int
+	ReadinessPath string
 	ContainerName string
+	ContainerID   string
+	HostPort      int
 }
 
 type ExecutionRecord struct {
@@ -164,12 +156,11 @@ type ExecutionRecord struct {
 }
 
 type ReportInput struct {
-	Status                string
-	Reason                string
-	ContainerID           string
-	ContainerName         string
-	HostPort              int
-	SupersededExecutionID string
+	Status        string
+	Reason        string
+	ContainerID   string
+	ContainerName string
+	HostPort      int
 }
 
 type ReportAck struct {

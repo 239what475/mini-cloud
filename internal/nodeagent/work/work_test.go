@@ -138,45 +138,6 @@ func TestExecuteNextCleansUpAndReportsFailedWhenReadinessFails(t *testing.T) {
 	}
 }
 
-func TestExecuteNextStopsCandidateAndReportsFailedWhenSupersededStopFails(t *testing.T) {
-	t.Parallel()
-
-	item := testWorkItem()
-	item.SupersededExecution = &nodeagentv1.SupersededExecution{
-		ExecutionId:   "exec-old",
-		ContainerId:   "container-old",
-		ContainerName: "svc-web-old",
-	}
-	recorder := &workTestRecorder{item: item}
-	client := newWorkTestClient(t, recorder)
-	containerRuntime := &fakeRuntime{
-		runResult: runtime.RunResult{
-			ContainerID:   "container-new",
-			ContainerName: "svc-web-0",
-			HostPort:      32080,
-		},
-		stopErrByID: map[string]error{
-			"container-old": errors.New("docker stop timeout"),
-		},
-	}
-	opts := testOptions()
-	readinessWaiter := &fakeReadinessWaiter{result: ReadinessResult{Passed: true}}
-
-	result, err := executeNext(context.Background(), testLogger(), client, containerRuntime, opts, readinessWaiter)
-	if err == nil || !strings.Contains(err.Error(), "stopping superseded container") {
-		t.Fatalf("ExecuteNext error = %v, want superseded stop failure", err)
-	}
-	if result.Report == nil || result.Report.GetAck().GetExecution().GetStatus() != executionStatusFailed {
-		t.Fatalf("result.Report = %+v, want failed report", result.Report)
-	}
-	if strings.Join(containerRuntime.stops, ",") != "container-old,container-new" {
-		t.Fatalf("stopped containers = %v, want old then new", containerRuntime.stops)
-	}
-	if len(recorder.reports) != 1 || recorder.reports[0].GetStatus() != executionStatusFailed {
-		t.Fatalf("reports = %+v, want failed report", recorder.reports)
-	}
-}
-
 func TestExecuteNextDeleteWorkStopsContainerAndReportsSucceeded(t *testing.T) {
 	t.Parallel()
 
@@ -392,11 +353,10 @@ type workTestRecorder struct {
 }
 
 type fakeRuntime struct {
-	runResult   runtime.RunResult
-	runErr      error
-	logs        string
-	stops       []string
-	stopErrByID map[string]error
+	runResult runtime.RunResult
+	runErr    error
+	logs      string
+	stops     []string
 }
 
 func (f *fakeRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult, error) {
@@ -405,10 +365,7 @@ func (f *fakeRuntime) Run(context.Context, runtime.RunInput) (runtime.RunResult,
 
 func (f *fakeRuntime) Stop(_ context.Context, containerID string) error {
 	f.stops = append(f.stops, containerID)
-	if f.stopErrByID == nil {
-		return nil
-	}
-	return f.stopErrByID[containerID]
+	return nil
 }
 
 func (f *fakeRuntime) Logs(context.Context, string, int) (string, error) {

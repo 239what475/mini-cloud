@@ -32,13 +32,6 @@ message HeartbeatResponse {
   string observed_status = 2 [json_name = "observedStatus"];
 }
 
-message SupersededExecution {
-  string plan_id = 1 [json_name = "planID"];
-  string execution_id = 2 [json_name = "executionID"];
-  string container_id = 3 [json_name = "containerID"];
-  string container_name = 4 [json_name = "containerName"];
-}
-
 message WorkItem {
   string execution_id = 1 [json_name = "executionID"];
   string plan_id = 2 [json_name = "planID"];
@@ -49,13 +42,12 @@ message WorkItem {
   repeated string command = 7;
   repeated string args = 8;
   map<string, string> env = 9;
-  SupersededExecution superseded_execution = 11 [json_name = "supersededExecution"];
-  int32 container_port = 12 [json_name = "containerPort"];
-  string readiness_path = 13 [json_name = "readinessPath"];
-  string container_name = 14 [json_name = "containerName"];
-  string action = 16;
-  string container_id = 17 [json_name = "containerID"];
-  int32 host_port = 18 [json_name = "hostPort"];
+  int32 container_port = 10 [json_name = "containerPort"];
+  string readiness_path = 11 [json_name = "readinessPath"];
+  string container_name = 12 [json_name = "containerName"];
+  string action = 13;
+  string container_id = 14 [json_name = "containerID"];
+  int32 host_port = 15 [json_name = "hostPort"];
 }
 
 message PollWorkRequest {
@@ -74,7 +66,6 @@ message ReportExecutionRequest {
   string container_id = 5 [json_name = "containerID"];
   string container_name = 6 [json_name = "containerName"];
   int32 host_port = 7 [json_name = "hostPort"];
-  string superseded_execution_id = 8 [json_name = "supersededExecutionID"];
 }
 
 message ExecutionRecord {

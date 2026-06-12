@@ -172,12 +172,13 @@ func TestIntegrationReplacementRunStaysOnCurrentNode(t *testing.T) {
 	if replacementWork.PlanID != "svc-replace-g2" || replacementWork.NodeID != currentNode.ID {
 		t.Fatalf("replacement work = planID %q nodeID %q, want svc-replace-g2 on %s", replacementWork.PlanID, replacementWork.NodeID, currentNode.ID)
 	}
-	if replacementWork.SupersededExecution == nil {
-		t.Fatalf("replacement work did not include superseded execution: %+v", replacementWork)
+	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
+	if err != nil {
+		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
-	if replacementWork.SupersededExecution.PlanID != "svc-replace-g1" ||
-		replacementWork.SupersededExecution.ContainerID != "ctr-replace-v1" {
-		t.Fatalf("superseded execution = %+v, want svc-replace-g1/ctr-replace-v1", replacementWork.SupersededExecution)
+	oldSnapshot := findExecutionSnapshot(snapshots, "svc-replace-g1")
+	if oldSnapshot == nil || oldSnapshot.Status != cloudmodel.StatusSuperseded {
+		t.Fatalf("old execution snapshot = %+v, want superseded", oldSnapshot)
 	}
 }
 

@@ -630,14 +630,12 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	if work.Env == nil {
 		work.Env = map[string]string{}
 	}
-	superseded, err := loadRunningIntentForServiceOnNode(ctx, tx, work.ServiceID, work.PlanID, nodeID)
-	if err != nil {
-		return nil, err
-	}
-	work.SupersededExecution = superseded
 	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.PlanID)
 
 	startedAt := time.Now().UTC()
+	if err := supersedeRunningIntentsForServiceOnNode(ctx, tx, nodeID, work.ServiceID, work.PlanID, "superseded by replacement execution"); err != nil {
+		return nil, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
 		SET
@@ -731,11 +729,6 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 			return cloudmodel.ReportAck{}, err
 		}
 	}
-	if input.SupersededExecutionID != "" {
-		if err := supersedeExecutionIntent(ctx, tx, nodeID, input.SupersededExecutionID, "superseded by replacement execution"); err != nil {
-			return cloudmodel.ReportAck{}, err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return cloudmodel.ReportAck{}, fmt.Errorf("commit report execution intent tx: %w", err)
 	}
@@ -780,52 +773,39 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 	return current, cpuMilliRequest, memoryMiRequest, nil
 }
 
-func loadRunningIntentForServiceOnNode(ctx context.Context, tx *sql.Tx, serviceID string, planID string, nodeID string) (*cloudmodel.SupersededExecution, error) {
-	var item cloudmodel.SupersededExecution
-	err := tx.QueryRowContext(ctx, `
-		SELECT plan_id, id, container_id, container_name
-		FROM execution_intents
-		WHERE service_id = $1
-		  AND plan_id <> $2
-		  AND node_id = $3
-		  AND status = $4
-		ORDER BY created_at DESC, id DESC
-		LIMIT 1
-		FOR UPDATE
-	`, serviceID, planID, nodeID, cloudmodel.StatusRunning).Scan(&item.PlanID, &item.ExecutionID, &item.ContainerID, &item.ContainerName)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("load running execution intent for service: %w", err)
-	}
-	return &item, nil
-}
-
-func supersedeExecutionIntent(ctx context.Context, tx *sql.Tx, nodeID string, executionID string, reason string) error {
-	current, cpuMilliRequest, memoryMiRequest, err := loadExecutionIntentRecord(ctx, tx, nodeID, executionID)
-	if err != nil {
-		if errors.Is(err, ErrExecutionNotFound) {
-			return nil
-		}
-		return err
-	}
-	if current.Status != cloudmodel.StatusRunning && current.Status != cloudmodel.StatusDeploying {
-		return nil
-	}
+func supersedeRunningIntentsForServiceOnNode(ctx context.Context, tx *sql.Tx, nodeID string, serviceID string, planID string, reason string) error {
 	finishedAt := time.Now().UTC()
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE execution_intents
+		WITH updated AS (
+			UPDATE execution_intents
+			SET
+				status = $5,
+				status_reason = $6,
+				finished_at = $7,
+				updated_at = now()
+			WHERE service_id = $1
+			  AND plan_id <> $2
+			  AND node_id = $3
+			  AND status = $4
+			RETURNING cpu_milli_request, memory_mi_request
+		),
+		freed AS (
+			SELECT
+				COALESCE(SUM(cpu_milli_request), 0) AS cpu_milli,
+				COALESCE(SUM(memory_mi_request), 0) AS memory_mi
+			FROM updated
+		)
+		UPDATE nodes
 		SET
-			status = $2,
-			status_reason = $3,
-			finished_at = $4,
+			cpu_milli_allocated = GREATEST(cpu_milli_allocated - freed.cpu_milli, 0),
+			memory_mi_allocated = GREATEST(memory_mi_allocated - freed.memory_mi, 0),
 			updated_at = now()
-		WHERE id = $1
-	`, executionID, cloudmodel.StatusSuperseded, reason, finishedAt); err != nil {
-		return fmt.Errorf("supersede execution intent: %w", err)
+		FROM freed
+		WHERE nodes.id = $3
+	`, serviceID, planID, nodeID, cloudmodel.StatusRunning, cloudmodel.StatusSuperseded, reason, finishedAt); err != nil {
+		return fmt.Errorf("supersede running execution intents for service: %w", err)
 	}
-	return freeNodeAllocation(ctx, tx, nodeID, cpuMilliRequest, memoryMiRequest)
+	return nil
 }
 
 func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilliRequest int, memoryMiRequest int) error {

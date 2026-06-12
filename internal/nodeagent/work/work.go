@@ -289,58 +289,17 @@ func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string
 }
 
 func (e executor) reportRunning(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessURL string) (*nodeagentv1.ReportExecutionResponse, error) {
-	if err := e.stopSuperseded(ctx, item, runResult); err != nil {
-		report, reportErr := e.reportFailed(ctx, item, &nodeagentv1.ReportExecutionRequest{
-			Reason:        err.Error(),
-			ContainerId:   runResult.ContainerID,
-			ContainerName: runResult.ContainerName,
-			HostPort:      int32(runResult.HostPort),
-		})
-		if reportErr != nil {
-			return nil, fmt.Errorf("report failed execution after superseded stop error: %w", reportErr)
-		}
-		return report, err
-	}
-
-	supersededExecutionID := ""
-	if item.GetSupersededExecution() != nil {
-		supersededExecutionID = item.GetSupersededExecution().GetExecutionId()
-	}
 	report, err := e.report(ctx, item, &nodeagentv1.ReportExecutionRequest{
-		Status:                executionStatusRunning,
-		Reason:                fmt.Sprintf("readiness check passed at %s", readinessURL),
-		ContainerId:           runResult.ContainerID,
-		ContainerName:         runResult.ContainerName,
-		HostPort:              int32(runResult.HostPort),
-		SupersededExecutionId: supersededExecutionID,
+		Status:        executionStatusRunning,
+		Reason:        fmt.Sprintf("readiness check passed at %s", readinessURL),
+		ContainerId:   runResult.ContainerID,
+		ContainerName: runResult.ContainerName,
+		HostPort:      int32(runResult.HostPort),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("report running execution: %w", err)
 	}
 	return report, nil
-}
-
-func (e executor) stopSuperseded(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult) error {
-	if item.GetSupersededExecution() == nil || item.GetSupersededExecution().GetContainerId() == "" {
-		return nil
-	}
-
-	stopCtx, cancelStop := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
-	stopErr := e.containerRuntime.Stop(stopCtx, item.GetSupersededExecution().GetContainerId())
-	cancelStop()
-	if stopErr == nil {
-		return nil
-	}
-
-	cleanupCtx, cancelCleanup := context.WithTimeout(context.Background(), e.timeout(e.opts.Timeouts.RuntimeStop))
-	_ = e.containerRuntime.Stop(cleanupCtx, runResult.ContainerID)
-	cancelCleanup()
-
-	return errors.New(truncateReason(fmt.Sprintf(
-		"candidate passed readiness, but stopping superseded container %s failed: %v",
-		item.GetSupersededExecution().GetContainerName(),
-		stopErr,
-	)))
 }
 
 func (e executor) cleanupFailedRun(ctx context.Context, item *nodeagentv1.WorkItem, runResult runtime.RunResult, readinessResult ReadinessResult) (*nodeagentv1.ReportExecutionResponse, string, error) {

@@ -68,10 +68,10 @@ message ApplyExecutionPlanRequest {
   repeated string command = 6;
   repeated string args = 7;
   map<string, string> env = 8;
-  int32 container_port = 11 [json_name = "containerPort"];
-  string readiness_path = 12 [json_name = "readinessPath"];
-  string instance_class = 13 [json_name = "instanceClass"];
-  string exposure = 14;
+  int32 container_port = 9 [json_name = "containerPort"];
+  string readiness_path = 10 [json_name = "readinessPath"];
+  string instance_class = 11 [json_name = "instanceClass"];
+  string exposure = 12;
 }
 
 message ApplyExecutionPlanResponse {

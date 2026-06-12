@@ -521,10 +521,10 @@ type ApplyExecutionPlanRequest struct {
 	Command           []string               `protobuf:"bytes,6,rep,name=command,proto3" json:"command,omitempty"`
 	Args              []string               `protobuf:"bytes,7,rep,name=args,proto3" json:"args,omitempty"`
 	Env               map[string]string      `protobuf:"bytes,8,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ContainerPort     int32                  `protobuf:"varint,11,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
-	ReadinessPath     string                 `protobuf:"bytes,12,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	InstanceClass     string                 `protobuf:"bytes,13,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
-	Exposure          string                 `protobuf:"bytes,14,opt,name=exposure,proto3" json:"exposure,omitempty"`
+	ContainerPort     int32                  `protobuf:"varint,9,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	ReadinessPath     string                 `protobuf:"bytes,10,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	InstanceClass     string                 `protobuf:"bytes,11,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
+	Exposure          string                 `protobuf:"bytes,12,opt,name=exposure,proto3" json:"exposure,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -862,10 +862,11 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\acommand\x18\x06 \x03(\tR\acommand\x12\x12\n" +
 	"\x04args\x18\a \x03(\tR\x04args\x12M\n" +
 	"\x03env\x18\b \x03(\v2;.minicloud.cloudplane.v1.ApplyExecutionPlanRequest.EnvEntryR\x03env\x12%\n" +
-	"\x0econtainer_port\x18\v \x01(\x05R\rcontainerPort\x12%\n" +
-	"\x0ereadiness_path\x18\f \x01(\tR\rreadinessPath\x12%\n" +
-	"\x0einstance_class\x18\r \x01(\tR\rinstanceClass\x12\x1a\n" +
-	"\bexposure\x18\x0e \x01(\tR\bexposure\x1a6\n" +
+	"\x0econtainer_port\x18\t \x01(\x05R\rcontainerPort\x12%\n" +
+	"\x0ereadiness_path\x18\n" +
+	" \x01(\tR\rreadinessPath\x12%\n" +
+	"\x0einstance_class\x18\v \x01(\tR\rinstanceClass\x12\x1a\n" +
+	"\bexposure\x18\f \x01(\tR\bexposure\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"5\n" +
