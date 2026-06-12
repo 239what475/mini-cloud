@@ -415,7 +415,16 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 	if !model.IsServicePhase(input.Phase) {
 		return errInvalidServicePhase
 	}
-	current, err := s.GetService(ctx, serviceID)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin update service status tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	current, err := getServiceForUpdateTx(ctx, tx, serviceID)
 	if err != nil {
 		return err
 	}
@@ -455,12 +464,15 @@ func (s *Store) UpdateServiceStatusForGeneration(ctx context.Context, serviceID 
 		runJSON,
 		expectedGeneration,
 	}
-	result, err := s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("update service status: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {
 		return classifyServiceGenerationConflict(ctx, s, serviceID, expectedGeneration)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit update service status tx: %w", err)
 	}
 	return nil
 }

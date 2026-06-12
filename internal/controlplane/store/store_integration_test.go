@@ -303,6 +303,21 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("raw service run json = %s, must not use Go field names", string(runJSON))
 	}
 
+	if err := db.Store.UpdateServiceStatusForGeneration(ctx, updated.Metadata.ID, updated.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
+		ObservedGeneration: updated.Metadata.Generation,
+		Phase:              model.PhaseProgressing,
+		Message:            "status refreshed without run change",
+	}); err != nil {
+		t.Fatalf("UpdateServiceStatusForGeneration without run returned error: %v", err)
+	}
+	refreshed, err := db.Store.GetService(ctx, updated.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService after status refresh returned error: %v", err)
+	}
+	if refreshed.Status.Run.Phase != model.RunPhaseRunning || refreshed.Status.Run.LatestRunID != "new-run" {
+		t.Fatalf("run after status-only refresh = %+v, want previous running run", refreshed.Status.Run)
+	}
+
 	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID)
 	if err != nil {
 		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)

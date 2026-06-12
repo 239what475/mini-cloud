@@ -102,9 +102,12 @@ func newDriverConfig(cfg cloudplaneconfig.Config) (driverConfig, error) {
 	}, nil
 }
 
-func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRequest) (nodeprovider.CreateResult, error) {
+func (p *providerDriver) Create(ctx context.Context, request nodeprovider.CreateRequest) (nodeprovider.CreateResult, error) {
 	if p == nil || p.client == nil {
 		return nodeprovider.CreateResult{}, fmt.Errorf("tencent node provider driver is not initialized")
+	}
+	if err := ctx.Err(); err != nil {
+		return nodeprovider.CreateResult{}, err
 	}
 	instanceName := strings.TrimSpace(request.Name)
 	if instanceName == "" {
@@ -120,7 +123,7 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 	if request.MemoryMi <= 0 {
 		return nodeprovider.CreateResult{}, fmt.Errorf("node memoryMi must be greater than 0")
 	}
-	capacity, err := p.lookupInstanceTypeCapacity()
+	capacity, err := p.lookupInstanceTypeCapacity(ctx)
 	if err != nil {
 		return nodeprovider.CreateResult{}, err
 	}
@@ -184,7 +187,7 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 			KeyIds: tencentStringPointers(p.config.Provider.KeyIDs),
 		}
 	}
-	response, err := p.client.RunInstances(runRequest)
+	response, err := p.client.RunInstancesWithContext(ctx, runRequest)
 	if err != nil {
 		return nodeprovider.CreateResult{}, fmt.Errorf("RunInstances failed: %s", formatTencentSDKError(err))
 	}
@@ -212,7 +215,7 @@ func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.Delete
 	}
 	req := cvm.NewTerminateInstancesRequest()
 	req.InstanceIds = []*string{new(instanceID)}
-	response, err := p.client.TerminateInstances(req)
+	response, err := p.client.TerminateInstancesWithContext(ctx, req)
 	if err != nil {
 		if isTencentNodeNotFound(err) {
 			return nil
@@ -225,7 +228,10 @@ func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.Delete
 	return nil
 }
 
-func (p *providerDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, error) {
+func (p *providerDriver) lookupInstanceTypeCapacity(ctx context.Context) (instanceTypeCapacity, error) {
+	if err := ctx.Err(); err != nil {
+		return instanceTypeCapacity{}, err
+	}
 	request := cvm.NewDescribeInstanceTypeConfigsRequest()
 	request.Filters = []*cvm.Filter{
 		{
@@ -239,7 +245,7 @@ func (p *providerDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, err
 			Values: []*string{new(zoneID)},
 		})
 	}
-	response, err := p.client.DescribeInstanceTypeConfigs(request)
+	response, err := p.client.DescribeInstanceTypeConfigsWithContext(ctx, request)
 	if err != nil {
 		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypeConfigs failed: %s", formatTencentSDKError(err))
 	}

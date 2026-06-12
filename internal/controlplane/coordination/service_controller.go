@@ -68,9 +68,6 @@ func (c *ServiceController) Update(ctx context.Context, serviceID string, input 
 }
 
 func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model.Service, error) {
-	if _, err := c.store.GetService(ctx, serviceID); err != nil {
-		return model.Service{}, err
-	}
 	deleting, err := c.store.MarkServiceDeletionRequested(ctx, serviceID)
 	if err != nil {
 		return model.Service{}, err

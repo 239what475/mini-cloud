@@ -26,7 +26,7 @@ type Runner struct {
 	mu               sync.Mutex
 	nodeID           string
 	resetMu          sync.Mutex
-	runtimeResetDone bool
+	runtimeResetNode string
 	closeOnce        sync.Once
 	closeErr         error
 }
@@ -265,7 +265,7 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 
 	r.mu.Lock()
 	r.nodeID = registered.GetNodeId()
-	r.runtimeResetDone = false
+	r.runtimeResetNode = ""
 	r.mu.Unlock()
 
 	r.logger.With("node_id", registered.GetNodeId()).Info("node agent registered",
@@ -314,7 +314,7 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 	defer r.resetMu.Unlock()
 
 	r.mu.Lock()
-	if r.runtimeResetDone {
+	if r.runtimeResetNode == nodeID {
 		r.mu.Unlock()
 		return nil
 	}
@@ -326,7 +326,9 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 		return err
 	}
 	r.mu.Lock()
-	r.runtimeResetDone = true
+	if r.nodeID == nodeID {
+		r.runtimeResetNode = nodeID
+	}
 	r.mu.Unlock()
 	return nil
 }
@@ -339,7 +341,7 @@ func (r *Runner) handleNodeError(nodeID string, err error) {
 		)
 		r.mu.Lock()
 		r.nodeID = ""
-		r.runtimeResetDone = false
+		r.runtimeResetNode = ""
 		r.mu.Unlock()
 		return
 	}

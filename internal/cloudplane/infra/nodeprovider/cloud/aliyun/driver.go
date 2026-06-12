@@ -97,9 +97,12 @@ func newDriverConfig(cfg cloudplaneconfig.Config) (driverConfig, error) {
 	}, nil
 }
 
-func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRequest) (nodeprovider.CreateResult, error) {
+func (p *providerDriver) Create(ctx context.Context, request nodeprovider.CreateRequest) (nodeprovider.CreateResult, error) {
 	if p == nil || p.client == nil {
 		return nodeprovider.CreateResult{}, fmt.Errorf("aliyun node provider driver is not initialized")
+	}
+	if err := ctx.Err(); err != nil {
+		return nodeprovider.CreateResult{}, err
 	}
 	instanceName := strings.TrimSpace(request.Name)
 	if instanceName == "" {
@@ -115,7 +118,7 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 	if request.MemoryMi <= 0 {
 		return nodeprovider.CreateResult{}, fmt.Errorf("node memoryMi must be greater than 0")
 	}
-	capacity, err := p.lookupInstanceTypeCapacity()
+	capacity, err := p.lookupInstanceTypeCapacity(ctx)
 	if err != nil {
 		return nodeprovider.CreateResult{}, err
 	}
@@ -160,7 +163,7 @@ func (p *providerDriver) Create(_ context.Context, request nodeprovider.CreateRe
 	if keyPairName := strings.TrimSpace(p.config.Provider.KeyPairName); keyPairName != "" {
 		runRequest.KeyPairName = new(keyPairName)
 	}
-	response, err := p.client.RunInstances(runRequest)
+	response, err := p.client.RunInstancesWithContext(ctx, runRequest, nil)
 	if err != nil {
 		return nodeprovider.CreateResult{}, fmt.Errorf("RunInstances failed: %s", formatAliyunSDKError(err))
 	}
@@ -192,7 +195,7 @@ func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.Delete
 		Force:      new(true),
 		ForceStop:  new(false),
 	}
-	if _, err := p.client.DeleteInstances(req); err != nil {
+	if _, err := p.client.DeleteInstancesWithContext(ctx, req, nil); err != nil {
 		if isAliyunNodeNotFound(err) {
 			return nil
 		}
@@ -201,11 +204,14 @@ func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.Delete
 	return nil
 }
 
-func (p *providerDriver) lookupInstanceTypeCapacity() (instanceTypeCapacity, error) {
-	response, err := p.client.DescribeInstanceTypes(&ecs20140526.DescribeInstanceTypesRequest{
+func (p *providerDriver) lookupInstanceTypeCapacity(ctx context.Context) (instanceTypeCapacity, error) {
+	if err := ctx.Err(); err != nil {
+		return instanceTypeCapacity{}, err
+	}
+	response, err := p.client.DescribeInstanceTypesWithContext(ctx, &ecs20140526.DescribeInstanceTypesRequest{
 		InstanceTypes: []*string{new(p.config.CloudPlane.NodeProvisioning.InstanceType)},
 		MaxResults:    new(int64(1)),
-	})
+	}, nil)
 	if err != nil {
 		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes failed: %s", formatAliyunSDKError(err))
 	}

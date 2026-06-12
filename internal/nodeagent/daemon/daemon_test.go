@@ -34,7 +34,7 @@ func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
 		nil,
 	)
 	runner.nodeID = "node_stale"
-	runner.runtimeResetDone = true
+	runner.runtimeResetNode = "node_stale"
 	runner.handleNodeError("node_stale", &agentclient.ControlError{
 		Operation: "send heartbeat",
 		Code:      codes.NotFound,
@@ -44,8 +44,8 @@ func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
 	if runner.nodeID != "" {
 		t.Fatalf("nodeID = %q, want empty after unknown node", runner.nodeID)
 	}
-	if runner.runtimeResetDone {
-		t.Fatal("runtimeResetDone = true, want false after unknown node")
+	if runner.runtimeResetNode != "" {
+		t.Fatalf("runtimeResetNode = %q, want empty after unknown node", runner.runtimeResetNode)
 	}
 }
 
@@ -61,7 +61,7 @@ func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
 		nil,
 	)
 	runner.nodeID = "node-a"
-	runner.runtimeResetDone = true
+	runner.runtimeResetNode = "node-a"
 	runner.handleNodeError("node-a", &agentclient.ControlError{
 		Operation: "send heartbeat",
 		Code:      codes.Unauthenticated,
@@ -71,8 +71,8 @@ func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
 	if runner.nodeID != "node-a" {
 		t.Fatalf("nodeID = %q, want node-a", runner.nodeID)
 	}
-	if !runner.runtimeResetDone {
-		t.Fatal("runtimeResetDone = false, want true")
+	if runner.runtimeResetNode != "node-a" {
+		t.Fatalf("runtimeResetNode = %q, want node-a", runner.runtimeResetNode)
 	}
 }
 
@@ -131,7 +131,7 @@ func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 	containerRuntime := &stubRuntime{}
 	runner := NewRunner(logger, cfg, client, containerRuntime, nil)
 	runner.nodeID = "node-stale"
-	runner.runtimeResetDone = true
+	runner.runtimeResetNode = "node-stale"
 
 	runner.tryHeartbeatCycle(context.Background())
 	if runner.nodeID != "" {
@@ -150,6 +150,39 @@ func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 	}
 	if containerRuntime.resetNodeIDs[0] != "node-renewed" {
 		t.Fatalf("runtime reset nodeIDs = %v, want [node-renewed]", containerRuntime.resetNodeIDs)
+	}
+}
+
+func TestResetRuntimeOnceDoesNotMarkDifferentNodeReset(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	runner := NewRunner(
+		logger,
+		agentconfig.Config{},
+		agentclient.New(agentclient.Config{}),
+		nil,
+		nil,
+	)
+	runner.nodeID = "node-old"
+	containerRuntime := &stubRuntime{
+		resetNode: func(context.Context, string) error {
+			runner.mu.Lock()
+			runner.nodeID = "node-new"
+			runner.mu.Unlock()
+			return nil
+		},
+	}
+	runner.containerRuntime = containerRuntime
+
+	if err := runner.resetRuntimeOnce(context.Background(), "node-old"); err != nil {
+		t.Fatalf("resetRuntimeOnce returned error: %v", err)
+	}
+	if runner.runtimeResetNode != "" {
+		t.Fatalf("runtimeResetNode = %q, want empty after node changed during reset", runner.runtimeResetNode)
+	}
+	if len(containerRuntime.resetNodeIDs) != 1 || containerRuntime.resetNodeIDs[0] != "node-old" {
+		t.Fatalf("resetNodeIDs = %v, want [node-old]", containerRuntime.resetNodeIDs)
 	}
 }
 
@@ -236,6 +269,7 @@ func TestRunnerRunUsesInjectedComponents(t *testing.T) {
 
 type stubRuntime struct {
 	resetNodeIDs []string
+	resetNode    func(context.Context, string) error
 }
 
 func testDaemonLogger() *slog.Logger {
@@ -331,8 +365,11 @@ func (s *stubRuntime) Logs(context.Context, string, int) (string, error) {
 	return "", nil
 }
 
-func (s *stubRuntime) ResetNode(_ context.Context, nodeID string) error {
+func (s *stubRuntime) ResetNode(ctx context.Context, nodeID string) error {
 	s.resetNodeIDs = append(s.resetNodeIDs, nodeID)
+	if s.resetNode != nil {
+		return s.resetNode(ctx, nodeID)
+	}
 	return nil
 }
 
