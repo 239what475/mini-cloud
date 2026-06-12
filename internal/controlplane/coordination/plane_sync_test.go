@@ -2,6 +2,7 @@ package coordination
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -202,6 +203,35 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 	}
 	if len(records) != 0 {
 		t.Fatalf("DNS records after delete = %+v, want none", records)
+	}
+}
+
+func TestApplyServiceSnapshotsIgnoresUnknownService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	plane := createSyncTestPlane(t, db.Store, "plane-unknown-service")
+	syncer := &PlaneSyncer{store: db.Store}
+
+	if err := syncer.applyServiceSnapshots(ctx, plane.ID, time.Now().UTC(), []*cloudplanev1.PlaneService{
+		{
+			ServiceId:   "svc-unknown",
+			Name:        "unknown",
+			DisplayName: "Unknown",
+			Host:        "unknown.apps.example.com",
+			Generation:  1,
+			Spec: &cloudplanev1.PlaneServiceSpec{
+				InstanceClass: "small",
+				Exposure:      "public",
+				Image:         "nginx:1.27-alpine",
+				ContainerPort: 80,
+				ReadinessPath: "/",
+			},
+		},
+	}); err != nil {
+		t.Fatalf("applyServiceSnapshots returned error: %v", err)
+	}
+	if _, err := db.Store.GetService(ctx, "svc-unknown"); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
+		t.Fatalf("GetService unknown snapshot error = %v, want service not found", err)
 	}
 }
 

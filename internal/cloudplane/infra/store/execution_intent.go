@@ -180,7 +180,7 @@ func deleteExecutionPlansForServiceTx(ctx context.Context, tx *sql.Tx, input clo
 		return fmt.Errorf("check delete execution plan: %w", err)
 	}
 	if deletePlanExists {
-		return tx.Commit()
+		return nil
 	}
 
 	if _, err := tx.ExecContext(ctx, `
@@ -696,15 +696,15 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	current, cpuMilliRequest, memoryMiRequest, err := loadExecutionIntentRecord(ctx, tx, nodeID, executionID)
+	current, err := loadExecutionIntentRecord(ctx, tx, nodeID, executionID)
 	if err != nil {
 		return cloudmodel.ReportAck{}, err
 	}
-	if current.Status != cloudmodel.StatusDeploying {
-		if current.Status == input.Status {
-			return cloudmodel.ReportAck{Execution: current, ObservedAt: time.Now().UTC()}, nil
+	if current.Execution.Status != cloudmodel.StatusDeploying {
+		if current.Execution.Status == input.Status {
+			return cloudmodel.ReportAck{Execution: current.Execution, ObservedAt: time.Now().UTC()}, nil
 		}
-		return cloudmodel.ReportAck{}, fmt.Errorf("execution %s is already %s and cannot transition to %s", executionID, current.Status, input.Status)
+		return cloudmodel.ReportAck{}, fmt.Errorf("execution %s is already %s and cannot transition to %s", executionID, current.Execution.Status, input.Status)
 	}
 
 	observedAt := time.Now().UTC()
@@ -746,7 +746,12 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 		return cloudmodel.ReportAck{}, fmt.Errorf("update execution intent report: %w", err)
 	}
 	if input.Status == cloudmodel.StatusFailed || input.Status == cloudmodel.StatusSucceeded || input.Status == cloudmodel.StatusSuperseded {
-		if err := freeNodeAllocation(ctx, tx, nodeID, cpuMilliRequest, memoryMiRequest); err != nil {
+		if err := freeNodeAllocation(ctx, tx, nodeID, current.CPUMilliRequest, current.MemoryMiRequest); err != nil {
+			return cloudmodel.ReportAck{}, err
+		}
+	}
+	if current.WorkAction == cloudmodel.WorkActionDelete && input.Status == cloudmodel.StatusSucceeded {
+		if err := deleteServiceTruthAfterDeleteExecution(ctx, tx, current.ServiceID, current.ServiceGeneration); err != nil {
 			return cloudmodel.ReportAck{}, err
 		}
 	}
@@ -756,42 +761,103 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 	return cloudmodel.ReportAck{Execution: updated, ObservedAt: observedAt}, nil
 }
 
-func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, executionID string) (cloudmodel.ExecutionRecord, int, int, error) {
-	var current cloudmodel.ExecutionRecord
-	var cpuMilliRequest int
-	var memoryMiRequest int
+type executionIntentRecord struct {
+	Execution         cloudmodel.ExecutionRecord
+	WorkAction        string
+	ServiceID         string
+	ServiceGeneration int64
+	CPUMilliRequest   int
+	MemoryMiRequest   int
+}
+
+func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, executionID string) (executionIntentRecord, error) {
+	var current executionIntentRecord
 	err := tx.QueryRowContext(ctx, `
-		SELECT id, plan_id, node_id, image, container_name, container_id, container_port, host_port, readiness_path, status, status_reason, started_at, finished_at, created_at, updated_at, cpu_milli_request, memory_mi_request
+		SELECT
+			id,
+			work_action,
+			service_id,
+			service_generation,
+			plan_id,
+			node_id,
+			image,
+			container_name,
+			container_id,
+			container_port,
+			host_port,
+			readiness_path,
+			status,
+			status_reason,
+			started_at,
+			finished_at,
+			created_at,
+			updated_at,
+			cpu_milli_request,
+			memory_mi_request
 		FROM execution_intents
 		WHERE id = $1
 		  AND node_id = $2
 		FOR UPDATE
 	`, executionID, nodeID).Scan(
-		&current.ID,
-		&current.PlanID,
-		&current.NodeID,
-		&current.Image,
-		&current.ContainerName,
-		&current.ContainerID,
-		&current.ContainerPort,
-		&current.HostPort,
-		&current.ReadinessPath,
-		&current.Status,
-		&current.StatusReason,
-		&current.StartedAt,
-		&current.FinishedAt,
-		&current.CreatedAt,
-		&current.UpdatedAt,
-		&cpuMilliRequest,
-		&memoryMiRequest,
+		&current.Execution.ID,
+		&current.WorkAction,
+		&current.ServiceID,
+		&current.ServiceGeneration,
+		&current.Execution.PlanID,
+		&current.Execution.NodeID,
+		&current.Execution.Image,
+		&current.Execution.ContainerName,
+		&current.Execution.ContainerID,
+		&current.Execution.ContainerPort,
+		&current.Execution.HostPort,
+		&current.Execution.ReadinessPath,
+		&current.Execution.Status,
+		&current.Execution.StatusReason,
+		&current.Execution.StartedAt,
+		&current.Execution.FinishedAt,
+		&current.Execution.CreatedAt,
+		&current.Execution.UpdatedAt,
+		&current.CPUMilliRequest,
+		&current.MemoryMiRequest,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return cloudmodel.ExecutionRecord{}, 0, 0, ErrExecutionNotFound
+			return executionIntentRecord{}, ErrExecutionNotFound
 		}
-		return cloudmodel.ExecutionRecord{}, 0, 0, fmt.Errorf("load execution intent: %w", err)
+		return executionIntentRecord{}, fmt.Errorf("load execution intent: %w", err)
 	}
-	return current, cpuMilliRequest, memoryMiRequest, nil
+	return current, nil
+}
+
+func deleteServiceTruthAfterDeleteExecution(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) error {
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM services
+		WHERE id = $1
+		  AND generation <= $2
+		  AND desired_state = $3
+	`, serviceID, generation, cloudmodel.ServiceDesiredDeleted); err != nil {
+		return fmt.Errorf("delete service truth after delete execution: %w", err)
+	}
+	return nil
+}
+
+func deleteServiceTruthForCompletedDeletePlan(ctx context.Context, tx *sql.Tx, serviceID string, generation int64, planID string) error {
+	var completed bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM execution_intents
+			WHERE plan_id = $1
+			  AND work_action = $2
+			  AND status = $3
+		)
+	`, planID, cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&completed); err != nil {
+		return fmt.Errorf("check completed delete execution plan: %w", err)
+	}
+	if !completed {
+		return nil
+	}
+	return deleteServiceTruthAfterDeleteExecution(ctx, tx, serviceID, generation)
 }
 
 func supersedeRunningIntentsForServiceOnNode(ctx context.Context, tx *sql.Tx, nodeID string, serviceID string, planID string, reason string) error {

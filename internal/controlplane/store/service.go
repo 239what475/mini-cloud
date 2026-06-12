@@ -234,6 +234,96 @@ func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	return items, nil
 }
 
+func (s *Store) ListDeletingServices(ctx context.Context) ([]model.Service, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.desired_state = $1
+		ORDER BY b.updated_at ASC, b.id ASC
+	`, model.DesiredStateDeleted)
+	if err != nil {
+		return nil, fmt.Errorf("query deleting service bindings: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]model.Service, 0)
+	for rows.Next() {
+		item, err := scanService(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate deleting service bindings: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.desired_state = $1
+		  AND c.observed_generation < b.generation
+		ORDER BY b.updated_at ASC, b.id ASC
+	`, model.DesiredStateActive)
+	if err != nil {
+		return nil, fmt.Errorf("query pending apply service bindings: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]model.Service, 0)
+	for rows.Next() {
+		item, err := scanService(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending apply service bindings: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Store) GetPendingApplyService(ctx context.Context, serviceID string) (model.Service, bool, error) {
+	item, err := scanService(s.db.QueryRowContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.id = $1
+		  AND b.desired_state = $2
+		  AND c.observed_generation < b.generation
+	`, strings.TrimSpace(serviceID), model.DesiredStateActive))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Service{}, false, nil
+		}
+		return model.Service{}, false, fmt.Errorf("query pending apply service binding: %w", err)
+	}
+	return item, true, nil
+}
+
+func (s *Store) GetDeletingService(ctx context.Context, serviceID string) (model.Service, bool, error) {
+	item, err := scanService(s.db.QueryRowContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM service_bindings b
+		JOIN service_caches c ON c.service_id = b.id
+		WHERE b.id = $1
+		  AND b.desired_state = $2
+	`, strings.TrimSpace(serviceID), model.DesiredStateDeleted))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.Service{}, false, nil
+		}
+		return model.Service{}, false, fmt.Errorf("query deleting service binding: %w", err)
+	}
+	return item, true, nil
+}
+
 func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSnapshotInput) error {
 	service := input.Service
 	if strings.TrimSpace(input.PlaneID) == "" {
@@ -281,29 +371,20 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	defer func() { _ = tx.Rollback() }()
 
 	result, err := tx.ExecContext(ctx, `
-		INSERT INTO service_bindings (
-			id,
-			name,
-			display_name,
-			host,
-			plane_id,
-			generation,
-			desired_state
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		ON CONFLICT (id) DO UPDATE
+		UPDATE service_bindings
 		SET
-			name = EXCLUDED.name,
-			display_name = EXCLUDED.display_name,
-			host = EXCLUDED.host,
-			plane_id = EXCLUDED.plane_id,
-			generation = EXCLUDED.generation,
+			name = $2,
+			display_name = $3,
+			host = $4,
+			plane_id = $5,
+			generation = $6,
 			desired_state = CASE
-				WHEN service_bindings.desired_state = $8 THEN service_bindings.desired_state
-				ELSE EXCLUDED.desired_state
+				WHEN desired_state = $8 THEN desired_state
+				ELSE $7
 			END,
 			updated_at = now()
-		WHERE service_bindings.generation <= EXCLUDED.generation
+		WHERE id = $1
+		  AND generation <= $6
 	`, service.Metadata.ID,
 		strings.TrimSpace(service.Metadata.Name),
 		strings.TrimSpace(service.Metadata.DisplayName),

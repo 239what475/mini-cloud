@@ -181,6 +181,9 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 	}); err != nil {
 		return err
 	}
+	if err := deleteServiceTruthForCompletedDeletePlan(ctx, tx, input.ID, generation, deletePlanID(input.ID, generation)); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit delete service tx: %w", err)
 	}
@@ -191,8 +194,9 @@ func (s *Store) ListServices(ctx context.Context) ([]cloudmodel.Service, error) 
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM services
+		WHERE desired_state = $1
 		ORDER BY created_at ASC, id ASC
-	`)
+	`, cloudmodel.ServiceDesiredActive)
 	if err != nil {
 		return nil, fmt.Errorf("query services: %w", err)
 	}

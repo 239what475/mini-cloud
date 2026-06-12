@@ -2,6 +2,7 @@ package controlplane
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -73,6 +74,9 @@ func (s *executionServer) DeleteService(ctx context.Context, req *cloudplanev1.D
 		ID:         serviceID,
 		Generation: req.GetServiceGeneration(),
 	}); err != nil {
+		if errors.Is(err, store.ErrServiceNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &cloudplanev1.DeleteServiceResponse{ServiceId: serviceID, Deleted: true}, nil

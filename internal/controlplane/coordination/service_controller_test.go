@@ -75,6 +75,39 @@ func TestCreateAllowsDegradedPlane(t *testing.T) {
 	}
 }
 
+func TestCreateKeepsServiceWhenInitialApplyFails(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-create-offline", planeServer.endpoint)
+	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
+		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	}
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+
+	service, err := controller.Create(ctx, createInput(planeItem.ID, "pending-web", "Pending Web", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if service.Status.DesiredState != model.DesiredStateActive || service.Status.Observed.Phase != model.PhaseDegraded {
+		t.Fatalf("service status = %+v, want active degraded after failed initial apply", service.Status)
+	}
+	if service.Status.Observed.ObservedGeneration != 0 {
+		t.Fatalf("observed generation = %d, want 0 so failed apply remains retryable", service.Status.Observed.ObservedGeneration)
+	}
+	pending, err := db.Store.ListPendingApplyServices(ctx)
+	if err != nil {
+		t.Fatalf("ListPendingApplyServices returned error: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Metadata.ID != service.Metadata.ID {
+		t.Fatalf("pending apply services = %+v, want failed service to remain retryable", pending)
+	}
+	if len(planeServer.applyRequests()) != 0 {
+		t.Fatalf("apply requests = %d, want 0 while plane is offline", len(planeServer.applyRequests()))
+	}
+}
+
 func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
@@ -103,6 +136,48 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	}
 	if applyRequests[1].GetImage() != "nginx:1.28-alpine" {
 		t.Fatalf("updated image = %s, want nginx:1.28-alpine", applyRequests[1].GetImage())
+	}
+}
+
+func TestUpdateKeepsServiceRetryableWhenApplyFails(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-update-offline", planeServer.endpoint)
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+
+	created, err := controller.Create(ctx, createInput(planeItem.ID, "update-offline", "Update Offline", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := db.Store.UpdateServiceStatusForGeneration(ctx, created.Metadata.ID, created.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
+		ObservedGeneration: created.Metadata.Generation,
+		Phase:              model.PhaseReady,
+		Message:            "observed",
+	}); err != nil {
+		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
+	}
+	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
+		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	}
+
+	updated, err := controller.Update(ctx, created.Metadata.ID, updateInput(planeItem.ID, "Update Offline v2", "nginx:1.28-alpine"))
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
+	}
+	if updated.Metadata.Generation != created.Metadata.Generation+1 {
+		t.Fatalf("generation = %d, want %d", updated.Metadata.Generation, created.Metadata.Generation+1)
+	}
+	if updated.Status.Observed.ObservedGeneration != created.Metadata.Generation {
+		t.Fatalf("observed generation = %d, want previous generation %d", updated.Status.Observed.ObservedGeneration, created.Metadata.Generation)
+	}
+	pending, err := db.Store.ListPendingApplyServices(ctx)
+	if err != nil {
+		t.Fatalf("ListPendingApplyServices returned error: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Metadata.ID != updated.Metadata.ID {
+		t.Fatalf("pending apply services = %+v, want failed update to remain retryable", pending)
 	}
 }
 
@@ -164,6 +239,125 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	if deleteRequests[0].GetServiceId() != serviceID ||
 		deleteRequests[0].GetServiceGeneration() != reloaded.Metadata.Generation {
 		t.Fatalf("delete input = %+v, want service generation delete", deleteRequests[0])
+	}
+}
+
+func TestDeleteKeepsServiceDeletingWhenRemoteDispatchFails(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-delete-offline", planeServer.endpoint)
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+
+	created, err := controller.Create(ctx, createInput(planeItem.ID, "delete-offline", "Delete Offline", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
+		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	}
+	deleting, err := controller.Delete(ctx, created.Metadata.ID)
+	if err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if deleting.Status.DesiredState != model.DesiredStateDeleted || deleting.Status.Observed.Phase != model.PhaseDeleting {
+		t.Fatalf("service status = %+v, want deleting after failed remote dispatch", deleting.Status)
+	}
+	if len(planeServer.deleteRequests()) != 0 {
+		t.Fatalf("delete requests = %d, want 0 while plane is offline", len(planeServer.deleteRequests()))
+	}
+}
+
+func TestAdvanceDeletingServicesRetriesPendingRemoteDelete(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-delete-retry", planeServer.endpoint)
+
+	created, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "retry-delete", "Retry Delete", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, created.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+	if err := controller.AdvanceDeletingServices(ctx); err != nil {
+		t.Fatalf("AdvanceDeletingServices returned error: %v", err)
+	}
+
+	deleteRequests := planeServer.deleteRequests()
+	if len(deleteRequests) != 1 {
+		t.Fatalf("deleteRequests len = %d, want 1", len(deleteRequests))
+	}
+	if deleteRequests[0].GetServiceId() != created.Metadata.ID ||
+		deleteRequests[0].GetServiceGeneration() != deleting.Metadata.Generation {
+		t.Fatalf("delete input = %+v, want pending deleting service generation", deleteRequests[0])
+	}
+}
+
+func TestAdvancePendingServicesRetriesPendingRemoteApply(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-apply-retry", planeServer.endpoint)
+
+	created, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "retry-apply", "Retry Apply", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+	if err := controller.AdvancePendingServices(ctx); err != nil {
+		t.Fatalf("AdvancePendingServices returned error: %v", err)
+	}
+
+	applyRequests := planeServer.applyRequests()
+	if len(applyRequests) != 1 {
+		t.Fatalf("applyRequests len = %d, want 1", len(applyRequests))
+	}
+	if applyRequests[0].GetServiceId() != created.Metadata.ID ||
+		applyRequests[0].GetServiceGeneration() != created.Metadata.Generation {
+		t.Fatalf("apply input = %+v, want pending service generation", applyRequests[0])
+	}
+}
+
+func TestGetAdvancesOnlyRequestedService(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	planeServer := startServiceControllerPlane(t)
+	planeItem := mustCreateReadyPlane(t, db, "plane-get-advance", planeServer.endpoint)
+
+	target, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "target-apply", "Target Apply", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService(target) returned error: %v", err)
+	}
+	other, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "other-apply", "Other Apply", "nginx:1.27-alpine"))
+	if err != nil {
+		t.Fatalf("CreateService(other) returned error: %v", err)
+	}
+
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
+	if _, err := controller.Get(ctx, target.Metadata.ID); err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+
+	applyRequests := planeServer.applyRequests()
+	if len(applyRequests) != 1 {
+		t.Fatalf("applyRequests len = %d, want 1", len(applyRequests))
+	}
+	if applyRequests[0].GetServiceId() != target.Metadata.ID {
+		t.Fatalf("apply request serviceID = %q, want target %s", applyRequests[0].GetServiceId(), target.Metadata.ID)
+	}
+	pending, err := db.Store.ListPendingApplyServices(ctx)
+	if err != nil {
+		t.Fatalf("ListPendingApplyServices returned error: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Metadata.ID != other.Metadata.ID {
+		t.Fatalf("pending services = %+v, want only other service still pending", pending)
 	}
 }
 

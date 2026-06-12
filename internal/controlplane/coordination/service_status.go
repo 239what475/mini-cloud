@@ -86,22 +86,22 @@ func serviceDeletingStatus(generation int64) model.ServiceObservedStatus {
 	}
 }
 
-func failedServiceStatus(generation int64, err error) model.ServiceObservedStatus {
+func failedServiceStatus(serviceItem model.Service, err error) model.ServiceObservedStatus {
 	now := time.Now().UTC()
 	message := fmt.Sprintf("service dispatch failed: %v", err)
 	return model.ServiceObservedStatus{
-		ObservedGeneration: generation,
+		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
 		Phase:              model.PhaseDegraded,
 		Message:            message,
 		LastObservedAt:     &now,
 	}
 }
 
-func deletingFailureServiceStatus(generation int64, err error) model.ServiceObservedStatus {
+func deletingFailureServiceStatus(serviceItem model.Service, err error) model.ServiceObservedStatus {
 	now := time.Now().UTC()
 	message := fmt.Sprintf("service teardown failed: %v", err)
 	return model.ServiceObservedStatus{
-		ObservedGeneration: generation,
+		ObservedGeneration: serviceItem.Status.Observed.ObservedGeneration,
 		Phase:              model.PhaseDeleting,
 		Message:            message,
 		LastObservedAt:     &now,

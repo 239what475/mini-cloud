@@ -239,6 +239,209 @@ func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeleti
 	}
 }
 
+func TestIntegrationUpsertServiceSnapshotIgnoresUnknownService(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "unknown-snapshot-plane",
+		DisplayName:  "Unknown Snapshot Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "unknown-snapshot-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+
+	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
+		PlaneID: planeItem.ID,
+		Service: model.Service{
+			Metadata: model.ServiceMetadata{
+				ID:          "svc-unknown",
+				Name:        "unknown-api",
+				DisplayName: "Unknown API",
+				Host:        "unknown-api.apps.example.test",
+				Generation:  1,
+			},
+			Spec: model.ServiceSpec{
+				InstanceClass: model.InstanceClassSmall,
+				Exposure:      model.ExposurePublic,
+				Image:         "nginx:1.27-alpine",
+				DefaultPort:   80,
+				ReadinessPath: "/",
+			},
+			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
+	}
+	if _, err := db.Store.GetService(ctx, "svc-unknown"); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
+		t.Fatalf("GetService unknown snapshot error = %v, want service not found", err)
+	}
+}
+
+func TestIntegrationListDeletingServicesReturnsOnlyPendingDeletes(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "delete-list-plane",
+		DisplayName:  "Delete List Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "delete-list-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	active, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "active-api",
+		DisplayName: "Active API",
+		Host:        "active-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService(active) returned error: %v", err)
+	}
+	deleting, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "deleting-api",
+		DisplayName: "Deleting API",
+		Host:        "deleting-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService(deleting) returned error: %v", err)
+	}
+	if _, err := db.Store.MarkServiceDeletionRequested(ctx, deleting.Metadata.ID); err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	items, err := db.Store.ListDeletingServices(ctx)
+	if err != nil {
+		t.Fatalf("ListDeletingServices returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].Metadata.ID != deleting.Metadata.ID {
+		t.Fatalf("deleting services = %+v, want only %s", items, deleting.Metadata.ID)
+	}
+	if items[0].Metadata.ID == active.Metadata.ID {
+		t.Fatalf("active service was returned as deleting: %+v", items[0])
+	}
+	item, ok, err := db.Store.GetDeletingService(ctx, deleting.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetDeletingService returned error: %v", err)
+	}
+	if !ok || item.Metadata.ID != deleting.Metadata.ID {
+		t.Fatalf("GetDeletingService = %+v ok=%v, want deleting service", item, ok)
+	}
+	if _, ok, err := db.Store.GetDeletingService(ctx, active.Metadata.ID); err != nil || ok {
+		t.Fatalf("GetDeletingService(active) ok=%v err=%v, want false nil", ok, err)
+	}
+}
+
+func TestIntegrationListPendingApplyServicesReturnsOnlyUnobservedActiveServices(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "pending-apply-plane",
+		DisplayName:  "Pending Apply Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "pending-apply-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	pending, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "pending-apply",
+		DisplayName: "Pending Apply",
+		Host:        "pending-apply.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService(pending) returned error: %v", err)
+	}
+	observed, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "observed-apply",
+		DisplayName: "Observed Apply",
+		Host:        "observed-apply.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService(observed) returned error: %v", err)
+	}
+	if err := db.Store.UpdateServiceStatusForGeneration(ctx, observed.Metadata.ID, observed.Metadata.Generation, controlplanestore.UpdateServiceStatusInput{
+		ObservedGeneration: observed.Metadata.Generation,
+		Phase:              model.PhaseReady,
+		Message:            "observed",
+	}); err != nil {
+		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
+	}
+	deleting, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "delete-pending-apply",
+		DisplayName: "Delete Pending Apply",
+		Host:        "delete-pending-apply.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService(deleting) returned error: %v", err)
+	}
+	if _, err := db.Store.MarkServiceDeletionRequested(ctx, deleting.Metadata.ID); err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	items, err := db.Store.ListPendingApplyServices(ctx)
+	if err != nil {
+		t.Fatalf("ListPendingApplyServices returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].Metadata.ID != pending.Metadata.ID {
+		t.Fatalf("pending apply services = %+v, want only %s", items, pending.Metadata.ID)
+	}
+	item, ok, err := db.Store.GetPendingApplyService(ctx, pending.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetPendingApplyService returned error: %v", err)
+	}
+	if !ok || item.Metadata.ID != pending.Metadata.ID {
+		t.Fatalf("GetPendingApplyService = %+v ok=%v, want pending service", item, ok)
+	}
+	if _, ok, err := db.Store.GetPendingApplyService(ctx, observed.Metadata.ID); err != nil || ok {
+		t.Fatalf("GetPendingApplyService(observed) ok=%v err=%v, want false nil", ok, err)
+	}
+}
+
 func TestIntegrationUpsertServiceSnapshotIgnoresStaleGeneration(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
