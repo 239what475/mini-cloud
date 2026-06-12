@@ -122,6 +122,81 @@ func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
 	}
 }
 
+func TestIntegrationRegisterPlaneRefreshDoesNotResetCurrentStatus(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	createdPlane, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "refresh-plane",
+		DisplayName:  "Refresh Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "refresh-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	if err := db.Store.UpdatePlaneStatus(ctx, createdPlane.ID, controlplanestore.UpdatePlaneStatusInput{
+		Status:  model.StatusReady,
+		Message: "last snapshot healthy",
+	}); err != nil {
+		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	}
+
+	refreshed, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "refresh-plane",
+		DisplayName:  "Refresh Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "refresh-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane(refresh) returned error: %v", err)
+	}
+	if refreshed.ID != createdPlane.ID {
+		t.Fatalf("refreshed plane id = %q, want existing %q", refreshed.ID, createdPlane.ID)
+	}
+	if refreshed.Status.Status != model.StatusReady || refreshed.Status.Message != "last snapshot healthy" {
+		t.Fatalf("refreshed status = %+v, want existing ready status", refreshed.Status)
+	}
+	if refreshed.Status.LastHeartbeatAt == nil {
+		t.Fatalf("refreshed status did not update heartbeat")
+	}
+}
+
+func TestIntegrationDeletePlaneWithServicesReturnsConflict(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "plane-with-service",
+		DisplayName:  "Plane With Service",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "plane-with-service.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	if _, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "bound-service",
+		DisplayName: "Bound Service",
+		Host:        "bound-service.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	}); err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+
+	if err := db.Store.DeletePlane(ctx, planeItem.ID); !errors.Is(err, controlplanestore.ErrPlaneHasServices) {
+		t.Fatalf("DeletePlane error = %v, want ErrPlaneHasServices", err)
+	}
+}
+
 func TestIntegrationCreateServicePersistsEnv(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
@@ -168,7 +243,7 @@ func TestIntegrationCreateServicePersistsEnv(t *testing.T) {
 	}
 }
 
-func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeletingService(t *testing.T) {
+func TestIntegrationUpsertServiceSnapshotRefreshesActiveServiceCacheOnly(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
@@ -197,10 +272,6 @@ func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeleti
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
 	}
-	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID)
-	if err != nil {
-		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
-	}
 
 	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
 		PlaneID: planeItem.ID,
@@ -208,9 +279,9 @@ func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeleti
 			Metadata: model.ServiceMetadata{
 				ID:          serviceItem.Metadata.ID,
 				Name:        "cache-api",
-				DisplayName: "Cache API",
+				DisplayName: "Remote Display Name",
 				Host:        "cache-api.apps.example.test",
-				Generation:  deleting.Metadata.Generation,
+				Generation:  serviceItem.Metadata.Generation,
 			},
 			Spec: model.ServiceSpec{
 				InstanceClass: model.InstanceClassSmall,
@@ -228,14 +299,148 @@ func TestIntegrationUpsertServiceSnapshotAdvancesGenerationWithoutRevivingDeleti
 	if err != nil {
 		t.Fatalf("GetService returned error: %v", err)
 	}
-	if reloaded.Metadata.Generation != deleting.Metadata.Generation {
-		t.Fatalf("generation = %d, want %d", reloaded.Metadata.Generation, deleting.Metadata.Generation)
+	if reloaded.Metadata.DisplayName != "Cache API" {
+		t.Fatalf("displayName = %q, want control-plane binding value", reloaded.Metadata.DisplayName)
+	}
+	if reloaded.Metadata.Generation != serviceItem.Metadata.Generation {
+		t.Fatalf("generation = %d, want %d", reloaded.Metadata.Generation, serviceItem.Metadata.Generation)
+	}
+	if reloaded.Status.DesiredState != model.DesiredStateActive {
+		t.Fatalf("desired state = %q, want active", reloaded.Status.DesiredState)
+	}
+	if reloaded.Spec.Image != "nginx:1.28-alpine" {
+		t.Fatalf("image = %q, want snapshot cache update", reloaded.Spec.Image)
+	}
+}
+
+func TestIntegrationUpsertServiceSnapshotDoesNotChangeControlPlaneBinding(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "binding-owner-plane",
+		DisplayName:  "Binding Owner Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "binding-owner-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "binding-api",
+		DisplayName: "Binding API",
+		Host:        "binding-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+
+	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
+		PlaneID: planeItem.ID,
+		Service: model.Service{
+			Metadata: model.ServiceMetadata{
+				ID:          serviceItem.Metadata.ID,
+				Name:        "wrong-name",
+				DisplayName: "Wrong Display",
+				Host:        "wrong.apps.example.test",
+				Generation:  serviceItem.Metadata.Generation,
+			},
+			Spec: model.ServiceSpec{
+				InstanceClass: model.InstanceClassSmall,
+				Exposure:      model.ExposurePublic,
+				Image:         "nginx:wrong",
+				DefaultPort:   80,
+				ReadinessPath: "/",
+			},
+			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
+	}
+	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
+	}
+	if reloaded.Metadata.Name != serviceItem.Metadata.Name || reloaded.Metadata.DisplayName != serviceItem.Metadata.DisplayName || reloaded.Metadata.Host != serviceItem.Metadata.Host {
+		t.Fatalf("binding changed after mismatched snapshot: %+v", reloaded.Metadata)
+	}
+	if reloaded.Spec.Image != "nginx:1.27-alpine" {
+		t.Fatalf("cache image = %q, want mismatched snapshot ignored", reloaded.Spec.Image)
+	}
+}
+
+func TestIntegrationUpsertServiceSnapshotDoesNotReviveDeletingService(t *testing.T) {
+	db := testutil.OpenControlPlaneTestDatabase(t)
+	ctx := context.Background()
+	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+		Name:         "delete-cache-plane",
+		DisplayName:  "Delete Cache Plane",
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: "delete-cache-plane.example.com:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
+		Name:        "delete-cache-api",
+		DisplayName: "Delete Cache API",
+		Host:        "delete-cache-api.apps.example.test",
+		Spec: model.ServiceSpec{
+			PlaneID:       planeItem.ID,
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      model.ExposurePublic,
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateService returned error: %v", err)
+	}
+	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
+	}
+
+	if err := db.Store.UpsertServiceSnapshot(ctx, controlplanestore.UpsertServiceSnapshotInput{
+		PlaneID: planeItem.ID,
+		Service: model.Service{
+			Metadata: model.ServiceMetadata{
+				ID:         serviceItem.Metadata.ID,
+				Name:       serviceItem.Metadata.Name,
+				Host:       serviceItem.Metadata.Host,
+				Generation: deleting.Metadata.Generation,
+			},
+			Spec: model.ServiceSpec{
+				InstanceClass: model.InstanceClassSmall,
+				Exposure:      model.ExposurePublic,
+				Image:         "nginx:1.28-alpine",
+				DefaultPort:   80,
+				ReadinessPath: "/",
+			},
+			Status: model.ServiceStatus{DesiredState: model.DesiredStateActive},
+		},
+	}); err != nil {
+		t.Fatalf("UpsertServiceSnapshot returned error: %v", err)
+	}
+	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
+	if err != nil {
+		t.Fatalf("GetService returned error: %v", err)
 	}
 	if reloaded.Status.DesiredState != model.DesiredStateDeleted {
 		t.Fatalf("desired state = %q, want deleted", reloaded.Status.DesiredState)
 	}
-	if reloaded.Spec.Image != "nginx:1.28-alpine" {
-		t.Fatalf("image = %q, want snapshot cache update", reloaded.Spec.Image)
+	if reloaded.Spec.Image != "nginx:1.27-alpine" {
+		t.Fatalf("image = %q, want deleting service cache unchanged", reloaded.Spec.Image)
 	}
 }
 

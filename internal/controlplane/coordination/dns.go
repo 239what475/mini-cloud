@@ -33,7 +33,7 @@ type dnsPodClient struct {
 
 func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	if strings.TrimSpace(cfg.Domain) == "" {
-		return nil, nil
+		return nil, fmt.Errorf("dns.dnspod.domain is required")
 	}
 	credential := tccommon.NewTokenCredential(cfg.SecretID, cfg.SecretKey, cfg.Token)
 	profile := tcprofile.NewClientProfile()

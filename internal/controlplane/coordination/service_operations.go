@@ -173,8 +173,7 @@ func (c *ServiceOperations) applyRemoteService(ctx context.Context, service mode
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)
 		return model.Service{}, errors.Join(err, statusErr)
 	}
-	applied, err := c.dispatcher.ApplyService(ctx, planeID, service)
-	if err != nil {
+	if err := c.dispatcher.ApplyService(ctx, planeID, service); err != nil {
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)
 		return model.Service{}, errors.Join(err, statusErr)
 	}
@@ -185,10 +184,6 @@ func (c *ServiceOperations) applyRemoteService(ctx context.Context, service mode
 	current, err := c.store.GetService(ctx, service.Metadata.ID)
 	if err != nil {
 		return model.Service{}, err
-	}
-	if strings.TrimSpace(applied.Metadata.ID) != "" {
-		current.Metadata = applied.Metadata
-		current.Spec = applied.Spec
 	}
 	return current, nil
 }

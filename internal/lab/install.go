@@ -151,16 +151,12 @@ func (r *Runner) installCloudPlane(ctx context.Context, plane Plane) error {
 }
 
 func (r *Runner) renderControlPlaneInstallFiles() (installFiles, error) {
-	dnspodCredential := tencentCredential{}
-	if strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != "" {
-		var err error
-		dnspodCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
-		if err != nil {
-			return installFiles{}, err
-		}
-		if strings.TrimSpace(dnspodCredential.SecretID) == "" || strings.TrimSpace(dnspodCredential.SecretKey) == "" {
-			return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
-		}
+	dnspodCredential, err := readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
+	if err != nil {
+		return installFiles{}, err
+	}
+	if strings.TrimSpace(dnspodCredential.SecretID) == "" || strings.TrimSpace(dnspodCredential.SecretKey) == "" {
+		return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
 	}
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
 		HTTPAddr:          r.cfg.ControlPlane.ListenHTTPAddr,

@@ -117,19 +117,14 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.DNS.ServiceBaseDomain) == "" {
 		return fmt.Errorf("dns.serviceBaseDomain is required")
 	}
-	dnsConfigured := strings.TrimSpace(c.DNS.DNSPod.Domain) != "" ||
-		strings.TrimSpace(c.DNS.DNSPod.SecretID) != "" ||
-		strings.TrimSpace(c.DNS.DNSPod.SecretKey) != ""
-	if dnsConfigured {
-		if strings.TrimSpace(c.DNS.DNSPod.Domain) == "" {
-			return fmt.Errorf("dns.dnspod.domain is required when dns.dnspod is configured")
-		}
-		if strings.TrimSpace(c.DNS.DNSPod.SecretID) == "" {
-			return fmt.Errorf("dns.dnspod.secretId is required when dns.dnspod is configured")
-		}
-		if strings.TrimSpace(c.DNS.DNSPod.SecretKey) == "" {
-			return fmt.Errorf("dns.dnspod.secretKey is required when dns.dnspod is configured")
-		}
+	if strings.TrimSpace(c.DNS.DNSPod.Domain) == "" {
+		return fmt.Errorf("dns.dnspod.domain is required")
+	}
+	if strings.TrimSpace(c.DNS.DNSPod.SecretID) == "" {
+		return fmt.Errorf("dns.dnspod.secretId is required")
+	}
+	if strings.TrimSpace(c.DNS.DNSPod.SecretKey) == "" {
+		return fmt.Errorf("dns.dnspod.secretKey is required")
 	}
 	return nil
 }

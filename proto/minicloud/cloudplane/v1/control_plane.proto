@@ -92,9 +92,9 @@ message PlaneSnapshot {
 }
 
 message ApplyServiceRequest {
-  string service_id = 2 [json_name = "serviceID"];
-  string service_name = 3 [json_name = "serviceName"];
-  string display_name = 13 [json_name = "displayName"];
+  string service_id = 1 [json_name = "serviceID"];
+  string service_name = 2 [json_name = "serviceName"];
+  string display_name = 3 [json_name = "displayName"];
   int64 service_generation = 4 [json_name = "serviceGeneration"];
   string image = 5;
   repeated string command = 6;
@@ -104,7 +104,7 @@ message ApplyServiceRequest {
   string readiness_path = 10 [json_name = "readinessPath"];
   string instance_class = 11 [json_name = "instanceClass"];
   string exposure = 12;
-  string host = 14;
+  string host = 13;
 }
 
 message ApplyServiceResponse {

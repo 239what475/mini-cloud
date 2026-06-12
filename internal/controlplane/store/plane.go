@@ -10,10 +10,13 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
 	ErrPlaneNotFound             = errors.New("plane not found")
+	ErrPlaneHasServices          = errors.New("plane has service bindings")
 	ErrPlaneNameAlreadyExists    = errors.New("plane name already exists")
 	errPlaneNameRequired         = errors.New("name is required")
 	errInvalidPlaneName          = errors.New("name must use lowercase letters, digits, and hyphens")
@@ -139,12 +142,10 @@ func (s *Store) RegisterPlane(ctx context.Context, input RegisterPlaneInput) (mo
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE plane_statuses
 			SET
-				status = $2,
-				message = $3,
 				last_heartbeat_at = now(),
 				updated_at = now()
 			WHERE plane_id = $1
-		`, planeID, model.StatusSyncing, "cloud-plane registered; awaiting first sync"); err != nil {
+		`, planeID); err != nil {
 			return model.PlaneDetail{}, fmt.Errorf("update plane status: %w", err)
 		}
 	}
@@ -196,6 +197,10 @@ func (s *Store) GetPlane(ctx context.Context, planeID string) (model.PlaneDetail
 func (s *Store) DeletePlane(ctx context.Context, planeID string) error {
 	result, err := s.db.ExecContext(ctx, `DELETE FROM planes WHERE id = $1`, planeID)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			return ErrPlaneHasServices
+		}
 		return fmt.Errorf("delete plane: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {

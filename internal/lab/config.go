@@ -225,6 +225,9 @@ func (c Config) validateBase() error {
 }
 
 func (c Config) validateInstall() error {
+	if strings.TrimSpace(c.Install.IngressBaseDomain) == "" {
+		return fmt.Errorf("install.ingressBaseDomain is required")
+	}
 	if strings.TrimSpace(c.Tokens.ControlPlaneAdmin) == "" {
 		return fmt.Errorf("tokens.controlPlaneAdmin is required")
 	}

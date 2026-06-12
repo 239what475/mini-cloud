@@ -89,6 +89,25 @@ auth:
 	}
 }
 
+func TestLoadRequiresDNSPodConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "control-plane.yaml")
+	if err := os.WriteFile(path, []byte(`
+database:
+  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
+auth:
+  adminToken: admin-secret
+  southboundToken: southbound-secret
+dns:
+  serviceBaseDomain: apps.example.test
+`), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatalf("Load returned nil error, want DNSPod validation error")
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`

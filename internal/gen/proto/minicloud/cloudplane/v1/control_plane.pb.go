@@ -805,9 +805,9 @@ func (x *PlaneSnapshot) GetFrontdoorDomains() []*PlaneFrontDoorDomain {
 
 type ApplyServiceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	ServiceId         string                 `protobuf:"bytes,2,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	ServiceName       string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	DisplayName       string                 `protobuf:"bytes,13,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	ServiceId         string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceName       string                 `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	DisplayName       string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	ServiceGeneration int64                  `protobuf:"varint,4,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
 	Image             string                 `protobuf:"bytes,5,opt,name=image,proto3" json:"image,omitempty"`
 	Command           []string               `protobuf:"bytes,6,rep,name=command,proto3" json:"command,omitempty"`
@@ -817,7 +817,7 @@ type ApplyServiceRequest struct {
 	ReadinessPath     string                 `protobuf:"bytes,10,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
 	InstanceClass     string                 `protobuf:"bytes,11,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
 	Exposure          string                 `protobuf:"bytes,12,opt,name=exposure,proto3" json:"exposure,omitempty"`
-	Host              string                 `protobuf:"bytes,14,opt,name=host,proto3" json:"host,omitempty"`
+	Host              string                 `protobuf:"bytes,13,opt,name=host,proto3" json:"host,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -1180,9 +1180,9 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x11frontdoor_domains\x18\a \x03(\v2-.minicloud.cloudplane.v1.PlaneFrontDoorDomainR\x10frontdoorDomains\"\x93\x04\n" +
 	"\x13ApplyServiceRequest\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x02 \x01(\tR\tserviceID\x12!\n" +
-	"\fservice_name\x18\x03 \x01(\tR\vserviceName\x12!\n" +
-	"\fdisplay_name\x18\r \x01(\tR\vdisplayName\x12-\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceID\x12!\n" +
+	"\fservice_name\x18\x02 \x01(\tR\vserviceName\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\x12-\n" +
 	"\x12service_generation\x18\x04 \x01(\x03R\x11serviceGeneration\x12\x14\n" +
 	"\x05image\x18\x05 \x01(\tR\x05image\x12\x18\n" +
 	"\acommand\x18\x06 \x03(\tR\acommand\x12\x12\n" +
@@ -1193,7 +1193,7 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	" \x01(\tR\rreadinessPath\x12%\n" +
 	"\x0einstance_class\x18\v \x01(\tR\rinstanceClass\x12\x1a\n" +
 	"\bexposure\x18\f \x01(\tR\bexposure\x12\x12\n" +
-	"\x04host\x18\x0e \x01(\tR\x04host\x1a6\n" +
+	"\x04host\x18\r \x01(\tR\x04host\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"W\n" +

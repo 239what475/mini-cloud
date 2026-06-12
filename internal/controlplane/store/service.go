@@ -277,17 +277,11 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	if strings.TrimSpace(service.Metadata.ID) == "" {
 		return invalidInput(errServiceIDRequired)
 	}
-	if strings.TrimSpace(service.Metadata.Name) == "" {
-		return invalidInput(errServiceNameRequired)
-	}
-	if strings.TrimSpace(service.Metadata.Host) == "" {
-		return invalidInput(errServiceHostRequired)
-	}
+	service.Spec.PlaneID = strings.TrimSpace(input.PlaneID)
 	specColumns, err := buildServiceSpecColumns(service.Spec)
 	if err != nil {
 		return err
 	}
-	specColumns.PlaneID = strings.TrimSpace(input.PlaneID)
 	observedAt := input.ObservedAt.UTC()
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
@@ -315,36 +309,22 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	result, err := tx.ExecContext(ctx, `
-		UPDATE service_bindings
-		SET
-			name = $2,
-			display_name = $3,
-			host = $4,
-			plane_id = $5,
-			generation = $6,
-			desired_state = CASE
-				WHEN desired_state = $8 THEN desired_state
-				ELSE $7
-			END,
-			updated_at = now()
-		WHERE id = $1
-		  AND generation <= $6
-	`, service.Metadata.ID,
-		strings.TrimSpace(service.Metadata.Name),
-		strings.TrimSpace(service.Metadata.DisplayName),
-		cleanServiceDomain(service.Metadata.Host),
-		specColumns.PlaneID,
-		service.Metadata.Generation,
-		desiredState,
-		model.DesiredStateDeleted,
-	)
+	current, err := getServiceForUpdateTx(ctx, tx, service.Metadata.ID)
 	if err != nil {
-		return fmt.Errorf("upsert service binding snapshot: %w", err)
+		if errors.Is(err, ErrServiceNotFound) {
+			return tx.Commit()
+		}
+		return err
 	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
+	if current.Spec.PlaneID != specColumns.PlaneID ||
+		current.Metadata.Generation != service.Metadata.Generation ||
+		current.Status.DesiredState != model.DesiredStateActive ||
+		desiredState != model.DesiredStateActive ||
+		strings.TrimSpace(service.Metadata.Name) != current.Metadata.Name ||
+		cleanServiceDomain(service.Metadata.Host) != current.Metadata.Host {
 		return tx.Commit()
 	}
+
 	if err := upsertServiceCacheTx(ctx, tx, serviceCacheInput{
 		ServiceID:          service.Metadata.ID,
 		Spec:               specColumns,

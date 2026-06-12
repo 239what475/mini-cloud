@@ -56,3 +56,23 @@ planes:
 		t.Fatalf("LoadConfig error = %v, want same host rejection", err)
 	}
 }
+
+func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
+	cfg := Config{
+		ControlPlane: ControlPlane{
+			SSH: SSHConfig{Host: "control"},
+			URL: "http://control:18080",
+		},
+		Install: InstallConfig{
+			Root: "/opt/mini-cloud",
+		},
+		Tokens: TokenConfig{
+			ControlPlaneAdmin:      "admin",
+			ControlPlaneSouthbound: "southbound",
+			NodeAgent:              "node-agent",
+		},
+	}
+	if err := cfg.validateInstall(); err == nil || !strings.Contains(err.Error(), "install.ingressBaseDomain") {
+		t.Fatalf("validateInstall error = %v, want ingressBaseDomain error", err)
+	}
+}

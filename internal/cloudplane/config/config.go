@@ -249,11 +249,6 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.Ingress.CaddyAdminURL) == "" {
 			return fmt.Errorf("ingress.caddyAdminURL is required when ingress is enabled")
 		}
-		if frontDoorConfigured {
-			if strings.TrimSpace(c.Ingress.PublicOrigin) == "" {
-				return fmt.Errorf("ingress.publicOrigin is required when ingress.frontDoor is configured")
-			}
-		}
 	} else if frontDoorConfigured {
 		return fmt.Errorf("ingress.baseDomain is required when ingress.frontDoor is configured")
 	}

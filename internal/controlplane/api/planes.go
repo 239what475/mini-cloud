@@ -198,6 +198,9 @@ func (h planeHandler) deletePlane(c *gin.Context) {
 		case errors.Is(err, store.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
+		case errors.Is(err, store.ErrPlaneHasServices):
+			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
+			return
 		default:
 			logger.Error("delete plane failed", "error", err)
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
