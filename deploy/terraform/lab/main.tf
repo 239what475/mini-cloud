@@ -36,7 +36,7 @@ locals {
   subnet_cidr_block = local.use_existing_ecs ? trimspace(var.existing_ecs_vswitch_cidr_block) : var.subnet_cidr_block
   platform_security_group_id = local.use_existing_ecs ? (
     trimspace(var.existing_ecs_security_group_id)
-  ) : module.tencent_network_base[0].platform_security_group_id
+  ) : ""
   node_security_group_id = local.selected_provider == "aliyun" ? (
     module.aliyun_network_base[0].node_security_group_id
   ) : module.tencent_network_base[0].node_security_group_id
@@ -151,29 +151,27 @@ module "tencent_network_base" {
   count  = local.selected_provider == "tencent" ? 1 : 0
   source = "../providers/tencent/modules/network-base"
 
-  region_id                      = var.tencent.region_id
-  zone_id                        = var.tencent.zone_id
-  platform_name                  = var.platform_name
-  create_platform_host_resources = false
-  environment                    = var.environment
-  owner                          = var.owner
-  vpc_name                       = var.vpc_name
-  vpc_cidr_block                 = var.vpc_cidr_block
-  subnet_name                    = var.subnet_name
-  subnet_cidr_block              = var.subnet_cidr_block
-  security_group_name_prefix     = var.security_group_name_prefix
-  admin_cidrs                    = var.admin_cidrs
-  control_plane_cidrs            = var.control_plane_cidrs
-  ingress_cidrs                  = var.ingress_cidrs
-  cloud_plane_grpc_port          = var.cloud_plane_grpc_port
-  ingress_http_port              = var.ingress_http_port
-  egress_proxy_port              = var.egress_proxy_port
-  artifact_http_port             = var.artifact_http_port
-  node_host_port_min             = var.node_host_port_min
-  node_host_port_max             = var.node_host_port_max
-  platform_role_policy_names     = var.tencent.platform_role_policy_names
-  platform_private_cidrs         = ["${trimspace(var.existing_lighthouse_private_ip)}/32"]
-  ssh_public_key                 = local.effective_ssh_public_key
+  region_id                  = var.tencent.region_id
+  zone_id                    = var.tencent.zone_id
+  platform_name              = var.platform_name
+  environment                = var.environment
+  owner                      = var.owner
+  vpc_name                   = var.vpc_name
+  vpc_cidr_block             = var.vpc_cidr_block
+  subnet_name                = var.subnet_name
+  subnet_cidr_block          = var.subnet_cidr_block
+  security_group_name_prefix = var.security_group_name_prefix
+  admin_cidrs                = var.admin_cidrs
+  control_plane_cidrs        = var.control_plane_cidrs
+  ingress_cidrs              = var.ingress_cidrs
+  cloud_plane_grpc_port      = var.cloud_plane_grpc_port
+  ingress_http_port          = var.ingress_http_port
+  egress_proxy_port          = var.egress_proxy_port
+  artifact_http_port         = var.artifact_http_port
+  node_host_port_min         = var.node_host_port_min
+  node_host_port_max         = var.node_host_port_max
+  platform_private_cidrs     = ["${trimspace(var.existing_lighthouse_private_ip)}/32"]
+  ssh_public_key             = local.effective_ssh_public_key
 }
 
 resource "tencentcloud_ccn_attachment_v2" "node_vpc" {

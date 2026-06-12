@@ -4,26 +4,69 @@ import { useEffect, useState } from "react";
 type HealthzResponse = {
   service: string;
   status: string;
-  database?: string;
   time: string;
 };
 
-type PlatformOverview = {
-  servicesTotal: number;
-  servicesDeploying: number;
-  servicesRunning: number;
-  servicesDegraded: number;
-  servicesFailed: number;
+type InventorySummary = {
+  planesTotal: number;
+  planesReady: number;
+  planesDegraded: number;
+  planesOffline: number;
   nodesTotal: number;
-  nodesRegistering: number;
   nodesReady: number;
-  nodesNotReady: number;
-  nodesDraining: number;
-  nodesOffline: number;
+  nodesUnavailable: number;
+  cpuMilliCapacity: number;
+  cpuMilliAllocated: number;
+  cpuMilliFree: number;
+  memoryMiCapacity: number;
+  memoryMiAllocated: number;
+  memoryMiFree: number;
+};
+
+type InventoryPlane = {
+  id: string;
+  name: string;
+  displayName: string;
+  provider: string;
+  region: string;
+  status: string;
+  statusMessage: string;
+  nodesTotal: number;
+  nodesReady: number;
+  nodesUnavailable: number;
+  cpuMilliCapacity: number;
+  cpuMilliAllocated: number;
+  memoryMiCapacity: number;
+  memoryMiAllocated: number;
+  lastSyncAt?: string;
+};
+
+type InventoryView = {
+  summary: InventorySummary;
+  planes: InventoryPlane[];
+};
+
+type PlaneResource = {
+  id: string;
+  name: string;
+  displayName: string;
+  provider: string;
+  region: string;
+  grpcEndpoint: string;
+  status: {
+    status: string;
+    message: string;
+    lastHeartbeatAt?: string;
+    lastSyncAt?: string;
+  };
+};
+
+type PlaneListResponse = {
+  items: PlaneResource[];
 };
 
 type ServiceSpec = {
-  region: string;
+  planeID: string;
   instanceClass: string;
   exposure: string;
   image: string;
@@ -32,15 +75,13 @@ type ServiceSpec = {
   env: Record<string, string>;
   defaultPort: number;
   readinessPath: string;
-  configSetID?: string;
-  secretSetID?: string;
 };
 
 type ServiceRunStatus = {
   currentRunID?: string;
   latestRunID?: string;
   phase: string;
-  message: string;
+  message?: string;
   lastObservedAt?: string;
 };
 
@@ -48,8 +89,8 @@ type ServiceStatus = {
   observedGeneration: number;
   desiredState: string;
   phase: string;
-  healthy: boolean;
-  message: string;
+  message?: string;
+  lastObservedAt?: string;
   run: ServiceRunStatus;
 };
 
@@ -57,6 +98,7 @@ type ServiceMetadata = {
   id: string;
   name: string;
   displayName: string;
+  host: string;
   generation: number;
 };
 
@@ -66,96 +108,43 @@ type ServiceResource = {
   status: ServiceStatus;
 };
 
-type ServiceListItem = {
-  service: ServiceResource;
-};
-
 type ServiceListResponse = {
-  items: ServiceListItem[];
-};
-
-type ServiceDetailResponse = {
-  service: ServiceResource;
-};
-
-type ServiceMutationResponse = {
-  service: ServiceResource;
-};
-
-type ServiceUpdateResponse = ServiceMutationResponse;
-
-type ConfigSetResource = {
-  id: string;
-  name: string;
-  values: Record<string, string>;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ConfigSetListResponse = {
-  items: ConfigSetResource[];
-};
-
-type SecretSetResource = {
-  id: string;
-  name: string;
-  keys: string[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-type SecretSetListResponse = {
-  items: SecretSetResource[];
-};
-
-type ConfigSetFormState = {
-  name: string;
-  valuesText: string;
-};
-
-type SecretSetFormState = {
-  name: string;
-  valuesText: string;
+  items: ServiceResource[];
 };
 
 type ServiceFormState = {
   name: string;
   displayName: string;
-  region: string;
+  planeID: string;
   instanceClass: string;
   exposure: string;
   image: string;
+  commandText: string;
+  argsText: string;
   defaultPort: string;
   readinessPath: string;
   envText: string;
-  configSetID: string;
-  secretSetID: string;
 };
 
-type ServiceEditFormState = {
-  displayName: string;
-  region: string;
-  instanceClass: string;
-  exposure: string;
-  image: string;
-  defaultPort: string;
-  readinessPath: string;
-  envText: string;
-  configSetID: string;
-  secretSetID: string;
-};
+type ServiceEditFormState = Omit<ServiceFormState, "name">;
 
 async function fetchJSON<T>(
   input: RequestInfo,
   init?: RequestInit,
+  token?: string,
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(init?.body ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+
   const response = await fetch(input, {
+    ...init,
     headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...headers,
       ...(init?.headers ?? {}),
     },
-    ...init,
   });
 
   const payload = (await response.json().catch(() => null)) as Record<
@@ -174,64 +163,57 @@ async function fetchJSON<T>(
   return payload as T;
 }
 
-function defaultConfigSetForm(): ConfigSetFormState {
-  return {
-    name: "",
-    valuesText: "APP_MODE=prod\nLOG_LEVEL=info",
-  };
-}
-
-function defaultSecretSetForm(): SecretSetFormState {
-  return {
-    name: "",
-    valuesText: "API_TOKEN=replace-me",
-  };
-}
-
 function defaultCreateServiceForm(): ServiceFormState {
   return {
     name: "",
     displayName: "",
-    region: "cn-beijing",
+    planeID: "",
     instanceClass: "small",
     exposure: "public",
     image: "nginx:1.27-alpine",
-    defaultPort: "8080",
-    readinessPath: "/healthz",
-    envText: "PORT=8080",
-    configSetID: "",
-    secretSetID: "",
+    commandText: "",
+    argsText: "",
+    defaultPort: "80",
+    readinessPath: "",
+    envText: "",
   };
 }
 
 function defaultEditServiceForm(): ServiceEditFormState {
   return {
     displayName: "",
-    region: "cn-beijing",
+    planeID: "",
     instanceClass: "small",
     exposure: "public",
     image: "nginx:1.27-alpine",
-    defaultPort: "8080",
-    readinessPath: "/healthz",
+    commandText: "",
+    argsText: "",
+    defaultPort: "80",
+    readinessPath: "",
     envText: "",
-    configSetID: "",
-    secretSetID: "",
   };
 }
 
 function editFormFromService(service: ServiceResource): ServiceEditFormState {
   return {
     displayName: service.metadata.displayName,
-    region: service.spec.region,
+    planeID: service.spec.planeID,
     instanceClass: service.spec.instanceClass,
     exposure: service.spec.exposure,
     image: service.spec.image,
+    commandText: service.spec.command.join("\n"),
+    argsText: service.spec.args.join("\n"),
     defaultPort: String(service.spec.defaultPort),
     readinessPath: service.spec.readinessPath,
     envText: stringifyKeyValueMap(service.spec.env),
-    configSetID: service.spec.configSetID ?? "",
-    secretSetID: service.spec.secretSetID ?? "",
   };
+}
+
+function parseLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
 }
 
 function parseKeyValueText(text: string): Record<string, string> {
@@ -292,44 +274,35 @@ function parseIntegerField(
   return value;
 }
 
+function serviceSpecPayload(form: ServiceEditFormState) {
+  return {
+    planeID: form.planeID.trim(),
+    instanceClass: form.instanceClass,
+    exposure: form.exposure,
+    image: form.image.trim(),
+    command: parseLines(form.commandText),
+    args: parseLines(form.argsText),
+    defaultPort: parseIntegerField("容器端口", form.defaultPort, {
+      min: 1,
+      max: 65535,
+    }),
+    readinessPath: form.readinessPath.trim(),
+    env: parseKeyValueText(form.envText),
+  };
+}
+
 function toCreateServicePayload(form: ServiceFormState) {
   return {
     name: form.name.trim(),
     displayName: form.displayName.trim(),
-    spec: {
-      region: form.region.trim(),
-      instanceClass: form.instanceClass,
-      exposure: form.exposure,
-      image: form.image.trim(),
-      defaultPort: parseIntegerField("容器端口", form.defaultPort, {
-        min: 1,
-        max: 65535,
-      }),
-      readinessPath: form.readinessPath.trim(),
-      env: parseKeyValueText(form.envText),
-      configSetID: form.configSetID.trim(),
-      secretSetID: form.secretSetID.trim(),
-    },
+    spec: serviceSpecPayload(form),
   };
 }
 
 function toUpdateServicePayload(form: ServiceEditFormState) {
   return {
     displayName: form.displayName.trim(),
-    spec: {
-      region: form.region.trim(),
-      instanceClass: form.instanceClass,
-      exposure: form.exposure,
-      image: form.image.trim(),
-      defaultPort: parseIntegerField("容器端口", form.defaultPort, {
-        min: 1,
-        max: 65535,
-      }),
-      readinessPath: form.readinessPath.trim(),
-      env: parseKeyValueText(form.envText),
-      configSetID: form.configSetID.trim(),
-      secretSetID: form.secretSetID.trim(),
-    },
+    spec: serviceSpecPayload(form),
   };
 }
 
@@ -340,16 +313,35 @@ function formatTime(value?: string | null) {
   return new Date(value).toLocaleString();
 }
 
+function percent(used: number, total: number): string {
+  if (total <= 0) {
+    return "-";
+  }
+  return `${Math.round((used / total) * 100)}%`;
+}
+
+function phaseText(status?: ServiceStatus | null): string {
+  if (!status) {
+    return "-";
+  }
+  return `${status.phase} / ${status.run.phase}`;
+}
+
+function planeLabel(planes: PlaneResource[], planeID: string): string {
+  const plane = planes.find((item) => item.id === planeID);
+  if (!plane) {
+    return planeID;
+  }
+  return `${plane.displayName} (${plane.provider}/${plane.region})`;
+}
+
 function App() {
   const queryClient = useQueryClient();
 
+  const [adminToken, setAdminToken] = useState(
+    () => window.localStorage.getItem("mini-cloud-admin-token") ?? "",
+  );
   const [selectedServiceID, setSelectedServiceID] = useState("");
-  const [configSetForm, setConfigSetForm] = useState<ConfigSetFormState>(
-    defaultConfigSetForm(),
-  );
-  const [secretSetForm, setSecretSetForm] = useState<SecretSetFormState>(
-    defaultSecretSetForm(),
-  );
   const [serviceForm, setServiceForm] = useState<ServiceFormState>(
     defaultCreateServiceForm(),
   );
@@ -358,6 +350,7 @@ function App() {
   );
   const [editFormSourceServiceID, setEditFormSourceServiceID] = useState("");
   const [isEditFormDirty, setIsEditFormDirty] = useState(false);
+  const hasAdminToken = adminToken.trim() !== "";
 
   const healthQuery = useQuery({
     queryKey: ["healthz"],
@@ -365,41 +358,79 @@ function App() {
     refetchInterval: 5_000,
   });
 
-  const overviewQuery = useQuery({
-    queryKey: ["platform-overview"],
-    queryFn: () => fetchJSON<PlatformOverview>("/api/v1/platform/overview"),
-    refetchInterval: 5_000,
+  useEffect(() => {
+    const token = adminToken.trim();
+    if (token === "") {
+      window.localStorage.removeItem("mini-cloud-admin-token");
+      void queryClient.invalidateQueries({ queryKey: ["control-inventory"] });
+      void queryClient.invalidateQueries({ queryKey: ["control-planes"] });
+      void queryClient.invalidateQueries({ queryKey: ["services"] });
+      return;
+    }
+    window.localStorage.setItem("mini-cloud-admin-token", token);
+    void queryClient.invalidateQueries({ queryKey: ["control-inventory"] });
+    void queryClient.invalidateQueries({ queryKey: ["control-planes"] });
+    void queryClient.invalidateQueries({ queryKey: ["services"] });
+  }, [queryClient, adminToken]);
+
+  const inventoryQuery = useQuery({
+    queryKey: ["control-inventory"],
+    queryFn: () =>
+      fetchJSON<InventoryView>(
+        "/api/v1/control/inventory",
+        undefined,
+        adminToken,
+      ),
+    enabled: hasAdminToken,
+    refetchInterval: 10_000,
+  });
+
+  const planesQuery = useQuery({
+    queryKey: ["control-planes"],
+    queryFn: () =>
+      fetchJSON<PlaneListResponse>(
+        "/api/v1/control/planes",
+        undefined,
+        adminToken,
+      ),
+    enabled: hasAdminToken,
+    refetchInterval: 10_000,
   });
 
   const servicesQuery = useQuery({
     queryKey: ["services"],
-    queryFn: () => fetchJSON<ServiceListResponse>("/api/v1/services"),
-  });
-
-  const configSetsQuery = useQuery({
-    queryKey: ["config-sets"],
-    queryFn: () => fetchJSON<ConfigSetListResponse>("/api/v1/config-sets"),
-  });
-
-  const secretSetsQuery = useQuery({
-    queryKey: ["secret-sets"],
-    queryFn: () => fetchJSON<SecretSetListResponse>("/api/v1/secret-sets"),
+    queryFn: () =>
+      fetchJSON<ServiceListResponse>("/api/v1/services", undefined, adminToken),
+    enabled: hasAdminToken,
+    refetchInterval: 10_000,
   });
 
   const serviceItems = servicesQuery.data?.items ?? [];
   const effectiveServiceID =
-    selectedServiceID || serviceItems[0]?.service.metadata.id || "";
+    selectedServiceID || serviceItems[0]?.metadata.id || "";
 
   const serviceDetailQuery = useQuery({
     queryKey: ["service", effectiveServiceID],
     queryFn: () =>
-      fetchJSON<ServiceDetailResponse>(
+      fetchJSON<ServiceResource>(
         `/api/v1/services/${effectiveServiceID}`,
+        undefined,
+        adminToken,
       ),
-    enabled: effectiveServiceID !== "",
+    enabled: effectiveServiceID !== "" && hasAdminToken,
+    refetchInterval: 10_000,
   });
 
-  const currentService = serviceDetailQuery.data?.service ?? null;
+  const currentService = serviceDetailQuery.data ?? null;
+  const planes = planesQuery.data?.items ?? [];
+  const inventory = inventoryQuery.data;
+
+  useEffect(() => {
+    if (planes.length === 0 || serviceForm.planeID !== "") {
+      return;
+    }
+    setServiceForm((current) => ({ ...current, planeID: planes[0].id }));
+  }, [planes, serviceForm.planeID]);
 
   useEffect(() => {
     if (serviceItems.length === 0) {
@@ -409,15 +440,11 @@ function App() {
       return;
     }
     if (selectedServiceID === "") {
-      setSelectedServiceID(serviceItems[0].service.metadata.id);
+      setSelectedServiceID(serviceItems[0].metadata.id);
       return;
     }
-    if (
-      !serviceItems.some(
-        (item) => item.service.metadata.id === selectedServiceID,
-      )
-    ) {
-      setSelectedServiceID(serviceItems[0].service.metadata.id);
+    if (!serviceItems.some((item) => item.metadata.id === selectedServiceID)) {
+      setSelectedServiceID(serviceItems[0].metadata.id);
     }
   }, [serviceItems, selectedServiceID]);
 
@@ -435,83 +462,75 @@ function App() {
     setIsEditFormDirty(false);
   }, [currentService, editFormSourceServiceID, isEditFormDirty]);
 
-  const invalidateResourceArea = async (serviceID?: string) => {
+  const invalidateServiceArea = async (serviceID?: string) => {
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["platform-overview"] }),
+      queryClient.invalidateQueries({ queryKey: ["control-inventory"] }),
+      queryClient.invalidateQueries({ queryKey: ["control-planes"] }),
       queryClient.invalidateQueries({ queryKey: ["services"] }),
-      queryClient.invalidateQueries({ queryKey: ["config-sets"] }),
-      queryClient.invalidateQueries({ queryKey: ["secret-sets"] }),
       serviceID
         ? queryClient.invalidateQueries({ queryKey: ["service", serviceID] })
         : Promise.resolve(),
     ]);
   };
 
-  const createConfigSet = useMutation({
-    mutationFn: (form: ConfigSetFormState) =>
-      fetchJSON<ConfigSetResource>("/api/v1/config-sets", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          values: parseKeyValueText(form.valuesText),
-        }),
-      }),
-    onSuccess: async () => {
-      setConfigSetForm(defaultConfigSetForm());
-      await invalidateResourceArea();
-    },
-  });
-
-  const createSecretSet = useMutation({
-    mutationFn: (form: SecretSetFormState) =>
-      fetchJSON<SecretSetResource>("/api/v1/secret-sets", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          values: parseKeyValueText(form.valuesText),
-        }),
-      }),
-    onSuccess: async () => {
-      setSecretSetForm(defaultSecretSetForm());
-      await invalidateResourceArea();
-    },
-  });
-
   const createService = useMutation({
     mutationFn: (form: ServiceFormState) =>
-      fetchJSON<ServiceMutationResponse>("/api/v1/services", {
-        method: "POST",
-        body: JSON.stringify(toCreateServicePayload(form)),
-      }),
+      fetchJSON<ServiceResource>(
+        "/api/v1/services",
+        {
+          method: "POST",
+          body: JSON.stringify(toCreateServicePayload(form)),
+        },
+        adminToken,
+      ),
     onSuccess: async (response) => {
-      setServiceForm(defaultCreateServiceForm());
-      setSelectedServiceID(response.service.metadata.id);
-      await invalidateResourceArea(response.service.metadata.id);
+      setServiceForm((current) => ({
+        ...defaultCreateServiceForm(),
+        planeID: current.planeID,
+      }));
+      setSelectedServiceID(response.metadata.id);
+      await invalidateServiceArea(response.metadata.id);
     },
   });
 
   const updateService = useMutation({
     mutationFn: (input: { serviceID: string; form: ServiceEditFormState }) =>
-      fetchJSON<ServiceUpdateResponse>(`/api/v1/services/${input.serviceID}`, {
-        method: "PUT",
-        body: JSON.stringify(toUpdateServicePayload(input.form)),
-      }),
-    onSuccess: async (response) => {
-      queryClient.setQueryData<ServiceDetailResponse>(
-        ["service", response.service.metadata.id],
+      fetchJSON<ServiceResource>(
+        `/api/v1/services/${input.serviceID}`,
         {
-          service: response.service,
+          method: "PUT",
+          body: JSON.stringify(toUpdateServicePayload(input.form)),
         },
+        adminToken,
+      ),
+    onSuccess: async (response) => {
+      queryClient.setQueryData<ServiceResource>(
+        ["service", response.metadata.id],
+        response,
       );
-      setEditForm(editFormFromService(response.service));
-      setEditFormSourceServiceID(response.service.metadata.id);
+      setEditForm(editFormFromService(response));
+      setEditFormSourceServiceID(response.metadata.id);
       setIsEditFormDirty(false);
-      await invalidateResourceArea(response.service.metadata.id);
+      await invalidateServiceArea(response.metadata.id);
     },
   });
 
-  const selectedServiceDetail = serviceDetailQuery.data ?? null;
-  const selectedStatus = selectedServiceDetail?.service.status ?? null;
+  const deleteService = useMutation({
+    mutationFn: (serviceID: string) =>
+      fetchJSON<{ deleted: boolean; serviceID: string }>(
+        `/api/v1/services/${serviceID}`,
+        { method: "DELETE" },
+        adminToken,
+      ),
+    onSuccess: async (_response, serviceID) => {
+      if (selectedServiceID === serviceID) {
+        setSelectedServiceID("");
+      }
+      await invalidateServiceArea(serviceID);
+    },
+  });
+
+  const selectedStatus = currentService?.status ?? null;
 
   const updateEditFormField = <K extends keyof ServiceEditFormState>(
     field: K,
@@ -530,19 +549,30 @@ function App() {
         <h1 className="brand">mini-cloud</h1>
         <nav className="nav">
           <a href="#overview">概览</a>
-          <a href="#resources">资源</a>
-          <a href="#services">服务</a>
-          <a href="#detail">详情</a>
+          <a href="#planes">cloud planes</a>
+          <a href="#services">services</a>
+          <a href="#detail">detail</a>
         </nav>
+        <div className="auth-panel">
+          <label>
+            <span>Admin token</span>
+            <input
+              type="password"
+              value={adminToken}
+              onChange={(event) => setAdminToken(event.target.value)}
+              placeholder="Bearer token"
+            />
+          </label>
+        </div>
       </aside>
 
       <main className="content">
         <section className="hero">
           <p className="eyebrow">control-plane</p>
-          <h1>service / resource / run / execution</h1>
+          <h1>CaaS 运维门户</h1>
           <p>
-            control-plane 对外保留全局资源、服务和运行实例视图；cloud-plane
-            只作为内部 gRPC 执行面。
+            通过 control-plane 创建 service、选择 cloud-plane、维护全局入口；
+            运行态由目标 cloud-plane 自治闭环。
           </p>
         </section>
 
@@ -558,34 +588,39 @@ function App() {
             <div className="status-card">
               <span className="status-card__label">Healthz</span>
               <strong>{healthQuery.data?.status ?? "loading"}</strong>
-              <p>
-                {healthQuery.data?.database
-                  ? `DB ${healthQuery.data.database}`
-                  : "-"}
-              </p>
+              <p>{healthQuery.data?.service ?? "-"}</p>
             </div>
             <div className="status-card">
-              <span className="status-card__label">Services</span>
-              <strong>{overviewQuery.data?.servicesTotal ?? "-"}</strong>
+              <span className="status-card__label">Planes</span>
+              <strong>{inventory?.summary.planesTotal ?? "-"}</strong>
               <p>
-                running {overviewQuery.data?.servicesRunning ?? "-"} / failed{" "}
-                {overviewQuery.data?.servicesFailed ?? "-"}
+                ready {inventory?.summary.planesReady ?? "-"} / offline{" "}
+                {inventory?.summary.planesOffline ?? "-"}
               </p>
             </div>
             <div className="status-card">
               <span className="status-card__label">Nodes</span>
-              <strong>{overviewQuery.data?.nodesTotal ?? "-"}</strong>
+              <strong>{inventory?.summary.nodesTotal ?? "-"}</strong>
               <p>
-                ready {overviewQuery.data?.nodesReady ?? "-"} / offline{" "}
-                {overviewQuery.data?.nodesOffline ?? "-"}
+                ready {inventory?.summary.nodesReady ?? "-"} / unavailable{" "}
+                {inventory?.summary.nodesUnavailable ?? "-"}
               </p>
             </div>
             <div className="status-card">
-              <span className="status-card__label">Progressing</span>
-              <strong>{overviewQuery.data?.servicesDeploying ?? "-"}</strong>
+              <span className="status-card__label">Capacity</span>
+              <strong>
+                CPU{" "}
+                {percent(
+                  inventory?.summary.cpuMilliAllocated ?? 0,
+                  inventory?.summary.cpuMilliCapacity ?? 0,
+                )}
+              </strong>
               <p>
-                degraded {overviewQuery.data?.servicesDegraded ?? "-"} / failed{" "}
-                {overviewQuery.data?.servicesFailed ?? "-"}
+                Memory{" "}
+                {percent(
+                  inventory?.summary.memoryMiAllocated ?? 0,
+                  inventory?.summary.memoryMiCapacity ?? 0,
+                )}
               </p>
             </div>
           </div>
@@ -593,144 +628,66 @@ function App() {
           {healthQuery.error instanceof Error ? (
             <p className="error-text">{healthQuery.error.message}</p>
           ) : null}
-          {overviewQuery.error instanceof Error ? (
-            <p className="error-text">{overviewQuery.error.message}</p>
+          {!hasAdminToken ? (
+            <div className="callout">
+              <p>输入 admin token 后加载 cloud-plane、service 和 inventory。</p>
+            </div>
+          ) : null}
+          {inventoryQuery.error instanceof Error ? (
+            <p className="error-text">{inventoryQuery.error.message}</p>
           ) : null}
         </section>
 
-        <section id="resources" className="panel" style={{ marginTop: 24 }}>
+        <section id="planes" className="panel" style={{ marginTop: 24 }}>
           <div className="panel__header">
             <div>
-              <p className="eyebrow">global resources</p>
-              <h2>运行时资源</h2>
+              <p className="eyebrow">cloud planes</p>
+              <h2>运行面</h2>
             </div>
           </div>
 
-          <div className="app-grid" style={{ marginBottom: 24 }}>
-            <article className="app-card">
-              <div className="app-card__header">
-                <div>
-                  <strong>Config Sets</strong>
-                  <p>全局非敏感运行配置</p>
-                </div>
-              </div>
-              <form
-                className="project-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  createConfigSet.mutate(configSetForm);
-                }}
-              >
-                <label>
-                  <span>名称</span>
-                  <input
-                    value={configSetForm.name}
-                    onChange={(event) =>
-                      setConfigSetForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="web-config"
-                  />
-                </label>
-                <label style={{ gridColumn: "1 / -1" }}>
-                  <span>键值</span>
-                  <textarea
-                    rows={5}
-                    value={configSetForm.valuesText}
-                    onChange={(event) =>
-                      setConfigSetForm((current) => ({
-                        ...current,
-                        valuesText: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <button type="submit" disabled={createConfigSet.isPending}>
-                  {createConfigSet.isPending ? "创建中..." : "创建 config set"}
-                </button>
-              </form>
-              <div className="history-list">
-                {(configSetsQuery.data?.items ?? []).map((item) => (
-                  <div key={item.id} className="history-row">
+          <div className="app-grid">
+            {planes.map((plane) => {
+              const planeInventory = inventory?.planes.find(
+                (item) => item.id === plane.id,
+              );
+              return (
+                <article key={plane.id} className="app-card">
+                  <div className="app-card__header">
                     <div>
-                      <strong>{item.name}</strong>
-                      <p>{item.id}</p>
+                      <strong>{plane.displayName}</strong>
+                      <p>
+                        {plane.name} · {plane.provider} · {plane.region}
+                      </p>
                     </div>
-                    <div>
-                      <p>{Object.keys(item.values).length} keys</p>
-                    </div>
+                    <span
+                      className={`status-pill status-pill--${plane.status.status}`}
+                    >
+                      {plane.status.status}
+                    </span>
                   </div>
-                ))}
-              </div>
-              {createConfigSet.error instanceof Error ? (
-                <p className="error-text">{createConfigSet.error.message}</p>
-              ) : null}
-            </article>
-
-            <article className="app-card">
-              <div className="app-card__header">
-                <div>
-                  <strong>Secret Sets</strong>
-                  <p>全局敏感运行配置</p>
-                </div>
-              </div>
-              <form
-                className="project-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  createSecretSet.mutate(secretSetForm);
-                }}
-              >
-                <label>
-                  <span>名称</span>
-                  <input
-                    value={secretSetForm.name}
-                    onChange={(event) =>
-                      setSecretSetForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="web-secrets"
-                  />
-                </label>
-                <label style={{ gridColumn: "1 / -1" }}>
-                  <span>键值</span>
-                  <textarea
-                    rows={5}
-                    value={secretSetForm.valuesText}
-                    onChange={(event) =>
-                      setSecretSetForm((current) => ({
-                        ...current,
-                        valuesText: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <button type="submit" disabled={createSecretSet.isPending}>
-                  {createSecretSet.isPending ? "创建中..." : "创建 secret set"}
-                </button>
-              </form>
-              <div className="history-list">
-                {(secretSetsQuery.data?.items ?? []).map((item) => (
-                  <div key={item.id} className="history-row">
-                    <div>
-                      <strong>{item.name}</strong>
-                      <p>{item.id}</p>
-                    </div>
-                    <div>
-                      <p>{item.keys.length} keys</p>
-                    </div>
+                  <div className="app-card__section">
+                    <p className="app-card__section-title">inventory</p>
+                    <p>
+                      nodes {planeInventory?.nodesReady ?? 0}/
+                      {planeInventory?.nodesTotal ?? 0}
+                    </p>
+                    <p>
+                      cpu {planeInventory?.cpuMilliAllocated ?? 0}/
+                      {planeInventory?.cpuMilliCapacity ?? 0}m · memory{" "}
+                      {planeInventory?.memoryMiAllocated ?? 0}/
+                      {planeInventory?.memoryMiCapacity ?? 0}Mi
+                    </p>
+                    <p>{plane.status.message}</p>
                   </div>
-                ))}
-              </div>
-              {createSecretSet.error instanceof Error ? (
-                <p className="error-text">{createSecretSet.error.message}</p>
-              ) : null}
-            </article>
+                </article>
+              );
+            })}
           </div>
+
+          {planesQuery.error instanceof Error ? (
+            <p className="error-text">{planesQuery.error.message}</p>
+          ) : null}
         </section>
 
         <section id="services" className="panel" style={{ marginTop: 24 }}>
@@ -775,16 +732,23 @@ function App() {
               />
             </label>
             <label>
-              <span>地域</span>
-              <input
-                value={serviceForm.region}
+              <span>Cloud plane</span>
+              <select
+                value={serviceForm.planeID}
                 onChange={(event) =>
                   setServiceForm((current) => ({
                     ...current,
-                    region: event.target.value,
+                    planeID: event.target.value,
                   }))
                 }
-              />
+              >
+                <option value="">请选择</option>
+                {planes.map((plane) => (
+                  <option key={plane.id} value={plane.id}>
+                    {plane.displayName} ({plane.provider}/{plane.region})
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               <span>规格档位</span>
@@ -831,44 +795,6 @@ function App() {
               />
             </label>
             <label>
-              <span>Config Set</span>
-              <select
-                value={serviceForm.configSetID}
-                onChange={(event) =>
-                  setServiceForm((current) => ({
-                    ...current,
-                    configSetID: event.target.value,
-                  }))
-                }
-              >
-                <option value="">不使用</option>
-                {(configSetsQuery.data?.items ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span>Secret Set</span>
-              <select
-                value={serviceForm.secretSetID}
-                onChange={(event) =>
-                  setServiceForm((current) => ({
-                    ...current,
-                    secretSetID: event.target.value,
-                  }))
-                }
-              >
-                <option value="">不使用</option>
-                {(secretSetsQuery.data?.items ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               <span>容器端口</span>
               <input
                 type="number"
@@ -894,6 +820,33 @@ function App() {
                     readinessPath: event.target.value,
                   }))
                 }
+                placeholder="/healthz"
+              />
+            </label>
+            <label>
+              <span>Command</span>
+              <textarea
+                rows={3}
+                value={serviceForm.commandText}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    commandText: event.target.value,
+                  }))
+                }
+              />
+            </label>
+            <label>
+              <span>Args</span>
+              <textarea
+                rows={3}
+                value={serviceForm.argsText}
+                onChange={(event) =>
+                  setServiceForm((current) => ({
+                    ...current,
+                    argsText: event.target.value,
+                  }))
+                }
               />
             </label>
             <label style={{ gridColumn: "1 / -1" }}>
@@ -909,7 +862,10 @@ function App() {
                 }
               />
             </label>
-            <button type="submit" disabled={createService.isPending}>
+            <button
+              type="submit"
+              disabled={createService.isPending || !hasAdminToken}
+            >
               {createService.isPending ? "创建中..." : "创建服务"}
             </button>
           </form>
@@ -919,25 +875,21 @@ function App() {
           ) : null}
 
           <div className="app-grid">
-            {serviceItems.map((item) => (
-              <article key={item.service.metadata.id} className="app-card">
+            {serviceItems.map((service) => (
+              <article key={service.metadata.id} className="app-card">
                 <div className="app-card__header">
                   <div>
-                    <strong>{item.service.metadata.displayName}</strong>
+                    <strong>{service.metadata.displayName}</strong>
                     <p>
-                      {item.service.metadata.name} · {item.service.status.phase}{" "}
-                      ·{" "}
-                      {item.service.status.healthy ? "healthy" : "not healthy"}
+                      {service.metadata.name} · {phaseText(service.status)}
                     </p>
                   </div>
                   <button
                     className="inline-button"
                     type="button"
-                    onClick={() =>
-                      setSelectedServiceID(item.service.metadata.id)
-                    }
+                    onClick={() => setSelectedServiceID(service.metadata.id)}
                   >
-                    {item.service.metadata.id === effectiveServiceID
+                    {service.metadata.id === effectiveServiceID
                       ? "当前服务"
                       : "查看"}
                   </button>
@@ -945,25 +897,21 @@ function App() {
                 <div className="app-card__section">
                   <p className="app-card__section-title">spec</p>
                   <p>
-                    {item.service.spec.region} ·{" "}
-                    {item.service.spec.instanceClass} ·{" "}
-                    {item.service.spec.exposure}
+                    plane {service.spec.planeID} · {service.spec.instanceClass}{" "}
+                    · {service.spec.exposure}
                   </p>
-                  <p>{item.service.spec.image}</p>
+                  <p>{service.spec.image}</p>
                   <p>
-                    config {item.service.spec.configSetID || "-"} · secret{" "}
-                    {item.service.spec.secretSetID || "-"}
+                    {service.metadata.host} :{service.spec.defaultPort}
                   </p>
                 </div>
                 <div className="app-card__section">
                   <p className="app-card__section-title">status</p>
-                  <p>{item.service.status.message}</p>
+                  <p>{service.status.message || "-"}</p>
+                  <p>current run {service.status.run.currentRunID ?? "-"}</p>
                   <p>
-                    current run {item.service.status.run.currentRunID ?? "-"}
-                  </p>
-                  <p>
-                    latest run {item.service.status.run.latestRunID ?? "-"} ·{" "}
-                    {item.service.status.run.phase}
+                    latest run {service.status.run.latestRunID ?? "-"} ·{" "}
+                    {service.status.run.phase}
                   </p>
                 </div>
               </article>
@@ -980,25 +928,20 @@ function App() {
             <div>
               <p className="eyebrow">detail</p>
               <h2>
-                {selectedServiceDetail
-                  ? `${selectedServiceDetail.service.metadata.displayName} 的 run / execution`
+                {currentService
+                  ? `${currentService.metadata.displayName} 的运行详情`
                   : "选择一个服务查看详情"}
               </h2>
             </div>
           </div>
 
-          {selectedServiceDetail ? (
+          {currentService ? (
             <>
               <div className="status-grid">
                 <div className="status-card">
-                  <span className="status-card__label">Current run</span>
-                  <strong>{selectedStatus?.run.currentRunID ?? "-"}</strong>
-                </div>
-                <div className="status-card">
-                  <span className="status-card__label">Latest run</span>
-                  <strong>{selectedStatus?.run.latestRunID ?? "-"}</strong>
-                  <p>{selectedStatus?.run.phase ?? "-"}</p>
-                  <p>{selectedStatus?.run.message ?? "-"}</p>
+                  <span className="status-card__label">Host</span>
+                  <strong>{currentService.metadata.host}</strong>
+                  <p>{currentService.spec.exposure}</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Phase</span>
@@ -1007,36 +950,26 @@ function App() {
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Generation</span>
-                  <strong>
-                    {selectedServiceDetail.service.metadata.generation}
-                  </strong>
+                  <strong>{currentService.metadata.generation}</strong>
                   <p>observed {selectedStatus?.observedGeneration ?? 0}</p>
                 </div>
                 <div className="status-card">
-                  <span className="status-card__label">Health</span>
-                  <strong>
-                    {selectedStatus?.healthy ? "healthy" : "not healthy"}
-                  </strong>
-                  <p>{selectedServiceDetail.service.spec.readinessPath}</p>
+                  <span className="status-card__label">Run</span>
+                  <strong>{selectedStatus?.run.phase ?? "-"}</strong>
+                  <p>{selectedStatus?.run.latestRunID ?? "-"}</p>
                 </div>
                 <div className="status-card">
                   <span className="status-card__label">Image</span>
-                  <strong>{selectedServiceDetail.service.spec.image}</strong>
+                  <strong>{currentService.spec.image}</strong>
                   <p>
-                    {selectedServiceDetail.service.spec.instanceClass} ·
-                    {selectedServiceDetail.service.spec.exposure}
+                    {currentService.spec.instanceClass} ·{" "}
+                    {currentService.spec.defaultPort}
                   </p>
                 </div>
                 <div className="status-card">
-                  <span className="status-card__label">Runtime Inputs</span>
-                  <strong>
-                    config{" "}
-                    {selectedServiceDetail.service.spec.configSetID || "-"}
-                  </strong>
-                  <p>
-                    secret{" "}
-                    {selectedServiceDetail.service.spec.secretSetID || "-"}
-                  </p>
+                  <span className="status-card__label">Last observed</span>
+                  <strong>{formatTime(selectedStatus?.lastObservedAt)}</strong>
+                  <p>{formatTime(selectedStatus?.run.lastObservedAt)}</p>
                 </div>
               </div>
 
@@ -1045,7 +978,7 @@ function App() {
                 onSubmit={(event) => {
                   event.preventDefault();
                   updateService.mutate({
-                    serviceID: selectedServiceDetail.service.metadata.id,
+                    serviceID: currentService.metadata.id,
                     form: editForm,
                   });
                 }}
@@ -1060,12 +993,10 @@ function App() {
                   />
                 </label>
                 <label>
-                  <span>地域</span>
+                  <span>Cloud plane</span>
                   <input
-                    value={editForm.region}
-                    onChange={(event) =>
-                      updateEditFormField("region", event.target.value)
-                    }
+                    value={planeLabel(planes, editForm.planeID)}
+                    readOnly
                   />
                 </label>
                 <label>
@@ -1103,38 +1034,6 @@ function App() {
                   />
                 </label>
                 <label>
-                  <span>Config Set</span>
-                  <select
-                    value={editForm.configSetID}
-                    onChange={(event) =>
-                      updateEditFormField("configSetID", event.target.value)
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(configSetsQuery.data?.items ?? []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  <span>Secret Set</span>
-                  <select
-                    value={editForm.secretSetID}
-                    onChange={(event) =>
-                      updateEditFormField("secretSetID", event.target.value)
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(secretSetsQuery.data?.items ?? []).map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
                   <span>容器端口</span>
                   <input
                     type="number"
@@ -1156,6 +1055,26 @@ function App() {
                     }
                   />
                 </label>
+                <label>
+                  <span>Command</span>
+                  <textarea
+                    rows={3}
+                    value={editForm.commandText}
+                    onChange={(event) =>
+                      updateEditFormField("commandText", event.target.value)
+                    }
+                  />
+                </label>
+                <label>
+                  <span>Args</span>
+                  <textarea
+                    rows={3}
+                    value={editForm.argsText}
+                    onChange={(event) =>
+                      updateEditFormField("argsText", event.target.value)
+                    }
+                  />
+                </label>
                 <label style={{ gridColumn: "1 / -1" }}>
                   <span>Env</span>
                   <textarea
@@ -1167,18 +1086,28 @@ function App() {
                   />
                 </label>
                 <button type="submit" disabled={updateService.isPending}>
-                  {updateService.isPending ? "更新中..." : "更新 service 规格"}
+                  {updateService.isPending ? "更新中..." : "更新服务"}
                 </button>
               </form>
+
+              <div className="button-row">
+                <button
+                  className="inline-button"
+                  type="button"
+                  disabled={deleteService.isPending || !hasAdminToken}
+                  onClick={() =>
+                    deleteService.mutate(currentService.metadata.id)
+                  }
+                >
+                  {deleteService.isPending ? "删除中..." : "删除服务"}
+                </button>
+              </div>
 
               {updateService.error instanceof Error ? (
                 <p className="error-text">{updateService.error.message}</p>
               ) : null}
-              {configSetsQuery.error instanceof Error ? (
-                <p className="error-text">{configSetsQuery.error.message}</p>
-              ) : null}
-              {secretSetsQuery.error instanceof Error ? (
-                <p className="error-text">{secretSetsQuery.error.message}</p>
+              {deleteService.error instanceof Error ? (
+                <p className="error-text">{deleteService.error.message}</p>
               ) : null}
 
               <div className="app-card__section">
@@ -1190,23 +1119,8 @@ function App() {
                       <p>{selectedStatus?.run.message ?? "-"}</p>
                     </div>
                     <span>
-                      {selectedStatus?.run.lastObservedAt
-                        ? formatTime(selectedStatus.run.lastObservedAt)
-                        : "-"}
+                      {formatTime(selectedStatus?.run.lastObservedAt)}
                     </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="app-card__section">
-                <p className="app-card__section-title">run summary</p>
-                <div className="history-list">
-                  <div className="history-row">
-                    <div>
-                      <strong>{selectedStatus?.run.latestRunID ?? "-"}</strong>
-                      <p>current {selectedStatus?.run.currentRunID ?? "-"}</p>
-                    </div>
-                    <span>{selectedStatus?.desiredState ?? "-"}</span>
                   </div>
                 </div>
               </div>
@@ -1214,8 +1128,7 @@ function App() {
           ) : (
             <div className="callout">
               <p>
-                从项目列表里选一个 service，这里会展示当前 run、execution
-                聚合和操作按钮。
+                从服务列表里选择一个 service，这里会展示运行状态和更新入口。
               </p>
             </div>
           )}

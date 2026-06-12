@@ -10,11 +10,6 @@ variable "platform_name" {
   type = string
 }
 
-variable "create_platform_host_resources" {
-  type    = bool
-  default = true
-}
-
 variable "environment" {
   type = string
 }
@@ -101,19 +96,6 @@ variable "node_host_port_max" {
     condition     = var.node_host_port_max >= 1 && var.node_host_port_max <= 65535
     error_message = "node_host_port_max 必须是 1 到 65535 之间的 TCP 端口。"
   }
-}
-
-variable "platform_role_name" {
-  type    = string
-  default = ""
-}
-
-variable "platform_role_policy_names" {
-  type = list(string)
-  default = [
-    "QcloudCVMFullAccess",
-    "QcloudCVMFinanceAccess"
-  ]
 }
 
 variable "ssh_public_key" {

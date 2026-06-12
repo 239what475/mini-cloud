@@ -27,6 +27,8 @@ cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfv
 
 `planes[].region`、`provider_name`、`platform_name`、入口机、VPC、地域和规格等字段必须按 plane 分别填写。不要让两个 plane 共用同一个 Terraform workspace。
 
+`controlPlane.ssh.host` 和 `planes[].ssh.host` 都是本机 SSH alias 或地址。每个 `planes[]` 必须使用独立入口机；control-plane 可以独立部署，也可以和某个入口机同机部署，但入口机仍然不承接 workload。
+
 腾讯云凭据只从 `provider.tencentCredentialFile` 指向的 JSON 文件读取，并写入远端腾讯云 cloud-plane 配置。不要通过环境变量提供平台 token 或腾讯云 AK/SK。
 
 ```json

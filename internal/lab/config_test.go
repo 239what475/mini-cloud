@@ -12,7 +12,7 @@ func TestLoadConfigAcceptsMultiPlaneExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig example returned error: %v", err)
 	}
-	if cfg.ControlPlane.SSH.Host != "myserver" {
+	if cfg.ControlPlane.SSH.Host != "myserver-control" {
 		t.Fatalf("control-plane host = %q", cfg.ControlPlane.SSH.Host)
 	}
 	if len(cfg.Planes) != 2 {

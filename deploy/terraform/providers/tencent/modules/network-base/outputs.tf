@@ -22,14 +22,6 @@ output "subnet_name" {
   value = tencentcloud_subnet.platform.name
 }
 
-output "platform_security_group_id" {
-  value = var.create_platform_host_resources ? tencentcloud_security_group.platform[0].id : ""
-}
-
-output "platform_security_group_name" {
-  value = var.create_platform_host_resources ? tencentcloud_security_group.platform[0].name : ""
-}
-
 output "node_security_group_id" {
   value = tencentcloud_security_group.node.id
 }
@@ -44,12 +36,4 @@ output "platform_key_id" {
 
 output "platform_key_name" {
   value = tencentcloud_key_pair.platform.key_name
-}
-
-output "platform_role_name" {
-  value = var.create_platform_host_resources ? tencentcloud_cam_role.platform[0].name : ""
-}
-
-output "platform_role_id" {
-  value = var.create_platform_host_resources ? tencentcloud_cam_role.platform[0].id : ""
 }

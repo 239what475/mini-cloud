@@ -1,6 +1,6 @@
 controlPlane:
   ssh:
-    host: myserver
+    host: myserver-control
     keyPath: ""
     options: []
   listenHTTPAddr: 0.0.0.0:18080
@@ -11,7 +11,7 @@ planes:
     provider: tencent
     region: ap-guangzhou
     ssh:
-      host: myserver
+      host: myserver-tencent
     terraform:
       dir: deploy/terraform/lab
       workspace: tencent

@@ -68,6 +68,34 @@ a {
   color: #fffaf3;
 }
 
+.auth-panel {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(88, 69, 44, 0.14);
+}
+
+.auth-panel label {
+  display: grid;
+  gap: 8px;
+}
+
+.auth-panel span {
+  font-size: 0.78rem;
+  color: #715d44;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.auth-panel input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(88, 69, 44, 0.18);
+  background: #fffdf7;
+  color: #1b1813;
+}
+
 .content {
   padding: 32px;
 }

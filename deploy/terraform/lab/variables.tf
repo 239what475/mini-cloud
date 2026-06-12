@@ -224,7 +224,6 @@ variable "tencent" {
   type = object({
     region_id                      = optional(string, "")
     zone_id                        = optional(string, "")
-    platform_role_policy_names     = optional(list(string), [])
     instance_type                  = optional(string, "")
     image_id                       = optional(string, "")
     system_disk_type               = optional(string, "CLOUD_PREMIUM")
