@@ -9,7 +9,6 @@ import (
 	"time"
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
-	"mini-cloud/internal/workload"
 )
 
 var ErrExecutionNotFound = errors.New("execution not found")
@@ -41,14 +40,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	envJSON, err := json.Marshal(env)
 	if err != nil {
 		return "", fmt.Errorf("marshal execution env: %w", err)
-	}
-	projectedFiles := workload.CloneProjectedFiles(input.ProjectedFiles)
-	if projectedFiles == nil {
-		projectedFiles = []workload.ProjectedFile{}
-	}
-	projectedFilesJSON, err := json.Marshal(projectedFiles)
-	if err != nil {
-		return "", fmt.Errorf("marshal execution projected files: %w", err)
 	}
 	var credentialServer sql.NullString
 	var credentialUsername sql.NullString
@@ -102,7 +93,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				command_json,
 				args_json,
 				env_json,
-				projected_files_json,
 				image_credential_server,
 				image_credential_username,
 				image_credential_password,
@@ -113,7 +103,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
 			ON CONFLICT (plan_id) DO UPDATE
 			SET
 				work_action = EXCLUDED.work_action,
@@ -124,7 +114,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				command_json = EXCLUDED.command_json,
 				args_json = EXCLUDED.args_json,
 				env_json = EXCLUDED.env_json,
-				projected_files_json = EXCLUDED.projected_files_json,
 				image_credential_server = EXCLUDED.image_credential_server,
 				image_credential_username = EXCLUDED.image_credential_username,
 				image_credential_password = EXCLUDED.image_credential_password,
@@ -132,14 +121,14 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				readiness_path = EXCLUDED.readiness_path,
 				cpu_milli_request = EXCLUDED.cpu_milli_request,
 				memory_mi_request = EXCLUDED.memory_mi_request,
-				node_id = CASE WHEN execution_intents.status IN ($22, $23) THEN NULL ELSE execution_intents.node_id END,
-				container_name = CASE WHEN execution_intents.status IN ($22, $23) THEN '' ELSE execution_intents.container_name END,
-				container_id = CASE WHEN execution_intents.status IN ($22, $23) THEN '' ELSE execution_intents.container_id END,
-				host_port = CASE WHEN execution_intents.status IN ($22, $23) THEN 0 ELSE execution_intents.host_port END,
-				status = CASE WHEN execution_intents.status IN ($22, $23) THEN EXCLUDED.status ELSE execution_intents.status END,
-				status_reason = CASE WHEN execution_intents.status IN ($22, $23) THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
-				started_at = CASE WHEN execution_intents.status IN ($22, $23) THEN NULL ELSE execution_intents.started_at END,
-				finished_at = CASE WHEN execution_intents.status IN ($22, $23) THEN NULL ELSE execution_intents.finished_at END,
+				node_id = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.node_id END,
+				container_name = CASE WHEN execution_intents.status IN ($21, $22) THEN '' ELSE execution_intents.container_name END,
+				container_id = CASE WHEN execution_intents.status IN ($21, $22) THEN '' ELSE execution_intents.container_id END,
+				host_port = CASE WHEN execution_intents.status IN ($21, $22) THEN 0 ELSE execution_intents.host_port END,
+				status = CASE WHEN execution_intents.status IN ($21, $22) THEN EXCLUDED.status ELSE execution_intents.status END,
+				status_reason = CASE WHEN execution_intents.status IN ($21, $22) THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
+				started_at = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.started_at END,
+				finished_at = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.finished_at END,
 				updated_at = now()
 		`,
 		id,
@@ -153,7 +142,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 		commandJSON,
 		argsJSON,
 		envJSON,
-		projectedFilesJSON,
 		credentialServer,
 		credentialUsername,
 		credentialPassword,
@@ -527,7 +515,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
-	var projectedFilesJSON []byte
 	var credentialServer sql.NullString
 	var credentialUsername sql.NullString
 	var credentialPassword sql.NullString
@@ -548,7 +535,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 			command_json,
 			args_json,
 			env_json,
-			projected_files_json,
 			image_credential_server,
 			image_credential_username,
 			image_credential_password,
@@ -611,7 +597,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 		&commandJSON,
 		&argsJSON,
 		&envJSON,
-		&projectedFilesJSON,
 		&credentialServer,
 		&credentialUsername,
 		&credentialPassword,
@@ -677,16 +662,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	}
 	if work.Env == nil {
 		work.Env = map[string]string{}
-	}
-	work.ProjectedFiles = []workload.ProjectedFile{}
-	if len(projectedFilesJSON) > 0 {
-		if err := json.Unmarshal(projectedFilesJSON, &work.ProjectedFiles); err != nil {
-			return nil, fmt.Errorf("decode execution projected files: %w", err)
-		}
-	}
-	work.ProjectedFiles = workload.CloneProjectedFiles(work.ProjectedFiles)
-	if work.ProjectedFiles == nil {
-		work.ProjectedFiles = []workload.ProjectedFile{}
 	}
 	if credentialServer.Valid {
 		work.ImageCredential = &cloudmodel.ImageCredential{

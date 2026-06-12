@@ -48,7 +48,6 @@ CREATE TABLE IF NOT EXISTS services (
     spec_registry_server TEXT NOT NULL DEFAULT '',
     spec_registry_username TEXT NOT NULL DEFAULT '',
     spec_registry_password TEXT NOT NULL DEFAULT '',
-    spec_files_json JSONB NOT NULL DEFAULT '[]'::jsonb,
     status_run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb,
     generation BIGINT NOT NULL DEFAULT 1,
     status_desired_state TEXT NOT NULL DEFAULT 'active',

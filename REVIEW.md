@@ -151,7 +151,7 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 - 一个包内文件可以少一点、大一点，只要阅读路径清楚。
 - 相关逻辑尽量放近，例如 service 一个文件、plane 一个文件。
 - 不要因为测试而拆出奇怪的小接口或 fetcher。
-- 跨平面共用的小包必须有明确边界，例如 `transport` 只放 HTTP/gRPC 元信息，`workload` 只放 workload spec 共享模型。
+- 跨平面共用的小包必须有明确边界，例如 `transport` 只放 HTTP/gRPC 元信息。
 - 不把业务字段塞进 `context.Context` 做隐式日志传播；request id 可以随 context 传播，业务日志字段就地 `logger.With(...)`。
 
 函数：

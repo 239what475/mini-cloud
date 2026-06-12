@@ -340,10 +340,6 @@ func (s *stubRuntime) StreamLogs(context.Context, string, runtime.LogEmitter) er
 	return nil
 }
 
-func (s *stubRuntime) GarbageCollect(context.Context) error {
-	return nil
-}
-
 func (s *stubRuntime) Close() error {
 	return nil
 }

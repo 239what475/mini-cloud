@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/workload"
 
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -56,7 +55,6 @@ const serviceSelectColumns = `
 	spec_registry_server,
 	spec_registry_username,
 	spec_registry_password,
-	spec_files_json,
 	status_run_json,
 	generation,
 	status_desired_state,
@@ -101,7 +99,6 @@ type serviceSpecColumns struct {
 	RegistryCredentialServer string
 	RegistryCredentialUser   string
 	RegistryCredentialPass   string
-	FilesJSON                []byte
 }
 
 type serviceRunRecord struct {
@@ -182,7 +179,6 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			spec_registry_server,
 			spec_registry_username,
 			spec_registry_password,
-			spec_files_json,
 			status_run_json,
 			generation,
 			status_desired_state,
@@ -191,7 +187,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			status_message,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 1, $19, $20, $21, $22, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 1, $18, $19, $20, $21, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -210,7 +206,6 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		specColumns.RegistryCredentialServer,
 		specColumns.RegistryCredentialUser,
 		specColumns.RegistryCredentialPass,
-		specColumns.FilesJSON,
 		runJSON,
 		model.DesiredStateActive,
 		initialStatus.ObservedGeneration,
@@ -334,17 +329,16 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 			spec_registry_server = $13,
 			spec_registry_username = $14,
 			spec_registry_password = $15,
-			spec_files_json = $16,
-			status_run_json = $17,
-			generation = $18,
-			status_desired_state = $19,
-			status_observed_generation = $20,
-			status_phase = $21,
-			status_message = $22,
+			status_run_json = $16,
+			generation = $17,
+			status_desired_state = $18,
+			status_observed_generation = $19,
+			status_phase = $20,
+			status_message = $21,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $23
+			AND generation = $22
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -362,7 +356,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 		specColumns.RegistryCredentialServer,
 		specColumns.RegistryCredentialUser,
 		specColumns.RegistryCredentialPass,
-		specColumns.FilesJSON,
 		pendingRunJSON,
 		nextGeneration,
 		model.DesiredStateActive,
@@ -536,7 +529,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 	var registryServerValue string
 	var registryUsernameValue string
 	var registryPasswordValue string
-	var filesJSON []byte
 	var runJSON []byte
 	var lastReconciledAt sql.NullTime
 	if err := scanner.Scan(
@@ -556,7 +548,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		&registryServerValue,
 		&registryUsernameValue,
 		&registryPasswordValue,
-		&filesJSON,
 		&runJSON,
 		&item.Metadata.Generation,
 		&item.Status.DesiredState,
@@ -605,13 +596,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 	if item.Spec.SecretEnv == nil {
 		item.Spec.SecretEnv = map[string]string{}
 	}
-	item.Spec.Files = []workload.ProjectedFile{}
-	if len(filesJSON) > 0 {
-		if err := json.Unmarshal(filesJSON, &item.Spec.Files); err != nil {
-			return model.Service{}, fmt.Errorf("decode service files: %w", err)
-		}
-	}
-	item.Spec.Files = workload.CloneProjectedFiles(item.Spec.Files)
 	if strings.TrimSpace(registryServerValue) != "" || strings.TrimSpace(registryUsernameValue) != "" || registryPasswordValue != "" {
 		item.Spec.RegistryCredential = &model.ServiceRegistryCredential{
 			Server:   registryServerValue,
@@ -707,9 +691,6 @@ func validateServiceSpec(spec model.ServiceSpec) error {
 			return invalidInput(errInvalidEnvironmentKey)
 		}
 	}
-	if err := workload.ValidateProjectedFiles(spec.Files); err != nil {
-		return invalidInput(err)
-	}
 	if err := validateRegistryCredential(spec.RegistryCredential); err != nil {
 		return invalidInput(err)
 	}
@@ -773,15 +754,6 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service secret env: %w", err)
 	}
-	files := workload.CloneProjectedFiles(spec.Files)
-	if files == nil {
-		files = []workload.ProjectedFile{}
-	}
-	filesJSON, err := json.Marshal(files)
-	if err != nil {
-		return serviceSpecColumns{}, fmt.Errorf("marshal service files: %w", err)
-	}
-
 	out := serviceSpecColumns{
 		PlaneID:       planeID,
 		InstanceClass: instanceClass,
@@ -793,7 +765,6 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 		ReadinessPath: strings.TrimSpace(spec.ReadinessPath),
 		EnvJSON:       envJSON,
 		SecretEnvJSON: secretEnvJSON,
-		FilesJSON:     filesJSON,
 	}
 	if spec.RegistryCredential != nil {
 		out.RegistryCredentialServer = strings.TrimSpace(spec.RegistryCredential.Server)

@@ -406,74 +406,6 @@ func (x *SupersededExecution) GetContainerName() string {
 	return ""
 }
 
-type ProjectedFile struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	MountPath     string                 `protobuf:"bytes,1,opt,name=mount_path,json=mountPath,proto3" json:"mount_path,omitempty"`
-	Content       string                 `protobuf:"bytes,2,opt,name=content,proto3" json:"content,omitempty"`
-	Mode          uint32                 `protobuf:"varint,3,opt,name=mode,proto3" json:"mode,omitempty"`
-	Sensitive     bool                   `protobuf:"varint,4,opt,name=sensitive,proto3" json:"sensitive,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
-}
-
-func (x *ProjectedFile) Reset() {
-	*x = ProjectedFile{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *ProjectedFile) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*ProjectedFile) ProtoMessage() {}
-
-func (x *ProjectedFile) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[6]
-	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use ProjectedFile.ProtoReflect.Descriptor instead.
-func (*ProjectedFile) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *ProjectedFile) GetMountPath() string {
-	if x != nil {
-		return x.MountPath
-	}
-	return ""
-}
-
-func (x *ProjectedFile) GetContent() string {
-	if x != nil {
-		return x.Content
-	}
-	return ""
-}
-
-func (x *ProjectedFile) GetMode() uint32 {
-	if x != nil {
-		return x.Mode
-	}
-	return 0
-}
-
-func (x *ProjectedFile) GetSensitive() bool {
-	if x != nil {
-		return x.Sensitive
-	}
-	return false
-}
-
 type WorkItem struct {
 	state               protoimpl.MessageState `protogen:"open.v1"`
 	ExecutionId         string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
@@ -490,7 +422,6 @@ type WorkItem struct {
 	ContainerPort       int32                  `protobuf:"varint,12,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
 	ReadinessPath       string                 `protobuf:"bytes,13,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
 	ContainerName       string                 `protobuf:"bytes,14,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
-	ProjectedFiles      []*ProjectedFile       `protobuf:"bytes,15,rep,name=projected_files,json=projectedFiles,proto3" json:"projected_files,omitempty"`
 	Action              string                 `protobuf:"bytes,16,opt,name=action,proto3" json:"action,omitempty"`
 	ContainerId         string                 `protobuf:"bytes,17,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
 	HostPort            int32                  `protobuf:"varint,18,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
@@ -500,7 +431,7 @@ type WorkItem struct {
 
 func (x *WorkItem) Reset() {
 	*x = WorkItem{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[7]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -512,7 +443,7 @@ func (x *WorkItem) String() string {
 func (*WorkItem) ProtoMessage() {}
 
 func (x *WorkItem) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[7]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -525,7 +456,7 @@ func (x *WorkItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkItem.ProtoReflect.Descriptor instead.
 func (*WorkItem) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{7}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *WorkItem) GetExecutionId() string {
@@ -626,13 +557,6 @@ func (x *WorkItem) GetContainerName() string {
 	return ""
 }
 
-func (x *WorkItem) GetProjectedFiles() []*ProjectedFile {
-	if x != nil {
-		return x.ProjectedFiles
-	}
-	return nil
-}
-
 func (x *WorkItem) GetAction() string {
 	if x != nil {
 		return x.Action
@@ -663,7 +587,7 @@ type PollWorkRequest struct {
 
 func (x *PollWorkRequest) Reset() {
 	*x = PollWorkRequest{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[8]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -675,7 +599,7 @@ func (x *PollWorkRequest) String() string {
 func (*PollWorkRequest) ProtoMessage() {}
 
 func (x *PollWorkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[8]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -688,7 +612,7 @@ func (x *PollWorkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollWorkRequest.ProtoReflect.Descriptor instead.
 func (*PollWorkRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{8}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *PollWorkRequest) GetNodeId() string {
@@ -707,7 +631,7 @@ type PollWorkResponse struct {
 
 func (x *PollWorkResponse) Reset() {
 	*x = PollWorkResponse{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[9]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -719,7 +643,7 @@ func (x *PollWorkResponse) String() string {
 func (*PollWorkResponse) ProtoMessage() {}
 
 func (x *PollWorkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[9]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -732,7 +656,7 @@ func (x *PollWorkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PollWorkResponse.ProtoReflect.Descriptor instead.
 func (*PollWorkResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{9}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PollWorkResponse) GetItem() *WorkItem {
@@ -758,7 +682,7 @@ type ReportExecutionRequest struct {
 
 func (x *ReportExecutionRequest) Reset() {
 	*x = ReportExecutionRequest{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[10]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +694,7 @@ func (x *ReportExecutionRequest) String() string {
 func (*ReportExecutionRequest) ProtoMessage() {}
 
 func (x *ReportExecutionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[10]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +707,7 @@ func (x *ReportExecutionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportExecutionRequest.ProtoReflect.Descriptor instead.
 func (*ReportExecutionRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{10}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReportExecutionRequest) GetNodeId() string {
@@ -865,7 +789,7 @@ type ExecutionRecord struct {
 
 func (x *ExecutionRecord) Reset() {
 	*x = ExecutionRecord{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[11]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -877,7 +801,7 @@ func (x *ExecutionRecord) String() string {
 func (*ExecutionRecord) ProtoMessage() {}
 
 func (x *ExecutionRecord) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[11]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -890,7 +814,7 @@ func (x *ExecutionRecord) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecutionRecord.ProtoReflect.Descriptor instead.
 func (*ExecutionRecord) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{11}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ExecutionRecord) GetId() string {
@@ -1008,7 +932,7 @@ type ReportExecutionAck struct {
 
 func (x *ReportExecutionAck) Reset() {
 	*x = ReportExecutionAck{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[12]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1020,7 +944,7 @@ func (x *ReportExecutionAck) String() string {
 func (*ReportExecutionAck) ProtoMessage() {}
 
 func (x *ReportExecutionAck) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[12]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1033,7 +957,7 @@ func (x *ReportExecutionAck) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportExecutionAck.ProtoReflect.Descriptor instead.
 func (*ReportExecutionAck) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{12}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *ReportExecutionAck) GetExecution() *ExecutionRecord {
@@ -1059,7 +983,7 @@ type ReportExecutionResponse struct {
 
 func (x *ReportExecutionResponse) Reset() {
 	*x = ReportExecutionResponse{}
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[13]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1071,7 +995,7 @@ func (x *ReportExecutionResponse) String() string {
 func (*ReportExecutionResponse) ProtoMessage() {}
 
 func (x *ReportExecutionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[13]
+	mi := &file_minicloud_nodeagent_v1_node_agent_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1084,7 +1008,7 @@ func (x *ReportExecutionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReportExecutionResponse.ProtoReflect.Descriptor instead.
 func (*ReportExecutionResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{13}
+	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *ReportExecutionResponse) GetAck() *ReportExecutionAck {
@@ -1127,13 +1051,7 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12!\n" +
 	"\fexecution_id\x18\x02 \x01(\tR\vexecutionID\x12!\n" +
 	"\fcontainer_id\x18\x03 \x01(\tR\vcontainerID\x12%\n" +
-	"\x0econtainer_name\x18\x04 \x01(\tR\rcontainerName\"z\n" +
-	"\rProjectedFile\x12\x1d\n" +
-	"\n" +
-	"mount_path\x18\x01 \x01(\tR\tmountPath\x12\x18\n" +
-	"\acontent\x18\x02 \x01(\tR\acontent\x12\x12\n" +
-	"\x04mode\x18\x03 \x01(\rR\x04mode\x12\x1c\n" +
-	"\tsensitive\x18\x04 \x01(\bR\tsensitive\"\xab\x06\n" +
+	"\x0econtainer_name\x18\x04 \x01(\tR\rcontainerName\"\xdb\x05\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12\x17\n" +
 	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
@@ -1150,8 +1068,7 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x14superseded_execution\x18\v \x01(\v2+.minicloud.nodeagent.v1.SupersededExecutionR\x13supersededExecution\x12%\n" +
 	"\x0econtainer_port\x18\f \x01(\x05R\rcontainerPort\x12%\n" +
 	"\x0ereadiness_path\x18\r \x01(\tR\rreadinessPath\x12%\n" +
-	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\x12N\n" +
-	"\x0fprojected_files\x18\x0f \x03(\v2%.minicloud.nodeagent.v1.ProjectedFileR\x0eprojectedFiles\x12\x16\n" +
+	"\x0econtainer_name\x18\x0e \x01(\tR\rcontainerName\x12\x16\n" +
 	"\x06action\x18\x10 \x01(\tR\x06action\x12!\n" +
 	"\fcontainer_id\x18\x11 \x01(\tR\vcontainerID\x12\x1b\n" +
 	"\thost_port\x18\x12 \x01(\x05R\bhostPort\x1a6\n" +
@@ -1216,7 +1133,7 @@ func file_minicloud_nodeagent_v1_node_agent_proto_rawDescGZIP() []byte {
 	return file_minicloud_nodeagent_v1_node_agent_proto_rawDescData
 }
 
-var file_minicloud_nodeagent_v1_node_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
+var file_minicloud_nodeagent_v1_node_agent_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_minicloud_nodeagent_v1_node_agent_proto_goTypes = []any{
 	(*RegisterNodeRequest)(nil),     // 0: minicloud.nodeagent.v1.RegisterNodeRequest
 	(*RegisterNodeResponse)(nil),    // 1: minicloud.nodeagent.v1.RegisterNodeResponse
@@ -1224,43 +1141,41 @@ var file_minicloud_nodeagent_v1_node_agent_proto_goTypes = []any{
 	(*HeartbeatResponse)(nil),       // 3: minicloud.nodeagent.v1.HeartbeatResponse
 	(*ImageCredential)(nil),         // 4: minicloud.nodeagent.v1.ImageCredential
 	(*SupersededExecution)(nil),     // 5: minicloud.nodeagent.v1.SupersededExecution
-	(*ProjectedFile)(nil),           // 6: minicloud.nodeagent.v1.ProjectedFile
-	(*WorkItem)(nil),                // 7: minicloud.nodeagent.v1.WorkItem
-	(*PollWorkRequest)(nil),         // 8: minicloud.nodeagent.v1.PollWorkRequest
-	(*PollWorkResponse)(nil),        // 9: minicloud.nodeagent.v1.PollWorkResponse
-	(*ReportExecutionRequest)(nil),  // 10: minicloud.nodeagent.v1.ReportExecutionRequest
-	(*ExecutionRecord)(nil),         // 11: minicloud.nodeagent.v1.ExecutionRecord
-	(*ReportExecutionAck)(nil),      // 12: minicloud.nodeagent.v1.ReportExecutionAck
-	(*ReportExecutionResponse)(nil), // 13: minicloud.nodeagent.v1.ReportExecutionResponse
-	nil,                             // 14: minicloud.nodeagent.v1.WorkItem.EnvEntry
-	(*timestamppb.Timestamp)(nil),   // 15: google.protobuf.Timestamp
+	(*WorkItem)(nil),                // 6: minicloud.nodeagent.v1.WorkItem
+	(*PollWorkRequest)(nil),         // 7: minicloud.nodeagent.v1.PollWorkRequest
+	(*PollWorkResponse)(nil),        // 8: minicloud.nodeagent.v1.PollWorkResponse
+	(*ReportExecutionRequest)(nil),  // 9: minicloud.nodeagent.v1.ReportExecutionRequest
+	(*ExecutionRecord)(nil),         // 10: minicloud.nodeagent.v1.ExecutionRecord
+	(*ReportExecutionAck)(nil),      // 11: minicloud.nodeagent.v1.ReportExecutionAck
+	(*ReportExecutionResponse)(nil), // 12: minicloud.nodeagent.v1.ReportExecutionResponse
+	nil,                             // 13: minicloud.nodeagent.v1.WorkItem.EnvEntry
+	(*timestamppb.Timestamp)(nil),   // 14: google.protobuf.Timestamp
 }
 var file_minicloud_nodeagent_v1_node_agent_proto_depIdxs = []int32{
-	14, // 0: minicloud.nodeagent.v1.WorkItem.env:type_name -> minicloud.nodeagent.v1.WorkItem.EnvEntry
+	13, // 0: minicloud.nodeagent.v1.WorkItem.env:type_name -> minicloud.nodeagent.v1.WorkItem.EnvEntry
 	4,  // 1: minicloud.nodeagent.v1.WorkItem.image_credential:type_name -> minicloud.nodeagent.v1.ImageCredential
 	5,  // 2: minicloud.nodeagent.v1.WorkItem.superseded_execution:type_name -> minicloud.nodeagent.v1.SupersededExecution
-	6,  // 3: minicloud.nodeagent.v1.WorkItem.projected_files:type_name -> minicloud.nodeagent.v1.ProjectedFile
-	7,  // 4: minicloud.nodeagent.v1.PollWorkResponse.item:type_name -> minicloud.nodeagent.v1.WorkItem
-	15, // 5: minicloud.nodeagent.v1.ExecutionRecord.started_at:type_name -> google.protobuf.Timestamp
-	15, // 6: minicloud.nodeagent.v1.ExecutionRecord.finished_at:type_name -> google.protobuf.Timestamp
-	15, // 7: minicloud.nodeagent.v1.ExecutionRecord.created_at:type_name -> google.protobuf.Timestamp
-	15, // 8: minicloud.nodeagent.v1.ExecutionRecord.updated_at:type_name -> google.protobuf.Timestamp
-	11, // 9: minicloud.nodeagent.v1.ReportExecutionAck.execution:type_name -> minicloud.nodeagent.v1.ExecutionRecord
-	15, // 10: minicloud.nodeagent.v1.ReportExecutionAck.observed_at:type_name -> google.protobuf.Timestamp
-	12, // 11: minicloud.nodeagent.v1.ReportExecutionResponse.ack:type_name -> minicloud.nodeagent.v1.ReportExecutionAck
-	0,  // 12: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:input_type -> minicloud.nodeagent.v1.RegisterNodeRequest
-	2,  // 13: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.HeartbeatRequest
-	8,  // 14: minicloud.nodeagent.v1.NodeAgentService.PollWork:input_type -> minicloud.nodeagent.v1.PollWorkRequest
-	10, // 15: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:input_type -> minicloud.nodeagent.v1.ReportExecutionRequest
-	1,  // 16: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:output_type -> minicloud.nodeagent.v1.RegisterNodeResponse
-	3,  // 17: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.HeartbeatResponse
-	9,  // 18: minicloud.nodeagent.v1.NodeAgentService.PollWork:output_type -> minicloud.nodeagent.v1.PollWorkResponse
-	13, // 19: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:output_type -> minicloud.nodeagent.v1.ReportExecutionResponse
-	16, // [16:20] is the sub-list for method output_type
-	12, // [12:16] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	6,  // 3: minicloud.nodeagent.v1.PollWorkResponse.item:type_name -> minicloud.nodeagent.v1.WorkItem
+	14, // 4: minicloud.nodeagent.v1.ExecutionRecord.started_at:type_name -> google.protobuf.Timestamp
+	14, // 5: minicloud.nodeagent.v1.ExecutionRecord.finished_at:type_name -> google.protobuf.Timestamp
+	14, // 6: minicloud.nodeagent.v1.ExecutionRecord.created_at:type_name -> google.protobuf.Timestamp
+	14, // 7: minicloud.nodeagent.v1.ExecutionRecord.updated_at:type_name -> google.protobuf.Timestamp
+	10, // 8: minicloud.nodeagent.v1.ReportExecutionAck.execution:type_name -> minicloud.nodeagent.v1.ExecutionRecord
+	14, // 9: minicloud.nodeagent.v1.ReportExecutionAck.observed_at:type_name -> google.protobuf.Timestamp
+	11, // 10: minicloud.nodeagent.v1.ReportExecutionResponse.ack:type_name -> minicloud.nodeagent.v1.ReportExecutionAck
+	0,  // 11: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:input_type -> minicloud.nodeagent.v1.RegisterNodeRequest
+	2,  // 12: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:input_type -> minicloud.nodeagent.v1.HeartbeatRequest
+	7,  // 13: minicloud.nodeagent.v1.NodeAgentService.PollWork:input_type -> minicloud.nodeagent.v1.PollWorkRequest
+	9,  // 14: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:input_type -> minicloud.nodeagent.v1.ReportExecutionRequest
+	1,  // 15: minicloud.nodeagent.v1.NodeAgentService.RegisterNode:output_type -> minicloud.nodeagent.v1.RegisterNodeResponse
+	3,  // 16: minicloud.nodeagent.v1.NodeAgentService.RecordHeartbeat:output_type -> minicloud.nodeagent.v1.HeartbeatResponse
+	8,  // 17: minicloud.nodeagent.v1.NodeAgentService.PollWork:output_type -> minicloud.nodeagent.v1.PollWorkResponse
+	12, // 18: minicloud.nodeagent.v1.NodeAgentService.ReportExecution:output_type -> minicloud.nodeagent.v1.ReportExecutionResponse
+	15, // [15:19] is the sub-list for method output_type
+	11, // [11:15] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_minicloud_nodeagent_v1_node_agent_proto_init() }
@@ -1274,7 +1189,7 @@ func file_minicloud_nodeagent_v1_node_agent_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_nodeagent_v1_node_agent_proto_rawDesc), len(file_minicloud_nodeagent_v1_node_agent_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   15,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -45,13 +45,6 @@ message SupersededExecution {
   string container_name = 4 [json_name = "containerName"];
 }
 
-message ProjectedFile {
-  string mount_path = 1 [json_name = "mountPath"];
-  string content = 2;
-  uint32 mode = 3;
-  bool sensitive = 4;
-}
-
 message WorkItem {
   string execution_id = 1 [json_name = "executionID"];
   string plan_id = 2 [json_name = "planID"];
@@ -67,7 +60,6 @@ message WorkItem {
   int32 container_port = 12 [json_name = "containerPort"];
   string readiness_path = 13 [json_name = "readinessPath"];
   string container_name = 14 [json_name = "containerName"];
-  repeated ProjectedFile projected_files = 15 [json_name = "projectedFiles"];
   string action = 16;
   string container_id = 17 [json_name = "containerID"];
   int32 host_port = 18 [json_name = "hostPort"];

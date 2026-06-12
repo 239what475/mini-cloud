@@ -1,10 +1,6 @@
 package model
 
-import (
-	"time"
-
-	"mini-cloud/internal/workload"
-)
+import "time"
 
 const (
 	InstanceClassSmall  = "small"
@@ -55,7 +51,6 @@ type ServiceSpec struct {
 	Env                map[string]string
 	SecretEnv          map[string]string
 	RegistryCredential *ServiceRegistryCredential
-	Files              []workload.ProjectedFile
 }
 
 type ServiceRegistryCredential struct {

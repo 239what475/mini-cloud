@@ -6,7 +6,6 @@ import (
 
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	"mini-cloud/internal/testutil"
-	"mini-cloud/internal/workload"
 )
 
 func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
@@ -23,10 +22,6 @@ func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 		Env: map[string]string{
 			"SERVICE_MODE": "plan-v1",
 			"LOG_LEVEL":    "debug",
-		},
-		ProjectedFiles: []workload.ProjectedFile{
-			{MountPath: "/etc/demo/config.yaml", Content: "mode: plan-v1\n", Mode: 0o644},
-			{MountPath: "/etc/demo/token", Content: "token-v1", Mode: 0o400, Sensitive: true},
 		},
 		ContainerPort:   8080,
 		ReadinessPath:   "/healthz",
@@ -49,15 +44,6 @@ func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 	}
 	if work.Env["SERVICE_MODE"] != "plan-v1" || work.Env["LOG_LEVEL"] != "debug" {
 		t.Fatalf("work env = %+v, want execution plan env", work.Env)
-	}
-	if len(work.ProjectedFiles) != 2 {
-		t.Fatalf("work projected files len = %d, want 2", len(work.ProjectedFiles))
-	}
-	if work.ProjectedFiles[0].MountPath != "/etc/demo/config.yaml" || work.ProjectedFiles[0].Content != "mode: plan-v1\n" {
-		t.Fatalf("unexpected first projected file: %+v", work.ProjectedFiles[0])
-	}
-	if work.ProjectedFiles[1].MountPath != "/etc/demo/token" || work.ProjectedFiles[1].Content != "token-v1" || !work.ProjectedFiles[1].Sensitive {
-		t.Fatalf("unexpected second projected file: %+v", work.ProjectedFiles[1])
 	}
 }
 

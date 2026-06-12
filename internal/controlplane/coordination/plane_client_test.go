@@ -146,9 +146,6 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		ContainerPort:     8080,
 		ReadinessPath:     "/healthz",
 		InstanceClass:     "small",
-		ProjectedFiles: []*cloudplanev1.ExecutionProjectedFile{
-			{MountPath: "/etc/app/config.yaml", Content: "app: demo", Mode: 0444},
-		},
 	})
 	if err != nil {
 		t.Fatalf("ApplyExecutionPlan returned error: %v", err)

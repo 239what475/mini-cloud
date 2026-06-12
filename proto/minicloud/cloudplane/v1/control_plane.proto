@@ -59,13 +59,6 @@ message PlaneSnapshot {
   repeated PlaneExecutionSnapshot executions = 5;
 }
 
-message ExecutionProjectedFile {
-  string mount_path = 1 [json_name = "mountPath"];
-  string content = 2;
-  uint32 mode = 3;
-  bool sensitive = 4;
-}
-
 message ExecutionImageCredential {
   string server = 1;
   string username = 2;
@@ -81,7 +74,6 @@ message ApplyExecutionPlanRequest {
   repeated string command = 6;
   repeated string args = 7;
   map<string, string> env = 8;
-  repeated ExecutionProjectedFile projected_files = 9 [json_name = "projectedFiles"];
   ExecutionImageCredential image_credential = 10 [json_name = "imageCredential"];
   int32 container_port = 11 [json_name = "containerPort"];
   string readiness_path = 12 [json_name = "readinessPath"];

@@ -14,7 +14,6 @@ import (
 	"mini-cloud/internal/nodeagent/runtime"
 	"mini-cloud/internal/nodeagent/workloadlogs"
 	"mini-cloud/internal/transport"
-	"mini-cloud/internal/workload"
 )
 
 type readinessWaiter interface {
@@ -262,7 +261,6 @@ func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 		Command:         append([]string(nil), item.GetCommand()...),
 		Args:            append([]string(nil), item.GetArgs()...),
 		Env:             env,
-		ProjectedFiles:  projectedFilesFromProto(item.GetProjectedFiles()),
 		ImageCredential: convertExecutionImageCredential(item.GetImageCredential()),
 		ContainerPort:   int(item.GetContainerPort()),
 		HostBindIP:      e.opts.Node.PrivateIP,
@@ -545,38 +543,5 @@ func validateWorkItem(item *nodeagentv1.WorkItem) error {
 	if !strings.HasPrefix(readinessPath, "/") {
 		return fmt.Errorf("readinessPath must start with /")
 	}
-	for _, item := range item.GetProjectedFiles() {
-		if item == nil {
-			continue
-		}
-		file := workload.ProjectedFile{
-			MountPath: item.GetMountPath(),
-			Content:   item.GetContent(),
-			Mode:      item.GetMode(),
-			Sensitive: item.GetSensitive(),
-		}
-		if err := file.Validate(); err != nil {
-			return err
-		}
-	}
 	return nil
-}
-
-func projectedFilesFromProto(items []*nodeagentv1.ProjectedFile) []workload.ProjectedFile {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]workload.ProjectedFile, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, workload.ProjectedFile{
-			MountPath: item.GetMountPath(),
-			Content:   item.GetContent(),
-			Mode:      item.GetMode(),
-			Sensitive: item.GetSensitive(),
-		})
-	}
-	return out
 }

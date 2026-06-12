@@ -8,7 +8,6 @@ import (
 	"mini-cloud/internal/cloudplane/infra/store"
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/workload"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -51,7 +50,6 @@ func (s *executionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 		Command:           append([]string(nil), req.GetCommand()...),
 		Args:              append([]string(nil), req.GetArgs()...),
 		Env:               env,
-		ProjectedFiles:    projectedFilesFromProto(req.GetProjectedFiles()),
 		ContainerPort:     int(req.GetContainerPort()),
 		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
 		CPUMilliRequest:   cpuMilliRequest,
@@ -89,23 +87,4 @@ func (s *executionServer) DeleteExecutionPlan(ctx context.Context, req *cloudpla
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: true}, nil
-}
-
-func projectedFilesFromProto(items []*cloudplanev1.ExecutionProjectedFile) []workload.ProjectedFile {
-	if len(items) == 0 {
-		return nil
-	}
-	out := make([]workload.ProjectedFile, 0, len(items))
-	for _, item := range items {
-		if item == nil {
-			continue
-		}
-		out = append(out, workload.ProjectedFile{
-			MountPath: strings.TrimSpace(item.GetMountPath()),
-			Content:   item.GetContent(),
-			Mode:      item.GetMode(),
-			Sensitive: item.GetSensitive(),
-		})
-	}
-	return out
 }

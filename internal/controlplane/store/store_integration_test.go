@@ -10,7 +10,6 @@ import (
 	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	"mini-cloud/internal/testutil"
-	"mini-cloud/internal/workload"
 )
 
 func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
@@ -123,7 +122,7 @@ func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
 	}
 }
 
-func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
+func TestIntegrationCreateServicePersistsSecretEnvAndRegistryCredential(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
@@ -155,24 +154,10 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 				Username: "cliproxy",
 				Password: "registry-token",
 			},
-			Files: []workload.ProjectedFile{
-				{
-					MountPath: "/etc/cliproxy/config.yaml",
-					Content:   "listen: :8317\n",
-				},
-				{
-					MountPath: "/etc/cliproxy/auth/token",
-					Content:   "token-v1",
-					Sensitive: true,
-				},
-			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
-	}
-	if len(serviceItem.Spec.Files) != 2 {
-		t.Fatalf("service files len = %d, want 2", len(serviceItem.Spec.Files))
 	}
 	if serviceItem.Spec.SecretEnv["CLIPROXY_TOKEN"] != "token-v1" {
 		t.Fatalf("service secret env was not persisted")
@@ -185,20 +170,11 @@ func TestIntegrationCreateServicePersistsProjectedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetService returned error: %v", err)
 	}
-	if len(reloaded.Spec.Files) != 2 {
-		t.Fatalf("reloaded files len = %d, want 2", len(reloaded.Spec.Files))
-	}
 	if reloaded.Spec.RegistryCredential == nil ||
 		reloaded.Spec.RegistryCredential.Server != "ghcr.io" ||
 		reloaded.Spec.RegistryCredential.Username != "cliproxy" ||
 		reloaded.Spec.RegistryCredential.Password != "registry-token" {
 		t.Fatalf("unexpected reloaded registry credential: %+v", reloaded.Spec.RegistryCredential)
-	}
-	if reloaded.Spec.Files[0].MountPath != "/etc/cliproxy/auth/token" {
-		t.Fatalf("first file mountPath = %q, want /etc/cliproxy/auth/token", reloaded.Spec.Files[0].MountPath)
-	}
-	if !reloaded.Spec.Files[0].Sensitive {
-		t.Fatalf("first file should be sensitive")
 	}
 }
 

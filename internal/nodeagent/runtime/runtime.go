@@ -1,10 +1,6 @@
 package runtime
 
-import (
-	"time"
-
-	"mini-cloud/internal/workload"
-)
+import "time"
 
 type RunInput struct {
 	ContainerName   string
@@ -16,7 +12,6 @@ type RunInput struct {
 	Command         []string
 	Args            []string
 	Env             map[string]string
-	ProjectedFiles  []workload.ProjectedFile
 	ImageCredential *ImageCredential
 	ContainerPort   int
 	HostBindIP      string

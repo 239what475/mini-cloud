@@ -12,7 +12,6 @@ import (
 	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/workload"
 
 	"github.com/gin-gonic/gin"
 )
@@ -29,7 +28,6 @@ type serviceSpec struct {
 	Env                map[string]string          `json:"env,omitempty"`
 	SecretEnvKeys      []string                   `json:"secretEnvKeys,omitempty"`
 	RegistryCredential *registryCredentialSummary `json:"registryCredential,omitempty"`
-	Files              []workload.ProjectedFile   `json:"files,omitempty"`
 }
 
 type registryCredentialSummary struct {
@@ -80,7 +78,6 @@ type serviceSpecInput struct {
 	Env                map[string]string          `json:"env"`
 	SecretEnv          map[string]string          `json:"secretEnv"`
 	RegistryCredential *registryCredentialRequest `json:"registryCredential"`
-	Files              []workload.ProjectedFile   `json:"files"`
 }
 
 type registryCredentialRequest struct {
@@ -279,7 +276,6 @@ func buildServiceResource(service model.Service) serviceResource {
 			Env:                service.Spec.Env,
 			SecretEnvKeys:      sortedKeys(service.Spec.SecretEnv),
 			RegistryCredential: buildRegistryCredentialSummary(service.Spec.RegistryCredential),
-			Files:              workload.CloneProjectedFiles(service.Spec.Files),
 		},
 		Status: serviceStatus{
 			ObservedGeneration: service.Status.Observed.ObservedGeneration,
@@ -362,7 +358,6 @@ func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 		Env:                s.Env,
 		SecretEnv:          s.SecretEnv,
 		RegistryCredential: s.RegistryCredential.toRegistryCredential(),
-		Files:              workload.CloneProjectedFiles(s.Files),
 	}
 }
 

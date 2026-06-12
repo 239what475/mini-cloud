@@ -3,15 +3,10 @@ package runtime
 import (
 	"encoding/base64"
 	"encoding/json"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/docker/docker/api/types/registry"
-
-	"mini-cloud/internal/workload"
 )
 
 func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T) {
@@ -149,129 +144,5 @@ func TestLogLineWriterParsesTimestampedLinesAcrossWrites(t *testing.T) {
 	}
 	if emitted[1].Timestamp.Format(time.RFC3339Nano) != "2026-04-16T12:00:01Z" {
 		t.Fatalf("second emitted timestamp = %s, want 2026-04-16T12:00:01Z", emitted[1].Timestamp.Format(time.RFC3339Nano))
-	}
-}
-
-func TestPrepareProjectedMountsMaterializesReadonlyFiles(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	executionDir, mounts, err := prepareProjectedMountsInRoot(root, RunInput{
-		ExecutionID: "exec-demo",
-		ProjectedFiles: []workload.ProjectedFile{
-			{
-				MountPath: "/etc/cliproxy/config.yaml",
-				Content:   "listen: :8317\n",
-			},
-			{
-				MountPath: "/etc/cliproxy/auth/token",
-				Content:   "secret-token",
-				Sensitive: true,
-			},
-		},
-	})
-	if err != nil {
-		t.Fatalf("prepareProjectedMounts returned error: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(executionDir) }()
-	wantExecutionDir := filepath.Join(root, projectedExecutionsDir, "exec-demo")
-	if executionDir != wantExecutionDir {
-		t.Fatalf("projected execution dir = %q, want %q", executionDir, wantExecutionDir)
-	}
-
-	if len(mounts) != 2 {
-		t.Fatalf("mounts len = %d, want 2", len(mounts))
-	}
-	if mounts[0].Target != "/etc/cliproxy/auth/token" || !mounts[0].ReadOnly {
-		t.Fatalf("first mount = %+v, want readonly auth token mount", mounts[0])
-	}
-	if mounts[0].Source != filepath.Join(executionDir, projectedFilesDir, "etc", "cliproxy", "auth", "token") {
-		t.Fatalf("first mount source = %q, want deterministic execution files path", mounts[0].Source)
-	}
-	if mounts[1].Target != "/etc/cliproxy/config.yaml" || !mounts[1].ReadOnly {
-		t.Fatalf("second mount = %+v, want readonly config mount", mounts[1])
-	}
-
-	tokenPath := filepath.Join(executionDir, projectedFilesDir, "etc", "cliproxy", "auth", "token")
-	tokenContent, err := os.ReadFile(tokenPath)
-	if err != nil {
-		t.Fatalf("ReadFile(token) returned error: %v", err)
-	}
-	if string(tokenContent) != "secret-token" {
-		t.Fatalf("token content = %q, want secret-token", string(tokenContent))
-	}
-	info, err := os.Stat(tokenPath)
-	if err != nil {
-		t.Fatalf("Stat(token) returned error: %v", err)
-	}
-	if info.Mode().Perm() != os.FileMode(workload.DefaultSecretFileMode) {
-		t.Fatalf("token mode = %#o, want %#o", info.Mode().Perm(), workload.DefaultSecretFileMode)
-	}
-	entries, err := os.ReadDir(executionDir)
-	if err != nil {
-		t.Fatalf("ReadDir(executionDir) returned error: %v", err)
-	}
-	for _, entry := range entries {
-		if strings.HasPrefix(entry.Name(), projectedStagingPrefix) {
-			t.Fatalf("staging dir %q was not cleaned up", entry.Name())
-		}
-	}
-}
-
-func TestPrepareProjectedMountsRejectsEmptyRoot(t *testing.T) {
-	t.Parallel()
-
-	_, _, err := prepareProjectedMountsInRoot("", RunInput{
-		ExecutionID: "exec-demo",
-		ProjectedFiles: []workload.ProjectedFile{{
-			MountPath: "/etc/workload/config.yaml",
-			Content:   "demo",
-		}},
-	})
-	if err == nil {
-		t.Fatal("expected error for empty projected files root dir")
-	}
-}
-
-func TestPrepareProjectedMountsRequiresSafeExecutionID(t *testing.T) {
-	t.Parallel()
-
-	_, _, err := prepareProjectedMountsInRoot(t.TempDir(), RunInput{
-		ExecutionID: "../exec-demo",
-		ProjectedFiles: []workload.ProjectedFile{{
-			MountPath: "/etc/workload/config.yaml",
-			Content:   "demo",
-		}},
-	})
-	if err == nil {
-		t.Fatal("expected error for unsafe executionID")
-	}
-}
-
-func TestDockerEngineCloseCleansTrackedProjectionDirs(t *testing.T) {
-	t.Parallel()
-
-	root := t.TempDir()
-	projectionDir := filepath.Join(root, projectedExecutionsDir, "exec-close")
-	if err := os.MkdirAll(filepath.Join(projectionDir, projectedFilesDir), 0o700); err != nil {
-		t.Fatalf("MkdirAll(projectionDir) returned error: %v", err)
-	}
-
-	engine := &Docker{
-		projectionDirs: map[string]trackedProjection{
-			"container-close": {
-				ExecutionID: "exec-close",
-				Dir:         projectionDir,
-			},
-		},
-	}
-	if err := engine.Close(); err != nil {
-		t.Fatalf("Close returned error: %v", err)
-	}
-	if _, err := os.Stat(projectionDir); !os.IsNotExist(err) {
-		t.Fatalf("projection dir still exists after Close, stat err=%v", err)
-	}
-	if len(engine.projectionDirs) != 0 {
-		t.Fatalf("tracked projection dirs len = %d, want 0", len(engine.projectionDirs))
 	}
 }

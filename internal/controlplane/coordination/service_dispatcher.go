@@ -11,7 +11,6 @@ import (
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/workload"
 )
 
 var (
@@ -134,7 +133,6 @@ func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPl
 		Command:           append([]string(nil), service.Spec.Command...),
 		Args:              append([]string(nil), service.Spec.Args...),
 		Env:               env,
-		ProjectedFiles:    executionProjectedFiles(service.Spec.Files),
 		ImageCredential:   executionImageCredential(service.Spec.RegistryCredential),
 		ContainerPort:     int32(service.Spec.DefaultPort),
 		ReadinessPath:     service.Spec.ReadinessPath,
@@ -152,17 +150,4 @@ func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplan
 		Username: input.Username,
 		Password: input.Password,
 	}
-}
-
-func executionProjectedFiles(files []workload.ProjectedFile) []*cloudplanev1.ExecutionProjectedFile {
-	out := make([]*cloudplanev1.ExecutionProjectedFile, 0, len(files))
-	for _, item := range files {
-		out = append(out, &cloudplanev1.ExecutionProjectedFile{
-			MountPath: item.MountPath,
-			Content:   item.Content,
-			Mode:      item.Mode,
-			Sensitive: item.Sensitive,
-		})
-	}
-	return out
 }

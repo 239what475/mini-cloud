@@ -11,7 +11,6 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 	nodeagentv1 "mini-cloud/internal/gen/proto/minicloud/nodeagent/v1"
 	"mini-cloud/internal/transport"
-	"mini-cloud/internal/workload"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -116,33 +115,22 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 		return &nodeagentv1.PollWorkResponse{}, nil
 	}
 
-	projectedFiles := make([]*nodeagentv1.ProjectedFile, 0, len(item.ProjectedFiles))
-	for _, file := range workload.CloneProjectedFiles(item.ProjectedFiles) {
-		projectedFiles = append(projectedFiles, &nodeagentv1.ProjectedFile{
-			MountPath: file.MountPath,
-			Content:   file.Content,
-			Mode:      file.Mode,
-			Sensitive: file.Sensitive,
-		})
-	}
-
 	work := &nodeagentv1.WorkItem{
-		Action:         item.Action,
-		ExecutionId:    item.ExecutionID,
-		PlanId:         item.PlanID,
-		NodeId:         item.NodeID,
-		ServiceId:      item.ServiceID,
-		ServiceName:    item.ServiceName,
-		Image:          item.Image,
-		Command:        append([]string(nil), item.Command...),
-		Args:           append([]string(nil), item.Args...),
-		Env:            maps.Clone(item.Env),
-		ProjectedFiles: projectedFiles,
-		ContainerPort:  int32(item.ContainerPort),
-		ReadinessPath:  item.ReadinessPath,
-		ContainerName:  item.ContainerName,
-		ContainerId:    item.ContainerID,
-		HostPort:       int32(item.HostPort),
+		Action:        item.Action,
+		ExecutionId:   item.ExecutionID,
+		PlanId:        item.PlanID,
+		NodeId:        item.NodeID,
+		ServiceId:     item.ServiceID,
+		ServiceName:   item.ServiceName,
+		Image:         item.Image,
+		Command:       append([]string(nil), item.Command...),
+		Args:          append([]string(nil), item.Args...),
+		Env:           maps.Clone(item.Env),
+		ContainerPort: int32(item.ContainerPort),
+		ReadinessPath: item.ReadinessPath,
+		ContainerName: item.ContainerName,
+		ContainerId:   item.ContainerID,
+		HostPort:      int32(item.HostPort),
 	}
 	if item.ImageCredential != nil {
 		work.ImageCredential = &nodeagentv1.ImageCredential{

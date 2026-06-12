@@ -34,7 +34,6 @@ type Runner struct {
 type containerRuntime interface {
 	work.ContainerRuntime
 	ResetNode(context.Context, string) error
-	GarbageCollect(context.Context) error
 	Close() error
 }
 
@@ -324,9 +323,6 @@ func (r *Runner) resetRuntimeOnce(ctx context.Context, nodeID string) error {
 	gcCtx, cancel := context.WithTimeout(ctx, agentconfig.CleanupHardTimeout)
 	defer cancel()
 	if err := r.containerRuntime.ResetNode(gcCtx, nodeID); err != nil {
-		return err
-	}
-	if err := r.containerRuntime.GarbageCollect(gcCtx); err != nil {
 		return err
 	}
 	r.mu.Lock()

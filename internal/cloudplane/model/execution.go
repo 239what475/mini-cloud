@@ -4,8 +4,6 @@ import (
 	"errors"
 	"strings"
 	"time"
-
-	"mini-cloud/internal/workload"
 )
 
 const (
@@ -36,7 +34,6 @@ type PlanInput struct {
 	Command           []string
 	Args              []string
 	Env               map[string]string
-	ProjectedFiles    []workload.ProjectedFile
 	ImageCredential   *ImageCredential
 	ContainerPort     int
 	ReadinessPath     string
@@ -96,11 +93,6 @@ func (in PlanInput) Validate() error {
 	if in.Exposure != ExposurePublic && in.Exposure != ExposurePrivate {
 		return errors.New("exposure must be public or private")
 	}
-	for _, item := range in.ProjectedFiles {
-		if err := item.Validate(); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -139,7 +131,6 @@ type WorkItem struct {
 	Command             []string
 	Args                []string
 	Env                 map[string]string
-	ProjectedFiles      []workload.ProjectedFile
 	ImageCredential     *ImageCredential
 	SupersededExecution *SupersededExecution
 	ContainerPort       int
