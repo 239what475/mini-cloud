@@ -247,7 +247,7 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		platformPublicIP = strings.TrimSpace(out.InstallEnv.Value.PlatformPublicIP)
 	}
 	if ingressEnabled && platformPublicIP == "" {
-		return installFiles{}, fmt.Errorf("platform public IP is required when ingress frontDoor is configured")
+		return installFiles{}, fmt.Errorf("platform public IP is required when ingress is enabled")
 	}
 
 	cloudPlaneConfig, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{

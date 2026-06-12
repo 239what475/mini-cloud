@@ -136,10 +136,6 @@ func (c *tencentCDNClient) DeleteDomain(ctx context.Context, host string) error 
 	return nil
 }
 
-func (c *tencentCDNClient) OwnsCNAME(value string) bool {
-	return strings.HasSuffix(trimCNAME(value), ".cdn.dnsv1.com")
-}
-
 func (c *tencentCDNClient) getDomain(ctx context.Context, host string) (cdnDomain, error) {
 	req := cdn.NewDescribeDomainsRequest()
 	req.Offset = tccommon.Int64Ptr(0)

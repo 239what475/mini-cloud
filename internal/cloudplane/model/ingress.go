@@ -17,7 +17,6 @@ type FrontDoorDNSRecord struct {
 	Subdomain string
 	Type      string
 	Value     string
-	Action    string
 }
 
 type ManagedFrontDoorDomain struct {

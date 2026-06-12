@@ -26,6 +26,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 		logger = slog.Default()
 	}
 	gin.SetMode(gin.ReleaseMode)
+	gin.EnableJsonDecoderDisallowUnknownFields()
 	router := gin.New()
 	router.Use(ginRecoverPanics(logger), ginRequestLogger(logger))
 

@@ -239,7 +239,7 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
-	frontDoorConfigured := strings.TrimSpace(c.Ingress.PublicOrigin) != ""
+	publicOriginConfigured := strings.TrimSpace(c.Ingress.PublicOrigin) != ""
 	if strings.TrimSpace(c.Ingress.CaddyAdminURL) != "" {
 		if err := validateCaddyAdminURL(c.Ingress.CaddyAdminURL); err != nil {
 			return err
@@ -249,8 +249,8 @@ func (c Config) Validate() error {
 		if strings.TrimSpace(c.Ingress.CaddyAdminURL) == "" {
 			return fmt.Errorf("ingress.caddyAdminURL is required when ingress is enabled")
 		}
-	} else if frontDoorConfigured {
-		return fmt.Errorf("ingress.baseDomain is required when ingress.frontDoor is configured")
+	} else if publicOriginConfigured {
+		return fmt.Errorf("ingress.baseDomain is required when ingress.publicOrigin is configured")
 	}
 	if strings.TrimSpace(c.NodeAgent.BinaryURL) == "" {
 		return fmt.Errorf("nodeAgent.binaryUrl is required")

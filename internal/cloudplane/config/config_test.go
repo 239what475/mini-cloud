@@ -198,7 +198,7 @@ func TestValidateAcceptsCaddyAdminURLWithoutIngressDomain(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresBaseDomainWhenFrontDoorConfigured(t *testing.T) {
+func TestValidateRequiresBaseDomainWhenPublicOriginConfigured(t *testing.T) {
 	t.Parallel()
 
 	cfg := validConfig()

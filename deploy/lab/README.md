@@ -6,7 +6,7 @@
 - 每个 cloud-plane 对应一个 `planes[]` 配置
 - 每个 plane 使用独立 Terraform workspace
 - service 必须显式指定 `planeID`
-- 公开 service 使用 `<service-name>.<ingressBaseDomain>`，DNSPod CNAME 指向对应云厂商 CDN
+- 公开 service 使用 `<service-name>.<ingressBaseDomain>`，control-plane 写 DNSPod 记录，CNAME 指向对应云厂商 CDN
 
 ## Config
 
@@ -79,11 +79,11 @@ go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 
 - cloud-plane 入口机上的 cloud-plane、Caddy、Tinyproxy 和 artifact
 - 当前 plane 创建的 worker node
-- 当前 plane 创建的 CDN 域名和 DNSPod 记录
+- 当前 plane 创建的 CDN 域名
 - Terraform 管理的 node 网络资源
 - 腾讯云 Lighthouse 模式下的防火墙规则和 CCN 关联
 
-所有 plane 回收完成后，`destroy` 再卸载 control-plane。
+`destroy` 也会按 provider 兜底删除实验域名下属于当前 plane CDN 的 DNSPod CNAME，避免真实云实验留下入口记录。所有 plane 回收完成后，`destroy` 再卸载 control-plane。
 
 ## Requirements
 

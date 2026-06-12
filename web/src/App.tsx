@@ -120,7 +120,7 @@ type ServiceFormState = {
   envText: string;
 };
 
-type ServiceEditFormState = Omit<ServiceFormState, "name">;
+type ServiceEditFormState = Omit<ServiceFormState, "name" | "planeID">;
 
 async function fetchJSON<T>(
   input: RequestInfo,
@@ -176,7 +176,6 @@ function defaultCreateServiceForm(): ServiceFormState {
 function defaultEditServiceForm(): ServiceEditFormState {
   return {
     displayName: "",
-    planeID: "",
     instanceClass: "small",
     exposure: "public",
     image: "nginx:1.27-alpine",
@@ -191,7 +190,6 @@ function defaultEditServiceForm(): ServiceEditFormState {
 function editFormFromService(service: ServiceResource): ServiceEditFormState {
   return {
     displayName: service.metadata.displayName,
-    planeID: service.spec.planeID,
     instanceClass: service.spec.instanceClass,
     exposure: service.spec.exposure,
     image: service.spec.image,
@@ -268,9 +266,25 @@ function parseIntegerField(
   return value;
 }
 
-function serviceSpecPayload(form: ServiceEditFormState) {
+function serviceSpecPayload(form: ServiceFormState) {
   return {
     planeID: form.planeID.trim(),
+    instanceClass: form.instanceClass,
+    exposure: form.exposure,
+    image: form.image.trim(),
+    command: parseLines(form.commandText),
+    args: parseLines(form.argsText),
+    defaultPort: parseIntegerField("容器端口", form.defaultPort, {
+      min: 1,
+      max: 65535,
+    }),
+    readinessPath: form.readinessPath.trim(),
+    env: parseKeyValueText(form.envText),
+  };
+}
+
+function workloadSpecPayload(form: ServiceEditFormState) {
+  return {
     instanceClass: form.instanceClass,
     exposure: form.exposure,
     image: form.image.trim(),
@@ -296,7 +310,7 @@ function toCreateServicePayload(form: ServiceFormState) {
 function toUpdateServicePayload(form: ServiceEditFormState) {
   return {
     displayName: form.displayName.trim(),
-    spec: serviceSpecPayload(form),
+    spec: workloadSpecPayload(form),
   };
 }
 
@@ -980,7 +994,7 @@ function App() {
                 <label>
                   <span>Cloud plane</span>
                   <input
-                    value={planeLabel(planes, editForm.planeID)}
+                    value={planeLabel(planes, currentService.spec.planeID)}
                     readOnly
                   />
                 </label>

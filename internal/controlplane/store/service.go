@@ -31,7 +31,6 @@ var (
 	errInvalidReadinessPath      = errors.New("readinessPath must start with /")
 	errInvalidEnvironmentKey     = errors.New("env keys must not be empty")
 	errPlaneIDRequired           = errors.New("planeID is required")
-	errServicePlaneImmutable     = errors.New("planeID cannot be changed after service creation")
 	errInvalidInstanceClass      = errors.New("instanceClass must be one of small, medium, large")
 	errInvalidServicePhase       = errors.New("service phase is invalid")
 	errInvalidServiceRunPhase    = errors.New("service run phase is invalid")
@@ -72,7 +71,7 @@ type CreateServiceInput struct {
 
 type UpdateServiceInput struct {
 	DisplayName string
-	Spec        model.ServiceSpec
+	Spec        model.WorkloadSpec
 }
 
 type UpdateServiceStatusInput struct {
@@ -127,20 +126,11 @@ func (in CreateServiceInput) validate() error {
 	return validateServiceSpec(in.Spec)
 }
 
-func (in UpdateServiceInput) validate(current model.Service) error {
-	if strings.TrimSpace(current.Metadata.Name) == "" {
-		return invalidInput(errServiceNameRequired)
-	}
-	if !serviceNamePattern.MatchString(strings.TrimSpace(current.Metadata.Name)) {
-		return invalidInput(errInvalidServiceName)
-	}
+func (in UpdateServiceInput) validate() error {
 	if strings.TrimSpace(in.DisplayName) == "" {
 		return invalidInput(errDisplayNameRequired)
 	}
-	if strings.TrimSpace(in.Spec.PlaneID) != strings.TrimSpace(current.Spec.PlaneID) {
-		return invalidInput(errServicePlaneImmutable)
-	}
-	return validateServiceSpec(in.Spec)
+	return validateWorkloadSpec(in.Spec)
 }
 
 func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (model.Service, error) {
@@ -402,14 +392,22 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := input.validate(current); err != nil {
+	if err := input.validate(); err != nil {
 		return model.Service{}, err
 	}
-	specColumns, err := buildServiceSpecColumns(input.Spec)
+	nextSpec := model.ServiceSpec{
+		PlaneID:       current.Spec.PlaneID,
+		InstanceClass: input.Spec.InstanceClass,
+		Exposure:      input.Spec.Exposure,
+		Image:         input.Spec.Image,
+		Command:       input.Spec.Command,
+		Args:          input.Spec.Args,
+		DefaultPort:   input.Spec.DefaultPort,
+		ReadinessPath: input.Spec.ReadinessPath,
+		Env:           input.Spec.Env,
+	}
+	specColumns, err := buildServiceSpecColumns(nextSpec)
 	if err != nil {
-		return model.Service{}, err
-	}
-	if _, err := s.GetPlane(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
 	nextGeneration := current.Metadata.Generation + 1
@@ -774,8 +772,27 @@ func decodeServiceRun(data []byte) (model.RunStatus, error) {
 }
 
 func validateServiceSpec(spec model.ServiceSpec) error {
-	if _, _, err := resolveServicePlacementFields(spec.PlaneID, spec.InstanceClass); err != nil {
-		return invalidInput(err)
+	if strings.TrimSpace(spec.PlaneID) == "" {
+		return invalidInput(errPlaneIDRequired)
+	}
+	if err := validateWorkloadSpec(model.WorkloadSpec{
+		InstanceClass: spec.InstanceClass,
+		Exposure:      spec.Exposure,
+		Image:         spec.Image,
+		Command:       spec.Command,
+		Args:          spec.Args,
+		DefaultPort:   spec.DefaultPort,
+		ReadinessPath: spec.ReadinessPath,
+		Env:           spec.Env,
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateWorkloadSpec(spec model.WorkloadSpec) error {
+	if !model.IsInstanceClass(spec.InstanceClass) {
+		return invalidInput(errInvalidInstanceClass)
 	}
 	resolvedExposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
 	if resolvedExposure == "" {
@@ -802,10 +819,6 @@ func validateServiceSpec(spec model.ServiceSpec) error {
 }
 
 func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error) {
-	planeID, instanceClass, err := resolveServicePlacementFields(spec.PlaneID, spec.InstanceClass)
-	if err != nil {
-		return serviceSpecColumns{}, err
-	}
 	exposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
 	if exposure == "" {
 		exposure = model.ExposurePublic
@@ -835,8 +848,8 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 		return serviceSpecColumns{}, fmt.Errorf("marshal service env: %w", err)
 	}
 	return serviceSpecColumns{
-		PlaneID:       planeID,
-		InstanceClass: instanceClass,
+		PlaneID:       strings.TrimSpace(spec.PlaneID),
+		InstanceClass: spec.InstanceClass,
 		Exposure:      exposure,
 		Image:         strings.TrimSpace(spec.Image),
 		CommandJSON:   commandJSON,
@@ -845,14 +858,4 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 		ReadinessPath: strings.TrimSpace(spec.ReadinessPath),
 		EnvJSON:       envJSON,
 	}, nil
-}
-
-func resolveServicePlacementFields(planeID string, instanceClass string) (string, string, error) {
-	if strings.TrimSpace(planeID) == "" {
-		return "", "", errPlaneIDRequired
-	}
-	if !model.IsInstanceClass(instanceClass) {
-		return "", "", errInvalidInstanceClass
-	}
-	return strings.TrimSpace(planeID), instanceClass, nil
 }

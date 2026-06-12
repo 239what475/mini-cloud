@@ -122,7 +122,7 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput(planeItem.ID, "API v2", "nginx:1.28-alpine"))
+	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput("API v2", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestUpdateKeepsServiceRetryableWhenApplyFails(t *testing.T) {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 
-	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput(planeItem.ID, "Update Offline v2", "nginx:1.28-alpine"))
+	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput("Update Offline v2", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -183,13 +183,11 @@ func TestUpdateKeepsServiceRetryableWhenApplyFails(t *testing.T) {
 	}
 }
 
-func TestUpdateRejectsPlaneIDChange(t *testing.T) {
+func TestUpdateKeepsExistingPlaneBinding(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServerA := startServiceOperationsPlane(t)
-	planeServerB := startServiceOperationsPlane(t)
 	planeA := mustCreateReadyPlane(t, db, "plane-move-a", planeServerA.endpoint)
-	planeB := mustCreateReadyPlane(t, db, "plane-move-b", planeServerB.endpoint)
 
 	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
 
@@ -197,14 +195,16 @@ func TestUpdateRejectsPlaneIDChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	if _, err := operations.Update(ctx, created.Metadata.ID, updateInput(planeB.ID, "Move", "nginx:1.28-alpine")); err == nil {
-		t.Fatalf("Update returned nil error, want immutable plane error")
+	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput("Move", "nginx:1.28-alpine"))
+	if err != nil {
+		t.Fatalf("Update returned error: %v", err)
 	}
-	if len(planeServerA.applyRequests()) != 1 {
-		t.Fatalf("plane A apply requests = %d, want 1 create request", len(planeServerA.applyRequests()))
+	if updated.Spec.PlaneID != planeA.ID {
+		t.Fatalf("updated planeID = %q, want original plane %s", updated.Spec.PlaneID, planeA.ID)
 	}
-	if len(planeServerB.applyRequests()) != 0 {
-		t.Fatalf("plane B apply requests = %d, want 0", len(planeServerB.applyRequests()))
+	applyRequests := planeServerA.applyRequests()
+	if len(applyRequests) != 2 {
+		t.Fatalf("plane A apply requests = %d, want create and update requests", len(applyRequests))
 	}
 	if len(planeServerA.deleteRequests()) != 0 {
 		t.Fatalf("plane A delete requests = %d, want 0", len(planeServerA.deleteRequests()))
@@ -362,13 +362,23 @@ func createInput(planeID string, name string, displayName string, image string) 
 	return controlplanestore.CreateServiceInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func updateInput(planeID string, displayName string, image string) controlplanestore.UpdateServiceInput {
-	return controlplanestore.UpdateServiceInput{DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func updateInput(displayName string, image string) controlplanestore.UpdateServiceInput {
+	return controlplanestore.UpdateServiceInput{DisplayName: displayName, Spec: workloadSpec(image)}
 }
 
 func serviceSpec(planeID string, image string) model.ServiceSpec {
 	return model.ServiceSpec{
 		PlaneID:       planeID,
+		InstanceClass: model.InstanceClassSmall,
+		Exposure:      "public",
+		Image:         image,
+		DefaultPort:   80,
+		ReadinessPath: "/",
+	}
+}
+
+func workloadSpec(image string) model.WorkloadSpec {
+	return model.WorkloadSpec{
 		InstanceClass: model.InstanceClassSmall,
 		Exposure:      "public",
 		Image:         image,

@@ -614,8 +614,7 @@ func TestIntegrationUpsertServiceSnapshotIgnoresStaleGeneration(t *testing.T) {
 	}
 	updated, err := db.Store.UpdateService(ctx, serviceItem.Metadata.ID, controlplanestore.UpdateServiceInput{
 		DisplayName: "Stale Cache API",
-		Spec: model.ServiceSpec{
-			PlaneID:       planeItem.ID,
+		Spec: model.WorkloadSpec{
 			InstanceClass: model.InstanceClassSmall,
 			Exposure:      model.ExposurePublic,
 			Image:         "nginx:1.28-alpine",
@@ -738,8 +737,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 
 	updated, err := db.Store.UpdateService(ctx, serviceItem.Metadata.ID, controlplanestore.UpdateServiceInput{
 		DisplayName: "Run Reset API v2",
-		Spec: model.ServiceSpec{
-			PlaneID:       planeItem.ID,
+		Spec: model.WorkloadSpec{
 			InstanceClass: model.InstanceClassSmall,
 			Exposure:      "public",
 			Image:         "ghcr.io/example/run-reset-api:v2",

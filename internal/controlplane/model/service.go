@@ -52,6 +52,17 @@ type ServiceSpec struct {
 	Env           map[string]string
 }
 
+type WorkloadSpec struct {
+	InstanceClass string
+	Exposure      string
+	Image         string
+	Command       []string
+	Args          []string
+	DefaultPort   int
+	ReadinessPath string
+	Env           map[string]string
+}
+
 type ServiceStatus struct {
 	DesiredState string
 	Observed     ServiceObservedStatus

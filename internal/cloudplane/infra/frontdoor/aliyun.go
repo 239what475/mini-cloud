@@ -125,10 +125,6 @@ func (c *aliyunCDNClient) DeleteDomain(_ context.Context, host string) error {
 	return nil
 }
 
-func (c *aliyunCDNClient) OwnsCNAME(value string) bool {
-	return strings.HasSuffix(trimCNAME(value), ".w.kunlunaq.com")
-}
-
 func (c *aliyunCDNClient) getDomain(host string) (cdnDomain, error) {
 	match := "full_match"
 	resp, err := c.client.DescribeUserDomains(&cdn20180510.DescribeUserDomainsRequest{

@@ -62,6 +62,17 @@ type serviceSpecInput struct {
 	ReadinessPath string            `json:"readinessPath"`
 	Env           map[string]string `json:"env"`
 }
+
+type serviceWorkloadSpecInput struct {
+	InstanceClass string            `json:"instanceClass"`
+	Exposure      string            `json:"exposure"`
+	Image         string            `json:"image"`
+	Command       []string          `json:"command"`
+	Args          []string          `json:"args"`
+	DefaultPort   int               `json:"defaultPort"`
+	ReadinessPath string            `json:"readinessPath"`
+	Env           map[string]string `json:"env"`
+}
 type serviceCreateRequest struct {
 	Name        string            `json:"name"`
 	DisplayName string            `json:"displayName"`
@@ -69,8 +80,8 @@ type serviceCreateRequest struct {
 }
 
 type serviceUpdateRequest struct {
-	DisplayName string            `json:"displayName"`
-	Spec        *serviceSpecInput `json:"spec"`
+	DisplayName string                    `json:"displayName"`
+	Spec        *serviceWorkloadSpecInput `json:"spec"`
 }
 
 var errServiceSpecRequired = errors.New("spec is required")
@@ -287,13 +298,26 @@ func (r serviceUpdateRequest) toUpdateInput() (store.UpdateServiceInput, error) 
 	}
 	return store.UpdateServiceInput{
 		DisplayName: strings.TrimSpace(r.DisplayName),
-		Spec:        r.Spec.toServiceSpec(),
+		Spec:        r.Spec.toWorkloadSpec(),
 	}, nil
 }
 
 func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 	return model.ServiceSpec{
 		PlaneID:       strings.TrimSpace(s.PlaneID),
+		InstanceClass: strings.TrimSpace(s.InstanceClass),
+		Exposure:      strings.TrimSpace(s.Exposure),
+		Image:         strings.TrimSpace(s.Image),
+		Command:       slices.Clone(s.Command),
+		Args:          slices.Clone(s.Args),
+		DefaultPort:   s.DefaultPort,
+		ReadinessPath: strings.TrimSpace(s.ReadinessPath),
+		Env:           s.Env,
+	}
+}
+
+func (s serviceWorkloadSpecInput) toWorkloadSpec() model.WorkloadSpec {
+	return model.WorkloadSpec{
 		InstanceClass: strings.TrimSpace(s.InstanceClass),
 		Exposure:      strings.TrimSpace(s.Exposure),
 		Image:         strings.TrimSpace(s.Image),
