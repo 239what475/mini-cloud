@@ -2,8 +2,6 @@ package controlplane
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -19,22 +17,17 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-const dbPingTimeout = 5 * time.Second
-
-var errDatabaseUnavailable = errors.New("database unavailable")
-
 type snapshotServer struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 
 	logger *slog.Logger
-	db     *sql.DB
 	store  *store.Store
 	config cloudplaneconfig.Config
 	auth   authenticator
 }
 
-func newSnapshotServer(logger *slog.Logger, db *sql.DB, stores *store.Store, cfg cloudplaneconfig.Config, auth authenticator) cloudplanev1.ControlPlaneSnapshotServiceServer {
-	return &snapshotServer{logger: logger, db: db, store: stores, config: cfg, auth: auth}
+func newSnapshotServer(logger *slog.Logger, stores *store.Store, cfg cloudplaneconfig.Config, auth authenticator) cloudplanev1.ControlPlaneSnapshotServiceServer {
+	return &snapshotServer{logger: logger, store: stores, config: cfg, auth: auth}
 }
 
 func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cloudplanev1.PlaneSnapshot, error) {
@@ -44,9 +37,6 @@ func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cl
 
 	snapshot, err := s.collectSnapshot(ctx)
 	if err != nil {
-		if errors.Is(err, errDatabaseUnavailable) {
-			return nil, status.Error(codes.Unavailable, "database ping failed")
-		}
 		s.logger.Error("build cloud-plane snapshot failed", "error", err)
 		return nil, status.Error(codes.Internal, "build cloud-plane snapshot failed")
 	}
@@ -55,13 +45,6 @@ func (s *snapshotServer) GetSnapshot(ctx context.Context, _ *emptypb.Empty) (*cl
 
 func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot, error) {
 	checkedAt := time.Now().UTC()
-
-	pingCtx, cancel := context.WithTimeout(ctx, dbPingTimeout)
-	defer cancel()
-	if err := s.db.PingContext(pingCtx); err != nil {
-		s.logger.Error("cloud-plane snapshot database ping failed", "error", err)
-		return nil, fmt.Errorf("%w: %v", errDatabaseUnavailable, err)
-	}
 
 	alertSignal, err := s.store.GetAlertSignal(ctx)
 	if err != nil {

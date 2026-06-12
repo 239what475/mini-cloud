@@ -74,7 +74,7 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 		Config:     cfg,
 		db:         db,
 		reconciler: cloudplanecontrol.NewReconciler(logger, stores, driver, localIngress, frontDoorService, cfg),
-		server:     cloudplaneapi.NewGRPCServer(cfg, logger, db, stores),
+		server:     cloudplaneapi.NewGRPCServer(cfg, logger, stores),
 	}, nil
 }
 

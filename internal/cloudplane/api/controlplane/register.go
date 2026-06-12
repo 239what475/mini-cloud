@@ -1,7 +1,6 @@
 package controlplane
 
 import (
-	"database/sql"
 	"log/slog"
 
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
@@ -11,11 +10,11 @@ import (
 	"google.golang.org/grpc"
 )
 
-func RegisterGRPC(grpcServer *grpc.Server, logger *slog.Logger, db *sql.DB, stores *store.Store, cfg cloudplaneconfig.Config) {
+func RegisterGRPC(grpcServer *grpc.Server, logger *slog.Logger, stores *store.Store, cfg cloudplaneconfig.Config) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	auth := newAuthenticator(cfg.ControlPlane.BearerToken)
-	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, newSnapshotServer(logger, db, stores, cfg, auth))
+	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, newSnapshotServer(logger, stores, cfg, auth))
 	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, newExecutionServer(logger, stores, auth))
 }
