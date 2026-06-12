@@ -519,10 +519,3 @@ func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string)
 		)
 	}
 }
-
-func isSafePathSegment(value string) bool {
-	if value == "" || value == "." || value == ".." {
-		return false
-	}
-	return !strings.ContainsAny(value, `/\`)
-}

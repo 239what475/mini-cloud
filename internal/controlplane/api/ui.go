@@ -10,7 +10,8 @@ import (
 )
 
 func serveRootJSONOrIndex(logger *slog.Logger, uiDir string, router *gin.Engine) {
-	if assetsPath := filepath.Join(uiDir, "assets"); directoryExists(assetsPath) {
+	assetsPath := filepath.Join(uiDir, "assets")
+	if info, err := os.Stat(assetsPath); err == nil && info.IsDir() {
 		logger.Debug("serving built web assets", "path", assetsPath)
 		router.StaticFS("/assets", http.Dir(assetsPath))
 	}
@@ -32,12 +33,4 @@ func serveRootJSONOrIndex(logger *slog.Logger, uiDir string, router *gin.Engine)
 			"controlPlanes":  "/api/v1/control/planes",
 		})
 	})
-}
-
-func directoryExists(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil {
-		return false
-	}
-	return info.IsDir()
 }

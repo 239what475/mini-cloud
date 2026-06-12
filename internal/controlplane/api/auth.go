@@ -19,26 +19,23 @@ func newBearerAuth(token string) bearerAuth {
 	}
 }
 
-func (a bearerAuth) authenticate(c *gin.Context) (string, bool) {
-	authorization := strings.TrimSpace(c.GetHeader("Authorization"))
-	if authorization == "" {
-		return "bearer token required", false
-	}
-
-	secret, ok := transport.ParseBearer(authorization)
-	if !ok {
-		return "invalid Authorization header; use Bearer <token>", false
-	}
-	if transport.BearerMatches(secret, a.token) {
-		return "", true
-	}
-	return "invalid bearer token", false
-}
-
 func (a bearerAuth) requireToken() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if message, ok := a.authenticate(c); !ok {
-			c.JSON(http.StatusUnauthorized, map[string]any{"error": message})
+		authorization := strings.TrimSpace(c.GetHeader("Authorization"))
+		if authorization == "" {
+			c.JSON(http.StatusUnauthorized, map[string]any{"error": "bearer token required"})
+			c.Abort()
+			return
+		}
+
+		secret, ok := transport.ParseBearer(authorization)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, map[string]any{"error": "invalid Authorization header; use Bearer <token>"})
+			c.Abort()
+			return
+		}
+		if !transport.BearerMatches(secret, a.token) {
+			c.JSON(http.StatusUnauthorized, map[string]any{"error": "invalid bearer token"})
 			c.Abort()
 			return
 		}
