@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
-	"time"
 
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
@@ -13,7 +12,7 @@ import (
 
 var errPlaneNotReady = errors.New("plane is not ready")
 
-type ServiceController struct {
+type ServiceOperations struct {
 	logger            *slog.Logger
 	store             *store.Store
 	serviceBaseDomain string
@@ -21,23 +20,20 @@ type ServiceController struct {
 	planeSyncer       *PlaneSyncer
 }
 
-func NewServiceController(logger *slog.Logger, stores *store.Store, southboundToken string, serviceBaseDomain string) *ServiceController {
+func NewServiceOperations(logger *slog.Logger, stores *store.Store, southboundToken string, serviceBaseDomain string, planeSyncer *PlaneSyncer) *ServiceOperations {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &ServiceController{
+	return &ServiceOperations{
 		logger:            logger,
 		store:             stores,
 		serviceBaseDomain: strings.Trim(strings.ToLower(strings.TrimSpace(serviceBaseDomain)), "."),
 		dispatcher:        newServiceDispatcher(logger, stores, southboundToken),
+		planeSyncer:       planeSyncer,
 	}
 }
 
-func (c *ServiceController) SetPlaneSyncer(syncer *PlaneSyncer) {
-	c.planeSyncer = syncer
-}
-
-func (c *ServiceController) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
+func (c *ServiceOperations) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
 	input.Host = serviceHost(input.Name, c.serviceBaseDomain)
 	created, err := c.store.CreateService(ctx, input)
 	if err != nil {
@@ -58,17 +54,16 @@ func serviceHost(name string, baseDomain string) string {
 	return name + "." + baseDomain
 }
 
-func (c *ServiceController) List(ctx context.Context) ([]model.Service, error) {
-	c.advanceAllPendingWork(ctx, "listing services")
+func (c *ServiceOperations) List(ctx context.Context) ([]model.Service, error) {
 	return c.store.ListServices(ctx)
 }
 
-func (c *ServiceController) Get(ctx context.Context, serviceID string) (model.Service, error) {
+func (c *ServiceOperations) Get(ctx context.Context, serviceID string) (model.Service, error) {
 	c.advanceServicePendingWork(ctx, "getting service", serviceID)
 	return c.store.GetService(ctx, serviceID)
 }
 
-func (c *ServiceController) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
+func (c *ServiceOperations) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
 	if err := c.syncServicePlane(ctx, serviceID); err != nil {
 		return model.Service{}, err
 	}
@@ -82,7 +77,7 @@ func (c *ServiceController) Update(ctx context.Context, serviceID string, input 
 	return c.store.GetService(ctx, updated.Metadata.ID)
 }
 
-func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model.Service, error) {
+func (c *ServiceOperations) Delete(ctx context.Context, serviceID string) (model.Service, error) {
 	if err := c.syncServicePlane(ctx, serviceID); err != nil {
 		return model.Service{}, err
 	}
@@ -100,54 +95,7 @@ func (c *ServiceController) Delete(ctx context.Context, serviceID string) (model
 	return current, nil
 }
 
-func (c *ServiceController) AdvanceDeletingServices(ctx context.Context) error {
-	items, err := c.store.ListDeletingServices(ctx)
-	if err != nil {
-		return err
-	}
-	var joined error
-	for _, item := range items {
-		if err := c.dispatchDeletingService(ctx, item); err != nil {
-			joined = errors.Join(joined, err)
-		}
-	}
-	return joined
-}
-
-func (c *ServiceController) AdvancePendingServices(ctx context.Context) error {
-	items, err := c.store.ListPendingApplyServices(ctx)
-	if err != nil {
-		return err
-	}
-	var joined error
-	for _, item := range items {
-		if _, err := c.applyRemoteService(ctx, item); err != nil {
-			joined = errors.Join(joined, err)
-		}
-	}
-	return joined
-}
-
-func (c *ServiceController) advanceAllPendingWork(ctx context.Context, action string) {
-	if c.planeSyncer != nil {
-		if err := c.planeSyncer.SyncRegisteredPlanes(ctx, 10*time.Second); err != nil {
-			c.logger.Warn("sync planes before advancing pending work failed", "action", action, "error", err)
-		}
-	}
-	if err := c.AdvancePendingServices(ctx); err != nil {
-		c.logger.Warn("advance pending services failed", "action", action, "error", err)
-	}
-	if err := c.AdvanceDeletingServices(ctx); err != nil {
-		c.logger.Warn("advance deleting services failed", "action", action, "error", err)
-	}
-	if c.planeSyncer != nil {
-		if err := c.planeSyncer.SyncRegisteredPlanes(ctx, 10*time.Second); err != nil {
-			c.logger.Warn("sync planes after advancing pending work failed", "action", action, "error", err)
-		}
-	}
-}
-
-func (c *ServiceController) advanceServicePendingWork(ctx context.Context, action string, serviceID string) {
+func (c *ServiceOperations) advanceServicePendingWork(ctx context.Context, action string, serviceID string) {
 	if err := c.syncServicePlane(ctx, serviceID); err != nil {
 		c.logger.Warn("sync service plane before advancing pending work failed", "service_id", serviceID, "action", action, "error", err)
 	}
@@ -162,7 +110,7 @@ func (c *ServiceController) advanceServicePendingWork(ctx context.Context, actio
 	}
 }
 
-func (c *ServiceController) advancePendingServiceApply(ctx context.Context, serviceID string) error {
+func (c *ServiceOperations) advancePendingServiceApply(ctx context.Context, serviceID string) error {
 	item, ok, err := c.store.GetPendingApplyService(ctx, serviceID)
 	if err != nil || !ok {
 		return err
@@ -171,7 +119,7 @@ func (c *ServiceController) advancePendingServiceApply(ctx context.Context, serv
 	return err
 }
 
-func (c *ServiceController) advancePendingServiceDelete(ctx context.Context, serviceID string) error {
+func (c *ServiceOperations) advancePendingServiceDelete(ctx context.Context, serviceID string) error {
 	item, ok, err := c.store.GetDeletingService(ctx, serviceID)
 	if err != nil || !ok {
 		return err
@@ -179,7 +127,7 @@ func (c *ServiceController) advancePendingServiceDelete(ctx context.Context, ser
 	return c.dispatchDeletingService(ctx, item)
 }
 
-func (c *ServiceController) dispatchDeletingService(ctx context.Context, serviceItem model.Service) error {
+func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, serviceItem model.Service) error {
 	planeID, err := c.targetPlaneID(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
@@ -198,7 +146,7 @@ func (c *ServiceController) dispatchDeletingService(ctx context.Context, service
 	return nil
 }
 
-func (c *ServiceController) syncServicePlane(ctx context.Context, serviceID string) error {
+func (c *ServiceOperations) syncServicePlane(ctx context.Context, serviceID string) error {
 	if c.planeSyncer == nil {
 		return nil
 	}
@@ -219,7 +167,7 @@ func (c *ServiceController) syncServicePlane(ctx context.Context, serviceID stri
 	return nil
 }
 
-func (c *ServiceController) applyRemoteService(ctx context.Context, service model.Service) (model.Service, error) {
+func (c *ServiceOperations) applyRemoteService(ctx context.Context, service model.Service) (model.Service, error) {
 	planeID, err := c.targetPlaneID(ctx, service)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)

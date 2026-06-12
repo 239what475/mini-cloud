@@ -36,7 +36,7 @@ func deletingRunStatus(serviceItem model.Service, runID string) model.RunStatus 
 	return runStatus
 }
 
-func (c *ServiceController) targetPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {
+func (c *ServiceOperations) targetPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {
 	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
 	if planeID == "" {
 		return "", errPlaneIDRequired
@@ -51,7 +51,7 @@ func (c *ServiceController) targetPlaneID(ctx context.Context, serviceItem model
 	return planeID, nil
 }
 
-func (c *ServiceController) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration int64, status model.ServiceObservedStatus, run *model.RunStatus) error {
+func (c *ServiceOperations) updateServiceStatus(ctx context.Context, serviceID string, expectedGeneration int64, status model.ServiceObservedStatus, run *model.RunStatus) error {
 	input := store.UpdateServiceStatusInput{
 		ObservedGeneration: status.ObservedGeneration,
 		Phase:              status.Phase,

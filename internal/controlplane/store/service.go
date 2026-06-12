@@ -234,61 +234,6 @@ func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	return items, nil
 }
 
-func (s *Store) ListDeletingServices(ctx context.Context) ([]model.Service, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+serviceSelectColumns+`
-		FROM service_bindings b
-		JOIN service_caches c ON c.service_id = b.id
-		WHERE b.desired_state = $1
-		ORDER BY b.updated_at ASC, b.id ASC
-	`, model.DesiredStateDeleted)
-	if err != nil {
-		return nil, fmt.Errorf("query deleting service bindings: %w", err)
-	}
-	defer rows.Close()
-
-	items := make([]model.Service, 0)
-	for rows.Next() {
-		item, err := scanService(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate deleting service bindings: %w", err)
-	}
-	return items, nil
-}
-
-func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+serviceSelectColumns+`
-		FROM service_bindings b
-		JOIN service_caches c ON c.service_id = b.id
-		WHERE b.desired_state = $1
-		  AND c.observed_generation < b.generation
-		ORDER BY b.updated_at ASC, b.id ASC
-	`, model.DesiredStateActive)
-	if err != nil {
-		return nil, fmt.Errorf("query pending apply service bindings: %w", err)
-	}
-	defer rows.Close()
-
-	items := make([]model.Service, 0)
-	for rows.Next() {
-		item, err := scanService(rows)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, item)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate pending apply service bindings: %w", err)
-	}
-	return items, nil
-}
-
 func (s *Store) GetPendingApplyService(ctx context.Context, serviceID string) (model.Service, bool, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`

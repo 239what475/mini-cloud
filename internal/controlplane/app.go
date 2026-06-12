@@ -56,8 +56,7 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		return App{}, err
 	}
 	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
-	serviceController := coordination.NewServiceController(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain)
-	serviceController.SetPlaneSyncer(planeSyncer)
+	serviceOperations := coordination.NewServiceOperations(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
 
 	logQueryService := logquery.NewService(
 		cfg.Logs.Loki.URL,
@@ -69,7 +68,7 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		SouthboundToken:   cfg.Auth.SouthboundToken,
 		UIDir:             cfg.UI.Dir,
 		LogQueryService:   logQueryService,
-		ServiceController: serviceController,
+		ServiceOperations: serviceOperations,
 		PlaneSyncer:       planeSyncer,
 	}, logger, stores)
 

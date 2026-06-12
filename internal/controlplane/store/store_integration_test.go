@@ -280,7 +280,7 @@ func TestIntegrationUpsertServiceSnapshotIgnoresUnknownService(t *testing.T) {
 	}
 }
 
-func TestIntegrationListDeletingServicesReturnsOnlyPendingDeletes(t *testing.T) {
+func TestIntegrationGetDeletingServiceReturnsOnlyPendingDelete(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
@@ -329,16 +329,6 @@ func TestIntegrationListDeletingServicesReturnsOnlyPendingDeletes(t *testing.T) 
 		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 
-	items, err := db.Store.ListDeletingServices(ctx)
-	if err != nil {
-		t.Fatalf("ListDeletingServices returned error: %v", err)
-	}
-	if len(items) != 1 || items[0].Metadata.ID != deleting.Metadata.ID {
-		t.Fatalf("deleting services = %+v, want only %s", items, deleting.Metadata.ID)
-	}
-	if items[0].Metadata.ID == active.Metadata.ID {
-		t.Fatalf("active service was returned as deleting: %+v", items[0])
-	}
 	item, ok, err := db.Store.GetDeletingService(ctx, deleting.Metadata.ID)
 	if err != nil {
 		t.Fatalf("GetDeletingService returned error: %v", err)
@@ -351,7 +341,7 @@ func TestIntegrationListDeletingServicesReturnsOnlyPendingDeletes(t *testing.T) 
 	}
 }
 
-func TestIntegrationListPendingApplyServicesReturnsOnlyUnobservedActiveServices(t *testing.T) {
+func TestIntegrationGetPendingApplyServiceReturnsOnlyUnobservedActiveService(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
@@ -423,13 +413,6 @@ func TestIntegrationListPendingApplyServicesReturnsOnlyUnobservedActiveServices(
 		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 
-	items, err := db.Store.ListPendingApplyServices(ctx)
-	if err != nil {
-		t.Fatalf("ListPendingApplyServices returned error: %v", err)
-	}
-	if len(items) != 1 || items[0].Metadata.ID != pending.Metadata.ID {
-		t.Fatalf("pending apply services = %+v, want only %s", items, pending.Metadata.ID)
-	}
 	item, ok, err := db.Store.GetPendingApplyService(ctx, pending.Metadata.ID)
 	if err != nil {
 		t.Fatalf("GetPendingApplyService returned error: %v", err)

@@ -17,7 +17,7 @@ type Options struct {
 	SouthboundToken   string
 	UIDir             string
 	LogQueryService   *logquery.Service
-	ServiceController *coordination.ServiceController
+	ServiceOperations *coordination.ServiceOperations
 	PlaneSyncer       *coordination.PlaneSyncer
 }
 
@@ -48,7 +48,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 
 	api := admin.Group("/api/v1")
 
-	serviceHandler := newServiceHandler(logger, stores, opts.ServiceController)
+	serviceHandler := newServiceHandler(logger, stores, opts.ServiceOperations)
 
 	services := api.Group("/services")
 	services.GET("", serviceHandler.listServices)

@@ -84,10 +84,10 @@ var errServiceSpecRequired = errors.New("spec is required")
 type serviceHandler struct {
 	logger   *slog.Logger
 	store    *store.Store
-	services *coordination.ServiceController
+	services *coordination.ServiceOperations
 }
 
-func newServiceHandler(logger *slog.Logger, stores *store.Store, services *coordination.ServiceController) serviceHandler {
+func newServiceHandler(logger *slog.Logger, stores *store.Store, services *coordination.ServiceOperations) serviceHandler {
 	return serviceHandler{
 		logger:   logger,
 		store:    stores,

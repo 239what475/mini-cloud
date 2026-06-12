@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"sync"
 
 	cloudplaneapi "mini-cloud/internal/cloudplane/api"
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
@@ -22,6 +23,7 @@ import (
 type App struct {
 	Config cloudplaneconfig.Config
 
+	logger     *slog.Logger
 	db         *sql.DB
 	reconciler *cloudplanecontrol.Reconciler
 	server     *grpc.Server
@@ -72,6 +74,7 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 
 	return App{
 		Config:     cfg,
+		logger:     logger,
 		db:         db,
 		reconciler: cloudplanecontrol.NewReconciler(logger, stores, driver, localIngress, frontDoorService, cfg),
 		server:     cloudplaneapi.NewGRPCServer(cfg, logger, stores),
@@ -95,16 +98,11 @@ func (a App) Run(ctx context.Context) error {
 		errCh <- a.server.Serve(listener)
 	}()
 
-	if err := registerWithControlPlane(runCtx, a.Config); err != nil {
-		cancel()
-		a.server.GracefulStop()
-		if serverErr := <-errCh; serverErr != nil &&
-			!errors.Is(serverErr, grpc.ErrServerStopped) &&
-			!errors.Is(serverErr, net.ErrClosed) {
-			return errors.Join(err, serverErr)
-		}
-		return err
-	}
+	var registrationWG sync.WaitGroup
+	registrationWG.Go(func() {
+		registerWithControlPlaneUntilReady(runCtx, a.logger, a.Config)
+	})
+	defer registrationWG.Wait()
 
 	select {
 	case err := <-errCh:
