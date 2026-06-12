@@ -24,11 +24,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func TestCreateAppliesServiceToSpecPlane(t *testing.T) {
+func TestCreateDispatchesServiceToSpecPlane(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-create-apply", planeServer.endpoint)
+	planeItem := mustCreateReadyPlane(t, db, "plane-create-dispatch", planeServer.endpoint)
 
 	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
 
@@ -48,12 +48,12 @@ func TestCreateAppliesServiceToSpecPlane(t *testing.T) {
 	if service.Metadata.Host != "web.apps.example.test" {
 		t.Fatalf("host = %q, want web.apps.example.test", service.Metadata.Host)
 	}
-	applyRequests := planeServer.applyRequests()
-	if len(applyRequests) != 1 || applyRequests[0].GetServiceName() != "web" {
-		t.Fatalf("unexpected apply requests: %+v", applyRequests)
+	dispatchRequests := planeServer.dispatchRequests()
+	if len(dispatchRequests) != 1 || dispatchRequests[0].GetServiceName() != "web" {
+		t.Fatalf("unexpected dispatch requests: %+v", dispatchRequests)
 	}
-	if applyRequests[0].GetHost() != "web.apps.example.test" {
-		t.Fatalf("apply host = %q, want web.apps.example.test", applyRequests[0].GetHost())
+	if dispatchRequests[0].GetHost() != "web.apps.example.test" {
+		t.Fatalf("dispatch host = %q, want web.apps.example.test", dispatchRequests[0].GetHost())
 	}
 }
 
@@ -75,12 +75,12 @@ func TestCreateAllowsDegradedPlane(t *testing.T) {
 	if service.Spec.PlaneID != planeItem.ID {
 		t.Fatalf("planeID = %q, want %s", service.Spec.PlaneID, planeItem.ID)
 	}
-	if len(planeServer.applyRequests()) != 1 {
-		t.Fatalf("apply requests = %d, want 1", len(planeServer.applyRequests()))
+	if len(planeServer.dispatchRequests()) != 1 {
+		t.Fatalf("dispatch requests = %d, want 1", len(planeServer.dispatchRequests()))
 	}
 }
 
-func TestCreateKeepsServiceWhenInitialApplyFails(t *testing.T) {
+func TestCreateKeepsServiceWhenInitialDispatchFails(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
@@ -96,20 +96,20 @@ func TestCreateKeepsServiceWhenInitialApplyFails(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 	if service.Status.DesiredState != model.DesiredStateActive || service.Status.Observed.Phase != model.PhaseDegraded {
-		t.Fatalf("service status = %+v, want active degraded after failed initial apply", service.Status)
+		t.Fatalf("service status = %+v, want active degraded after failed initial dispatch", service.Status)
 	}
 	if service.Status.Observed.ObservedGeneration != 0 {
-		t.Fatalf("observed generation = %d, want 0 so failed apply remains retryable", service.Status.Observed.ObservedGeneration)
+		t.Fatalf("observed generation = %d, want 0 so failed dispatch remains retryable", service.Status.Observed.ObservedGeneration)
 	}
-	_, pending, err := db.Store.GetPendingApplyService(ctx, service.Metadata.ID)
+	_, pending, err := db.Store.GetPendingDispatchService(ctx, service.Metadata.ID)
 	if err != nil {
-		t.Fatalf("GetPendingApplyService returned error: %v", err)
+		t.Fatalf("GetPendingDispatchService returned error: %v", err)
 	}
 	if !pending {
-		t.Fatalf("service is not pending apply, want failed service to remain retryable")
+		t.Fatalf("service is not pending dispatch, want failed service to remain retryable")
 	}
-	if len(planeServer.applyRequests()) != 0 {
-		t.Fatalf("apply requests = %d, want 0 while plane is offline", len(planeServer.applyRequests()))
+	if len(planeServer.dispatchRequests()) != 0 {
+		t.Fatalf("dispatch requests = %d, want 0 while plane is offline", len(planeServer.dispatchRequests()))
 	}
 }
 
@@ -135,16 +135,16 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	if updated.Status.Observed.Phase != model.PhaseProgressing {
 		t.Fatalf("phase = %s, want progressing after update", updated.Status.Observed.Phase)
 	}
-	applyRequests := planeServer.applyRequests()
-	if len(applyRequests) != 2 {
-		t.Fatalf("applyRequests = %d, want 2", len(applyRequests))
+	dispatchRequests := planeServer.dispatchRequests()
+	if len(dispatchRequests) != 2 {
+		t.Fatalf("dispatchRequests = %d, want 2", len(dispatchRequests))
 	}
-	if applyRequests[1].GetImage() != "nginx:1.28-alpine" {
-		t.Fatalf("updated image = %s, want nginx:1.28-alpine", applyRequests[1].GetImage())
+	if dispatchRequests[1].GetImage() != "nginx:1.28-alpine" {
+		t.Fatalf("updated image = %s, want nginx:1.28-alpine", dispatchRequests[1].GetImage())
 	}
 }
 
-func TestUpdateKeepsServiceRetryableWhenApplyFails(t *testing.T) {
+func TestUpdateKeepsServiceRetryableWhenDispatchFails(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
@@ -177,12 +177,12 @@ func TestUpdateKeepsServiceRetryableWhenApplyFails(t *testing.T) {
 	if updated.Status.Observed.ObservedGeneration != created.Metadata.Generation {
 		t.Fatalf("observed generation = %d, want previous generation %d", updated.Status.Observed.ObservedGeneration, created.Metadata.Generation)
 	}
-	_, pending, err := db.Store.GetPendingApplyService(ctx, updated.Metadata.ID)
+	_, pending, err := db.Store.GetPendingDispatchService(ctx, updated.Metadata.ID)
 	if err != nil {
-		t.Fatalf("GetPendingApplyService returned error: %v", err)
+		t.Fatalf("GetPendingDispatchService returned error: %v", err)
 	}
 	if !pending {
-		t.Fatalf("service is not pending apply, want failed update to remain retryable")
+		t.Fatalf("service is not pending dispatch, want failed update to remain retryable")
 	}
 }
 
@@ -205,9 +205,9 @@ func TestUpdateKeepsExistingPlaneBinding(t *testing.T) {
 	if updated.Spec.PlaneID != planeA.ID {
 		t.Fatalf("updated planeID = %q, want original plane %s", updated.Spec.PlaneID, planeA.ID)
 	}
-	applyRequests := planeServerA.applyRequests()
-	if len(applyRequests) != 2 {
-		t.Fatalf("plane A apply requests = %d, want create and update requests", len(applyRequests))
+	dispatchRequests := planeServerA.dispatchRequests()
+	if len(dispatchRequests) != 2 {
+		t.Fatalf("plane A dispatch requests = %d, want create and update dispatch requests", len(dispatchRequests))
 	}
 	if len(planeServerA.deleteRequests()) != 0 {
 		t.Fatalf("plane A delete requests = %d, want 0", len(planeServerA.deleteRequests()))
@@ -239,8 +239,8 @@ func TestUpdateRejectsDeletingService(t *testing.T) {
 	if current.Status.DesiredState != model.DesiredStateDeleted {
 		t.Fatalf("desired state = %s, want deleted", current.Status.DesiredState)
 	}
-	if len(planeServer.applyRequests()) != 1 {
-		t.Fatalf("apply requests = %d, want only initial create", len(planeServer.applyRequests()))
+	if len(planeServer.dispatchRequests()) != 1 {
+		t.Fatalf("dispatch requests = %d, want only initial dispatch", len(planeServer.dispatchRequests()))
 	}
 }
 
@@ -354,11 +354,11 @@ func TestGetAdvancesOnlyRequestedService(t *testing.T) {
 	planeServer := startServiceOperationsPlane(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-get-advance", planeServer.endpoint)
 
-	target, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "target-apply", "Target Apply", "nginx:1.27-alpine"))
+	target, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "target-dispatch", "Target Dispatch", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("CreateService(target) returned error: %v", err)
 	}
-	other, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "other-apply", "Other Apply", "nginx:1.27-alpine"))
+	other, err := db.Store.CreateService(ctx, createInput(planeItem.ID, "other-dispatch", "Other Dispatch", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("CreateService(other) returned error: %v", err)
 	}
@@ -368,23 +368,23 @@ func TestGetAdvancesOnlyRequestedService(t *testing.T) {
 		t.Fatalf("Get returned error: %v", err)
 	}
 
-	applyRequests := planeServer.applyRequests()
-	if len(applyRequests) != 1 {
-		t.Fatalf("applyRequests len = %d, want 1", len(applyRequests))
+	dispatchRequests := planeServer.dispatchRequests()
+	if len(dispatchRequests) != 1 {
+		t.Fatalf("dispatchRequests len = %d, want 1", len(dispatchRequests))
 	}
-	if applyRequests[0].GetServiceId() != target.Metadata.ID {
-		t.Fatalf("apply request serviceID = %q, want target %s", applyRequests[0].GetServiceId(), target.Metadata.ID)
+	if dispatchRequests[0].GetServiceId() != target.Metadata.ID {
+		t.Fatalf("dispatch request serviceID = %q, want target %s", dispatchRequests[0].GetServiceId(), target.Metadata.ID)
 	}
-	_, targetPending, err := db.Store.GetPendingApplyService(ctx, target.Metadata.ID)
+	_, targetPending, err := db.Store.GetPendingDispatchService(ctx, target.Metadata.ID)
 	if err != nil {
-		t.Fatalf("GetPendingApplyService(target) returned error: %v", err)
+		t.Fatalf("GetPendingDispatchService(target) returned error: %v", err)
 	}
 	if targetPending {
 		t.Fatalf("target service is still pending after Get")
 	}
-	_, otherPending, err := db.Store.GetPendingApplyService(ctx, other.Metadata.ID)
+	_, otherPending, err := db.Store.GetPendingDispatchService(ctx, other.Metadata.ID)
 	if err != nil {
-		t.Fatalf("GetPendingApplyService(other) returned error: %v", err)
+		t.Fatalf("GetPendingDispatchService(other) returned error: %v", err)
 	}
 	if !otherPending {
 		t.Fatalf("other service is not pending; Get should only advance requested service")
@@ -449,8 +449,8 @@ func TestListAdvancesPendingServicesAndSyncsBeforeReturning(t *testing.T) {
 	if services[0].Status.Observed.Phase != model.PhaseReady || services[0].Status.Run.Phase != model.RunPhaseRunning {
 		t.Fatalf("service status after List = %+v, want ready/running from cloud-plane snapshot", services[0].Status)
 	}
-	if len(planeServer.applyRequests()) != 1 {
-		t.Fatalf("apply requests = %d, want one pending apply advanced by List", len(planeServer.applyRequests()))
+	if len(planeServer.dispatchRequests()) != 1 {
+		t.Fatalf("dispatch requests = %d, want one pending dispatch advanced by List", len(planeServer.dispatchRequests()))
 	}
 	if len(planeServer.deleteRequests()) != 1 {
 		t.Fatalf("delete requests = %d, want one pending delete advanced by List", len(planeServer.deleteRequests()))
@@ -487,12 +487,12 @@ func workloadSpec(image string) model.WorkloadSpec {
 }
 
 type serviceOperationsPlane struct {
-	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+	cloudplanev1.UnimplementedControlPlaneServiceServer
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 
 	mu       sync.Mutex
 	endpoint string
-	apply    []*cloudplanev1.ApplyServiceRequest
+	dispatch []*cloudplanev1.UpsertServiceRequest
 	delete   []*cloudplanev1.DeleteServiceRequest
 	snapshot *cloudplanev1.PlaneSnapshot
 
@@ -504,7 +504,7 @@ func startServiceOperationsPlane(t *testing.T) *serviceOperationsPlane {
 
 	grpcServer := grpc.NewServer()
 	plane := &serviceOperationsPlane{}
-	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, plane)
+	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, plane)
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, plane)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
@@ -538,11 +538,11 @@ func (p *serviceOperationsPlane) setSnapshot(snapshot *cloudplanev1.PlaneSnapsho
 	p.snapshot = snapshot
 }
 
-func (p *serviceOperationsPlane) ApplyService(_ context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+func (p *serviceOperationsPlane) UpsertService(_ context.Context, req *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.apply = append(p.apply, req)
-	return &cloudplanev1.ApplyServiceResponse{}, nil
+	p.dispatch = append(p.dispatch, req)
+	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 
 func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
@@ -555,10 +555,10 @@ func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplan
 	return &cloudplanev1.DeleteServiceResponse{}, nil
 }
 
-func (p *serviceOperationsPlane) applyRequests() []*cloudplanev1.ApplyServiceRequest {
+func (p *serviceOperationsPlane) dispatchRequests() []*cloudplanev1.UpsertServiceRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]*cloudplanev1.ApplyServiceRequest(nil), p.apply...)
+	return append([]*cloudplanev1.UpsertServiceRequest(nil), p.dispatch...)
 }
 
 func (p *serviceOperationsPlane) deleteRequests() []*cloudplanev1.DeleteServiceRequest {

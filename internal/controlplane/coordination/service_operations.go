@@ -20,8 +20,8 @@ var (
 )
 
 const (
-	dispatchApplyTimeout  = 15 * time.Second
-	dispatchDeleteTimeout = 15 * time.Second
+	dispatchServiceTimeout = 15 * time.Second
+	dispatchDeleteTimeout  = 15 * time.Second
 )
 
 type ServiceOperations struct {
@@ -51,8 +51,8 @@ func (c *ServiceOperations) Create(ctx context.Context, input store.CreateServic
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := c.applyRemoteService(ctx, created); err != nil {
-		c.logger.Warn("initial service apply failed; service remains pending", "service_id", created.Metadata.ID, "error", err)
+	if err := c.dispatchServiceSpec(ctx, created); err != nil {
+		c.logger.Warn("initial service dispatch failed; service remains pending", "service_id", created.Metadata.ID, "error", err)
 	}
 	return c.store.GetService(ctx, created.Metadata.ID)
 }
@@ -84,8 +84,8 @@ func (c *ServiceOperations) Update(ctx context.Context, serviceID string, input 
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := c.applyRemoteService(ctx, updated); err != nil {
-		c.logger.Warn("service update apply failed; service remains pending", "service_id", updated.Metadata.ID, "error", err)
+	if err := c.dispatchServiceSpec(ctx, updated); err != nil {
+		c.logger.Warn("service update dispatch failed; service remains pending", "service_id", updated.Metadata.ID, "error", err)
 	}
 	return c.store.GetService(ctx, updated.Metadata.ID)
 }
@@ -111,8 +111,8 @@ func (c *ServiceOperations) Delete(ctx context.Context, serviceID string) (model
 
 func (c *ServiceOperations) advanceServicePendingWork(ctx context.Context, action string, serviceID string) {
 	c.syncServicePlaneForRequest(ctx, serviceID)
-	if err := c.advancePendingServiceApply(ctx, serviceID); err != nil {
-		c.logger.Warn("advance pending service apply failed", "service_id", serviceID, "action", action, "error", err)
+	if err := c.advancePendingServiceDispatch(ctx, serviceID); err != nil {
+		c.logger.Warn("advance pending service dispatch failed", "service_id", serviceID, "action", action, "error", err)
 	}
 	if err := c.advancePendingServiceDelete(ctx, serviceID); err != nil {
 		c.logger.Warn("advance pending service delete failed", "service_id", serviceID, "action", action, "error", err)
@@ -130,23 +130,23 @@ func (c *ServiceOperations) syncRegisteredPlanes(ctx context.Context, action str
 }
 
 func (c *ServiceOperations) advanceAllPendingServices(ctx context.Context) {
-	if err := c.advanceAllPendingServiceApplies(ctx); err != nil {
-		c.logger.Warn("advance pending service applies failed", "error", err)
+	if err := c.advanceAllPendingServiceDispatches(ctx); err != nil {
+		c.logger.Warn("advance pending service dispatches failed", "error", err)
 	}
 	if err := c.advanceAllPendingServiceDeletes(ctx); err != nil {
 		c.logger.Warn("advance pending service deletes failed", "error", err)
 	}
 }
 
-func (c *ServiceOperations) advanceAllPendingServiceApplies(ctx context.Context) error {
-	items, err := c.store.ListPendingApplyServices(ctx)
+func (c *ServiceOperations) advanceAllPendingServiceDispatches(ctx context.Context) error {
+	items, err := c.store.ListPendingDispatchServices(ctx)
 	if err != nil {
 		return err
 	}
 	var joinedErr error
 	for _, item := range items {
-		if err := c.applyRemoteService(ctx, item); err != nil {
-			c.logger.Warn("advance pending service apply failed", "service_id", item.Metadata.ID, "error", err)
+		if err := c.dispatchServiceSpec(ctx, item); err != nil {
+			c.logger.Warn("advance pending service dispatch failed", "service_id", item.Metadata.ID, "error", err)
 			joinedErr = errors.Join(joinedErr, err)
 		}
 	}
@@ -168,12 +168,12 @@ func (c *ServiceOperations) advanceAllPendingServiceDeletes(ctx context.Context)
 	return joinedErr
 }
 
-func (c *ServiceOperations) advancePendingServiceApply(ctx context.Context, serviceID string) error {
-	item, ok, err := c.store.GetPendingApplyService(ctx, serviceID)
+func (c *ServiceOperations) advancePendingServiceDispatch(ctx context.Context, serviceID string) error {
+	item, ok, err := c.store.GetPendingDispatchService(ctx, serviceID)
 	if err != nil || !ok {
 		return err
 	}
-	return c.applyRemoteService(ctx, item)
+	return c.dispatchServiceSpec(ctx, item)
 }
 
 func (c *ServiceOperations) advancePendingServiceDelete(ctx context.Context, serviceID string) error {
@@ -185,7 +185,7 @@ func (c *ServiceOperations) advancePendingServiceDelete(ctx context.Context, ser
 }
 
 func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, serviceItem model.Service) error {
-	planeID, err := c.targetPlaneID(ctx, serviceItem)
+	planeID, err := c.boundPlaneID(ctx, serviceItem)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
 		return errors.Join(err, statusErr)
@@ -207,8 +207,18 @@ func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, service
 		statusErr := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, deletingFailureServiceStatus(serviceItem, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	run := deletingRunStatus()
-	if err := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, serviceDeletingStatus(serviceItem.Metadata.Generation), &run); err != nil &&
+	observedAt := time.Now().UTC()
+	run := model.RunStatus{
+		Phase:   model.RunPhaseDispatching,
+		Message: "service delete accepted by cloud-plane; waiting for node-agent cleanup result",
+	}
+	status := model.ServiceObservedStatus{
+		ObservedGeneration: serviceItem.Metadata.Generation,
+		Phase:              model.PhaseDeleting,
+		Message:            "service delete accepted by cloud-plane",
+		LastObservedAt:     &observedAt,
+	}
+	if err := c.updateServiceStatus(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation, status, &run); err != nil &&
 		!errors.Is(err, store.ErrServiceNotFound) &&
 		!errors.Is(err, store.ErrServiceGenerationConflict) {
 		return err
@@ -237,24 +247,34 @@ func (c *ServiceOperations) syncServicePlaneForRequest(ctx context.Context, serv
 	}
 }
 
-func (c *ServiceOperations) applyRemoteService(ctx context.Context, service model.Service) error {
-	planeID, err := c.targetPlaneID(ctx, service)
+func (c *ServiceOperations) dispatchServiceSpec(ctx context.Context, service model.Service) error {
+	planeID, err := c.boundPlaneID(ctx, service)
 	if err != nil {
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	if err := c.dispatchRemoteService(ctx, planeID, service); err != nil {
+	if err := c.sendServiceSpecToPlane(ctx, planeID, service); err != nil {
 		statusErr := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, failedServiceStatus(service, err), nil)
 		return errors.Join(err, statusErr)
 	}
-	run := dispatchedRunStatus()
-	if err := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, serviceAcceptedStatus(service.Metadata.Generation), &run); err != nil {
+	observedAt := time.Now().UTC()
+	run := model.RunStatus{
+		Phase:   model.RunPhaseDispatching,
+		Message: "service accepted by cloud-plane; waiting for node-agent execution result",
+	}
+	status := model.ServiceObservedStatus{
+		ObservedGeneration: service.Metadata.Generation,
+		Phase:              model.PhaseProgressing,
+		Message:            "service accepted by cloud-plane",
+		LastObservedAt:     &observedAt,
+	}
+	if err := c.updateServiceStatus(ctx, service.Metadata.ID, service.Metadata.Generation, status, &run); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (c *ServiceOperations) dispatchRemoteService(ctx context.Context, planeID string, service model.Service) error {
+func (c *ServiceOperations) sendServiceSpecToPlane(ctx context.Context, planeID string, service model.Service) error {
 	if planeID == "" {
 		return errPlaneIDRequired
 	}
@@ -269,15 +289,15 @@ func (c *ServiceOperations) dispatchRemoteService(ctx context.Context, planeID s
 		}
 	}()
 
-	request, err := applyServiceRequest(service)
+	request, err := serviceDispatchRequest(service)
 	if err != nil {
 		return err
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, dispatchApplyTimeout)
+	requestCtx, cancel := context.WithTimeout(ctx, dispatchServiceTimeout)
 	defer cancel()
 
-	if err := client.ApplyService(requestCtx, request); err != nil {
-		return fmt.Errorf("apply service to cloud-plane: %w", err)
+	if err := client.UpsertService(requestCtx, request); err != nil {
+		return fmt.Errorf("dispatch service spec to cloud-plane: %w", err)
 	}
 	return nil
 }
@@ -323,7 +343,7 @@ func (c *ServiceOperations) planeClient(ctx context.Context, planeID string) (*p
 	return newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
 }
 
-func applyServiceRequest(service model.Service) (*cloudplanev1.ApplyServiceRequest, error) {
+func serviceDispatchRequest(service model.Service) (*cloudplanev1.UpsertServiceRequest, error) {
 	if strings.TrimSpace(service.Metadata.ID) == "" {
 		return nil, errServiceIDMissing
 	}
@@ -332,7 +352,7 @@ func applyServiceRequest(service model.Service) (*cloudplanev1.ApplyServiceReque
 	for key, value := range service.Spec.Env {
 		env[key] = value
 	}
-	return &cloudplanev1.ApplyServiceRequest{
+	return &cloudplanev1.UpsertServiceRequest{
 		ServiceId:         service.Metadata.ID,
 		ServiceName:       service.Metadata.Name,
 		DisplayName:       service.Metadata.DisplayName,
@@ -349,21 +369,7 @@ func applyServiceRequest(service model.Service) (*cloudplanev1.ApplyServiceReque
 	}, nil
 }
 
-func dispatchedRunStatus() model.RunStatus {
-	return model.RunStatus{
-		Phase:   model.RunPhaseDispatching,
-		Message: "service accepted by cloud-plane; waiting for node-agent execution result",
-	}
-}
-
-func deletingRunStatus() model.RunStatus {
-	return model.RunStatus{
-		Phase:   model.RunPhaseDispatching,
-		Message: "service delete accepted by cloud-plane; waiting for node-agent cleanup result",
-	}
-}
-
-func (c *ServiceOperations) targetPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {
+func (c *ServiceOperations) boundPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {
 	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
 	if planeID == "" {
 		return "", errPlaneIDRequired
@@ -391,26 +397,6 @@ func (c *ServiceOperations) updateServiceStatus(ctx context.Context, serviceID s
 		return nil
 	}
 	return err
-}
-
-func serviceAcceptedStatus(generation int64) model.ServiceObservedStatus {
-	now := time.Now().UTC()
-	return model.ServiceObservedStatus{
-		ObservedGeneration: generation,
-		Phase:              model.PhaseProgressing,
-		Message:            "service accepted by cloud-plane",
-		LastObservedAt:     &now,
-	}
-}
-
-func serviceDeletingStatus(generation int64) model.ServiceObservedStatus {
-	now := time.Now().UTC()
-	return model.ServiceObservedStatus{
-		ObservedGeneration: generation,
-		Phase:              model.PhaseDeleting,
-		Message:            "service delete accepted by cloud-plane",
-		LastObservedAt:     &now,
-	}
 }
 
 func failedServiceStatus(serviceItem model.Service, err error) model.ServiceObservedStatus {

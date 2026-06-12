@@ -84,7 +84,7 @@ message GetSnapshotResponse {
   PlaneSnapshot snapshot = 1;
 }
 
-message ApplyServiceRequest {
+message UpsertServiceRequest {
   string service_id = 1 [json_name = "serviceID"];
   string service_name = 2 [json_name = "serviceName"];
   string display_name = 3 [json_name = "displayName"];
@@ -100,7 +100,7 @@ message ApplyServiceRequest {
   string host = 13;
 }
 
-message ApplyServiceResponse {}
+message UpsertServiceResponse {}
 
 message DeleteServiceRequest {
   string service_id = 1 [json_name = "serviceID"];
@@ -113,8 +113,8 @@ service ControlPlaneSnapshotService {
   rpc GetSnapshot(GetSnapshotRequest) returns (GetSnapshotResponse);
 }
 
-service ControlPlaneExecutionService {
-  rpc ApplyService(ApplyServiceRequest) returns (ApplyServiceResponse);
+service ControlPlaneService {
+  rpc UpsertService(UpsertServiceRequest) returns (UpsertServiceResponse);
 
   rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);
 }

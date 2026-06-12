@@ -19,7 +19,7 @@ import (
 
 type stubControlPlaneSouthbound struct {
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
-	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+	cloudplanev1.UnimplementedControlPlaneServiceServer
 
 	t                 *testing.T
 	wantAuthorization string
@@ -49,7 +49,7 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *cloudpl
 	}}, nil
 }
 
-func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+func (s *stubControlPlaneSouthbound) UpsertService(ctx context.Context, req *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
 	s.assertAuthorization(ctx)
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
@@ -57,7 +57,7 @@ func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *clou
 	if req.GetServiceName() != "svc-demo" {
 		s.t.Fatalf("unexpected service name: %q", req.GetServiceName())
 	}
-	return &cloudplanev1.ApplyServiceResponse{}, nil
+	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 
 func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
@@ -98,7 +98,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		wantAuthorization: "Bearer test-token",
 	}
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, stub)
-	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, stub)
+	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, stub)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
 	defer server.Close()
@@ -125,7 +125,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())
 	}
 
-	if err := client.ApplyService(context.Background(), &cloudplanev1.ApplyServiceRequest{
+	if err := client.UpsertService(context.Background(), &cloudplanev1.UpsertServiceRequest{
 		ServiceId:         "svc-1",
 		ServiceName:       "svc-demo",
 		DisplayName:       "Demo",
@@ -135,7 +135,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		ReadinessPath:     "/healthz",
 		InstanceClass:     "small",
 	}); err != nil {
-		t.Fatalf("ApplyService returned error: %v", err)
+		t.Fatalf("UpsertService returned error: %v", err)
 	}
 
 	if err := client.DeleteService(context.Background(), &cloudplanev1.DeleteServiceRequest{

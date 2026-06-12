@@ -12,7 +12,7 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	if _, err := db.Store.ApplyService(ctx, cloudmodel.ApplyServiceInput{
+	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
 		ID:          "svc-delete-idle",
 		Name:        "delete-idle",
 		DisplayName: "delete idle",
@@ -20,7 +20,7 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 		Generation:  1,
 		Spec:        serviceSpec(),
 	}); err != nil {
-		t.Fatalf("ApplyService returned error: %v", err)
+		t.Fatalf("UpsertService returned error: %v", err)
 	}
 
 	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
@@ -43,20 +43,20 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 	}
 }
 
-func TestIntegrationStaleApplyDoesNotResurrectDeletedService(t *testing.T) {
+func TestIntegrationStaleServiceUpsertDoesNotResurrectDeletedService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	input := cloudmodel.ApplyServiceInput{
-		ID:          "svc-stale-apply-delete",
-		Name:        "stale-apply-delete",
-		DisplayName: "stale apply delete",
-		Host:        "stale-apply-delete.apps.example.com",
+	input := cloudmodel.UpsertServiceInput{
+		ID:          "svc-stale-upsert-delete",
+		Name:        "stale-upsert-delete",
+		DisplayName: "stale upsert delete",
+		Host:        "stale-upsert-delete.apps.example.com",
 		Generation:  1,
 		Spec:        serviceSpec(),
 	}
-	if _, err := db.Store.ApplyService(ctx, input); err != nil {
-		t.Fatalf("ApplyService(initial) returned error: %v", err)
+	if _, err := db.Store.UpsertService(ctx, input); err != nil {
+		t.Fatalf("UpsertService(initial) returned error: %v", err)
 	}
 	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
 		ID:         input.ID,
@@ -64,25 +64,25 @@ func TestIntegrationStaleApplyDoesNotResurrectDeletedService(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("DeleteService returned error: %v", err)
 	}
-	if _, err := db.Store.ApplyService(ctx, input); err != nil {
-		t.Fatalf("ApplyService(stale) returned error: %v", err)
+	if _, err := db.Store.UpsertService(ctx, input); err != nil {
+		t.Fatalf("UpsertService(stale) returned error: %v", err)
 	}
 	services, err := db.Store.ListServices(ctx)
 	if err != nil {
-		t.Fatalf("ListServices after stale apply returned error: %v", err)
+		t.Fatalf("ListServices after stale upsert returned error: %v", err)
 	}
 	if serviceByID(services, input.ID) != nil {
-		t.Fatalf("stale apply resurrected deleted service: %+v", services)
+		t.Fatalf("stale upsert resurrected deleted service: %+v", services)
 	}
 
 	input.Generation = 2
-	input.DisplayName = "stale apply delete v2"
-	if _, err := db.Store.ApplyService(ctx, input); err != nil {
-		t.Fatalf("ApplyService(new generation) returned error: %v", err)
+	input.DisplayName = "stale upsert delete v2"
+	if _, err := db.Store.UpsertService(ctx, input); err != nil {
+		t.Fatalf("UpsertService(new generation) returned error: %v", err)
 	}
 	services, err = db.Store.ListServices(ctx)
 	if err != nil {
-		t.Fatalf("ListServices after new generation apply returned error: %v", err)
+		t.Fatalf("ListServices after new generation upsert returned error: %v", err)
 	}
 	service := serviceByID(services, input.ID)
 	if service == nil || service.Generation != input.Generation || service.DisplayName != input.DisplayName {
@@ -95,7 +95,7 @@ func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAg
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-delete-service", "i-node-delete-service")
 
-	if _, err := db.Store.ApplyService(ctx, cloudmodel.ApplyServiceInput{
+	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
 		ID:          "svc-delete-running",
 		Name:        "delete-running",
 		DisplayName: "delete running",
@@ -103,7 +103,7 @@ func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAg
 		Generation:  1,
 		Spec:        serviceSpec(),
 	}); err != nil {
-		t.Fatalf("ApplyService returned error: %v", err)
+		t.Fatalf("UpsertService returned error: %v", err)
 	}
 	runWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {

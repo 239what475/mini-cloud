@@ -122,140 +122,139 @@ var ControlPlaneSnapshotService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ControlPlaneExecutionService_ApplyService_FullMethodName  = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/ApplyService"
-	ControlPlaneExecutionService_DeleteService_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/DeleteService"
+	ControlPlaneService_UpsertService_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneService/UpsertService"
+	ControlPlaneService_DeleteService_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneService/DeleteService"
 )
 
-// ControlPlaneExecutionServiceClient is the client API for ControlPlaneExecutionService service.
+// ControlPlaneServiceClient is the client API for ControlPlaneService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ControlPlaneExecutionServiceClient interface {
-	ApplyService(ctx context.Context, in *ApplyServiceRequest, opts ...grpc.CallOption) (*ApplyServiceResponse, error)
+type ControlPlaneServiceClient interface {
+	UpsertService(ctx context.Context, in *UpsertServiceRequest, opts ...grpc.CallOption) (*UpsertServiceResponse, error)
 	DeleteService(ctx context.Context, in *DeleteServiceRequest, opts ...grpc.CallOption) (*DeleteServiceResponse, error)
 }
 
-type controlPlaneExecutionServiceClient struct {
+type controlPlaneServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewControlPlaneExecutionServiceClient(cc grpc.ClientConnInterface) ControlPlaneExecutionServiceClient {
-	return &controlPlaneExecutionServiceClient{cc}
+func NewControlPlaneServiceClient(cc grpc.ClientConnInterface) ControlPlaneServiceClient {
+	return &controlPlaneServiceClient{cc}
 }
 
-func (c *controlPlaneExecutionServiceClient) ApplyService(ctx context.Context, in *ApplyServiceRequest, opts ...grpc.CallOption) (*ApplyServiceResponse, error) {
+func (c *controlPlaneServiceClient) UpsertService(ctx context.Context, in *UpsertServiceRequest, opts ...grpc.CallOption) (*UpsertServiceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ApplyServiceResponse)
-	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_ApplyService_FullMethodName, in, out, cOpts...)
+	out := new(UpsertServiceResponse)
+	err := c.cc.Invoke(ctx, ControlPlaneService_UpsertService_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *controlPlaneExecutionServiceClient) DeleteService(ctx context.Context, in *DeleteServiceRequest, opts ...grpc.CallOption) (*DeleteServiceResponse, error) {
+func (c *controlPlaneServiceClient) DeleteService(ctx context.Context, in *DeleteServiceRequest, opts ...grpc.CallOption) (*DeleteServiceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(DeleteServiceResponse)
-	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_DeleteService_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, ControlPlaneService_DeleteService_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ControlPlaneExecutionServiceServer is the server API for ControlPlaneExecutionService service.
-// All implementations must embed UnimplementedControlPlaneExecutionServiceServer
+// ControlPlaneServiceServer is the server API for ControlPlaneService service.
+// All implementations must embed UnimplementedControlPlaneServiceServer
 // for forward compatibility.
-type ControlPlaneExecutionServiceServer interface {
-	ApplyService(context.Context, *ApplyServiceRequest) (*ApplyServiceResponse, error)
+type ControlPlaneServiceServer interface {
+	UpsertService(context.Context, *UpsertServiceRequest) (*UpsertServiceResponse, error)
 	DeleteService(context.Context, *DeleteServiceRequest) (*DeleteServiceResponse, error)
-	mustEmbedUnimplementedControlPlaneExecutionServiceServer()
+	mustEmbedUnimplementedControlPlaneServiceServer()
 }
 
-// UnimplementedControlPlaneExecutionServiceServer must be embedded to have
+// UnimplementedControlPlaneServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedControlPlaneExecutionServiceServer struct{}
+type UnimplementedControlPlaneServiceServer struct{}
 
-func (UnimplementedControlPlaneExecutionServiceServer) ApplyService(context.Context, *ApplyServiceRequest) (*ApplyServiceResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ApplyService not implemented")
+func (UnimplementedControlPlaneServiceServer) UpsertService(context.Context, *UpsertServiceRequest) (*UpsertServiceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertService not implemented")
 }
-func (UnimplementedControlPlaneExecutionServiceServer) DeleteService(context.Context, *DeleteServiceRequest) (*DeleteServiceResponse, error) {
+func (UnimplementedControlPlaneServiceServer) DeleteService(context.Context, *DeleteServiceRequest) (*DeleteServiceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DeleteService not implemented")
 }
-func (UnimplementedControlPlaneExecutionServiceServer) mustEmbedUnimplementedControlPlaneExecutionServiceServer() {
-}
-func (UnimplementedControlPlaneExecutionServiceServer) testEmbeddedByValue() {}
+func (UnimplementedControlPlaneServiceServer) mustEmbedUnimplementedControlPlaneServiceServer() {}
+func (UnimplementedControlPlaneServiceServer) testEmbeddedByValue()                             {}
 
-// UnsafeControlPlaneExecutionServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ControlPlaneExecutionServiceServer will
+// UnsafeControlPlaneServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ControlPlaneServiceServer will
 // result in compilation errors.
-type UnsafeControlPlaneExecutionServiceServer interface {
-	mustEmbedUnimplementedControlPlaneExecutionServiceServer()
+type UnsafeControlPlaneServiceServer interface {
+	mustEmbedUnimplementedControlPlaneServiceServer()
 }
 
-func RegisterControlPlaneExecutionServiceServer(s grpc.ServiceRegistrar, srv ControlPlaneExecutionServiceServer) {
-	// If the following call panics, it indicates UnimplementedControlPlaneExecutionServiceServer was
+func RegisterControlPlaneServiceServer(s grpc.ServiceRegistrar, srv ControlPlaneServiceServer) {
+	// If the following call panics, it indicates UnimplementedControlPlaneServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&ControlPlaneExecutionService_ServiceDesc, srv)
+	s.RegisterService(&ControlPlaneService_ServiceDesc, srv)
 }
 
-func _ControlPlaneExecutionService_ApplyService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ApplyServiceRequest)
+func _ControlPlaneService_UpsertService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertServiceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControlPlaneExecutionServiceServer).ApplyService(ctx, in)
+		return srv.(ControlPlaneServiceServer).UpsertService(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ControlPlaneExecutionService_ApplyService_FullMethodName,
+		FullMethod: ControlPlaneService_UpsertService_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControlPlaneExecutionServiceServer).ApplyService(ctx, req.(*ApplyServiceRequest))
+		return srv.(ControlPlaneServiceServer).UpsertService(ctx, req.(*UpsertServiceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ControlPlaneExecutionService_DeleteService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ControlPlaneService_DeleteService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(DeleteServiceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControlPlaneExecutionServiceServer).DeleteService(ctx, in)
+		return srv.(ControlPlaneServiceServer).DeleteService(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ControlPlaneExecutionService_DeleteService_FullMethodName,
+		FullMethod: ControlPlaneService_DeleteService_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControlPlaneExecutionServiceServer).DeleteService(ctx, req.(*DeleteServiceRequest))
+		return srv.(ControlPlaneServiceServer).DeleteService(ctx, req.(*DeleteServiceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// ControlPlaneExecutionService_ServiceDesc is the grpc.ServiceDesc for ControlPlaneExecutionService service.
+// ControlPlaneService_ServiceDesc is the grpc.ServiceDesc for ControlPlaneService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ControlPlaneExecutionService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "minicloud.cloudplane.v1.ControlPlaneExecutionService",
-	HandlerType: (*ControlPlaneExecutionServiceServer)(nil),
+var ControlPlaneService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "minicloud.cloudplane.v1.ControlPlaneService",
+	HandlerType: (*ControlPlaneServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ApplyService",
-			Handler:    _ControlPlaneExecutionService_ApplyService_Handler,
+			MethodName: "UpsertService",
+			Handler:    _ControlPlaneService_UpsertService_Handler,
 		},
 		{
 			MethodName: "DeleteService",
-			Handler:    _ControlPlaneExecutionService_DeleteService_Handler,
+			Handler:    _ControlPlaneService_DeleteService_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

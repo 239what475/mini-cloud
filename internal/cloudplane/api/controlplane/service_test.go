@@ -17,7 +17,7 @@ import (
 func TestDeleteServiceReturnsNotFoundForMissingService(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.BearerMetadataKey, transport.BearerHeader("southbound-token")))
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	server := newExecutionServer(slog.Default(), db.Store, newAuthenticator("southbound-token"))
+	server := newServiceServer(slog.Default(), db.Store, newAuthenticator("southbound-token"))
 
 	_, err := server.DeleteService(ctx, &cloudplanev1.DeleteServiceRequest{
 		ServiceId:         "missing-service",
@@ -28,12 +28,12 @@ func TestDeleteServiceReturnsNotFoundForMissingService(t *testing.T) {
 	}
 }
 
-func TestApplyServiceRequiresReadinessPath(t *testing.T) {
+func TestUpsertServiceValidatesServiceSpec(t *testing.T) {
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(transport.BearerMetadataKey, transport.BearerHeader("southbound-token")))
 	db := testutil.OpenCloudPlaneTestDatabase(t)
-	server := newExecutionServer(slog.Default(), db.Store, newAuthenticator("southbound-token"))
+	server := newServiceServer(slog.Default(), db.Store, newAuthenticator("southbound-token"))
 
-	_, err := server.ApplyService(ctx, &cloudplanev1.ApplyServiceRequest{
+	_, err := server.UpsertService(ctx, &cloudplanev1.UpsertServiceRequest{
 		ServiceId:         "svc-missing-readiness",
 		ServiceName:       "missing-readiness",
 		DisplayName:       "Missing Readiness",
@@ -45,6 +45,6 @@ func TestApplyServiceRequiresReadinessPath(t *testing.T) {
 		Exposure:          "public",
 	})
 	if status.Code(err) != codes.InvalidArgument {
-		t.Fatalf("ApplyService error = %v, want InvalidArgument", err)
+		t.Fatalf("UpsertService error = %v, want InvalidArgument", err)
 	}
 }

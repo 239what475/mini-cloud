@@ -32,7 +32,7 @@ const serviceSelectColumns = `
 	updated_at
 `
 
-func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceInput) (cloudmodel.Service, error) {
+func (s *Store) UpsertService(ctx context.Context, input cloudmodel.UpsertServiceInput) (cloudmodel.Service, error) {
 	if err := input.Validate(); err != nil {
 		return cloudmodel.Service{}, err
 	}
@@ -51,7 +51,7 @@ func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceI
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return cloudmodel.Service{}, fmt.Errorf("begin apply service tx: %w", err)
+		return cloudmodel.Service{}, fmt.Errorf("begin upsert service tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -119,7 +119,7 @@ func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceI
 				return cloudmodel.Service{}, getErr
 			}
 			if err := tx.Commit(); err != nil {
-				return cloudmodel.Service{}, fmt.Errorf("commit stale apply service tx: %w", err)
+				return cloudmodel.Service{}, fmt.Errorf("commit stale service upsert tx: %w", err)
 			}
 			return current, nil
 		}
@@ -146,7 +146,7 @@ func (s *Store) ApplyService(ctx context.Context, input cloudmodel.ApplyServiceI
 	}
 
 	if err := tx.Commit(); err != nil {
-		return cloudmodel.Service{}, fmt.Errorf("commit apply service tx: %w", err)
+		return cloudmodel.Service{}, fmt.Errorf("commit upsert service tx: %w", err)
 	}
 	return item, nil
 }

@@ -72,7 +72,7 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	}
 }
 
-func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T) {
+func TestSyncExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-delete-dns")
@@ -102,7 +102,7 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.applyExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
+	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
 			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
@@ -111,7 +111,7 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 			ObservedAt:        timestamppb.New(time.Now().UTC()),
 		},
 	}, nil); err != nil {
-		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+		t.Fatalf("syncExecutionSnapshots returned error: %v", err)
 	}
 	if len(dns.deleted) != 2 {
 		t.Fatalf("deleted DNS records = %+v, want CNAME and TXT", dns.deleted)
@@ -128,7 +128,7 @@ func TestApplyExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T)
 	}
 }
 
-func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *testing.T) {
+func TestSyncExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-delete-waits-frontdoor")
@@ -149,7 +149,7 @@ func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t 
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.applyExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
+	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
 			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
@@ -160,7 +160,7 @@ func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t 
 	}, []*cloudplanev1.PlaneFrontDoorDomain{
 		{Host: "wait-frontdoor.apps.example.com", Cname: "wait-frontdoor.apps.example.com.cdn.dnsv1.com"},
 	}); err != nil {
-		t.Fatalf("applyExecutionSnapshots returned error: %v", err)
+		t.Fatalf("syncExecutionSnapshots returned error: %v", err)
 	}
 	if len(dns.deleted) != 0 {
 		t.Fatalf("deleted DNS records = %+v, want none while frontdoor is still reported", dns.deleted)
@@ -169,7 +169,7 @@ func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t 
 		t.Fatalf("GetService after pending frontdoor cleanup returned error: %v", err)
 	}
 
-	if err := syncer.applyExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
+	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
 			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
@@ -178,7 +178,7 @@ func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t 
 			ObservedAt:        timestamppb.New(time.Now().UTC()),
 		},
 	}, nil); err != nil {
-		t.Fatalf("applyExecutionSnapshots after frontdoor cleanup returned error: %v", err)
+		t.Fatalf("syncExecutionSnapshots after frontdoor cleanup returned error: %v", err)
 	}
 	if len(dns.deleted) != 1 {
 		t.Fatalf("deleted DNS records = %+v, want CNAME after frontdoor disappears", dns.deleted)
@@ -188,13 +188,13 @@ func TestApplyExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t 
 	}
 }
 
-func TestApplyServiceSnapshotsIgnoresUnknownService(t *testing.T) {
+func TestSyncServiceSnapshotsIgnoresUnknownService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-unknown-service")
 	syncer := &PlaneSyncer{store: db.Store}
 
-	if err := syncer.applyServiceSnapshots(ctx, plane.ID, time.Now().UTC(), []*cloudplanev1.PlaneService{
+	if err := syncer.syncServiceSnapshots(ctx, plane.ID, time.Now().UTC(), []*cloudplanev1.PlaneService{
 		{
 			ServiceId:   "svc-unknown",
 			Name:        "unknown",
@@ -203,7 +203,7 @@ func TestApplyServiceSnapshotsIgnoresUnknownService(t *testing.T) {
 			Generation:  1,
 		},
 	}); err != nil {
-		t.Fatalf("applyServiceSnapshots returned error: %v", err)
+		t.Fatalf("syncServiceSnapshots returned error: %v", err)
 	}
 	if _, err := db.Store.GetService(ctx, "svc-unknown"); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
 		t.Fatalf("GetService unknown snapshot error = %v, want service not found", err)
@@ -275,15 +275,8 @@ func TestBuildNodeInventoryIncludesElasticNodeSource(t *testing.T) {
 
 func TestServiceStatusFromExecutionSnapshotRunning(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := model.Service{
-		Status: model.ServiceStatus{
-			Run: model.RunStatus{
-				Phase: model.RunPhaseDispatching,
-			},
-		},
-	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
 		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
@@ -301,15 +294,8 @@ func TestServiceStatusFromExecutionSnapshotRunning(t *testing.T) {
 
 func TestServiceStatusFromExecutionSnapshotFailed(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := model.Service{
-		Status: model.ServiceStatus{
-			Run: model.RunStatus{
-				Phase: model.RunPhaseDispatching,
-			},
-		},
-	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
 		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
@@ -327,15 +313,8 @@ func TestServiceStatusFromExecutionSnapshotFailed(t *testing.T) {
 
 func TestServiceStatusFromExecutionSnapshotProgressing(t *testing.T) {
 	observedAt := time.Now().UTC()
-	serviceItem := model.Service{
-		Status: model.ServiceStatus{
-			Run: model.RunStatus{
-				Phase: model.RunPhaseDispatching,
-			},
-		},
-	}
 
-	status := serviceStatusFromExecutionSnapshot(serviceItem, &cloudplanev1.PlaneExecutionSnapshot{
+	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
 		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,

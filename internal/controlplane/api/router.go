@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -19,10 +20,17 @@ type Options struct {
 	PlaneSyncer       *coordination.PlaneSyncer
 }
 
-func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler {
+func NewMux(opts Options, logger *slog.Logger, stores *store.Store) (http.Handler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if stores == nil {
+		return nil, fmt.Errorf("control-plane store is required")
+	}
+	if opts.ServiceOperations == nil {
+		return nil, fmt.Errorf("service operations are required")
+	}
+
 	gin.SetMode(gin.ReleaseMode)
 	gin.EnableJsonDecoderDisallowUnknownFields()
 	router := gin.New()
@@ -70,5 +78,5 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	internal.Use(southboundAuth.requireToken())
 	internal.POST("/planes/register", planeHandler.registerPlane)
 
-	return router
+	return router, nil
 }

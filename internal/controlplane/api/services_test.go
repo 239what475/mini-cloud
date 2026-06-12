@@ -86,12 +86,15 @@ func TestUpdateServiceRejectsPlaneIDInRequest(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	planeSyncer := coordination.NewPlaneSyncer(logger, db.Store, "southbound-token", nil)
 	services := coordination.NewServiceOperations(logger, db.Store, "southbound-token", "apps.example.test", planeSyncer)
-	handler := NewMux(Options{
+	handler, err := NewMux(Options{
 		AdminToken:        "admin-token",
 		SouthboundToken:   "southbound-token",
 		ServiceOperations: services,
 		PlaneSyncer:       planeSyncer,
 	}, logger, db.Store)
+	if err != nil {
+		t.Fatalf("NewMux returned error: %v", err)
+	}
 
 	createBody := []byte(`{
 		"name": "strict-web",
@@ -160,12 +163,15 @@ func TestDeleteServiceReturnsDeletingServiceResource(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	planeSyncer := coordination.NewPlaneSyncer(logger, db.Store, "southbound-token", nil)
 	services := coordination.NewServiceOperations(logger, db.Store, "southbound-token", "apps.example.test", planeSyncer)
-	handler := NewMux(Options{
+	handler, err := NewMux(Options{
 		AdminToken:        "admin-token",
 		SouthboundToken:   "southbound-token",
 		ServiceOperations: services,
 		PlaneSyncer:       planeSyncer,
 	}, logger, db.Store)
+	if err != nil {
+		t.Fatalf("NewMux returned error: %v", err)
+	}
 
 	createBody := []byte(`{
 		"name": "delete-web",
@@ -218,7 +224,7 @@ func TestDeleteServiceReturnsDeletingServiceResource(t *testing.T) {
 }
 
 type serviceAPIPlane struct {
-	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+	cloudplanev1.UnimplementedControlPlaneServiceServer
 	cloudplanev1.UnimplementedControlPlaneSnapshotServiceServer
 
 	mu       sync.Mutex
@@ -230,7 +236,7 @@ func startServiceAPIPlane(t *testing.T) *serviceAPIPlane {
 
 	grpcServer := grpc.NewServer()
 	plane := &serviceAPIPlane{}
-	cloudplanev1.RegisterControlPlaneExecutionServiceServer(grpcServer, plane)
+	cloudplanev1.RegisterControlPlaneServiceServer(grpcServer, plane)
 	cloudplanev1.RegisterControlPlaneSnapshotServiceServer(grpcServer, plane)
 
 	server := httptest.NewServer(h2c.NewHandler(grpcServer, &http2.Server{}))
@@ -249,10 +255,10 @@ func (p *serviceAPIPlane) GetSnapshot(context.Context, *cloudplanev1.GetSnapshot
 	}}, nil
 }
 
-func (p *serviceAPIPlane) ApplyService(context.Context, *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+func (p *serviceAPIPlane) UpsertService(context.Context, *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return &cloudplanev1.ApplyServiceResponse{}, nil
+	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 
 func (p *serviceAPIPlane) DeleteService(context.Context, *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {

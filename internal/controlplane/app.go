@@ -55,13 +55,19 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
 	serviceOperations := coordination.NewServiceOperations(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
 
-	handler := api.NewMux(api.Options{
+	handler, err := api.NewMux(api.Options{
 		AdminToken:        cfg.Auth.AdminToken,
 		SouthboundToken:   cfg.Auth.SouthboundToken,
 		UIDir:             cfg.UI.Dir,
 		ServiceOperations: serviceOperations,
 		PlaneSyncer:       planeSyncer,
 	}, logger, stores)
+	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return App{}, errors.Join(err, closeErr)
+		}
+		return App{}, err
+	}
 
 	return App{
 		Config:  cfg,

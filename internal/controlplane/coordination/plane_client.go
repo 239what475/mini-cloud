@@ -20,23 +20,11 @@ import (
 
 var errPlaneObjectNotFound = errors.New("plane api object not found")
 
-type planeRPCError struct {
-	Code    string
-	Message string
-}
-
-func (e *planeRPCError) Error() string {
-	if strings.TrimSpace(e.Code) != "" {
-		return fmt.Sprintf("plane gRPC returned code %s: %s", e.Code, e.Message)
-	}
-	return fmt.Sprintf("plane gRPC returned error: %s", e.Message)
-}
-
 type planeClient struct {
-	bearerToken  string
-	conn         *grpc.ClientConn
-	snapshotRPC  cloudplanev1.ControlPlaneSnapshotServiceClient
-	executionRPC cloudplanev1.ControlPlaneExecutionServiceClient
+	bearerToken string
+	conn        *grpc.ClientConn
+	snapshotRPC cloudplanev1.ControlPlaneSnapshotServiceClient
+	serviceRPC  cloudplanev1.ControlPlaneServiceClient
 }
 
 func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, error) {
@@ -53,10 +41,10 @@ func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, erro
 		return nil, fmt.Errorf("dial plane service: %w", err)
 	}
 	return &planeClient{
-		bearerToken:  strings.TrimSpace(bearerToken),
-		conn:         conn,
-		snapshotRPC:  cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
-		executionRPC: cloudplanev1.NewControlPlaneExecutionServiceClient(conn),
+		bearerToken: strings.TrimSpace(bearerToken),
+		conn:        conn,
+		snapshotRPC: cloudplanev1.NewControlPlaneSnapshotServiceClient(conn),
+		serviceRPC:  cloudplanev1.NewControlPlaneServiceClient(conn),
 	}, nil
 }
 
@@ -78,15 +66,15 @@ func (c *planeClient) Snapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot
 	return resp.GetSnapshot(), nil
 }
 
-func (c *planeClient) ApplyService(ctx context.Context, input *cloudplanev1.ApplyServiceRequest) error {
-	if _, err := c.executionRPC.ApplyService(withAuth(ctx, c.bearerToken), input); err != nil {
+func (c *planeClient) UpsertService(ctx context.Context, input *cloudplanev1.UpsertServiceRequest) error {
+	if _, err := c.serviceRPC.UpsertService(withAuth(ctx, c.bearerToken), input); err != nil {
 		return classifyRPCError(err)
 	}
 	return nil
 }
 
 func (c *planeClient) DeleteService(ctx context.Context, input *cloudplanev1.DeleteServiceRequest) error {
-	_, err := c.executionRPC.DeleteService(withAuth(ctx, c.bearerToken), input)
+	_, err := c.serviceRPC.DeleteService(withAuth(ctx, c.bearerToken), input)
 	if err != nil {
 		return classifyRPCError(err)
 	}
@@ -131,9 +119,5 @@ func classifyRPCError(err error) error {
 	if st.Code() == codes.NotFound {
 		return fmt.Errorf("%w: %s", errPlaneObjectNotFound, st.Message())
 	}
-	apiErr := &planeRPCError{
-		Code:    st.Code().String(),
-		Message: st.Message(),
-	}
-	return apiErr
+	return fmt.Errorf("plane gRPC returned code %s: %s", st.Code(), st.Message())
 }

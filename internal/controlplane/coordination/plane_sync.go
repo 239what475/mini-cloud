@@ -38,15 +38,6 @@ type syncOverview struct {
 	ExecutionPlansTotal int
 }
 
-type syncError struct {
-	status  string
-	message string
-}
-
-func (e *syncError) Error() string {
-	return e.message
-}
-
 func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string, dns dnsClient) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
@@ -72,19 +63,16 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
 	client, err := newPlaneClient(grpcEndpoint, s.southboundToken)
 	if err != nil {
-		syncErr := &syncError{
-			status:  model.StatusOffline,
-			message: fmt.Sprintf("initialize plane southbound client failed: %v", err),
-		}
+		message := fmt.Sprintf("initialize plane southbound client failed: %v", err)
 		syncedAt := s.now()
 		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-			Status:     syncErr.status,
-			Message:    syncErr.message,
+			Status:     model.StatusOffline,
+			Message:    message,
 			LastSyncAt: &syncedAt,
 		}); updateErr != nil {
 			logger.Error("update failed plane status failed", "error", updateErr)
 		}
-		return syncErr
+		return errors.New(message)
 	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
@@ -94,19 +82,16 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 
 	snapshot, err := client.Snapshot(ctx)
 	if err != nil {
-		syncErr := &syncError{
-			status:  model.StatusOffline,
-			message: fmt.Sprintf("load plane snapshot failed: %v", err),
-		}
+		message := fmt.Sprintf("load plane snapshot failed: %v", err)
 		syncedAt := s.now()
 		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-			Status:     syncErr.status,
-			Message:    syncErr.message,
+			Status:     model.StatusOffline,
+			Message:    message,
 			LastSyncAt: &syncedAt,
 		}); updateErr != nil {
 			logger.Error("update failed plane status failed", "error", updateErr)
 		}
-		return syncErr
+		return errors.New(message)
 	}
 	checkedAt := protoTime(snapshot.GetCheckedAt())
 
@@ -123,10 +108,10 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	if err := s.store.ReplacePlaneNodeInventory(ctx, planeID, buildNodeInventory(snapshot)); err != nil {
 		return err
 	}
-	if err := s.applyServiceSnapshots(ctx, planeID, checkedAt, snapshot.GetServices()); err != nil {
+	if err := s.syncServiceSnapshots(ctx, planeID, checkedAt, snapshot.GetServices()); err != nil {
 		return err
 	}
-	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
+	if err := s.syncExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
 		return err
 	}
 	if err := s.applyFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
@@ -159,7 +144,7 @@ func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 	return nil
 }
 
-func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot, frontdoorDomains []*cloudplanev1.PlaneFrontDoorDomain) error {
+func (s *PlaneSyncer) syncExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot, frontdoorDomains []*cloudplanev1.PlaneFrontDoorDomain) error {
 	activeFrontDoorHosts := frontDoorHosts(frontdoorDomains)
 	for _, item := range executions {
 		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" || item.GetServiceGeneration() <= 0 {
@@ -194,7 +179,7 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 			}
 			continue
 		}
-		status := serviceStatusFromExecutionSnapshot(serviceItem, item)
+		status := serviceStatusFromExecutionSnapshot(item)
 		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration(), store.UpdateServiceStatusInput{
 			ObservedGeneration: status.Observed.ObservedGeneration,
 			Phase:              status.Observed.Phase,
@@ -230,7 +215,7 @@ func cleanSyncDomain(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
-func (s *PlaneSyncer) applyServiceSnapshots(ctx context.Context, planeID string, observedAt time.Time, services []*cloudplanev1.PlaneService) error {
+func (s *PlaneSyncer) syncServiceSnapshots(ctx context.Context, planeID string, observedAt time.Time, services []*cloudplanev1.PlaneService) error {
 	for _, item := range services {
 		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" {
 			continue
@@ -256,7 +241,7 @@ type executionDerivedStatus struct {
 	Run      model.RunStatus
 }
 
-func serviceStatusFromExecutionSnapshot(serviceItem model.Service, item *cloudplanev1.PlaneExecutionSnapshot) executionDerivedStatus {
+func serviceStatusFromExecutionSnapshot(item *cloudplanev1.PlaneExecutionSnapshot) executionDerivedStatus {
 	now := protoTime(item.GetObservedAt())
 	if now.IsZero() {
 		now = time.Now().UTC()

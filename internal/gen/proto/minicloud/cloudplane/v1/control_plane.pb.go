@@ -774,7 +774,7 @@ func (x *GetSnapshotResponse) GetSnapshot() *PlaneSnapshot {
 	return nil
 }
 
-type ApplyServiceRequest struct {
+type UpsertServiceRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ServiceId         string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
 	ServiceName       string                 `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
@@ -793,20 +793,20 @@ type ApplyServiceRequest struct {
 	sizeCache         protoimpl.SizeCache
 }
 
-func (x *ApplyServiceRequest) Reset() {
-	*x = ApplyServiceRequest{}
+func (x *UpsertServiceRequest) Reset() {
+	*x = UpsertServiceRequest{}
 	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ApplyServiceRequest) String() string {
+func (x *UpsertServiceRequest) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ApplyServiceRequest) ProtoMessage() {}
+func (*UpsertServiceRequest) ProtoMessage() {}
 
-func (x *ApplyServiceRequest) ProtoReflect() protoreflect.Message {
+func (x *UpsertServiceRequest) ProtoReflect() protoreflect.Message {
 	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -818,122 +818,122 @@ func (x *ApplyServiceRequest) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ApplyServiceRequest.ProtoReflect.Descriptor instead.
-func (*ApplyServiceRequest) Descriptor() ([]byte, []int) {
+// Deprecated: Use UpsertServiceRequest.ProtoReflect.Descriptor instead.
+func (*UpsertServiceRequest) Descriptor() ([]byte, []int) {
 	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *ApplyServiceRequest) GetServiceId() string {
+func (x *UpsertServiceRequest) GetServiceId() string {
 	if x != nil {
 		return x.ServiceId
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetServiceName() string {
+func (x *UpsertServiceRequest) GetServiceName() string {
 	if x != nil {
 		return x.ServiceName
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetDisplayName() string {
+func (x *UpsertServiceRequest) GetDisplayName() string {
 	if x != nil {
 		return x.DisplayName
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetServiceGeneration() int64 {
+func (x *UpsertServiceRequest) GetServiceGeneration() int64 {
 	if x != nil {
 		return x.ServiceGeneration
 	}
 	return 0
 }
 
-func (x *ApplyServiceRequest) GetImage() string {
+func (x *UpsertServiceRequest) GetImage() string {
 	if x != nil {
 		return x.Image
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetCommand() []string {
+func (x *UpsertServiceRequest) GetCommand() []string {
 	if x != nil {
 		return x.Command
 	}
 	return nil
 }
 
-func (x *ApplyServiceRequest) GetArgs() []string {
+func (x *UpsertServiceRequest) GetArgs() []string {
 	if x != nil {
 		return x.Args
 	}
 	return nil
 }
 
-func (x *ApplyServiceRequest) GetEnv() map[string]string {
+func (x *UpsertServiceRequest) GetEnv() map[string]string {
 	if x != nil {
 		return x.Env
 	}
 	return nil
 }
 
-func (x *ApplyServiceRequest) GetContainerPort() int32 {
+func (x *UpsertServiceRequest) GetContainerPort() int32 {
 	if x != nil {
 		return x.ContainerPort
 	}
 	return 0
 }
 
-func (x *ApplyServiceRequest) GetReadinessPath() string {
+func (x *UpsertServiceRequest) GetReadinessPath() string {
 	if x != nil {
 		return x.ReadinessPath
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetInstanceClass() string {
+func (x *UpsertServiceRequest) GetInstanceClass() string {
 	if x != nil {
 		return x.InstanceClass
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetExposure() string {
+func (x *UpsertServiceRequest) GetExposure() string {
 	if x != nil {
 		return x.Exposure
 	}
 	return ""
 }
 
-func (x *ApplyServiceRequest) GetHost() string {
+func (x *UpsertServiceRequest) GetHost() string {
 	if x != nil {
 		return x.Host
 	}
 	return ""
 }
 
-type ApplyServiceResponse struct {
+type UpsertServiceResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
-func (x *ApplyServiceResponse) Reset() {
-	*x = ApplyServiceResponse{}
+func (x *UpsertServiceResponse) Reset() {
+	*x = UpsertServiceResponse{}
 	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
 
-func (x *ApplyServiceResponse) String() string {
+func (x *UpsertServiceResponse) String() string {
 	return protoimpl.X.MessageStringOf(x)
 }
 
-func (*ApplyServiceResponse) ProtoMessage() {}
+func (*UpsertServiceResponse) ProtoMessage() {}
 
-func (x *ApplyServiceResponse) ProtoReflect() protoreflect.Message {
+func (x *UpsertServiceResponse) ProtoReflect() protoreflect.Message {
 	mi := &file_minicloud_cloudplane_v1_control_plane_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
@@ -945,8 +945,8 @@ func (x *ApplyServiceResponse) ProtoReflect() protoreflect.Message {
 	return mi.MessageOf(x)
 }
 
-// Deprecated: Use ApplyServiceResponse.ProtoReflect.Descriptor instead.
-func (*ApplyServiceResponse) Descriptor() ([]byte, []int) {
+// Deprecated: Use UpsertServiceResponse.ProtoReflect.Descriptor instead.
+func (*UpsertServiceResponse) Descriptor() ([]byte, []int) {
 	return file_minicloud_cloudplane_v1_control_plane_proto_rawDescGZIP(), []int{11}
 }
 
@@ -1114,8 +1114,8 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x11frontdoor_domains\x18\a \x03(\v2-.minicloud.cloudplane.v1.PlaneFrontDoorDomainR\x10frontdoorDomains\"\x14\n" +
 	"\x12GetSnapshotRequest\"Y\n" +
 	"\x13GetSnapshotResponse\x12B\n" +
-	"\bsnapshot\x18\x01 \x01(\v2&.minicloud.cloudplane.v1.PlaneSnapshotR\bsnapshot\"\x93\x04\n" +
-	"\x13ApplyServiceRequest\x12\x1d\n" +
+	"\bsnapshot\x18\x01 \x01(\v2&.minicloud.cloudplane.v1.PlaneSnapshotR\bsnapshot\"\x95\x04\n" +
+	"\x14UpsertServiceRequest\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12!\n" +
 	"\fservice_name\x18\x02 \x01(\tR\vserviceName\x12!\n" +
@@ -1123,8 +1123,8 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x12service_generation\x18\x04 \x01(\x03R\x11serviceGeneration\x12\x14\n" +
 	"\x05image\x18\x05 \x01(\tR\x05image\x12\x18\n" +
 	"\acommand\x18\x06 \x03(\tR\acommand\x12\x12\n" +
-	"\x04args\x18\a \x03(\tR\x04args\x12G\n" +
-	"\x03env\x18\b \x03(\v25.minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntryR\x03env\x12%\n" +
+	"\x04args\x18\a \x03(\tR\x04args\x12H\n" +
+	"\x03env\x18\b \x03(\v26.minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntryR\x03env\x12%\n" +
 	"\x0econtainer_port\x18\t \x01(\x05R\rcontainerPort\x12%\n" +
 	"\x0ereadiness_path\x18\n" +
 	" \x01(\tR\rreadinessPath\x12%\n" +
@@ -1133,17 +1133,17 @@ const file_minicloud_cloudplane_v1_control_plane_proto_rawDesc = "" +
 	"\x04host\x18\r \x01(\tR\x04host\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x16\n" +
-	"\x14ApplyServiceResponse\"d\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x17\n" +
+	"\x15UpsertServiceResponse\"d\n" +
 	"\x14DeleteServiceRequest\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12-\n" +
 	"\x12service_generation\x18\x02 \x01(\x03R\x11serviceGeneration\"\x17\n" +
 	"\x15DeleteServiceResponse2\x87\x01\n" +
 	"\x1bControlPlaneSnapshotService\x12h\n" +
-	"\vGetSnapshot\x12+.minicloud.cloudplane.v1.GetSnapshotRequest\x1a,.minicloud.cloudplane.v1.GetSnapshotResponse2\xfb\x01\n" +
-	"\x1cControlPlaneExecutionService\x12k\n" +
-	"\fApplyService\x12,.minicloud.cloudplane.v1.ApplyServiceRequest\x1a-.minicloud.cloudplane.v1.ApplyServiceResponse\x12n\n" +
+	"\vGetSnapshot\x12+.minicloud.cloudplane.v1.GetSnapshotRequest\x1a,.minicloud.cloudplane.v1.GetSnapshotResponse2\xf5\x01\n" +
+	"\x13ControlPlaneService\x12n\n" +
+	"\rUpsertService\x12-.minicloud.cloudplane.v1.UpsertServiceRequest\x1a..minicloud.cloudplane.v1.UpsertServiceResponse\x12n\n" +
 	"\rDeleteService\x12-.minicloud.cloudplane.v1.DeleteServiceRequest\x1a..minicloud.cloudplane.v1.DeleteServiceResponseBDZBmini-cloud/internal/gen/proto/minicloud/cloudplane/v1;cloudplanev1b\x06proto3"
 
 var (
@@ -1170,11 +1170,11 @@ var file_minicloud_cloudplane_v1_control_plane_proto_goTypes = []any{
 	(*PlaneSnapshot)(nil),          // 7: minicloud.cloudplane.v1.PlaneSnapshot
 	(*GetSnapshotRequest)(nil),     // 8: minicloud.cloudplane.v1.GetSnapshotRequest
 	(*GetSnapshotResponse)(nil),    // 9: minicloud.cloudplane.v1.GetSnapshotResponse
-	(*ApplyServiceRequest)(nil),    // 10: minicloud.cloudplane.v1.ApplyServiceRequest
-	(*ApplyServiceResponse)(nil),   // 11: minicloud.cloudplane.v1.ApplyServiceResponse
+	(*UpsertServiceRequest)(nil),   // 10: minicloud.cloudplane.v1.UpsertServiceRequest
+	(*UpsertServiceResponse)(nil),  // 11: minicloud.cloudplane.v1.UpsertServiceResponse
 	(*DeleteServiceRequest)(nil),   // 12: minicloud.cloudplane.v1.DeleteServiceRequest
 	(*DeleteServiceResponse)(nil),  // 13: minicloud.cloudplane.v1.DeleteServiceResponse
-	nil,                            // 14: minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
+	nil,                            // 14: minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
 	(*timestamppb.Timestamp)(nil),  // 15: google.protobuf.Timestamp
 }
 var file_minicloud_cloudplane_v1_control_plane_proto_depIdxs = []int32{
@@ -1191,13 +1191,13 @@ var file_minicloud_cloudplane_v1_control_plane_proto_depIdxs = []int32{
 	5,  // 10: minicloud.cloudplane.v1.PlaneSnapshot.services:type_name -> minicloud.cloudplane.v1.PlaneService
 	6,  // 11: minicloud.cloudplane.v1.PlaneSnapshot.frontdoor_domains:type_name -> minicloud.cloudplane.v1.PlaneFrontDoorDomain
 	7,  // 12: minicloud.cloudplane.v1.GetSnapshotResponse.snapshot:type_name -> minicloud.cloudplane.v1.PlaneSnapshot
-	14, // 13: minicloud.cloudplane.v1.ApplyServiceRequest.env:type_name -> minicloud.cloudplane.v1.ApplyServiceRequest.EnvEntry
+	14, // 13: minicloud.cloudplane.v1.UpsertServiceRequest.env:type_name -> minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
 	8,  // 14: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:input_type -> minicloud.cloudplane.v1.GetSnapshotRequest
-	10, // 15: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:input_type -> minicloud.cloudplane.v1.ApplyServiceRequest
-	12, // 16: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
+	10, // 15: minicloud.cloudplane.v1.ControlPlaneService.UpsertService:input_type -> minicloud.cloudplane.v1.UpsertServiceRequest
+	12, // 16: minicloud.cloudplane.v1.ControlPlaneService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
 	9,  // 17: minicloud.cloudplane.v1.ControlPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.GetSnapshotResponse
-	11, // 18: minicloud.cloudplane.v1.ControlPlaneExecutionService.ApplyService:output_type -> minicloud.cloudplane.v1.ApplyServiceResponse
-	13, // 19: minicloud.cloudplane.v1.ControlPlaneExecutionService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
+	11, // 18: minicloud.cloudplane.v1.ControlPlaneService.UpsertService:output_type -> minicloud.cloudplane.v1.UpsertServiceResponse
+	13, // 19: minicloud.cloudplane.v1.ControlPlaneService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
 	17, // [17:20] is the sub-list for method output_type
 	14, // [14:17] is the sub-list for method input_type
 	14, // [14:14] is the sub-list for extension type_name

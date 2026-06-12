@@ -138,7 +138,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	if err := input.validate(); err != nil {
 		return model.Service{}, err
 	}
-	specColumns, err := buildServiceSpecColumns(input.Spec)
+	specColumns, err := encodeServiceSpecColumns(input.Spec)
 	if err != nil {
 		return model.Service{}, err
 	}
@@ -150,8 +150,8 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 	if err != nil {
 		return model.Service{}, err
 	}
-	initialStatus := model.PendingServiceStatus(0, "waiting for cloud-plane service apply")
-	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
+	initialStatus := model.PendingServiceStatus(0, "waiting for cloud-plane service dispatch")
+	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service dispatch"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
@@ -226,7 +226,7 @@ func (s *Store) ListServices(ctx context.Context) ([]model.Service, error) {
 	return items, nil
 }
 
-func (s *Store) GetPendingApplyService(ctx context.Context, serviceID string) (model.Service, bool, error) {
+func (s *Store) GetPendingDispatchService(ctx context.Context, serviceID string) (model.Service, bool, error) {
 	item, err := scanService(s.db.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM service_bindings b
@@ -239,12 +239,12 @@ func (s *Store) GetPendingApplyService(ctx context.Context, serviceID string) (m
 		if errors.Is(err, sql.ErrNoRows) {
 			return model.Service{}, false, nil
 		}
-		return model.Service{}, false, fmt.Errorf("query pending apply service binding: %w", err)
+		return model.Service{}, false, fmt.Errorf("query pending dispatch service binding: %w", err)
 	}
 	return item, true, nil
 }
 
-func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, error) {
+func (s *Store) ListPendingDispatchServices(ctx context.Context) ([]model.Service, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT `+serviceSelectColumns+`
 		FROM service_bindings b
@@ -254,7 +254,7 @@ func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, 
 		ORDER BY b.created_at ASC, b.id ASC
 	`, model.DesiredStateActive)
 	if err != nil {
-		return nil, fmt.Errorf("query pending apply service bindings: %w", err)
+		return nil, fmt.Errorf("query pending dispatch service bindings: %w", err)
 	}
 	defer rows.Close()
 
@@ -267,7 +267,7 @@ func (s *Store) ListPendingApplyServices(ctx context.Context) ([]model.Service, 
 		items = append(items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate pending apply service bindings: %w", err)
+		return nil, fmt.Errorf("iterate pending dispatch service bindings: %w", err)
 	}
 	return items, nil
 }
@@ -366,7 +366,7 @@ func (s *Store) UpsertServiceSnapshot(ctx context.Context, input UpsertServiceSn
 		cleanServiceDomain(input.Host) != current.Metadata.Host {
 		return tx.Commit()
 	}
-	specColumns, err := buildServiceSpecColumns(current.Spec)
+	specColumns, err := encodeServiceSpecColumns(current.Spec)
 	if err != nil {
 		return err
 	}
@@ -465,13 +465,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 		ReadinessPath: input.Spec.ReadinessPath,
 		Env:           input.Spec.Env,
 	}
-	specColumns, err := buildServiceSpecColumns(nextSpec)
+	specColumns, err := encodeServiceSpecColumns(nextSpec)
 	if err != nil {
 		return model.Service{}, err
 	}
 	nextGeneration := current.Metadata.Generation + 1
-	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for cloud-plane service apply")
-	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
+	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for cloud-plane service dispatch")
+	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service dispatch"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
@@ -877,7 +877,7 @@ func validateWorkloadSpec(spec model.WorkloadSpec) error {
 	return nil
 }
 
-func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error) {
+func encodeServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error) {
 	exposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
 	if exposure == "" {
 		exposure = model.ExposurePublic

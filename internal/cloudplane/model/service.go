@@ -37,7 +37,7 @@ type ServiceSpec struct {
 	ReadinessPath string
 }
 
-type ApplyServiceInput struct {
+type UpsertServiceInput struct {
 	ID          string
 	Name        string
 	DisplayName string
@@ -51,7 +51,7 @@ type DeleteServiceInput struct {
 	Generation int64
 }
 
-func (in ApplyServiceInput) Validate() error {
+func (in UpsertServiceInput) Validate() error {
 	if strings.TrimSpace(in.ID) == "" {
 		return errors.New("serviceID is required")
 	}

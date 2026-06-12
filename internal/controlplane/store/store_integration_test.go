@@ -499,23 +499,23 @@ func TestIntegrationGetDeletingServiceReturnsOnlyPendingDelete(t *testing.T) {
 	}
 }
 
-func TestIntegrationGetPendingApplyServiceReturnsOnlyUnobservedActiveService(t *testing.T) {
+func TestIntegrationGetPendingDispatchServiceReturnsOnlyUnobservedActiveService(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
-		Name:         "pending-apply-plane",
-		DisplayName:  "Pending Apply Plane",
+		Name:         "pending-dispatch-plane",
+		DisplayName:  "Pending Dispatch Plane",
 		Provider:     "tencent",
 		Region:       "ap-guangzhou",
-		GRPCEndpoint: "pending-apply-plane.example.com:18081",
+		GRPCEndpoint: "pending-dispatch-plane.example.com:18081",
 	})
 	if err != nil {
 		t.Fatalf("RegisterPlane returned error: %v", err)
 	}
 	pending, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "pending-apply",
-		DisplayName: "Pending Apply",
-		Host:        "pending-apply.apps.example.test",
+		Name:        "pending-dispatch",
+		DisplayName: "Pending Dispatch",
+		Host:        "pending-dispatch.apps.example.test",
 		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
 			InstanceClass: model.InstanceClassSmall,
@@ -529,9 +529,9 @@ func TestIntegrationGetPendingApplyServiceReturnsOnlyUnobservedActiveService(t *
 		t.Fatalf("CreateService(pending) returned error: %v", err)
 	}
 	observed, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "observed-apply",
-		DisplayName: "Observed Apply",
-		Host:        "observed-apply.apps.example.test",
+		Name:        "observed-dispatch",
+		DisplayName: "Observed Dispatch",
+		Host:        "observed-dispatch.apps.example.test",
 		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
 			InstanceClass: model.InstanceClassSmall,
@@ -552,9 +552,9 @@ func TestIntegrationGetPendingApplyServiceReturnsOnlyUnobservedActiveService(t *
 		t.Fatalf("UpdateServiceStatusForGeneration returned error: %v", err)
 	}
 	deleting, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "delete-pending-apply",
-		DisplayName: "Delete Pending Apply",
-		Host:        "delete-pending-apply.apps.example.test",
+		Name:        "delete-pending-dispatch",
+		DisplayName: "Delete Pending Dispatch",
+		Host:        "delete-pending-dispatch.apps.example.test",
 		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
 			InstanceClass: model.InstanceClassSmall,
@@ -571,15 +571,15 @@ func TestIntegrationGetPendingApplyServiceReturnsOnlyUnobservedActiveService(t *
 		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 
-	item, ok, err := db.Store.GetPendingApplyService(ctx, pending.Metadata.ID)
+	item, ok, err := db.Store.GetPendingDispatchService(ctx, pending.Metadata.ID)
 	if err != nil {
-		t.Fatalf("GetPendingApplyService returned error: %v", err)
+		t.Fatalf("GetPendingDispatchService returned error: %v", err)
 	}
 	if !ok || item.Metadata.ID != pending.Metadata.ID {
-		t.Fatalf("GetPendingApplyService = %+v ok=%v, want pending service", item, ok)
+		t.Fatalf("GetPendingDispatchService = %+v ok=%v, want pending service", item, ok)
 	}
-	if _, ok, err := db.Store.GetPendingApplyService(ctx, observed.Metadata.ID); err != nil || ok {
-		t.Fatalf("GetPendingApplyService(observed) ok=%v err=%v, want false nil", ok, err)
+	if _, ok, err := db.Store.GetPendingDispatchService(ctx, observed.Metadata.ID); err != nil || ok {
+		t.Fatalf("GetPendingDispatchService(observed) ok=%v err=%v, want false nil", ok, err)
 	}
 }
 
@@ -749,7 +749,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 		t.Fatalf("UpdateService returned error: %v", err)
 	}
 	if updated.Status.Run.Phase != model.RunPhasePending ||
-		updated.Status.Run.Message != "waiting for cloud-plane service apply" {
+		updated.Status.Run.Message != "waiting for cloud-plane service dispatch" {
 		t.Fatalf("run after update = %+v, want pending without old run message", updated.Status.Run)
 	}
 

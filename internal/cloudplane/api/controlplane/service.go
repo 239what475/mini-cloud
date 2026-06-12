@@ -14,19 +14,19 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type executionServer struct {
-	cloudplanev1.UnimplementedControlPlaneExecutionServiceServer
+type serviceServer struct {
+	cloudplanev1.UnimplementedControlPlaneServiceServer
 
 	logger *slog.Logger
 	store  *store.Store
 	auth   authenticator
 }
 
-func newExecutionServer(logger *slog.Logger, stores *store.Store, auth authenticator) cloudplanev1.ControlPlaneExecutionServiceServer {
-	return &executionServer{logger: logger, store: stores, auth: auth}
+func newServiceServer(logger *slog.Logger, stores *store.Store, auth authenticator) cloudplanev1.ControlPlaneServiceServer {
+	return &serviceServer{logger: logger, store: stores, auth: auth}
 }
 
-func (s *executionServer) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+func (s *serviceServer) UpsertService(ctx context.Context, req *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
 	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
 	}
@@ -38,7 +38,7 @@ func (s *executionServer) ApplyService(ctx context.Context, req *cloudplanev1.Ap
 	for key, value := range req.GetEnv() {
 		env[key] = value
 	}
-	input := cloudmodel.ApplyServiceInput{
+	input := cloudmodel.UpsertServiceInput{
 		ID:          strings.TrimSpace(req.GetServiceId()),
 		Name:        strings.TrimSpace(req.GetServiceName()),
 		DisplayName: strings.TrimSpace(req.GetDisplayName()),
@@ -55,13 +55,13 @@ func (s *executionServer) ApplyService(ctx context.Context, req *cloudplanev1.Ap
 			ReadinessPath: strings.TrimSpace(req.GetReadinessPath()),
 		},
 	}
-	if _, err := s.store.ApplyService(ctx, input); err != nil {
+	if _, err := s.store.UpsertService(ctx, input); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.ApplyServiceResponse{}, nil
+	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 
-func (s *executionServer) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
+func (s *serviceServer) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
 	}
