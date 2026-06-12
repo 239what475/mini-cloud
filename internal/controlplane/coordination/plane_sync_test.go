@@ -34,9 +34,9 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			},
 		},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
-			{PlanId: "plan-a"},
-			{PlanId: "plan-b"},
-			{PlanId: "plan-c"},
+			{ServiceId: "svc-a"},
+			{ServiceId: "svc-b"},
+			{ServiceId: "svc-c"},
 		},
 	})
 	if readyStatus != model.StatusReady {
@@ -58,7 +58,7 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 			},
 		},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
-			{PlanId: "plan-a"},
+			{ServiceId: "svc-a"},
 		},
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: 1,
@@ -104,7 +104,6 @@ func TestSyncExecutionSnapshotsDeletesServiceDNSAfterRemoteDelete(t *testing.T) 
 
 	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
-			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
 			ServiceGeneration: deleting.Metadata.Generation,
 			Status:            planeExecutionStatusSucceeded,
@@ -151,7 +150,6 @@ func TestSyncExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *
 
 	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
-			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
 			ServiceGeneration: deleting.Metadata.Generation,
 			Status:            planeExecutionStatusSucceeded,
@@ -171,7 +169,6 @@ func TestSyncExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *
 
 	if err := syncer.syncExecutionSnapshots(ctx, plane.ID, []*cloudplanev1.PlaneExecutionSnapshot{
 		{
-			PlanId:            "delete-plan",
 			ServiceId:         deleting.Metadata.ID,
 			ServiceGeneration: deleting.Metadata.Generation,
 			Status:            planeExecutionStatusSucceeded,
@@ -277,7 +274,6 @@ func TestServiceStatusFromExecutionSnapshotRunning(t *testing.T) {
 	observedAt := time.Now().UTC()
 
 	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
-		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "running",
@@ -296,7 +292,6 @@ func TestServiceStatusFromExecutionSnapshotFailed(t *testing.T) {
 	observedAt := time.Now().UTC()
 
 	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
-		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "failed",
@@ -315,7 +310,6 @@ func TestServiceStatusFromExecutionSnapshotProgressing(t *testing.T) {
 	observedAt := time.Now().UTC()
 
 	status := serviceStatusFromExecutionSnapshot(&cloudplanev1.PlaneExecutionSnapshot{
-		PlanId:            "svc-api-g2",
 		ServiceId:         "svc-api",
 		ServiceGeneration: 2,
 		Status:            "deploying",

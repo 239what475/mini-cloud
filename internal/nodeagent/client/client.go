@@ -41,13 +41,13 @@ const (
 	operationReportExecution   = "report execution"
 )
 
-type ControlError struct {
+type CloudPlaneError struct {
 	Operation string
 	Code      codes.Code
 	Message   string
 }
 
-func (e *ControlError) Error() string {
+func (e *CloudPlaneError) Error() string {
 	if e == nil {
 		return ""
 	}
@@ -77,7 +77,7 @@ func (c *Client) Close() error {
 }
 
 func IsUnknownNode(err error) bool {
-	var controlErr *ControlError
+	var controlErr *CloudPlaneError
 	if !errors.As(err, &controlErr) {
 		return false
 	}
@@ -93,7 +93,7 @@ func (c *Client) RegisterNode(ctx context.Context, input *nodeagentv1.RegisterNo
 	}
 	resp, err := client.RegisterNode(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
-		return nil, grpcControlError(err, operationRegisterNode)
+		return nil, grpcCloudPlaneError(err, operationRegisterNode)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid register response: empty response")
@@ -111,7 +111,7 @@ func (c *Client) SendHeartbeat(ctx context.Context, input *nodeagentv1.RecordHea
 	}
 	resp, err := client.RecordHeartbeat(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
-		return nil, grpcControlError(err, operationSendHeartbeat)
+		return nil, grpcCloudPlaneError(err, operationSendHeartbeat)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid heartbeat response: empty response")
@@ -131,7 +131,7 @@ func (c *Client) PollExecutionWork(ctx context.Context, nodeID string) (*nodeage
 		NodeId: nodeID,
 	})
 	if err != nil {
-		return nil, grpcControlError(err, operationPollExecutionWork)
+		return nil, grpcCloudPlaneError(err, operationPollExecutionWork)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid work response: empty response")
@@ -146,7 +146,7 @@ func (c *Client) ReportExecution(ctx context.Context, input *nodeagentv1.ReportE
 	}
 	resp, err := client.ReportExecution(withOutgoingMetadata(ctx, c.token), input)
 	if err != nil {
-		return nil, grpcControlError(err, operationReportExecution)
+		return nil, grpcCloudPlaneError(err, operationReportExecution)
 	}
 	if resp == nil {
 		return nil, errors.New("invalid report execution response: empty response")
@@ -194,12 +194,12 @@ func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Conte
 	return metadata.AppendToOutgoingContext(ctx, pairs...)
 }
 
-func grpcControlError(err error, operation string) error {
+func grpcCloudPlaneError(err error, operation string) error {
 	st, ok := grpcstatus.FromError(err)
 	if !ok {
 		return err
 	}
-	return &ControlError{
+	return &CloudPlaneError{
 		Operation: operation,
 		Code:      st.Code(),
 		Message:   st.Message(),

@@ -18,19 +18,19 @@ type storeReader interface {
 	GetNode(context.Context, string) (cloudmodel.Node, error)
 }
 
-type RouteSink interface {
-	Apply(context.Context, []cloudmodel.Route) error
+type RouteSyncer interface {
+	SyncRoutes(context.Context, []cloudmodel.Route) error
 }
 
 type ingressReconciler struct {
 	logger        *slog.Logger
 	store         storeReader
 	cfg           cloudplaneconfig.Config
-	localSink     RouteSink
-	frontDoorSink RouteSink
+	localSink     RouteSyncer
+	frontDoorSink RouteSyncer
 }
 
-func newIngressReconciler(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig.Config, localSink RouteSink, frontDoorSink RouteSink) *ingressReconciler {
+func newIngressReconciler(logger *slog.Logger, stores storeReader, cfg cloudplaneconfig.Config, localSink RouteSyncer, frontDoorSink RouteSyncer) *ingressReconciler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -56,11 +56,11 @@ func (c *ingressReconciler) reconcileOnce(ctx context.Context) error {
 	if c.localSink == nil {
 		return fmt.Errorf("caddy route sink is required")
 	}
-	if err := c.localSink.Apply(ctx, routes); err != nil {
+	if err := c.localSink.SyncRoutes(ctx, routes); err != nil {
 		return err
 	}
 	if serviceIngressEnabled && c.frontDoorSink != nil {
-		if err := c.frontDoorSink.Apply(ctx, routes); err != nil {
+		if err := c.frontDoorSink.SyncRoutes(ctx, routes); err != nil {
 			return err
 		}
 	}

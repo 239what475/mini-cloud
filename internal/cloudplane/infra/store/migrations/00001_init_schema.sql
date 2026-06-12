@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS idx_services_desired_updated_at
 CREATE TABLE IF NOT EXISTS execution_intents (
     id TEXT PRIMARY KEY,
     work_action TEXT NOT NULL DEFAULT 'run',
-    plan_id TEXT NOT NULL,
+    intent_key TEXT NOT NULL,
     service_id TEXT NOT NULL,
     service_name TEXT NOT NULL,
     service_exposure TEXT NOT NULL DEFAULT 'public',
@@ -77,7 +77,7 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     finished_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (plan_id)
+    UNIQUE (intent_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at

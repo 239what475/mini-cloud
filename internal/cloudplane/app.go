@@ -62,7 +62,7 @@ func Build(logger *slog.Logger, cfg cloudplaneconfig.Config) (App, error) {
 		}
 		return App{}, err
 	}
-	var localIngress cloudplanecontrol.RouteSink
+	var localIngress cloudplanecontrol.RouteSyncer
 	if cfg.Ingress.CaddyAdminURL != "" {
 		localIngress = caddyingress.NewSink(logger, caddyingress.Config{
 			ListenHTTPAddr:       cloudplaneconfig.CaddyListenHTTPAddr,

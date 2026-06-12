@@ -161,7 +161,7 @@ func TestExecuteNextReturnsReportError(t *testing.T) {
 
 	client := newWorkTestClient(t, &workTestRecorder{
 		item:      testWorkItem(),
-		reportErr: errors.New("control plane unavailable"),
+		reportErr: errors.New("cloud-plane unavailable"),
 	})
 	opts := testOptions()
 	opts.Readiness.Timeout = time.Second
@@ -285,7 +285,6 @@ func testWorkItem() *nodeagentv1.WorkItem {
 	return &nodeagentv1.WorkItem{
 		Action:        workActionRun,
 		ExecutionId:   "exec-new",
-		PlanId:        "plan-a",
 		NodeId:        "node-a",
 		ServiceId:     "service-a",
 		ServiceName:   "web",

@@ -118,7 +118,6 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 	work := &nodeagentv1.WorkItem{
 		Action:        item.Action,
 		ExecutionId:   item.ExecutionID,
-		PlanId:        item.PlanID,
 		NodeId:        item.NodeID,
 		ServiceId:     item.ServiceID,
 		ServiceName:   item.ServiceName,
@@ -173,7 +172,6 @@ func (s *service) ReportExecution(ctx context.Context, req *nodeagentv1.ReportEx
 		Ack: &nodeagentv1.ReportExecutionAck{
 			Execution: &nodeagentv1.ExecutionRecord{
 				Id:            execution.ID,
-				PlanId:        execution.PlanID,
 				NodeId:        execution.NodeID,
 				Image:         execution.Image,
 				ContainerName: execution.ContainerName,

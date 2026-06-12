@@ -281,20 +281,19 @@ func (x *RecordHeartbeatResponse) GetObservedStatus() string {
 type WorkItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ExecutionId   string                 `protobuf:"bytes,1,opt,name=execution_id,json=executionID,proto3" json:"execution_id,omitempty"`
-	PlanId        string                 `protobuf:"bytes,2,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
-	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	ServiceId     string                 `protobuf:"bytes,4,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	ServiceName   string                 `protobuf:"bytes,5,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	Image         string                 `protobuf:"bytes,6,opt,name=image,proto3" json:"image,omitempty"`
-	Command       []string               `protobuf:"bytes,7,rep,name=command,proto3" json:"command,omitempty"`
-	Args          []string               `protobuf:"bytes,8,rep,name=args,proto3" json:"args,omitempty"`
-	Env           map[string]string      `protobuf:"bytes,9,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ContainerPort int32                  `protobuf:"varint,10,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
-	ReadinessPath string                 `protobuf:"bytes,11,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	ContainerName string                 `protobuf:"bytes,12,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
-	Action        string                 `protobuf:"bytes,13,opt,name=action,proto3" json:"action,omitempty"`
-	ContainerId   string                 `protobuf:"bytes,14,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
-	HostPort      int32                  `protobuf:"varint,15,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
+	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
+	ServiceId     string                 `protobuf:"bytes,3,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceName   string                 `protobuf:"bytes,4,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	Image         string                 `protobuf:"bytes,5,opt,name=image,proto3" json:"image,omitempty"`
+	Command       []string               `protobuf:"bytes,6,rep,name=command,proto3" json:"command,omitempty"`
+	Args          []string               `protobuf:"bytes,7,rep,name=args,proto3" json:"args,omitempty"`
+	Env           map[string]string      `protobuf:"bytes,8,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ContainerPort int32                  `protobuf:"varint,9,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	ReadinessPath string                 `protobuf:"bytes,10,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	ContainerName string                 `protobuf:"bytes,11,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
+	Action        string                 `protobuf:"bytes,12,opt,name=action,proto3" json:"action,omitempty"`
+	ContainerId   string                 `protobuf:"bytes,13,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
+	HostPort      int32                  `protobuf:"varint,14,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -332,13 +331,6 @@ func (*WorkItem) Descriptor() ([]byte, []int) {
 func (x *WorkItem) GetExecutionId() string {
 	if x != nil {
 		return x.ExecutionId
-	}
-	return ""
-}
-
-func (x *WorkItem) GetPlanId() string {
-	if x != nil {
-		return x.PlanId
 	}
 	return ""
 }
@@ -617,20 +609,19 @@ func (x *ReportExecutionRequest) GetHostPort() int32 {
 type ExecutionRecord struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	PlanId        string                 `protobuf:"bytes,2,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
-	NodeId        string                 `protobuf:"bytes,3,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
-	Image         string                 `protobuf:"bytes,4,opt,name=image,proto3" json:"image,omitempty"`
-	ContainerName string                 `protobuf:"bytes,5,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
-	ContainerId   string                 `protobuf:"bytes,6,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
-	ContainerPort int32                  `protobuf:"varint,7,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
-	HostPort      int32                  `protobuf:"varint,8,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
-	ReadinessPath string                 `protobuf:"bytes,9,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	Status        string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
-	StatusReason  string                 `protobuf:"bytes,11,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,15,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	NodeId        string                 `protobuf:"bytes,2,opt,name=node_id,json=nodeID,proto3" json:"node_id,omitempty"`
+	Image         string                 `protobuf:"bytes,3,opt,name=image,proto3" json:"image,omitempty"`
+	ContainerName string                 `protobuf:"bytes,4,opt,name=container_name,json=containerName,proto3" json:"container_name,omitempty"`
+	ContainerId   string                 `protobuf:"bytes,5,opt,name=container_id,json=containerID,proto3" json:"container_id,omitempty"`
+	ContainerPort int32                  `protobuf:"varint,6,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	HostPort      int32                  `protobuf:"varint,7,opt,name=host_port,json=hostPort,proto3" json:"host_port,omitempty"`
+	ReadinessPath string                 `protobuf:"bytes,8,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	Status        string                 `protobuf:"bytes,9,opt,name=status,proto3" json:"status,omitempty"`
+	StatusReason  string                 `protobuf:"bytes,10,opt,name=status_reason,json=statusReason,proto3" json:"status_reason,omitempty"`
+	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,11,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	FinishedAt    *timestamppb.Timestamp `protobuf:"bytes,12,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,13,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,14,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -668,13 +659,6 @@ func (*ExecutionRecord) Descriptor() ([]byte, []int) {
 func (x *ExecutionRecord) GetId() string {
 	if x != nil {
 		return x.Id
-	}
-	return ""
-}
-
-func (x *ExecutionRecord) GetPlanId() string {
-	if x != nil {
-		return x.PlanId
 	}
 	return ""
 }
@@ -890,25 +874,24 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x15memory_mi_allocatable\x18\x03 \x01(\x05R\x13memoryMiAllocatable\"[\n" +
 	"\x17RecordHeartbeatResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeID\x12'\n" +
-	"\x0fobserved_status\x18\x02 \x01(\tR\x0eobservedStatus\"\xa7\x04\n" +
+	"\x0fobserved_status\x18\x02 \x01(\tR\x0eobservedStatus\"\x8e\x04\n" +
 	"\bWorkItem\x12!\n" +
 	"\fexecution_id\x18\x01 \x01(\tR\vexecutionID\x12\x17\n" +
-	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
-	"\anode_id\x18\x03 \x01(\tR\x06nodeID\x12\x1d\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeID\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x04 \x01(\tR\tserviceID\x12!\n" +
-	"\fservice_name\x18\x05 \x01(\tR\vserviceName\x12\x14\n" +
-	"\x05image\x18\x06 \x01(\tR\x05image\x12\x18\n" +
-	"\acommand\x18\a \x03(\tR\acommand\x12\x12\n" +
-	"\x04args\x18\b \x03(\tR\x04args\x12;\n" +
-	"\x03env\x18\t \x03(\v2).minicloud.nodeagent.v1.WorkItem.EnvEntryR\x03env\x12%\n" +
-	"\x0econtainer_port\x18\n" +
-	" \x01(\x05R\rcontainerPort\x12%\n" +
-	"\x0ereadiness_path\x18\v \x01(\tR\rreadinessPath\x12%\n" +
-	"\x0econtainer_name\x18\f \x01(\tR\rcontainerName\x12\x16\n" +
-	"\x06action\x18\r \x01(\tR\x06action\x12!\n" +
-	"\fcontainer_id\x18\x0e \x01(\tR\vcontainerID\x12\x1b\n" +
-	"\thost_port\x18\x0f \x01(\x05R\bhostPort\x1a6\n" +
+	"service_id\x18\x03 \x01(\tR\tserviceID\x12!\n" +
+	"\fservice_name\x18\x04 \x01(\tR\vserviceName\x12\x14\n" +
+	"\x05image\x18\x05 \x01(\tR\x05image\x12\x18\n" +
+	"\acommand\x18\x06 \x03(\tR\acommand\x12\x12\n" +
+	"\x04args\x18\a \x03(\tR\x04args\x12;\n" +
+	"\x03env\x18\b \x03(\v2).minicloud.nodeagent.v1.WorkItem.EnvEntryR\x03env\x12%\n" +
+	"\x0econtainer_port\x18\t \x01(\x05R\rcontainerPort\x12%\n" +
+	"\x0ereadiness_path\x18\n" +
+	" \x01(\tR\rreadinessPath\x12%\n" +
+	"\x0econtainer_name\x18\v \x01(\tR\rcontainerName\x12\x16\n" +
+	"\x06action\x18\f \x01(\tR\x06action\x12!\n" +
+	"\fcontainer_id\x18\r \x01(\tR\vcontainerID\x12\x1b\n" +
+	"\thost_port\x18\x0e \x01(\x05R\bhostPort\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"*\n" +
@@ -923,28 +906,27 @@ const file_minicloud_nodeagent_v1_node_agent_proto_rawDesc = "" +
 	"\x06reason\x18\x04 \x01(\tR\x06reason\x12!\n" +
 	"\fcontainer_id\x18\x05 \x01(\tR\vcontainerID\x12%\n" +
 	"\x0econtainer_name\x18\x06 \x01(\tR\rcontainerName\x12\x1b\n" +
-	"\thost_port\x18\a \x01(\x05R\bhostPort\"\xc9\x04\n" +
+	"\thost_port\x18\a \x01(\x05R\bhostPort\"\xb0\x04\n" +
 	"\x0fExecutionRecord\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
-	"\aplan_id\x18\x02 \x01(\tR\x06planID\x12\x17\n" +
-	"\anode_id\x18\x03 \x01(\tR\x06nodeID\x12\x14\n" +
-	"\x05image\x18\x04 \x01(\tR\x05image\x12%\n" +
-	"\x0econtainer_name\x18\x05 \x01(\tR\rcontainerName\x12!\n" +
-	"\fcontainer_id\x18\x06 \x01(\tR\vcontainerID\x12%\n" +
-	"\x0econtainer_port\x18\a \x01(\x05R\rcontainerPort\x12\x1b\n" +
-	"\thost_port\x18\b \x01(\x05R\bhostPort\x12%\n" +
-	"\x0ereadiness_path\x18\t \x01(\tR\rreadinessPath\x12\x16\n" +
-	"\x06status\x18\n" +
-	" \x01(\tR\x06status\x12#\n" +
-	"\rstatus_reason\x18\v \x01(\tR\fstatusReason\x129\n" +
+	"\anode_id\x18\x02 \x01(\tR\x06nodeID\x12\x14\n" +
+	"\x05image\x18\x03 \x01(\tR\x05image\x12%\n" +
+	"\x0econtainer_name\x18\x04 \x01(\tR\rcontainerName\x12!\n" +
+	"\fcontainer_id\x18\x05 \x01(\tR\vcontainerID\x12%\n" +
+	"\x0econtainer_port\x18\x06 \x01(\x05R\rcontainerPort\x12\x1b\n" +
+	"\thost_port\x18\a \x01(\x05R\bhostPort\x12%\n" +
+	"\x0ereadiness_path\x18\b \x01(\tR\rreadinessPath\x12\x16\n" +
+	"\x06status\x18\t \x01(\tR\x06status\x12#\n" +
+	"\rstatus_reason\x18\n" +
+	" \x01(\tR\fstatusReason\x129\n" +
 	"\n" +
-	"started_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
-	"\vfinished_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"started_at\x18\v \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12;\n" +
+	"\vfinished_at\x18\f \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"finishedAt\x129\n" +
 	"\n" +
-	"created_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
+	"created_at\x18\r \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x0f \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x98\x01\n" +
+	"updated_at\x18\x0e \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\x98\x01\n" +
 	"\x12ReportExecutionAck\x12E\n" +
 	"\texecution\x18\x01 \x01(\v2'.minicloud.nodeagent.v1.ExecutionRecordR\texecution\x12;\n" +
 	"\vobserved_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\n" +

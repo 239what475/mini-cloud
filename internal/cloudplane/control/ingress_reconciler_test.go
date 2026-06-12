@@ -160,7 +160,7 @@ type fakeSink struct {
 	routes []cloudmodel.Route
 }
 
-func (f *fakeSink) Apply(_ context.Context, routes []cloudmodel.Route) error {
+func (f *fakeSink) SyncRoutes(_ context.Context, routes []cloudmodel.Route) error {
 	f.calls++
 	f.routes = routes
 	return nil

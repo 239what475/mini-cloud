@@ -27,7 +27,7 @@ type Reconciler struct {
 	wg sync.WaitGroup
 }
 
-func NewReconciler(logger *slog.Logger, stores *store.Store, driver nodeprovider.Driver, localIngress RouteSink, frontDoor RouteSink, cfg cloudplaneconfig.Config) *Reconciler {
+func NewReconciler(logger *slog.Logger, stores *store.Store, driver nodeprovider.Driver, localIngress RouteSyncer, frontDoor RouteSyncer, cfg cloudplaneconfig.Config) *Reconciler {
 	if logger == nil {
 		logger = slog.Default()
 	}

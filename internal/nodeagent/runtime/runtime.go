@@ -4,7 +4,6 @@ type RunInput struct {
 	ContainerName string
 	NodeID        string
 	ExecutionID   string
-	PlanID        string
 	ServiceID     string
 	Image         string
 	Command       []string

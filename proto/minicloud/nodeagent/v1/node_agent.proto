@@ -34,20 +34,19 @@ message RecordHeartbeatResponse {
 
 message WorkItem {
   string execution_id = 1 [json_name = "executionID"];
-  string plan_id = 2 [json_name = "planID"];
-  string node_id = 3 [json_name = "nodeID"];
-  string service_id = 4 [json_name = "serviceID"];
-  string service_name = 5 [json_name = "serviceName"];
-  string image = 6;
-  repeated string command = 7;
-  repeated string args = 8;
-  map<string, string> env = 9;
-  int32 container_port = 10 [json_name = "containerPort"];
-  string readiness_path = 11 [json_name = "readinessPath"];
-  string container_name = 12 [json_name = "containerName"];
-  string action = 13;
-  string container_id = 14 [json_name = "containerID"];
-  int32 host_port = 15 [json_name = "hostPort"];
+  string node_id = 2 [json_name = "nodeID"];
+  string service_id = 3 [json_name = "serviceID"];
+  string service_name = 4 [json_name = "serviceName"];
+  string image = 5;
+  repeated string command = 6;
+  repeated string args = 7;
+  map<string, string> env = 8;
+  int32 container_port = 9 [json_name = "containerPort"];
+  string readiness_path = 10 [json_name = "readinessPath"];
+  string container_name = 11 [json_name = "containerName"];
+  string action = 12;
+  string container_id = 13 [json_name = "containerID"];
+  int32 host_port = 14 [json_name = "hostPort"];
 }
 
 message PollWorkRequest {
@@ -70,20 +69,19 @@ message ReportExecutionRequest {
 
 message ExecutionRecord {
   string id = 1;
-  string plan_id = 2 [json_name = "planID"];
-  string node_id = 3 [json_name = "nodeID"];
-  string image = 4;
-  string container_name = 5 [json_name = "containerName"];
-  string container_id = 6 [json_name = "containerID"];
-  int32 container_port = 7 [json_name = "containerPort"];
-  int32 host_port = 8 [json_name = "hostPort"];
-  string readiness_path = 9 [json_name = "readinessPath"];
-  string status = 10;
-  string status_reason = 11 [json_name = "statusReason"];
-  google.protobuf.Timestamp started_at = 12 [json_name = "startedAt"];
-  google.protobuf.Timestamp finished_at = 13 [json_name = "finishedAt"];
-  google.protobuf.Timestamp created_at = 14 [json_name = "createdAt"];
-  google.protobuf.Timestamp updated_at = 15 [json_name = "updatedAt"];
+  string node_id = 2 [json_name = "nodeID"];
+  string image = 3;
+  string container_name = 4 [json_name = "containerName"];
+  string container_id = 5 [json_name = "containerID"];
+  int32 container_port = 6 [json_name = "containerPort"];
+  int32 host_port = 7 [json_name = "hostPort"];
+  string readiness_path = 8 [json_name = "readinessPath"];
+  string status = 9;
+  string status_reason = 10 [json_name = "statusReason"];
+  google.protobuf.Timestamp started_at = 11 [json_name = "startedAt"];
+  google.protobuf.Timestamp finished_at = 12 [json_name = "finishedAt"];
+  google.protobuf.Timestamp created_at = 13 [json_name = "createdAt"];
+  google.protobuf.Timestamp updated_at = 14 [json_name = "updatedAt"];
 }
 
 message ReportExecutionAck {

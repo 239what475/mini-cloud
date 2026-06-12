@@ -31,11 +31,11 @@ type PlaneSyncer struct {
 }
 
 type syncOverview struct {
-	NodesTotal          int
-	NodesReady          int
-	NodesDraining       int
-	NodesOffline        int
-	ExecutionPlansTotal int
+	NodesTotal      int
+	NodesReady      int
+	NodesDraining   int
+	NodesOffline    int
+	ActiveRunsTotal int
 }
 
 func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string, dns dnsClient) *PlaneSyncer {
@@ -280,13 +280,17 @@ func executionSnapshotMessage(item *cloudplanev1.PlaneExecutionSnapshot) string 
 	}
 	switch strings.TrimSpace(item.GetStatus()) {
 	case planeExecutionStatusFailed:
-		return fmt.Sprintf("execution plan %s failed", item.GetPlanId())
+		return "service run failed"
 	case planeExecutionStatusRunning:
-		return fmt.Sprintf("execution plan %s is running", item.GetPlanId())
+		return "service run is running"
 	case planeExecutionStatusSucceeded:
-		return fmt.Sprintf("execution plan %s succeeded", item.GetPlanId())
+		return "service cleanup finished"
 	default:
-		return fmt.Sprintf("execution plan %s is %s", item.GetPlanId(), strings.TrimSpace(item.GetStatus()))
+		status := strings.TrimSpace(item.GetStatus())
+		if status == "" {
+			return "service run status is unknown"
+		}
+		return fmt.Sprintf("service run is %s", status)
 	}
 }
 
@@ -312,9 +316,9 @@ func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.Pla
 
 	if len(issues) == 0 {
 		return model.StatusReady, fmt.Sprintf(
-			"sync healthy: %d nodes, %d execution plans",
+			"sync healthy: %d nodes, %d active runs",
 			overview.NodesTotal,
-			overview.ExecutionPlansTotal,
+			overview.ActiveRunsTotal,
 		)
 	}
 
@@ -360,7 +364,7 @@ func buildNodeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordNodeIn
 }
 
 func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {
-	out := syncOverview{ExecutionPlansTotal: len(snapshot.GetExecutions())}
+	out := syncOverview{ActiveRunsTotal: len(snapshot.GetExecutions())}
 	for _, item := range snapshot.GetNodeInventory().GetNodes() {
 		if item == nil {
 			continue

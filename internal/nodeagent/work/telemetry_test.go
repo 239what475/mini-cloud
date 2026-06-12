@@ -16,7 +16,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	item := &nodeagentv1.WorkItem{
 		ServiceId:   "svc_demo",
 		ServiceName: "hello",
-		PlanId:      "plan_demo",
 		ExecutionId: "exec_demo",
 	}
 
@@ -39,7 +38,6 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	}
 	for _, want := range []string{
 		"mini_cloud.service_id=svc_demo",
-		"mini_cloud.plan_id=plan_demo",
 		"mini_cloud.execution_id=exec_demo",
 		"mini_cloud.platform_name=mini-cloud-lab",
 	} {
@@ -61,7 +59,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "http://custom-collector:4318",
 	}, &nodeagentv1.WorkItem{
 		ServiceId:   "svc_demo",
-		PlanId:      "plan_demo",
 		ExecutionId: "exec_demo",
 		ServiceName: "ignored-by-test",
 	}, telemetryEnvOptions{
@@ -75,7 +72,6 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 	for _, want := range []string{
 		"service.version=1.2.3",
 		"mini_cloud.service_id=svc_demo",
-		"mini_cloud.plan_id=plan_demo",
 		"mini_cloud.execution_id=exec_demo",
 		"mini_cloud.platform_name=mini-cloud-lab",
 	} {

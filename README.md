@@ -35,7 +35,7 @@ cloud-plane 是某个云内的自治运行面。
 
 - 持有本 plane 的 service desired state。
 - 接收 control-plane 下发的 service spec。
-- 生成 execution plan。
+- 生成本 plane 内部 execution intent。
 - 自动创建和回收 worker node。
 - 管理 node-agent work item 和 execution 状态。
 - 维护本云 Caddy route 和 CDN domain。

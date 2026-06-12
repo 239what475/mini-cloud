@@ -41,13 +41,12 @@ message PlaneNodeInventory {
 }
 
 message PlaneExecutionSnapshot {
-  string plan_id = 1 [json_name = "planID"];
-  string service_id = 2 [json_name = "serviceID"];
-  string service_name = 3 [json_name = "serviceName"];
-  int64 service_generation = 4 [json_name = "serviceGeneration"];
-  string status = 5;
-  string last_status_reason = 6 [json_name = "lastStatusReason"];
-  google.protobuf.Timestamp observed_at = 7 [json_name = "observedAt"];
+  string service_id = 1 [json_name = "serviceID"];
+  string service_name = 2 [json_name = "serviceName"];
+  int64 service_generation = 3 [json_name = "serviceGeneration"];
+  string status = 4;
+  string last_status_reason = 5 [json_name = "lastStatusReason"];
+  google.protobuf.Timestamp observed_at = 6 [json_name = "observedAt"];
 }
 
 message PlaneService {

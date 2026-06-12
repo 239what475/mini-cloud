@@ -37,7 +37,7 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 	if serviceByID(services, "svc-delete-idle") != nil {
 		t.Fatalf("deleted idle service is still exposed in service snapshot: %+v", services)
 	}
-	deleteSnapshot := executionSnapshotByPlanID(t, ctx, db, "svc-delete-idle-delete-g2")
+	deleteSnapshot := executionSnapshotByIntentKey(t, ctx, db, "svc-delete-idle-delete-g2")
 	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
 		t.Fatalf("delete execution snapshot = %+v, want succeeded", deleteSnapshot)
 	}
@@ -236,7 +236,7 @@ func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAg
 	if serviceByID(services, "svc-delete-running") != nil {
 		t.Fatalf("deleted running service is still exposed in service snapshot: %+v", services)
 	}
-	deleteSnapshot := executionSnapshotByPlanID(t, ctx, db, "svc-delete-running-delete-g2")
+	deleteSnapshot := executionSnapshotByIntentKey(t, ctx, db, "svc-delete-running-delete-g2")
 	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
 		t.Fatalf("delete execution snapshot = %+v, want succeeded", deleteSnapshot)
 	}
@@ -261,7 +261,7 @@ func serviceByID(items []cloudmodel.Service, serviceID string) *cloudmodel.Servi
 	return nil
 }
 
-func executionSnapshotByPlanID(t *testing.T, ctx context.Context, db testutil.TestDatabase, planID string) cloudmodel.ExecutionSnapshot {
+func executionSnapshotByIntentKey(t *testing.T, ctx context.Context, db testutil.TestDatabase, intentKey string) cloudmodel.ExecutionSnapshot {
 	t.Helper()
 
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
@@ -269,10 +269,10 @@ func executionSnapshotByPlanID(t *testing.T, ctx context.Context, db testutil.Te
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
 	for _, snapshot := range snapshots {
-		if snapshot.PlanID == planID {
+		if snapshot.IntentKey == intentKey {
 			return snapshot
 		}
 	}
-	t.Fatalf("execution snapshot %q not found in %+v", planID, snapshots)
+	t.Fatalf("execution snapshot %q not found in %+v", intentKey, snapshots)
 	return cloudmodel.ExecutionSnapshot{}
 }

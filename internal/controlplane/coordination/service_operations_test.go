@@ -489,7 +489,6 @@ func TestListAdvancesPendingServicesAndSyncsBeforeReturning(t *testing.T) {
 		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
 			{
-				PlanId:            service.Metadata.ID + "-run",
 				ServiceId:         service.Metadata.ID,
 				ServiceName:       service.Metadata.Name,
 				ServiceGeneration: service.Metadata.Generation,
@@ -497,7 +496,6 @@ func TestListAdvancesPendingServicesAndSyncsBeforeReturning(t *testing.T) {
 				ObservedAt:        timestamppb.New(now),
 			},
 			{
-				PlanId:            deleting.Metadata.ID + "-delete",
 				ServiceId:         deleting.Metadata.ID,
 				ServiceName:       deleting.Metadata.Name,
 				ServiceGeneration: deleting.Metadata.Generation,
@@ -654,7 +652,6 @@ func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplan
 			NodeInventory: &cloudplanev1.PlaneNodeInventory{},
 			Executions: []*cloudplanev1.PlaneExecutionSnapshot{
 				{
-					PlanId:            req.GetServiceId() + "-delete",
 					ServiceId:         req.GetServiceId(),
 					ServiceGeneration: req.GetServiceGeneration(),
 					Status:            planeExecutionStatusSucceeded,

@@ -16,8 +16,6 @@ planes:
       dir: deploy/terraform/lab
       workspace: tencent
       varFile: deploy/terraform/lab/tencent.tfvars
-      applyArgs: ["-auto-approve"]
-      destroyArgs: ["-auto-approve"]
 
   - name: mini-cloud-aliyun-lab
     provider: aliyun
@@ -28,8 +26,6 @@ planes:
       dir: deploy/terraform/lab
       workspace: aliyun
       varFile: deploy/terraform/lab/aliyun.tfvars
-      applyArgs: ["-auto-approve"]
-      destroyArgs: ["-auto-approve"]
 
 install:
   root: /opt/mini-cloud

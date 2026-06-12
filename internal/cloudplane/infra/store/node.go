@@ -325,7 +325,7 @@ func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, er
 }
 
 type NodeProvisioningCandidate struct {
-	PlanID          string
+	IntentKey       string
 	ServiceID       string
 	CPUMilli        int
 	MemoryMi        int
@@ -341,7 +341,7 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 	err := s.db.QueryRowContext(ctx, `
 		WITH pending AS (
 			SELECT
-				plan_id,
+				intent_key,
 				service_id,
 				cpu_milli_request,
 				memory_mi_request,
@@ -367,25 +367,25 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 				SELECT 1
 				FROM nodes, pending
 				WHERE status = $4
-				  AND name = $5 || '-' || lower(substr(md5(pending.plan_id), 1, 10))
+				  AND name = $5 || '-' || lower(substr(md5(pending.intent_key), 1, 10))
 				  AND instance_type = $6
 			) AS has_provisioning
 		)
 		SELECT
-			pending.plan_id,
+			pending.intent_key,
 			pending.service_id,
 			pending.cpu_milli_request,
 			pending.memory_mi_request,
-			$5 || '-' || lower(substr(md5(pending.plan_id), 1, 10)),
+			$5 || '-' || lower(substr(md5(pending.intent_key), 1, 10)),
 			$6,
-			pending.plan_id,
+			pending.intent_key,
 			capacity.has_capacity,
 			provisioning.has_provisioning
 		FROM pending
 		CROSS JOIN capacity
 		CROSS JOIN provisioning
 	`, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusReady, cloudmodel.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
-		&candidate.PlanID,
+		&candidate.IntentKey,
 		&candidate.ServiceID,
 		&candidate.CPUMilli,
 		&candidate.MemoryMi,

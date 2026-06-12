@@ -71,7 +71,7 @@ func newCDNClient(cfg cloudplaneconfig.Config) (cdnClient, error) {
 	}
 }
 
-func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
+func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) error {
 	desired := make(map[string]struct{})
 	for _, route := range routes {
 		host := cleanDomain(route.Host)

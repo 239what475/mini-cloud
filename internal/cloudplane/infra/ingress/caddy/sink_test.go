@@ -66,7 +66,7 @@ func TestBuildConfigUses503ForRouteWithoutBackends(t *testing.T) {
 	}
 }
 
-func TestSinkSkipsLoadAfterSuccessfulUnchangedApply(t *testing.T) {
+func TestSinkSkipsLoadAfterSuccessfulUnchangedSync(t *testing.T) {
 	t.Parallel()
 
 	var loadCount atomic.Int32
@@ -89,11 +89,11 @@ func TestSinkSkipsLoadAfterSuccessfulUnchangedApply(t *testing.T) {
 	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", ArtifactListenAddr: "0.0.0.0:18082", ArtifactDocumentRoot: "/opt/mini-cloud/artifacts", AdminURL: server.URL})
 	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
-	if err := sink.Apply(context.Background(), routes); err != nil {
-		t.Fatalf("first Apply returned error: %v", err)
+	if err := sink.SyncRoutes(context.Background(), routes); err != nil {
+		t.Fatalf("first SyncRoutes returned error: %v", err)
 	}
-	if err := sink.Apply(context.Background(), routes); err != nil {
-		t.Fatalf("second Apply returned error: %v", err)
+	if err := sink.SyncRoutes(context.Background(), routes); err != nil {
+		t.Fatalf("second SyncRoutes returned error: %v", err)
 	}
 	if got := loadCount.Load(); got != 1 {
 		t.Fatalf("load count = %d, want 1", got)
@@ -117,11 +117,11 @@ func TestSinkRetriesLoadAfterFailure(t *testing.T) {
 	sink := NewSink(nil, Config{ListenHTTPAddr: "0.0.0.0:80", ArtifactListenAddr: "0.0.0.0:18082", ArtifactDocumentRoot: "/opt/mini-cloud/artifacts", AdminURL: server.URL})
 	routes := []cloudmodel.Route{{Host: "api.team.apps.example.test", Backends: []string{"10.0.1.20:30080"}}}
 
-	if err := sink.Apply(context.Background(), routes); err == nil {
+	if err := sink.SyncRoutes(context.Background(), routes); err == nil {
 		t.Fatal("first Apply returned nil error, want load failure")
 	}
-	if err := sink.Apply(context.Background(), routes); err != nil {
-		t.Fatalf("second Apply returned error: %v", err)
+	if err := sink.SyncRoutes(context.Background(), routes); err != nil {
+		t.Fatalf("second SyncRoutes returned error: %v", err)
 	}
 	if got := loadCount.Load(); got != 2 {
 		t.Fatalf("load count = %d, want retry", got)

@@ -39,7 +39,6 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *cloudpl
 		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
 		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
 			{
-				PlanId:            "svc-1-g12",
 				ServiceId:         "svc-1",
 				ServiceName:       "svc-demo",
 				ServiceGeneration: 12,
@@ -121,7 +120,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	if snapshot.GetPlane().GetName() != "plane-a" {
 		t.Fatalf("unexpected snapshot: %+v", snapshot)
 	}
-	if len(snapshot.GetExecutions()) != 1 || snapshot.GetExecutions()[0].GetPlanId() != "svc-1-g12" || snapshot.GetExecutions()[0].GetStatus() != "running" {
+	if len(snapshot.GetExecutions()) != 1 || snapshot.GetExecutions()[0].GetServiceId() != "svc-1" || snapshot.GetExecutions()[0].GetStatus() != "running" {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())
 	}
 

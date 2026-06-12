@@ -33,7 +33,6 @@ const (
 	dockerLabelManagedBy   = "mini-cloud.managed-by"
 	dockerLabelNodeID      = "mini-cloud.node-id"
 	dockerLabelExecutionID = "mini-cloud.execution-id"
-	dockerLabelPlanID      = "mini-cloud.plan-id"
 	dockerLabelServiceID   = "mini-cloud.service-id"
 )
 
@@ -480,7 +479,6 @@ func buildMiniCloudLabels(input RunInput) map[string]string {
 	}
 	addLabel(labels, dockerLabelNodeID, input.NodeID)
 	addLabel(labels, dockerLabelExecutionID, input.ExecutionID)
-	addLabel(labels, dockerLabelPlanID, input.PlanID)
 	addLabel(labels, dockerLabelServiceID, input.ServiceID)
 	return labels
 }

@@ -23,11 +23,9 @@ type Config struct {
 }
 
 type TerraformConfig struct {
-	Dir         string   `yaml:"dir"`
-	Workspace   string   `yaml:"workspace"`
-	VarFile     string   `yaml:"varFile"`
-	ApplyArgs   []string `yaml:"applyArgs"`
-	DestroyArgs []string `yaml:"destroyArgs"`
+	Dir       string `yaml:"dir"`
+	Workspace string `yaml:"workspace"`
+	VarFile   string `yaml:"varFile"`
 }
 
 type SSHConfig struct {
@@ -129,12 +127,6 @@ func (c *Config) applyDefaults() {
 		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/lab")
 		plane.Terraform.Workspace = defaultString(plane.Terraform.Workspace, plane.Name)
 		plane.Terraform.VarFile = absolutePath(expandHome(plane.Terraform.VarFile))
-		if plane.Terraform.ApplyArgs == nil {
-			plane.Terraform.ApplyArgs = []string{"-auto-approve"}
-		}
-		if plane.Terraform.DestroyArgs == nil {
-			plane.Terraform.DestroyArgs = []string{"-auto-approve"}
-		}
 	}
 }
 

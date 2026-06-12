@@ -140,20 +140,12 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-stale-g1",
-		ServiceID:         "svc-stale",
-		ServiceName:       "stale-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-stale",
+		Name:       "stale-web",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 
 	work, err := db.Store.CreateExecutionClaim(ctx, registered.ID)
 	if err != nil {
@@ -221,7 +213,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	}
 	var found bool
 	for _, item := range snapshots {
-		if item.PlanID != "svc-stale-g1" {
+		if item.IntentKey != "svc-stale-g1" {
 			continue
 		}
 		found = true
@@ -450,20 +442,12 @@ func seedReadyElasticNode(t *testing.T, ctx context.Context, stores interface {
 func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, nodeID string) {
 	t.Helper()
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-scale-in-active-g1",
-		ServiceID:         "svc-scale-in-active",
-		ServiceName:       "scale-in-active",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan(active) returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-scale-in-active",
+		Name:       "scale-in-active",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 	work, err := db.Store.CreateExecutionClaim(ctx, nodeID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim(active) returned error: %v", err)
@@ -476,18 +460,10 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 func seedPendingExecutionIntent(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
 	t.Helper()
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-scale-in-pending-g1",
-		ServiceID:         "svc-scale-in-pending",
-		ServiceName:       "scale-in-pending",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan(pending) returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-scale-in-pending",
+		Name:       "scale-in-pending",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 }

@@ -33,7 +33,7 @@ func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
 	)
 	runner.nodeID = "node_stale"
 	runner.runtimeResetNode = "node_stale"
-	runner.handleNodeError("node_stale", &agentclient.ControlError{
+	runner.handleNodeError("node_stale", &agentclient.CloudPlaneError{
 		Operation: "send heartbeat",
 		Code:      codes.NotFound,
 		Message:   "node not found",
@@ -59,7 +59,7 @@ func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
 	)
 	runner.nodeID = "node-a"
 	runner.runtimeResetNode = "node-a"
-	runner.handleNodeError("node-a", &agentclient.ControlError{
+	runner.handleNodeError("node-a", &agentclient.CloudPlaneError{
 		Operation: "send heartbeat",
 		Code:      codes.Unauthenticated,
 		Message:   "invalid node agent token",

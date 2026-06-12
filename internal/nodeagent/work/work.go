@@ -237,7 +237,6 @@ func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 		ContainerName: item.GetContainerName(),
 		NodeID:        e.opts.Node.ID,
 		ExecutionID:   item.GetExecutionId(),
-		PlanID:        item.GetPlanId(),
 		ServiceID:     item.GetServiceId(),
 		Image:         item.GetImage(),
 		Command:       append([]string(nil), item.GetCommand()...),
@@ -352,7 +351,6 @@ func (e executor) workLogger(item *nodeagentv1.WorkItem) *slog.Logger {
 	return e.logger.With(
 		"node_id", e.opts.Node.ID,
 		"service_id", item.GetServiceId(),
-		"plan_id", item.GetPlanId(),
 		"execution_id", item.GetExecutionId(),
 	)
 }
@@ -425,9 +423,6 @@ func validateWorkItem(item *nodeagentv1.WorkItem) error {
 	}
 	if strings.TrimSpace(item.GetExecutionId()) == "" {
 		return fmt.Errorf("executionID is required")
-	}
-	if strings.TrimSpace(item.GetPlanId()) == "" {
-		return fmt.Errorf("planID is required")
 	}
 	if strings.TrimSpace(item.GetNodeId()) == "" {
 		return fmt.Errorf("nodeID is required")

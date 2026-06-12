@@ -344,13 +344,12 @@ func (x *PlaneNodeInventory) GetNodes() []*PlaneNode {
 
 type PlaneExecutionSnapshot struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
-	PlanId            string                 `protobuf:"bytes,1,opt,name=plan_id,json=planID,proto3" json:"plan_id,omitempty"`
-	ServiceId         string                 `protobuf:"bytes,2,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	ServiceName       string                 `protobuf:"bytes,3,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
-	ServiceGeneration int64                  `protobuf:"varint,4,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
-	Status            string                 `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
-	LastStatusReason  string                 `protobuf:"bytes,6,opt,name=last_status_reason,json=lastStatusReason,proto3" json:"last_status_reason,omitempty"`
-	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
+	ServiceId         string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	ServiceName       string                 `protobuf:"bytes,2,opt,name=service_name,json=serviceName,proto3" json:"service_name,omitempty"`
+	ServiceGeneration int64                  `protobuf:"varint,3,opt,name=service_generation,json=serviceGeneration,proto3" json:"service_generation,omitempty"`
+	Status            string                 `protobuf:"bytes,4,opt,name=status,proto3" json:"status,omitempty"`
+	LastStatusReason  string                 `protobuf:"bytes,5,opt,name=last_status_reason,json=lastStatusReason,proto3" json:"last_status_reason,omitempty"`
+	ObservedAt        *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=observed_at,json=observedAt,proto3" json:"observed_at,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
@@ -383,13 +382,6 @@ func (x *PlaneExecutionSnapshot) ProtoReflect() protoreflect.Message {
 // Deprecated: Use PlaneExecutionSnapshot.ProtoReflect.Descriptor instead.
 func (*PlaneExecutionSnapshot) Descriptor() ([]byte, []int) {
 	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{4}
-}
-
-func (x *PlaneExecutionSnapshot) GetPlanId() string {
-	if x != nil {
-		return x.PlanId
-	}
-	return ""
 }
 
 func (x *PlaneExecutionSnapshot) GetServiceId() string {
@@ -1071,16 +1063,15 @@ const file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc = "" +
 	"\x12PlaneNodeInventory\x12;\n" +
 	"\vobserved_at\x18\x01 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\x128\n" +
-	"\x05nodes\x18\x02 \x03(\v2\".minicloud.cloudplane.v1.PlaneNodeR\x05nodes\"\xa5\x02\n" +
-	"\x16PlaneExecutionSnapshot\x12\x17\n" +
-	"\aplan_id\x18\x01 \x01(\tR\x06planID\x12\x1d\n" +
+	"\x05nodes\x18\x02 \x03(\v2\".minicloud.cloudplane.v1.PlaneNodeR\x05nodes\"\x8c\x02\n" +
+	"\x16PlaneExecutionSnapshot\x12\x1d\n" +
 	"\n" +
-	"service_id\x18\x02 \x01(\tR\tserviceID\x12!\n" +
-	"\fservice_name\x18\x03 \x01(\tR\vserviceName\x12-\n" +
-	"\x12service_generation\x18\x04 \x01(\x03R\x11serviceGeneration\x12\x16\n" +
-	"\x06status\x18\x05 \x01(\tR\x06status\x12,\n" +
-	"\x12last_status_reason\x18\x06 \x01(\tR\x10lastStatusReason\x12;\n" +
-	"\vobserved_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
+	"service_id\x18\x01 \x01(\tR\tserviceID\x12!\n" +
+	"\fservice_name\x18\x02 \x01(\tR\vserviceName\x12-\n" +
+	"\x12service_generation\x18\x03 \x01(\x03R\x11serviceGeneration\x12\x16\n" +
+	"\x06status\x18\x04 \x01(\tR\x06status\x12,\n" +
+	"\x12last_status_reason\x18\x05 \x01(\tR\x10lastStatusReason\x12;\n" +
+	"\vobserved_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"observedAt\"\xf8\x01\n" +
 	"\fPlaneService\x12\x1d\n" +
 	"\n" +

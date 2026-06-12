@@ -45,7 +45,7 @@ func NewSink(logger *slog.Logger, cfg Config) *Sink {
 	}
 }
 
-func (s *Sink) Apply(ctx context.Context, routes []cloudmodel.Route) error {
+func (s *Sink) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) error {
 	config, err := buildConfig(s.cfg.ListenHTTPAddr, s.cfg.ArtifactListenAddr, s.cfg.ArtifactDocumentRoot, s.cfg.AdminURL, routes)
 	if err != nil {
 		return err

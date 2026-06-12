@@ -82,12 +82,12 @@ func (r *Runner) selectTerraformWorkspace(ctx context.Context, plane Plane) erro
 
 func (r *Runner) terraformApplyArgs(plane Plane) []string {
 	args := append([]string{"apply"}, varFileArg(plane.Terraform.VarFile)...)
-	return append(args, plane.Terraform.ApplyArgs...)
+	return append(args, "-auto-approve")
 }
 
 func (r *Runner) terraformDestroyArgs(plane Plane) []string {
 	args := append([]string{"destroy"}, varFileArg(plane.Terraform.VarFile)...)
-	return append(args, plane.Terraform.DestroyArgs...)
+	return append(args, "-auto-approve")
 }
 
 func varFileArg(path string) []string {

@@ -175,7 +175,6 @@ func protoExecutionSnapshots(items []cloudmodel.ExecutionSnapshot) []*cloudplane
 	out := make([]*cloudplanev1.PlaneExecutionSnapshot, 0, len(items))
 	for _, item := range items {
 		out = append(out, &cloudplanev1.PlaneExecutionSnapshot{
-			PlanId:            item.PlanID,
 			ServiceId:         item.ServiceID,
 			ServiceName:       item.ServiceName,
 			ServiceGeneration: item.ServiceGeneration,

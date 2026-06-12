@@ -85,7 +85,7 @@ func (s *nodeReconciler) reconcilePendingExecutionCapacity(ctx context.Context) 
 			reason,
 			time.Now().UTC(),
 		)
-		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
+		failErr := s.store.MarkExecutionIntentFailed(ctx, candidate.IntentKey, reason)
 		return false, errors.Join(err, cleanupErr, failErr)
 	}
 	if _, err := s.store.BindProvisionedNode(
@@ -100,7 +100,7 @@ func (s *nodeReconciler) reconcilePendingExecutionCapacity(ctx context.Context) 
 		reason := "provider node was created but cloud-plane failed to bind it: " + err.Error()
 		deleteErr := s.deleteProviderNode(ctx, result.InstanceID)
 		_, cleanupErr := s.store.MarkNodeDeleted(ctx, node.ID, reason, time.Now().UTC())
-		failErr := s.store.MarkExecutionPlanFailed(ctx, candidate.PlanID, reason)
+		failErr := s.store.MarkExecutionIntentFailed(ctx, candidate.IntentKey, reason)
 		return false, errors.Join(err, deleteErr, cleanupErr, failErr)
 	}
 	return true, nil
@@ -142,8 +142,8 @@ func (s *nodeReconciler) reconcileStaleProvisioningNode(ctx context.Context, nod
 		}
 	}
 	_, nodeErr := s.store.MarkNodeDeleted(ctx, item.ID, reason, time.Now().UTC())
-	planErr := s.store.MarkPendingExecutionFailedForProvisioningNode(ctx, nodeNamePrefix, item.Name, reason)
-	return errors.Join(nodeErr, planErr)
+	executionErr := s.store.MarkPendingExecutionFailedForProvisioningNode(ctx, nodeNamePrefix, item.Name, reason)
+	return errors.Join(nodeErr, executionErr)
 }
 
 func (s *nodeReconciler) reconcileIdleNodes(ctx context.Context) error {

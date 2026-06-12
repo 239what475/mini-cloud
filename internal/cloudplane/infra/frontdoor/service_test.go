@@ -8,16 +8,16 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
-func TestServiceApplyEnsuresDesiredDomains(t *testing.T) {
+func TestServiceSyncRoutesEnsuresDesiredDomains(t *testing.T) {
 	t.Parallel()
 
 	cdn := &fakeCDN{domains: map[string]string{}}
 	store := &fakeDomainStore{domains: map[string]ManagedDomain{}}
 	service := testService(cdn, store)
 
-	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	err := service.SyncRoutes(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+		t.Fatalf("SyncRoutes returned error: %v", err)
 	}
 	if cdn.domains["api.apps.example.com"] != "api.apps.example.com.cdn.example.net" {
 		t.Fatalf("CDN domains = %+v", cdn.domains)
@@ -27,7 +27,7 @@ func TestServiceApplyEnsuresDesiredDomains(t *testing.T) {
 	}
 }
 
-func TestServiceApplyWaitsForCDNCNAME(t *testing.T) {
+func TestServiceSyncRoutesWaitsForCDNCNAME(t *testing.T) {
 	t.Parallel()
 
 	cdn := &fakeCDN{
@@ -36,16 +36,16 @@ func TestServiceApplyWaitsForCDNCNAME(t *testing.T) {
 	}
 	service := testService(cdn, &fakeDomainStore{domains: map[string]ManagedDomain{}})
 
-	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	err := service.SyncRoutes(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+		t.Fatalf("SyncRoutes returned error: %v", err)
 	}
 	if len(cdn.domains) != 0 {
 		t.Fatalf("CDN domain became ready while fake marked it pending: %+v", cdn.domains)
 	}
 }
 
-func TestServiceApplySkipsPendingDomainVerification(t *testing.T) {
+func TestServiceSyncRoutesSkipsPendingDomainVerification(t *testing.T) {
 	t.Parallel()
 
 	cdn := &fakeCDN{
@@ -60,9 +60,9 @@ func TestServiceApplySkipsPendingDomainVerification(t *testing.T) {
 	store := &fakeDomainStore{domains: map[string]ManagedDomain{}}
 	service := testService(cdn, store)
 
-	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	err := service.SyncRoutes(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+		t.Fatalf("SyncRoutes returned error: %v", err)
 	}
 	if len(cdn.domains) != 0 {
 		t.Fatalf("pending verification changed state: cdn=%+v store=%+v", cdn.domains, store.domains)
@@ -71,16 +71,16 @@ func TestServiceApplySkipsPendingDomainVerification(t *testing.T) {
 		t.Fatalf("pending verification was not tracked: %+v", store.domains)
 	}
 
-	err = service.Apply(context.Background(), nil)
+	err = service.SyncRoutes(context.Background(), nil)
 	if err != nil {
-		t.Fatalf("cleanup Apply returned error: %v", err)
+		t.Fatalf("cleanup SyncRoutes returned error: %v", err)
 	}
 	if _, ok := store.domains["api.apps.example.com"]; ok {
 		t.Fatalf("pending frontdoor domain was not deleted: %+v", store.domains)
 	}
 }
 
-func TestServiceApplyDeletesPreviouslyTrackedVerificationAfterDomainReady(t *testing.T) {
+func TestServiceSyncRoutesDeletesPreviouslyTrackedVerificationAfterDomainReady(t *testing.T) {
 	t.Parallel()
 
 	cdn := &fakeCDN{domains: map[string]string{}}
@@ -96,9 +96,9 @@ func TestServiceApplyDeletesPreviouslyTrackedVerificationAfterDomainReady(t *tes
 	}}
 	service := testService(cdn, store)
 
-	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	err := service.SyncRoutes(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+		t.Fatalf("SyncRoutes returned error: %v", err)
 	}
 	if store.domains["api.apps.example.com"].Verification != nil {
 		t.Fatalf("verification was not cleared from store: %+v", store.domains)
@@ -108,7 +108,7 @@ func TestServiceApplyDeletesPreviouslyTrackedVerificationAfterDomainReady(t *tes
 	}
 }
 
-func TestServiceApplyDeletesOnlyManagedStaleDomains(t *testing.T) {
+func TestServiceSyncRoutesDeletesOnlyManagedStaleDomains(t *testing.T) {
 	t.Parallel()
 
 	cdn := &fakeCDN{domains: map[string]string{
@@ -121,9 +121,9 @@ func TestServiceApplyDeletesOnlyManagedStaleDomains(t *testing.T) {
 	}}
 	service := testService(cdn, store)
 
-	err := service.Apply(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
+	err := service.SyncRoutes(context.Background(), []cloudmodel.Route{{Host: "api.apps.example.com"}})
 	if err != nil {
-		t.Fatalf("Apply returned error: %v", err)
+		t.Fatalf("SyncRoutes returned error: %v", err)
 	}
 	if _, ok := cdn.domains["old.apps.example.com"]; ok {
 		t.Fatalf("stale CDN domain was not deleted: %+v", cdn.domains)

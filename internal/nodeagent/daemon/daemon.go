@@ -17,7 +17,7 @@ import (
 type Runner struct {
 	logger           *slog.Logger
 	cfg              agentconfig.Config
-	controlClient    *agentclient.Client
+	cloudPlaneClient *agentclient.Client
 	containerRuntime containerRuntime
 
 	registerMu       sync.Mutex
@@ -38,7 +38,7 @@ type containerRuntime interface {
 func NewRunner(
 	logger *slog.Logger,
 	cfg agentconfig.Config,
-	controlClient *agentclient.Client,
+	cloudPlaneClient *agentclient.Client,
 	containerRuntime containerRuntime,
 ) *Runner {
 	if logger == nil {
@@ -47,7 +47,7 @@ func NewRunner(
 	return &Runner{
 		logger:           logger,
 		cfg:              cfg,
-		controlClient:    controlClient,
+		cloudPlaneClient: cloudPlaneClient,
 		containerRuntime: containerRuntime,
 	}
 }
@@ -94,9 +94,9 @@ func (r *Runner) Run(ctx context.Context) error {
 func (r *Runner) Close() error {
 	r.closeOnce.Do(func() {
 		var errs []error
-		if r.controlClient != nil {
-			if err := r.controlClient.Close(); err != nil {
-				r.logger.Warn("close node control client failed", "error", err)
+		if r.cloudPlaneClient != nil {
+			if err := r.cloudPlaneClient.Close(); err != nil {
+				r.logger.Warn("close node-agent cloud-plane client failed", "error", err)
 				errs = append(errs, err)
 			}
 		}
@@ -167,7 +167,7 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 		return
 	}
 
-	result, err := work.ExecuteNext(ctx, r.logger, r.controlClient, r.containerRuntime, work.Options{
+	result, err := work.ExecuteNext(ctx, r.logger, r.cloudPlaneClient, r.containerRuntime, work.Options{
 		Node: work.NodeOptions{
 			ID:        nodeID,
 			PrivateIP: r.cfg.Node.PrivateIP,
@@ -245,7 +245,7 @@ func (r *Runner) registerNode(ctx context.Context) (string, error) {
 	defer cancel()
 	requestID := transport.EnsureRequestID("")
 	reqCtx = transport.ContextWithRequestID(reqCtx, requestID)
-	registered, err := r.controlClient.RegisterNode(reqCtx, r.registerRequest())
+	registered, err := r.cloudPlaneClient.RegisterNode(reqCtx, r.registerRequest())
 	if err != nil {
 		return "", err
 	}
@@ -269,7 +269,7 @@ func (r *Runner) sendHeartbeat(ctx context.Context, nodeID string) error {
 	defer cancel()
 	requestID := transport.EnsureRequestID("")
 	reqCtx = transport.ContextWithRequestID(reqCtx, requestID)
-	ack, err := r.controlClient.SendHeartbeat(reqCtx, &nodeagentv1.RecordHeartbeatRequest{
+	ack, err := r.cloudPlaneClient.SendHeartbeat(reqCtx, &nodeagentv1.RecordHeartbeatRequest{
 		NodeId:              nodeID,
 		CpuMilliAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.CPUMilli),
 		MemoryMiAllocatable: int32(r.cfg.ResolvedCapacity.Allocatable.MemoryMi),
@@ -291,7 +291,6 @@ func withWorkItemLogFields(logger *slog.Logger, item *nodeagentv1.WorkItem) *slo
 	}
 	return logger.With(
 		"service_id", item.GetServiceId(),
-		"plan_id", item.GetPlanId(),
 		"execution_id", item.GetExecutionId(),
 	)
 }

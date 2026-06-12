@@ -126,9 +126,9 @@ func (s *Store) UpsertService(ctx context.Context, input cloudmodel.UpsertServic
 		return cloudmodel.Service{}, fmt.Errorf("upsert service: %w", err)
 	}
 
-	planID := runPlanID(item.ID, item.Generation)
-	if _, err := applyExecutionPlanTx(ctx, tx, cloudmodel.PlanInput{
-		PlanID:            planID,
+	intentKey := runIntentKey(item.ID, item.Generation)
+	if _, err := upsertServiceRunIntentTx(ctx, tx, executionIntentInput{
+		IntentKey:         intentKey,
 		ServiceID:         item.ID,
 		ServiceName:       item.Name,
 		ServiceGeneration: item.Generation,
@@ -164,7 +164,7 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 	current, err := getServiceTx(ctx, tx, input.ID)
 	if err != nil {
 		if errors.Is(err, ErrServiceNotFound) {
-			if ok, completedErr := completedDeletePlanExistsTx(ctx, tx, input.ID, input.Generation); completedErr != nil {
+			if ok, completedErr := completedDeleteIntentExistsTx(ctx, tx, input.ID, input.Generation); completedErr != nil {
 				return completedErr
 			} else if ok {
 				if err := tx.Commit(); err != nil {
@@ -189,14 +189,14 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 	`, input.ID, generation, cloudmodel.ServiceDesiredDeleted); err != nil {
 		return fmt.Errorf("mark service deleted: %w", err)
 	}
-	if err := deleteExecutionPlansForServiceTx(ctx, tx, cloudmodel.DeletePlanInput{
+	if err := createServiceDeleteIntentTx(ctx, tx, serviceDeleteIntentInput{
 		ServiceID:         input.ID,
 		ServiceGeneration: generation,
-		PlanID:            deletePlanID(input.ID, generation),
+		IntentKey:         deleteIntentKey(input.ID, generation),
 	}); err != nil {
 		return err
 	}
-	if err := deleteServiceTruthForCompletedDeletePlan(ctx, tx, input.ID, generation, deletePlanID(input.ID, generation)); err != nil {
+	if err := deleteServiceTruthForCompletedDeleteIntent(ctx, tx, input.ID, generation, deleteIntentKey(input.ID, generation)); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -326,15 +326,15 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Servi
 	return item, nil
 }
 
-func runPlanID(serviceID string, generation int64) string {
+func runIntentKey(serviceID string, generation int64) string {
 	return fmt.Sprintf("%s-g%d", strings.TrimSpace(serviceID), generation)
 }
 
-func deletePlanID(serviceID string, generation int64) string {
+func deleteIntentKey(serviceID string, generation int64) string {
 	return fmt.Sprintf("%s-delete-g%d", strings.TrimSpace(serviceID), generation)
 }
 
-func completedDeletePlanExistsTx(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) (bool, error) {
+func completedDeleteIntentExistsTx(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) (bool, error) {
 	var exists bool
 	if err := tx.QueryRowContext(ctx, `
 		SELECT EXISTS (
@@ -342,12 +342,12 @@ func completedDeletePlanExistsTx(ctx context.Context, tx *sql.Tx, serviceID stri
 			FROM execution_intents
 			WHERE service_id = $1
 			  AND service_generation = $2
-			  AND plan_id = $3
+			  AND intent_key = $3
 			  AND work_action = $4
 			  AND status = $5
 		)
-	`, strings.TrimSpace(serviceID), generation, deletePlanID(serviceID, generation), cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&exists); err != nil {
-		return false, fmt.Errorf("check completed delete service plan: %w", err)
+	`, strings.TrimSpace(serviceID), generation, deleteIntentKey(serviceID, generation), cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&exists); err != nil {
+		return false, fmt.Errorf("check completed delete service intent: %w", err)
 	}
 	return exists, nil
 }

@@ -18,7 +18,7 @@ import (
 func TestClientAddsRequestIDMetadata(t *testing.T) {
 	t.Run("generates request id when missing", func(t *testing.T) {
 		var seenRequestID string
-		client := newBufconnClient(t, &testNodeControlService{
+		client := newBufconnClient(t, &testNodeAgentService{
 			pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 				seenRequestID = firstMetadataValue(ctx, strings.ToLower(transport.RequestIDHeader))
 				return &nodeagentv1.PollWorkResponse{}, nil
@@ -35,7 +35,7 @@ func TestClientAddsRequestIDMetadata(t *testing.T) {
 
 	t.Run("keeps supplied request id", func(t *testing.T) {
 		var seenRequestID string
-		client := newBufconnClient(t, &testNodeControlService{
+		client := newBufconnClient(t, &testNodeAgentService{
 			pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 				seenRequestID = firstMetadataValue(ctx, strings.ToLower(transport.RequestIDHeader))
 				return &nodeagentv1.PollWorkResponse{}, nil
@@ -56,7 +56,7 @@ func TestRegisterNodeUsesToken(t *testing.T) {
 	t.Parallel()
 
 	var seenAuth string
-	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeControlService{
+	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeAgentService{
 		registerNode: func(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			seenAuth = firstMetadataValue(ctx, "authorization")
 			return &nodeagentv1.RegisterNodeResponse{
@@ -86,12 +86,11 @@ func TestRegisterNodeUsesToken(t *testing.T) {
 func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	t.Parallel()
 
-	client := newBufconnClient(t, &testNodeControlService{
+	client := newBufconnClient(t, &testNodeAgentService{
 		pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 			return &nodeagentv1.PollWorkResponse{
 				Item: &nodeagentv1.WorkItem{
 					ExecutionId: "exec_demo",
-					PlanId:      "plan_demo",
 					NodeId:      "node_demo",
 					ServiceId:   "svc_demo",
 					ServiceName: "hello",
@@ -122,15 +121,12 @@ func TestPollExecutionWorkDecodesScopedFields(t *testing.T) {
 	if item.GetServiceName() != "hello" {
 		t.Fatalf("ServiceName = %q, want hello", item.GetServiceName())
 	}
-	if item.GetPlanId() != "plan_demo" {
-		t.Fatalf("PlanID = %q, want plan_demo", item.GetPlanId())
-	}
 }
 
 func TestClientRejectsInvalidRegisterResponse(t *testing.T) {
 	t.Parallel()
 
-	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeControlService{
+	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeAgentService{
 		registerNode: func(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 			return &nodeagentv1.RegisterNodeResponse{}, nil
 		},
@@ -157,7 +153,7 @@ func TestClientRejectsInvalidRegisterResponse(t *testing.T) {
 func TestClientRejectsInvalidHeartbeatResponse(t *testing.T) {
 	t.Parallel()
 
-	client := newBufconnClient(t, &testNodeControlService{
+	client := newBufconnClient(t, &testNodeAgentService{
 		recordHeartbeat: func(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 			return &nodeagentv1.RecordHeartbeatResponse{
 				NodeId: req.GetNodeId(),
@@ -181,7 +177,7 @@ func TestClientRejectsInvalidHeartbeatResponse(t *testing.T) {
 func TestClientCloseAllowsRedial(t *testing.T) {
 	t.Parallel()
 
-	client := newBufconnClient(t, &testNodeControlService{
+	client := newBufconnClient(t, &testNodeAgentService{
 		pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 			return &nodeagentv1.PollWorkResponse{}, nil
 		},
@@ -201,7 +197,7 @@ func TestClientCloseAllowsRedial(t *testing.T) {
 func TestNodeCallsUseToken(t *testing.T) {
 	t.Parallel()
 
-	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeControlService{
+	client := newBufconnClientWithConfig(t, Config{Token: "node-agent-secret"}, &testNodeAgentService{
 		pollWork: func(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 			if auth := firstMetadataValue(ctx, "authorization"); auth != "Bearer node-agent-secret" {
 				t.Fatalf("authorization = %q, want node-agent bearer", auth)
@@ -218,18 +214,18 @@ func TestNodeCallsUseToken(t *testing.T) {
 func TestIsUnknownNodeOnlyTreatsNodeScopedNotFoundAsUnknownNode(t *testing.T) {
 	t.Parallel()
 
-	if !IsUnknownNode(&ControlError{Operation: operationSendHeartbeat, Code: codes.NotFound, Message: "node not found"}) {
+	if !IsUnknownNode(&CloudPlaneError{Operation: operationSendHeartbeat, Code: codes.NotFound, Message: "node not found"}) {
 		t.Fatalf("node-scoped NotFound should be treated as unknown node")
 	}
-	if IsUnknownNode(&ControlError{Operation: operationReportExecution, Code: codes.NotFound, Message: "execution not found"}) {
+	if IsUnknownNode(&CloudPlaneError{Operation: operationReportExecution, Code: codes.NotFound, Message: "execution not found"}) {
 		t.Fatalf("execution-scoped NotFound should not be treated as unknown node")
 	}
-	if IsUnknownNode(&ControlError{Operation: operationSendHeartbeat, Code: codes.Unauthenticated, Message: "invalid token"}) {
+	if IsUnknownNode(&CloudPlaneError{Operation: operationSendHeartbeat, Code: codes.Unauthenticated, Message: "invalid token"}) {
 		t.Fatalf("auth failure should not be treated as unknown node")
 	}
 }
 
-type testNodeControlService struct {
+type testNodeAgentService struct {
 	nodeagentv1.UnimplementedNodeAgentServiceServer
 
 	registerNode    func(context.Context, *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error)
@@ -237,21 +233,21 @@ type testNodeControlService struct {
 	recordHeartbeat func(context.Context, *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error)
 }
 
-func (s *testNodeControlService) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
+func (s *testNodeAgentService) RegisterNode(ctx context.Context, req *nodeagentv1.RegisterNodeRequest) (*nodeagentv1.RegisterNodeResponse, error) {
 	if s.registerNode != nil {
 		return s.registerNode(ctx, req)
 	}
 	return &nodeagentv1.RegisterNodeResponse{}, nil
 }
 
-func (s *testNodeControlService) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
+func (s *testNodeAgentService) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest) (*nodeagentv1.PollWorkResponse, error) {
 	if s.pollWork != nil {
 		return s.pollWork(ctx, req)
 	}
 	return &nodeagentv1.PollWorkResponse{}, nil
 }
 
-func (s *testNodeControlService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
+func (s *testNodeAgentService) RecordHeartbeat(ctx context.Context, req *nodeagentv1.RecordHeartbeatRequest) (*nodeagentv1.RecordHeartbeatResponse, error) {
 	if s.recordHeartbeat != nil {
 		return s.recordHeartbeat(ctx, req)
 	}

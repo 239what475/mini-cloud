@@ -57,6 +57,33 @@ planes:
 	}
 }
 
+func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lab.yaml")
+	content := []byte(`
+controlPlane:
+  ssh:
+    host: control
+  url: http://control:18080
+planes:
+  - name: a
+    provider: aliyun
+    region: cn-beijing
+    ssh:
+      host: plane-a
+    terraform:
+      workspace: a
+      varFile: a.tfvars
+      applyArgs: ["-auto-approve"]
+`)
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "field applyArgs not found") {
+		t.Fatalf("LoadConfig error = %v, want unknown applyArgs rejection", err)
+	}
+}
+
 func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
 		ControlPlane: ControlPlane{

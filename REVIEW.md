@@ -22,7 +22,7 @@ mini-cloud 不是 Kubernetes，也不应该长成半个 Kubernetes。审核功�
 默认保留这些内容：
 
 - control-plane 管理 plane 注册、全局 service 入口绑定、DNS 修改和聚合门户。
-- cloud-plane 持有本 plane 的 service truth，并管理本云运行节点、执行计划、入口路由、provider driver、CDN。
+- cloud-plane 持有本 plane 的 service truth，并管理本云运行节点、内部 execution intent、入口路由、provider driver、CDN。
 - node-agent 执行 workload、上报状态，并在启动失败时上报容器尾日志作为诊断信息。
 - Aliyun + Tencent 两套 backend。
 - 自动扩缩 runtime node。
@@ -58,7 +58,7 @@ cloud-plane 是单云运维控制器：
 - 注册到 control-plane。
 - 持有本 plane 的 service desired state。
 - 接收 control-plane 下发的 service spec。
-- 将 service spec 转换为本 plane 内部 execution。
+- 将 service spec 转换为本 plane 内部 execution intent。
 - 管理本云 runtime node 生命周期。
 - 调用 provider driver 创建/删除节点。
 - 维护本云 Caddy 路由和 CDN frontdoor。

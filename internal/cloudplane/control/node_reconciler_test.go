@@ -210,10 +210,10 @@ func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingExecution(t *testin
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
-	planID := "stale-provisioning-g1"
+	intentKey := "stale-provisioning-g1"
 
 	seedPendingExecution(t, ctx, db.Store, "stale-provisioning", "small")
-	nodeName := "demo-node-" + planHashSuffix(planID)
+	nodeName := "demo-node-" + intentHashSuffix(intentKey)
 	node, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
 		Provider:     "aliyun",
 		Region:       "cn-beijing",
@@ -280,8 +280,8 @@ func TestReconcileDeletesIdleNode(t *testing.T) {
 	}
 }
 
-func planHashSuffix(planID string) string {
-	sum := md5.Sum([]byte(planID))
+func intentHashSuffix(intentKey string) string {
+	sum := md5.Sum([]byte(intentKey))
 	return hex.EncodeToString(sum[:])[:10]
 }
 
@@ -365,23 +365,22 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 
 func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store, name string, class string) {
 	t.Helper()
-	cpuMilliRequest, memoryMiRequest, err := cloudmodel.ResourceRequestForInstanceClass(class)
-	if err != nil {
-		t.Fatalf("ResourceRequestForInstanceClass returned error: %v", err)
-	}
-	if _, err := stores.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            name + "-g1",
-		ServiceID:         name,
-		ServiceName:       name,
-		ServiceGeneration: 1,
-		Image:             "nginx:latest",
-		ContainerPort:     80,
-		ReadinessPath:     "/",
-		CPUMilliRequest:   cpuMilliRequest,
-		MemoryMiRequest:   memoryMiRequest,
-		Exposure:          cloudmodel.ExposurePublic,
+
+	if _, err := stores.UpsertService(ctx, cloudmodel.UpsertServiceInput{
+		ID:          name,
+		Name:        name,
+		DisplayName: name,
+		Host:        name + ".apps.example.test",
+		Generation:  1,
+		Spec: cloudmodel.ServiceSpec{
+			InstanceClass: class,
+			Exposure:      cloudmodel.ExposurePublic,
+			Image:         "nginx:latest",
+			ContainerPort: 80,
+			ReadinessPath: "/",
+		},
 	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+		t.Fatalf("UpsertService returned error: %v", err)
 	}
 }
 

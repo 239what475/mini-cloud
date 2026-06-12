@@ -28,3 +28,20 @@ func TestTerraformOutputUnavailable(t *testing.T) {
 		}
 	}
 }
+
+func TestTerraformArgsUseAutoApprove(t *testing.T) {
+	runner := Runner{}
+	plane := Plane{Terraform: TerraformConfig{
+		VarFile: "/tmp/mini-cloud.tfvars",
+	}}
+
+	applyArgs := runner.terraformApplyArgs(plane)
+	if len(applyArgs) != 3 || applyArgs[0] != "apply" || applyArgs[1] != "-var-file=/tmp/mini-cloud.tfvars" || applyArgs[2] != "-auto-approve" {
+		t.Fatalf("terraformApplyArgs = %+v", applyArgs)
+	}
+
+	destroyArgs := runner.terraformDestroyArgs(plane)
+	if len(destroyArgs) != 3 || destroyArgs[0] != "destroy" || destroyArgs[1] != "-var-file=/tmp/mini-cloud.tfvars" || destroyArgs[2] != "-auto-approve" {
+		t.Fatalf("terraformDestroyArgs = %+v", destroyArgs)
+	}
+}

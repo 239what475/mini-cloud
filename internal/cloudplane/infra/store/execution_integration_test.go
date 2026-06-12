@@ -13,24 +13,16 @@ func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-plan-inputs", "i-node-plan-inputs")
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-demo-g1",
-		ServiceID:         "svc-demo",
-		ServiceName:       "demo-web",
-		ServiceGeneration: 1,
-		Image:             "registry.example.com/demo:v1",
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-demo",
+		Name:       "demo-web",
+		Generation: 1,
+		Image:      "registry.example.com/demo:v1",
 		Env: map[string]string{
 			"SERVICE_MODE": "plan-v1",
 			"LOG_LEVEL":    "debug",
 		},
-		ContainerPort:   8080,
-		ReadinessPath:   "/healthz",
-		CPUMilliRequest: 500,
-		MemoryMiRequest: 512,
-		Exposure:        cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
+	})
 
 	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
@@ -39,66 +31,11 @@ func TestIntegrationCreateExecutionClaimUsesPlanWorkloadInputs(t *testing.T) {
 	if work == nil {
 		t.Fatal("CreateExecutionClaim returned nil work item")
 	}
-	if work.PlanID != "svc-demo-g1" {
-		t.Fatalf("work plan identity = %q, want svc-demo-g1", work.PlanID)
+	if work.IntentKey != "svc-demo-g1" {
+		t.Fatalf("work intent key = %q, want svc-demo-g1", work.IntentKey)
 	}
 	if work.Env["SERVICE_MODE"] != "plan-v1" || work.Env["LOG_LEVEL"] != "debug" {
-		t.Fatalf("work env = %+v, want execution plan env", work.Env)
-	}
-}
-
-func TestIntegrationApplyExecutionPlanRetriesFailedPlan(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-	node := seedReadyNode(t, ctx, db, "node-retry", "i-node-retry")
-	input := cloudmodel.PlanInput{
-		PlanID:            "svc-retry-g1",
-		ServiceID:         "svc-retry",
-		ServiceName:       "retry-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}
-
-	if _, err := db.Store.ApplyExecutionPlan(ctx, input); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
-	firstWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim(first) returned error: %v", err)
-	}
-	if firstWork == nil {
-		t.Fatal("CreateExecutionClaim(first) returned nil work item")
-	}
-	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, firstWork.ExecutionID, cloudmodel.ReportInput{
-		Status:        cloudmodel.StatusFailed,
-		Reason:        "readiness never passed",
-		ContainerID:   "ctr-retry-1",
-		ContainerName: firstWork.ContainerName,
-		HostPort:      18080,
-	}); err != nil {
-		t.Fatalf("UpdateExecutionFromNodeReport(failed) returned error: %v", err)
-	}
-
-	if _, err := db.Store.ApplyExecutionPlan(ctx, input); err != nil {
-		t.Fatalf("ApplyExecutionPlan(retry) returned error: %v", err)
-	}
-	retryWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim(retry) returned error: %v", err)
-	}
-	if retryWork == nil {
-		t.Fatal("CreateExecutionClaim(retry) returned nil work item")
-	}
-	if retryWork.PlanID != input.PlanID || retryWork.ExecutionID != firstWork.ExecutionID {
-		t.Fatalf("retry work = planID %q executionID %q, want planID %q executionID %q", retryWork.PlanID, retryWork.ExecutionID, input.PlanID, firstWork.ExecutionID)
-	}
-	if retryWork.ContainerID != "" || retryWork.HostPort != 0 {
-		t.Fatalf("retry work kept old runtime fields: containerID=%q hostPort=%d", retryWork.ContainerID, retryWork.HostPort)
+		t.Fatalf("work env = %+v, want execution intent env", work.Env)
 	}
 }
 
@@ -108,20 +45,12 @@ func TestIntegrationReplacementRunStopsCurrentContainerBeforeStartingNewRun(t *t
 	currentNode := seedReadyNode(t, ctx, db, "node-replace-current", "i-node-replace-current")
 	otherNode := seedReadyNode(t, ctx, db, "node-replace-other", "i-node-replace-other")
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-replace-g1",
-		ServiceID:         "svc-replace",
-		ServiceName:       "replace-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan(g1) returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-replace",
+		Name:       "replace-web",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 	firstWork, err := db.Store.CreateExecutionClaim(ctx, currentNode.ID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim(first) returned error: %v", err)
@@ -139,34 +68,12 @@ func TestIntegrationReplacementRunStopsCurrentContainerBeforeStartingNewRun(t *t
 		t.Fatalf("UpdateExecutionFromNodeReport(first running) returned error: %v", err)
 	}
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-replace-g2",
-		ServiceID:         "svc-replace",
-		ServiceName:       "replace-web",
-		ServiceGeneration: 2,
-		Image:             "nginx:1.28-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan(g2) returned error: %v", err)
-	}
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-replace-g2",
-		ServiceID:         "svc-replace",
-		ServiceName:       "replace-web",
-		ServiceGeneration: 2,
-		Image:             "nginx:1.28-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan(g2 retry) returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-replace",
+		Name:       "replace-web",
+		Generation: 2,
+		Image:      "nginx:1.28-alpine",
+	})
 
 	otherWork, err := db.Store.CreateExecutionClaim(ctx, otherNode.ID)
 	if err != nil {
@@ -203,7 +110,7 @@ func TestIntegrationReplacementRunStopsCurrentContainerBeforeStartingNewRun(t *t
 	if replacementWork == nil {
 		t.Fatal("CreateExecutionClaim(new run) returned nil work item")
 	}
-	if replacementWork.Action != cloudmodel.WorkActionRun || replacementWork.PlanID != "svc-replace-g2" {
+	if replacementWork.Action != cloudmodel.WorkActionRun || replacementWork.IntentKey != "svc-replace-g2" {
 		t.Fatalf("replacement work = %+v, want run work for svc-replace-g2", replacementWork)
 	}
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
@@ -216,25 +123,17 @@ func TestIntegrationReplacementRunStopsCurrentContainerBeforeStartingNewRun(t *t
 	}
 }
 
-func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
+func TestIntegrationDeleteExecutionIntentClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-delete", "i-node-delete")
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-delete-g1",
-		ServiceID:         "svc-delete",
-		ServiceName:       "delete-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-delete",
+		Name:       "delete-web",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 
 	runWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
@@ -256,13 +155,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("UpdateExecutionFromNodeReport(running) returned error: %v", err)
 	}
 
-	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
-		ServiceID:         "svc-delete",
-		ServiceGeneration: 2,
-		PlanID:            "svc-delete-delete-g2",
-	}); err != nil {
-		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
-	}
+	deleteTestService(t, ctx, db, "svc-delete", 2)
 
 	deleteWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
@@ -291,13 +184,7 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("UpdateExecutionFromNodeReport(delete succeeded) returned error: %v", err)
 	}
 
-	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
-		ServiceID:         "svc-delete",
-		ServiceGeneration: 2,
-		PlanID:            "svc-delete-delete-g2",
-	}); err != nil {
-		t.Fatalf("DeleteExecutionPlansForService(second) returned error: %v", err)
-	}
+	deleteTestService(t, ctx, db, "svc-delete", 2)
 
 	afterSecondDelete, err := db.Store.GetNode(ctx, node.ID)
 	if err != nil {
@@ -313,39 +200,25 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 	}
 	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-delete-g2")
 	if deleteSnapshot == nil {
-		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
+		t.Fatalf("delete service delete snapshot not found in %+v", snapshots)
 	}
 	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
 		t.Fatalf("delete snapshot = %+v, want succeeded status", *deleteSnapshot)
 	}
 }
 
-func TestIntegrationDeletePendingExecutionPlanCompletesWithoutNodeAgent(t *testing.T) {
+func TestIntegrationDeletePendingExecutionIntentCompletesWithoutNodeAgent(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-delete-pending-g1",
-		ServiceID:         "svc-delete-pending",
-		ServiceName:       "delete-pending-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-delete-pending",
+		Name:       "delete-pending-web",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 
-	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
-		ServiceID:         "svc-delete-pending",
-		ServiceGeneration: 2,
-		PlanID:            "svc-delete-pending-delete-g2",
-	}); err != nil {
-		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
-	}
+	deleteTestService(t, ctx, db, "svc-delete-pending", 2)
 
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
 	if err != nil {
@@ -357,7 +230,7 @@ func TestIntegrationDeletePendingExecutionPlanCompletesWithoutNodeAgent(t *testi
 	}
 	deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-delete-g2")
 	if deleteSnapshot == nil {
-		t.Fatalf("delete execution snapshot not found in %+v", snapshots)
+		t.Fatalf("delete service delete snapshot not found in %+v", snapshots)
 	}
 	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
 		t.Fatalf("delete snapshot = %+v, want succeeded status", *deleteSnapshot)
@@ -369,20 +242,12 @@ func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNode
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-delete-deploying", "i-node-delete-deploying")
 
-	if _, err := db.Store.ApplyExecutionPlan(ctx, cloudmodel.PlanInput{
-		PlanID:            "svc-delete-deploying-g1",
-		ServiceID:         "svc-delete-deploying",
-		ServiceName:       "delete-deploying-web",
-		ServiceGeneration: 1,
-		Image:             "nginx:1.27-alpine",
-		ContainerPort:     8080,
-		ReadinessPath:     "/healthz",
-		CPUMilliRequest:   500,
-		MemoryMiRequest:   512,
-		Exposure:          cloudmodel.ExposurePublic,
-	}); err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
-	}
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-delete-deploying",
+		Name:       "delete-deploying-web",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
 	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
 	if err != nil {
 		t.Fatalf("CreateExecutionClaim returned error: %v", err)
@@ -391,17 +256,11 @@ func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNode
 		t.Fatal("CreateExecutionClaim returned nil work item")
 	}
 
-	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
-		ServiceID:         "svc-delete-deploying",
-		ServiceGeneration: 2,
-		PlanID:            "svc-delete-deploying-delete-g2",
-	}); err != nil {
-		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
-	}
+	deleteTestService(t, ctx, db, "svc-delete-deploying", 2)
 
 	afterDelete, err := db.Store.GetNode(ctx, node.ID)
 	if err != nil {
-		t.Fatalf("GetNode after DeleteExecutionPlansForService returned error: %v", err)
+		t.Fatalf("GetNode after DeleteService returned error: %v", err)
 	}
 	if afterDelete.CPUMilliAllocated != 0 || afterDelete.MemoryMiAllocated != 0 {
 		t.Fatalf("node allocation after deleting containerless deploying intent = cpu %d memory %d, want 0/0", afterDelete.CPUMilliAllocated, afterDelete.MemoryMiAllocated)
@@ -446,9 +305,55 @@ func seedReadyNode(t *testing.T, ctx context.Context, db testutil.TestDatabase, 
 	return node
 }
 
-func findExecutionSnapshot(items []cloudmodel.ExecutionSnapshot, planID string) *cloudmodel.ExecutionSnapshot {
+type testServiceInput struct {
+	ID         string
+	Name       string
+	Generation int64
+	Image      string
+	Env        map[string]string
+	Exposure   string
+}
+
+func upsertTestService(t *testing.T, ctx context.Context, db testutil.TestDatabase, input testServiceInput) {
+	t.Helper()
+
+	exposure := input.Exposure
+	if exposure == "" {
+		exposure = cloudmodel.ExposurePublic
+	}
+	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
+		ID:          input.ID,
+		Name:        input.Name,
+		DisplayName: input.Name,
+		Host:        input.Name + ".apps.example.test",
+		Generation:  input.Generation,
+		Spec: cloudmodel.ServiceSpec{
+			InstanceClass: "small",
+			Exposure:      exposure,
+			Image:         input.Image,
+			Env:           input.Env,
+			ContainerPort: 8080,
+			ReadinessPath: "/healthz",
+		},
+	}); err != nil {
+		t.Fatalf("UpsertService returned error: %v", err)
+	}
+}
+
+func deleteTestService(t *testing.T, ctx context.Context, db testutil.TestDatabase, serviceID string, generation int64) {
+	t.Helper()
+
+	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
+		ID:         serviceID,
+		Generation: generation,
+	}); err != nil {
+		t.Fatalf("DeleteService returned error: %v", err)
+	}
+}
+
+func findExecutionSnapshot(items []cloudmodel.ExecutionSnapshot, intentKey string) *cloudmodel.ExecutionSnapshot {
 	for i := range items {
-		if items[i].PlanID == planID {
+		if items[i].IntentKey == intentKey {
 			return &items[i]
 		}
 	}
