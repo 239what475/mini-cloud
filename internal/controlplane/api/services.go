@@ -47,6 +47,7 @@ type serviceMetadata struct {
 	ID          string `json:"id"`
 	Name        string `json:"name"`
 	DisplayName string `json:"displayName"`
+	Host        string `json:"host"`
 	Generation  int64  `json:"generation"`
 }
 
@@ -130,6 +131,9 @@ func (h serviceHandler) createService(c *gin.Context) {
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNameAlreadyExists):
+			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
+			return
+		case errors.Is(err, store.ErrServiceHostAlreadyExists):
 			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -243,6 +247,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			ID:          service.Metadata.ID,
 			Name:        service.Metadata.Name,
 			DisplayName: service.Metadata.DisplayName,
+			Host:        service.Metadata.Host,
 			Generation:  service.Metadata.Generation,
 		},
 		Spec: serviceSpec{

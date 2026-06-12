@@ -16,6 +16,7 @@ func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 			ID:          "svc_test",
 			Name:        "demo-api",
 			DisplayName: "Demo API",
+			Host:        "demo-api.apps.example.test",
 			Generation:  1,
 		},
 		Spec: model.ServiceSpec{

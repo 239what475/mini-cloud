@@ -21,8 +21,8 @@ mini-cloud 不是 Kubernetes，也不应该长成半个 Kubernetes。审核功�
 
 默认保留这些内容：
 
-- control-plane 管理 service 和 plane 状态。
-- cloud-plane 管理本云运行节点、执行计划、入口路由、provider driver。
+- control-plane 管理 plane 注册、全局 service 入口绑定、DNS 修改和聚合门户。
+- cloud-plane 持有本 plane 的 service truth，并管理本云运行节点、执行计划、入口路由、provider driver、CDN。
 - node-agent 执行 workload、上报状态、采集基础日志。
 - Aliyun + Tencent 两套 backend。
 - 自动扩缩 runtime node。
@@ -33,16 +33,20 @@ mini-cloud 不是 Kubernetes，也不应该长成半个 Kubernetes。审核功�
 
 ### control-plane
 
-control-plane 是对外 API 和全局事实入口：
+control-plane 是对外 API、全局入口控制器和聚合门户：
 
 - 接收用户 service API。
-- 保存 service 期望状态、plane 注册信息、简单事件日志。
-- 通过 cloud-plane gRPC 下发已决定的执行计划。
-- 同步 cloud-plane snapshot，展示全局 inventory。
+- 管理 plane 注册信息、简单事件日志。
+- 创建 service 时生成全局 host，并记录 host -> service -> cloud-plane 的绑定关系。
+- 调用目标 cloud-plane 下发 service spec。
+- 统一修改 DNS 记录。
+- 按需读取 cloud-plane snapshot，展示全局 inventory。
 
 control-plane 不应该：
 
-- 直接操作云厂商资源。
+- 持有 service runtime truth。
+- 运行 service reconcile loop。
+- 直接操作 runtime node、container、Caddy route、CDN origin。
 - 直接管理 node-agent。
 - 做复杂调度或自动选择 cloud-plane。
 - 保留绕过 service API 的 apply/deploy 入口。
@@ -52,15 +56,19 @@ control-plane 不应该：
 cloud-plane 是单云运维控制器：
 
 - 注册到 control-plane。
+- 持有本 plane 的 service desired state。
+- 接收 control-plane 下发的 service spec。
+- 将 service spec 转换为本 plane 内部 execution。
 - 管理本云 runtime node 生命周期。
 - 调用 provider driver 创建/删除节点。
-- 维护本云 Caddy 路由和 CDN/DNS frontdoor。
-- 接收 control-plane 下发的 execution plan。
+- 维护本云 Caddy 路由和 CDN frontdoor。
+- 向 control-plane 返回 frontdoor 所需 DNS action。
 
 cloud-plane 不应该：
 
 - 暴露用户级 API。
-- 管理其他 cloud-plane 的 DNS/CDN 资源。
+- 直接修改 DNS。
+- 管理其他 cloud-plane 的 CDN 资源。
 - 创建 bootstrap 级资源，例如既有入口机、VPC 基础身份等。
 - 在内部保留多套 node/runtime-node/node-agent 概念。
 

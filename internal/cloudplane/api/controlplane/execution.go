@@ -25,13 +25,9 @@ func newExecutionServer(logger *slog.Logger, stores *store.Store, auth authentic
 	return &executionServer{logger: logger, store: stores, auth: auth}
 }
 
-func (s *executionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
+func (s *executionServer) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
 	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
-	}
-	cpuMilliRequest, memoryMiRequest, err := cloudmodel.ResourceRequestForInstanceClass(req.GetInstanceClass())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	exposure, err := cloudmodel.ParseExposure(req.GetExposure())
 	if err != nil {
@@ -41,29 +37,31 @@ func (s *executionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 	for key, value := range req.GetEnv() {
 		env[key] = value
 	}
-	input := cloudmodel.PlanInput{
-		PlanID:            strings.TrimSpace(req.GetPlanId()),
-		ServiceID:         strings.TrimSpace(req.GetServiceId()),
-		ServiceName:       strings.TrimSpace(req.GetServiceName()),
-		ServiceGeneration: req.GetServiceGeneration(),
-		Image:             strings.TrimSpace(req.GetImage()),
-		Command:           append([]string(nil), req.GetCommand()...),
-		Args:              append([]string(nil), req.GetArgs()...),
-		Env:               env,
-		ContainerPort:     int(req.GetContainerPort()),
-		ReadinessPath:     strings.TrimSpace(req.GetReadinessPath()),
-		CPUMilliRequest:   cpuMilliRequest,
-		MemoryMiRequest:   memoryMiRequest,
-		Exposure:          exposure,
+	input := cloudmodel.ApplyServiceInput{
+		ID:          strings.TrimSpace(req.GetServiceId()),
+		Name:        strings.TrimSpace(req.GetServiceName()),
+		DisplayName: strings.TrimSpace(req.GetDisplayName()),
+		Host:        strings.TrimSpace(req.GetHost()),
+		Generation:  req.GetServiceGeneration(),
+		Spec: cloudmodel.ServiceSpec{
+			InstanceClass: strings.TrimSpace(req.GetInstanceClass()),
+			Exposure:      exposure,
+			Image:         strings.TrimSpace(req.GetImage()),
+			Command:       append([]string(nil), req.GetCommand()...),
+			Args:          append([]string(nil), req.GetArgs()...),
+			Env:           env,
+			ContainerPort: int(req.GetContainerPort()),
+			ReadinessPath: strings.TrimSpace(req.GetReadinessPath()),
+		},
 	}
-	planID, err := s.store.ApplyExecutionPlan(ctx, input)
+	service, err := s.store.ApplyService(ctx, input)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.ApplyExecutionPlanResponse{PlanId: planID}, nil
+	return &cloudplanev1.ApplyServiceResponse{Service: protoService(service)}, nil
 }
 
-func (s *executionServer) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
+func (s *executionServer) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	if err := s.auth.authorize(ctx); err != nil {
 		return nil, err
 	}
@@ -71,12 +69,11 @@ func (s *executionServer) DeleteExecutionPlan(ctx context.Context, req *cloudpla
 	if serviceID == "" {
 		return nil, status.Error(codes.InvalidArgument, "serviceID is required")
 	}
-	if err := s.store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
-		ServiceID:         serviceID,
-		ServiceGeneration: req.GetServiceGeneration(),
-		PlanID:            strings.TrimSpace(req.GetPlanId()),
+	if err := s.store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
+		ID:         serviceID,
+		Generation: req.GetServiceGeneration(),
 	}); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
-	return &cloudplanev1.DeleteExecutionPlanResponse{ServiceId: serviceID, Deleted: true}, nil
+	return &cloudplanev1.DeleteServiceResponse{ServiceId: serviceID, Deleted: true}, nil
 }

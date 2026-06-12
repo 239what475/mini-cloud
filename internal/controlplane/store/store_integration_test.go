@@ -139,6 +139,7 @@ func TestIntegrationCreateServicePersistsEnv(t *testing.T) {
 	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
 		Name:        "cliproxyapi",
 		DisplayName: "CLI Proxy API",
+		Host:        "cliproxyapi.apps.example.test",
 		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
 			InstanceClass: model.InstanceClassSmall,
@@ -184,6 +185,7 @@ func TestIntegrationCreateServiceNormalizesStoredSpec(t *testing.T) {
 	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
 		Name:        " normalized-api ",
 		DisplayName: " Normalized API ",
+		Host:        " normalized-api.apps.example.test ",
 		Spec: model.ServiceSpec{
 			PlaneID:       " " + planeItem.ID + " ",
 			InstanceClass: model.InstanceClassSmall,
@@ -227,6 +229,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 	serviceItem, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
 		Name:        "run-reset-api",
 		DisplayName: "Run Reset API",
+		Host:        "run-reset-api.apps.example.test",
 		Spec: model.ServiceSpec{
 			PlaneID:       planeItem.ID,
 			InstanceClass: model.InstanceClassSmall,
@@ -271,7 +274,7 @@ func TestIntegrationServiceGenerationChangeResetsRunStatus(t *testing.T) {
 	if updated.Status.Run.Phase != model.RunPhasePending ||
 		updated.Status.Run.CurrentRunID != "" ||
 		updated.Status.Run.LatestRunID != "" ||
-		updated.Status.Run.Message != "waiting for service reconcile" {
+		updated.Status.Run.Message != "waiting for cloud-plane service apply" {
 		t.Fatalf("run after update = %+v, want pending without old run IDs", updated.Status.Run)
 	}
 

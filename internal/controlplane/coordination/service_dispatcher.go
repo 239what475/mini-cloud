@@ -19,7 +19,7 @@ var (
 )
 
 const (
-	dispatchRunTimeout    = 15 * time.Second
+	dispatchApplyTimeout  = 15 * time.Second
 	dispatchDeleteTimeout = 15 * time.Second
 )
 
@@ -37,14 +37,14 @@ func newServiceDispatcher(logger *slog.Logger, stores *store.Store, southboundTo
 	}
 }
 
-func (s *serviceDispatcher) DispatchRun(ctx context.Context, planeID string, service model.Service) (string, error) {
+func (s *serviceDispatcher) ApplyService(ctx context.Context, planeID string, service model.Service) (model.Service, error) {
 	if planeID == "" {
-		return "", errPlaneIDRequired
+		return model.Service{}, errPlaneIDRequired
 	}
 
 	client, err := s.planeClient(ctx, planeID)
 	if err != nil {
-		return "", err
+		return model.Service{}, err
 	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
@@ -52,22 +52,21 @@ func (s *serviceDispatcher) DispatchRun(ctx context.Context, planeID string, ser
 		}
 	}()
 
-	plan, err := executionPlanRequest(service)
+	request, err := applyServiceRequest(service)
 	if err != nil {
-		return "", err
+		return model.Service{}, err
 	}
-	requestCtx, cancel := context.WithTimeout(ctx, dispatchRunTimeout)
+	requestCtx, cancel := context.WithTimeout(ctx, dispatchApplyTimeout)
 	defer cancel()
 
-	accepted, err := client.ApplyExecutionPlan(requestCtx, plan)
+	applied, err := client.ApplyService(requestCtx, request)
 	if err != nil {
-		return "", fmt.Errorf("dispatch execution plan: %w", err)
+		return model.Service{}, fmt.Errorf("apply service to cloud-plane: %w", err)
 	}
-
-	return accepted.GetPlanId(), nil
+	return serviceFromProto(planeID, applied.GetService()), nil
 }
 
-func (s *serviceDispatcher) DispatchDelete(ctx context.Context, planeID string, serviceID string, serviceGeneration int64, planID string) error {
+func (s *serviceDispatcher) DeleteService(ctx context.Context, planeID string, serviceID string, serviceGeneration int64) error {
 	if planeID == "" {
 		return errPlaneIDRequired
 	}
@@ -76,9 +75,6 @@ func (s *serviceDispatcher) DispatchDelete(ctx context.Context, planeID string, 
 	}
 	if serviceGeneration <= 0 {
 		return fmt.Errorf("serviceGeneration must be greater than 0")
-	}
-	if strings.TrimSpace(planID) == "" {
-		return fmt.Errorf("planID is required")
 	}
 
 	client, err := s.planeClient(ctx, planeID)
@@ -94,12 +90,11 @@ func (s *serviceDispatcher) DispatchDelete(ctx context.Context, planeID string, 
 	requestCtx, cancel := context.WithTimeout(ctx, dispatchDeleteTimeout)
 	defer cancel()
 
-	if err := client.DeleteExecutionPlan(requestCtx, &cloudplanev1.DeleteExecutionPlanRequest{
+	if err := client.DeleteService(requestCtx, &cloudplanev1.DeleteServiceRequest{
 		ServiceId:         serviceID,
 		ServiceGeneration: serviceGeneration,
-		PlanId:            planID,
 	}); err != nil {
-		return fmt.Errorf("delete execution plan: %w", err)
+		return fmt.Errorf("delete service from cloud-plane: %w", err)
 	}
 	return nil
 }
@@ -112,7 +107,7 @@ func (s *serviceDispatcher) planeClient(ctx context.Context, planeID string) (*p
 	return newPlaneClient(plane.GRPCEndpoint, s.southboundToken)
 }
 
-func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPlanRequest, error) {
+func applyServiceRequest(service model.Service) (*cloudplanev1.ApplyServiceRequest, error) {
 	if strings.TrimSpace(service.Metadata.ID) == "" {
 		return nil, errServiceIDRequired
 	}
@@ -121,10 +116,11 @@ func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPl
 	for key, value := range service.Spec.Env {
 		env[key] = value
 	}
-	return &cloudplanev1.ApplyExecutionPlanRequest{
-		PlanId:            fmt.Sprintf("%s-g%d", service.Metadata.ID, service.Metadata.Generation),
+	return &cloudplanev1.ApplyServiceRequest{
 		ServiceId:         service.Metadata.ID,
 		ServiceName:       service.Metadata.Name,
+		DisplayName:       service.Metadata.DisplayName,
+		Host:              service.Metadata.Host,
 		ServiceGeneration: service.Metadata.Generation,
 		Image:             service.Spec.Image,
 		Command:           append([]string(nil), service.Spec.Command...),
@@ -135,4 +131,48 @@ func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPl
 		InstanceClass:     service.Spec.InstanceClass,
 		Exposure:          service.Spec.Exposure,
 	}, nil
+}
+
+func serviceFromProto(planeID string, input *cloudplanev1.PlaneService) model.Service {
+	if input == nil {
+		return model.Service{}
+	}
+	spec := input.GetSpec()
+	env := make(map[string]string, len(spec.GetEnv()))
+	for key, value := range spec.GetEnv() {
+		env[key] = value
+	}
+	phase := model.PhaseProgressing
+	if input.GetDesiredState() == model.DesiredStateDeleted {
+		phase = model.PhaseDeleting
+	}
+	return model.Service{
+		Metadata: model.ServiceMetadata{
+			ID:          input.GetServiceId(),
+			Name:        input.GetName(),
+			DisplayName: input.GetDisplayName(),
+			Host:        input.GetHost(),
+			Generation:  input.GetGeneration(),
+		},
+		Spec: model.ServiceSpec{
+			PlaneID:       planeID,
+			InstanceClass: spec.GetInstanceClass(),
+			Exposure:      spec.GetExposure(),
+			Image:         spec.GetImage(),
+			Command:       append([]string(nil), spec.GetCommand()...),
+			Args:          append([]string(nil), spec.GetArgs()...),
+			DefaultPort:   int(spec.GetContainerPort()),
+			ReadinessPath: spec.GetReadinessPath(),
+			Env:           env,
+		},
+		Status: model.ServiceStatus{
+			DesiredState: input.GetDesiredState(),
+			Observed: model.ServiceObservedStatus{
+				ObservedGeneration: input.GetGeneration(),
+				Phase:              phase,
+				Message:            "service accepted by cloud-plane",
+			},
+			Run: model.PendingRunStatus("waiting for cloud-plane execution"),
+		},
+	}
 }

@@ -7,16 +7,17 @@ type Route struct {
 
 type RouteSource struct {
 	ServiceName string
+	Host        string
 	NodeID      string
 	HostPort    int
 	HasBackend  bool
 }
 
 type FrontDoorDNSRecord struct {
-	ID        uint64
 	Subdomain string
 	Type      string
 	Value     string
+	Action    string
 }
 
 type ManagedFrontDoorDomain struct {

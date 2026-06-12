@@ -1,6 +1,7 @@
 package coordination
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,48 @@ func TestDerivePlaneStatusReadyAndDegraded(t *testing.T) {
 	if !strings.Contains(degradedMessage, "provider mismatch") || !strings.Contains(degradedMessage, "reliability alert") {
 		t.Fatalf("unexpected degraded message: %q", degradedMessage)
 	}
+}
+
+func TestApplyFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
+	syncer := &PlaneSyncer{dns: &fakeDNSClient{}}
+	dns := syncer.dns.(*fakeDNSClient)
+
+	err := syncer.applyFrontDoorDNS(context.Background(), "plane-a", []*cloudplanev1.PlaneFrontDoorDomain{
+		{
+			Host:            "api.apps.example.com",
+			Cname:           "api.apps.example.com.cdn.example.net",
+			VerifySubdomain: "_cdnauth.example.com",
+			VerifyType:      "TXT",
+			VerifyValue:     "verify-token",
+		},
+	})
+	if err != nil {
+		t.Fatalf("applyFrontDoorDNS returned error: %v", err)
+	}
+	if len(dns.records) != 2 {
+		t.Fatalf("records = %+v, want verification and CNAME", dns.records)
+	}
+	if dns.records[0].host != "_cdnauth.example.com" || dns.records[0].recordType != "TXT" || dns.records[0].value != "verify-token" {
+		t.Fatalf("verification record = %+v", dns.records[0])
+	}
+	if dns.records[1].host != "api.apps.example.com" || dns.records[1].recordType != "CNAME" || dns.records[1].value != "api.apps.example.com.cdn.example.net" {
+		t.Fatalf("cname record = %+v", dns.records[1])
+	}
+}
+
+type fakeDNSClient struct {
+	records []fakeDNSRecord
+}
+
+type fakeDNSRecord struct {
+	host       string
+	recordType string
+	value      string
+}
+
+func (f *fakeDNSClient) EnsureRecord(_ context.Context, host string, recordType string, value string) error {
+	f.records = append(f.records, fakeDNSRecord{host: host, recordType: recordType, value: value})
+	return nil
 }
 
 func TestBuildNodeInventoryIncludesElasticNodeSource(t *testing.T) {

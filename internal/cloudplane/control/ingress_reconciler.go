@@ -73,16 +73,16 @@ func (c *ingressReconciler) buildRoutes(ctx context.Context) ([]cloudmodel.Route
 	if err != nil {
 		return nil, err
 	}
-	serviceNames := make([]string, 0)
-	backendsByService := make(map[string][]string)
+	hosts := make([]string, 0)
+	backendsByHost := make(map[string][]string)
 	for _, source := range sources {
-		serviceName := strings.TrimSpace(source.ServiceName)
-		if serviceName == "" {
+		host := strings.TrimSpace(source.Host)
+		if host == "" {
 			continue
 		}
-		if _, ok := backendsByService[serviceName]; !ok {
-			serviceNames = append(serviceNames, serviceName)
-			backendsByService[serviceName] = nil
+		if _, ok := backendsByHost[host]; !ok {
+			hosts = append(hosts, host)
+			backendsByHost[host] = nil
 		}
 		if !source.HasBackend || source.HostPort <= 0 {
 			continue
@@ -101,17 +101,13 @@ func (c *ingressReconciler) buildRoutes(ctx context.Context) ([]cloudmodel.Route
 		if privateIP == "" {
 			continue
 		}
-		backendsByService[serviceName] = append(backendsByService[serviceName], net.JoinHostPort(privateIP, fmt.Sprintf("%d", source.HostPort)))
+		backendsByHost[host] = append(backendsByHost[host], net.JoinHostPort(privateIP, fmt.Sprintf("%d", source.HostPort)))
 	}
 
-	routes := make([]cloudmodel.Route, 0, len(serviceNames))
-	for _, serviceName := range serviceNames {
-		backends := backendsByService[serviceName]
-		routes = append(routes, cloudmodel.Route{Host: c.managedHost(serviceName), Backends: backends})
+	routes := make([]cloudmodel.Route, 0, len(hosts))
+	for _, host := range hosts {
+		backends := backendsByHost[host]
+		routes = append(routes, cloudmodel.Route{Host: host, Backends: backends})
 	}
 	return routes, nil
-}
-
-func (c *ingressReconciler) managedHost(serviceName string) string {
-	return fmt.Sprintf("%s.%s", strings.TrimSpace(serviceName), strings.Trim(strings.TrimSpace(c.cfg.Ingress.BaseDomain), "."))
 }

@@ -14,6 +14,23 @@ import (
 var ErrExecutionNotFound = errors.New("execution not found")
 
 func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInput) (string, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("begin apply execution plan tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	planID, err := applyExecutionPlanTx(ctx, tx, input)
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit apply execution plan tx: %w", err)
+	}
+	return planID, nil
+}
+
+func applyExecutionPlanTx(ctx context.Context, tx *sql.Tx, input cloudmodel.PlanInput) (string, error) {
 	if err := input.Validate(); err != nil {
 		return "", err
 	}
@@ -41,11 +58,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	if err != nil {
 		return "", fmt.Errorf("marshal execution env: %w", err)
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return "", fmt.Errorf("begin apply execution plan tx: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
@@ -132,21 +144,29 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	); err != nil {
 		return "", fmt.Errorf("upsert execution intent: %w", err)
 	}
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("commit apply execution plan tx: %w", err)
-	}
 	return input.PlanID, nil
 }
 
 func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudmodel.DeletePlanInput) error {
-	if err := input.Validate(); err != nil {
-		return err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin delete execution plan tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	if err := deleteExecutionPlansForServiceTx(ctx, tx, input); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete execution plan tx: %w", err)
+	}
+	return nil
+}
+
+func deleteExecutionPlansForServiceTx(ctx context.Context, tx *sql.Tx, input cloudmodel.DeletePlanInput) error {
+	if err := input.Validate(); err != nil {
+		return err
+	}
 
 	var deletePlanExists bool
 	if err := tx.QueryRowContext(ctx, `
@@ -253,9 +273,6 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit delete execution plan tx: %w", err)
-	}
 	return nil
 }
 
@@ -328,17 +345,21 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 	rows, err := s.db.QueryContext(ctx, `
 		WITH latest_plan AS (
 			SELECT DISTINCT ON (service_id)
-				service_id,
-				service_name,
+				execution_intents.service_id,
+				execution_intents.service_name,
+				services.host,
 				service_exposure,
 				plan_id
 			FROM execution_intents
+			JOIN services ON services.id = execution_intents.service_id
 			WHERE work_action = $2
 			  AND status <> $3
+			  AND services.desired_state = $4
 			ORDER BY service_id, service_generation DESC, updated_at DESC, plan_id DESC
 		)
 		SELECT
 			p.service_name,
+			p.host,
 			e.node_id,
 			COALESCE(e.host_port, 0),
 			(e.id IS NOT NULL) AS has_backend
@@ -350,7 +371,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 		   AND e.host_port > 0
 		WHERE p.service_exposure = 'public'
 		ORDER BY p.service_name ASC, p.plan_id ASC, e.id ASC
-	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.StatusSuperseded)
+	`, cloudmodel.StatusRunning, cloudmodel.WorkActionRun, cloudmodel.StatusSuperseded, cloudmodel.ServiceDesiredActive)
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}
@@ -360,7 +381,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 	for rows.Next() {
 		var item cloudmodel.RouteSource
 		var nodeID sql.NullString
-		if err := rows.Scan(&item.ServiceName, &nodeID, &item.HostPort, &item.HasBackend); err != nil {
+		if err := rows.Scan(&item.ServiceName, &item.Host, &nodeID, &item.HostPort, &item.HasBackend); err != nil {
 			return nil, fmt.Errorf("scan ingress route source: %w", err)
 		}
 		if nodeID.Valid {

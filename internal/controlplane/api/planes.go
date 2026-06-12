@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
 	"mini-cloud/internal/controlplane/store"
 
@@ -15,12 +16,14 @@ import (
 type planeHandler struct {
 	logger *slog.Logger
 	store  *store.Store
+	syncer *coordination.PlaneSyncer
 }
 
-func newPlaneHandler(logger *slog.Logger, stores *store.Store) planeHandler {
+func newPlaneHandler(logger *slog.Logger, stores *store.Store, syncer *coordination.PlaneSyncer) planeHandler {
 	return planeHandler{
 		logger: logger,
 		store:  stores,
+		syncer: syncer,
 	}
 }
 
@@ -100,6 +103,7 @@ func (h planeHandler) registerPlane(c *gin.Context) {
 }
 
 func (h planeHandler) listPlanes(c *gin.Context) {
+	h.syncRegisteredPlanes(c)
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
 		h.logger.Error("list control planes failed", "error", err)
@@ -115,6 +119,7 @@ func (h planeHandler) listPlanes(c *gin.Context) {
 }
 
 func (h planeHandler) inventory(c *gin.Context) {
+	h.syncRegisteredPlanes(c)
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
 		h.logger.Error("build control inventory failed", "error", err)
@@ -132,6 +137,7 @@ func (h planeHandler) getPlane(c *gin.Context) {
 	}
 	logger := h.logger.With("plane_id", planeID)
 
+	h.syncPlane(c, planeID)
 	item, err := h.store.GetPlane(c.Request.Context(), planeID)
 	if err != nil {
 		switch {
@@ -146,6 +152,24 @@ func (h planeHandler) getPlane(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, buildPlaneResource(item))
+}
+
+func (h planeHandler) syncRegisteredPlanes(c *gin.Context) {
+	if h.syncer == nil {
+		return
+	}
+	if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), 10*time.Second); err != nil {
+		h.logger.Warn("sync planes for request failed", "error", err)
+	}
+}
+
+func (h planeHandler) syncPlane(c *gin.Context, planeID string) {
+	if h.syncer == nil {
+		return
+	}
+	if err := h.syncer.SyncPlane(c.Request.Context(), planeID); err != nil {
+		h.logger.Warn("sync plane for request failed", "plane_id", planeID, "error", err)
+	}
 }
 
 func (h planeHandler) deletePlane(c *gin.Context) {

@@ -76,16 +76,16 @@ func (c *planeClient) Snapshot(ctx context.Context) (*cloudplanev1.PlaneSnapshot
 	return resp, nil
 }
 
-func (c *planeClient) ApplyExecutionPlan(ctx context.Context, input *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
-	resp, err := c.executionRPC.ApplyExecutionPlan(withAuth(ctx, c.bearerToken), input)
+func (c *planeClient) ApplyService(ctx context.Context, input *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
+	resp, err := c.executionRPC.ApplyService(withAuth(ctx, c.bearerToken), input)
 	if err != nil {
 		return nil, classifyRPCError(err)
 	}
 	return resp, nil
 }
 
-func (c *planeClient) DeleteExecutionPlan(ctx context.Context, input *cloudplanev1.DeleteExecutionPlanRequest) error {
-	_, err := c.executionRPC.DeleteExecutionPlan(withAuth(ctx, c.bearerToken), input)
+func (c *planeClient) DeleteService(ctx context.Context, input *cloudplanev1.DeleteServiceRequest) error {
+	_, err := c.executionRPC.DeleteService(withAuth(ctx, c.bearerToken), input)
 	if err != nil {
 		return classifyRPCError(err)
 	}

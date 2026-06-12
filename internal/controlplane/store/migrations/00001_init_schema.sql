@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS services (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     display_name TEXT NOT NULL,
+    host TEXT NOT NULL,
     spec_plane_id TEXT NOT NULL,
     spec_instance_class TEXT NOT NULL DEFAULT 'small',
     spec_exposure TEXT NOT NULL,
@@ -54,6 +55,7 @@ CREATE TABLE IF NOT EXISTS services (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT services_name_key UNIQUE (name),
+    CONSTRAINT services_host_key UNIQUE (host),
     CONSTRAINT services_plane_fk
         FOREIGN KEY (spec_plane_id) REFERENCES planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
 );

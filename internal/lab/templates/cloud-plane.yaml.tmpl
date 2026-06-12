@@ -64,14 +64,6 @@ ingress:
   baseDomain: {{printf "%q" .IngressBaseDomain}}
   caddyAdminURL: http://127.0.0.1:2019
   publicOrigin: {{printf "%q" .IngressPublicOrigin}}
-{{- if .DNSPodDomain}}
-  frontDoor:
-    dnsPodDomain: {{printf "%q" .DNSPodDomain}}
-    dnsPodCredential:
-      secretId: {{printf "%q" .DNSPodCredential.SecretID}}
-      secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
-      token: {{printf "%q" .DNSPodCredential.Token}}
-{{- end}}
 
 observability:
   lokiURL: {{printf "%q" .LokiURL}}

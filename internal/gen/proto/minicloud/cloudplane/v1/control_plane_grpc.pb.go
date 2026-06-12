@@ -123,16 +123,16 @@ var ControlPlaneSnapshotService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ControlPlaneExecutionService_ApplyExecutionPlan_FullMethodName  = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/ApplyExecutionPlan"
-	ControlPlaneExecutionService_DeleteExecutionPlan_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/DeleteExecutionPlan"
+	ControlPlaneExecutionService_ApplyService_FullMethodName  = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/ApplyService"
+	ControlPlaneExecutionService_DeleteService_FullMethodName = "/minicloud.cloudplane.v1.ControlPlaneExecutionService/DeleteService"
 )
 
 // ControlPlaneExecutionServiceClient is the client API for ControlPlaneExecutionService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ControlPlaneExecutionServiceClient interface {
-	ApplyExecutionPlan(ctx context.Context, in *ApplyExecutionPlanRequest, opts ...grpc.CallOption) (*ApplyExecutionPlanResponse, error)
-	DeleteExecutionPlan(ctx context.Context, in *DeleteExecutionPlanRequest, opts ...grpc.CallOption) (*DeleteExecutionPlanResponse, error)
+	ApplyService(ctx context.Context, in *ApplyServiceRequest, opts ...grpc.CallOption) (*ApplyServiceResponse, error)
+	DeleteService(ctx context.Context, in *DeleteServiceRequest, opts ...grpc.CallOption) (*DeleteServiceResponse, error)
 }
 
 type controlPlaneExecutionServiceClient struct {
@@ -143,20 +143,20 @@ func NewControlPlaneExecutionServiceClient(cc grpc.ClientConnInterface) ControlP
 	return &controlPlaneExecutionServiceClient{cc}
 }
 
-func (c *controlPlaneExecutionServiceClient) ApplyExecutionPlan(ctx context.Context, in *ApplyExecutionPlanRequest, opts ...grpc.CallOption) (*ApplyExecutionPlanResponse, error) {
+func (c *controlPlaneExecutionServiceClient) ApplyService(ctx context.Context, in *ApplyServiceRequest, opts ...grpc.CallOption) (*ApplyServiceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ApplyExecutionPlanResponse)
-	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_ApplyExecutionPlan_FullMethodName, in, out, cOpts...)
+	out := new(ApplyServiceResponse)
+	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_ApplyService_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *controlPlaneExecutionServiceClient) DeleteExecutionPlan(ctx context.Context, in *DeleteExecutionPlanRequest, opts ...grpc.CallOption) (*DeleteExecutionPlanResponse, error) {
+func (c *controlPlaneExecutionServiceClient) DeleteService(ctx context.Context, in *DeleteServiceRequest, opts ...grpc.CallOption) (*DeleteServiceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(DeleteExecutionPlanResponse)
-	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_DeleteExecutionPlan_FullMethodName, in, out, cOpts...)
+	out := new(DeleteServiceResponse)
+	err := c.cc.Invoke(ctx, ControlPlaneExecutionService_DeleteService_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +167,8 @@ func (c *controlPlaneExecutionServiceClient) DeleteExecutionPlan(ctx context.Con
 // All implementations must embed UnimplementedControlPlaneExecutionServiceServer
 // for forward compatibility.
 type ControlPlaneExecutionServiceServer interface {
-	ApplyExecutionPlan(context.Context, *ApplyExecutionPlanRequest) (*ApplyExecutionPlanResponse, error)
-	DeleteExecutionPlan(context.Context, *DeleteExecutionPlanRequest) (*DeleteExecutionPlanResponse, error)
+	ApplyService(context.Context, *ApplyServiceRequest) (*ApplyServiceResponse, error)
+	DeleteService(context.Context, *DeleteServiceRequest) (*DeleteServiceResponse, error)
 	mustEmbedUnimplementedControlPlaneExecutionServiceServer()
 }
 
@@ -179,11 +179,11 @@ type ControlPlaneExecutionServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedControlPlaneExecutionServiceServer struct{}
 
-func (UnimplementedControlPlaneExecutionServiceServer) ApplyExecutionPlan(context.Context, *ApplyExecutionPlanRequest) (*ApplyExecutionPlanResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ApplyExecutionPlan not implemented")
+func (UnimplementedControlPlaneExecutionServiceServer) ApplyService(context.Context, *ApplyServiceRequest) (*ApplyServiceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ApplyService not implemented")
 }
-func (UnimplementedControlPlaneExecutionServiceServer) DeleteExecutionPlan(context.Context, *DeleteExecutionPlanRequest) (*DeleteExecutionPlanResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method DeleteExecutionPlan not implemented")
+func (UnimplementedControlPlaneExecutionServiceServer) DeleteService(context.Context, *DeleteServiceRequest) (*DeleteServiceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method DeleteService not implemented")
 }
 func (UnimplementedControlPlaneExecutionServiceServer) mustEmbedUnimplementedControlPlaneExecutionServiceServer() {
 }
@@ -207,38 +207,38 @@ func RegisterControlPlaneExecutionServiceServer(s grpc.ServiceRegistrar, srv Con
 	s.RegisterService(&ControlPlaneExecutionService_ServiceDesc, srv)
 }
 
-func _ControlPlaneExecutionService_ApplyExecutionPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ApplyExecutionPlanRequest)
+func _ControlPlaneExecutionService_ApplyService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApplyServiceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControlPlaneExecutionServiceServer).ApplyExecutionPlan(ctx, in)
+		return srv.(ControlPlaneExecutionServiceServer).ApplyService(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ControlPlaneExecutionService_ApplyExecutionPlan_FullMethodName,
+		FullMethod: ControlPlaneExecutionService_ApplyService_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControlPlaneExecutionServiceServer).ApplyExecutionPlan(ctx, req.(*ApplyExecutionPlanRequest))
+		return srv.(ControlPlaneExecutionServiceServer).ApplyService(ctx, req.(*ApplyServiceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ControlPlaneExecutionService_DeleteExecutionPlan_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DeleteExecutionPlanRequest)
+func _ControlPlaneExecutionService_DeleteService_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteServiceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ControlPlaneExecutionServiceServer).DeleteExecutionPlan(ctx, in)
+		return srv.(ControlPlaneExecutionServiceServer).DeleteService(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ControlPlaneExecutionService_DeleteExecutionPlan_FullMethodName,
+		FullMethod: ControlPlaneExecutionService_DeleteService_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ControlPlaneExecutionServiceServer).DeleteExecutionPlan(ctx, req.(*DeleteExecutionPlanRequest))
+		return srv.(ControlPlaneExecutionServiceServer).DeleteService(ctx, req.(*DeleteServiceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -251,12 +251,12 @@ var ControlPlaneExecutionService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ControlPlaneExecutionServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ApplyExecutionPlan",
-			Handler:    _ControlPlaneExecutionService_ApplyExecutionPlan_Handler,
+			MethodName: "ApplyService",
+			Handler:    _ControlPlaneExecutionService_ApplyService_Handler,
 		},
 		{
-			MethodName: "DeleteExecutionPlan",
-			Handler:    _ControlPlaneExecutionService_DeleteExecutionPlan_Handler,
+			MethodName: "DeleteService",
+			Handler:    _ControlPlaneExecutionService_DeleteService_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

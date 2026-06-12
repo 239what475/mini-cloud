@@ -29,6 +29,28 @@ CREATE TABLE IF NOT EXISTS nodes (
 CREATE INDEX IF NOT EXISTS idx_nodes_status_created_at
     ON nodes (status, created_at ASC, id ASC);
 
+CREATE TABLE IF NOT EXISTS services (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    display_name TEXT NOT NULL,
+    host TEXT NOT NULL UNIQUE,
+    generation BIGINT NOT NULL CHECK (generation > 0),
+    desired_state TEXT NOT NULL,
+    instance_class TEXT NOT NULL,
+    exposure TEXT NOT NULL,
+    image TEXT NOT NULL,
+    command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+    env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+    container_port INTEGER NOT NULL CHECK (container_port > 0 AND container_port <= 65535),
+    readiness_path TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_services_desired_updated_at
+    ON services (desired_state, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS execution_intents (
     id TEXT PRIMARY KEY,
     work_action TEXT NOT NULL DEFAULT 'run',
@@ -77,4 +99,5 @@ CREATE TABLE IF NOT EXISTS frontdoor_domains (
 -- +goose Down
 DROP TABLE IF EXISTS frontdoor_domains;
 DROP TABLE IF EXISTS execution_intents;
+DROP TABLE IF EXISTS services;
 DROP TABLE IF EXISTS nodes;

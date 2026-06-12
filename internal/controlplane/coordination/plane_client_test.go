@@ -50,7 +50,7 @@ func (s *stubControlPlaneSouthbound) GetSnapshot(ctx context.Context, _ *emptypb
 	}, nil
 }
 
-func (s *stubControlPlaneSouthbound) ApplyExecutionPlan(ctx context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
+func (s *stubControlPlaneSouthbound) ApplyService(ctx context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
 	s.assertAuthorization(ctx)
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
@@ -58,15 +58,23 @@ func (s *stubControlPlaneSouthbound) ApplyExecutionPlan(ctx context.Context, req
 	if req.GetServiceName() != "svc-demo" {
 		s.t.Fatalf("unexpected service name: %q", req.GetServiceName())
 	}
-	if req.GetPlanId() != "svc-1-g12" {
-		s.t.Fatalf("unexpected plan id: %q", req.GetPlanId())
-	}
-	return &cloudplanev1.ApplyExecutionPlanResponse{
-		PlanId: req.GetPlanId(),
+	return &cloudplanev1.ApplyServiceResponse{
+		Service: &cloudplanev1.PlaneService{
+			ServiceId:   req.GetServiceId(),
+			Name:        req.GetServiceName(),
+			DisplayName: req.GetDisplayName(),
+			Generation:  req.GetServiceGeneration(),
+			Spec: &cloudplanev1.PlaneServiceSpec{
+				InstanceClass: req.GetInstanceClass(),
+				Image:         req.GetImage(),
+				ContainerPort: req.GetContainerPort(),
+				ReadinessPath: req.GetReadinessPath(),
+			},
+		},
 	}, nil
 }
 
-func (s *stubControlPlaneSouthbound) DeleteExecutionPlan(ctx context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
+func (s *stubControlPlaneSouthbound) DeleteService(ctx context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	s.assertAuthorization(ctx)
 	if req.GetServiceId() != "svc-1" {
 		s.t.Fatalf("unexpected service id: %q", req.GetServiceId())
@@ -74,10 +82,7 @@ func (s *stubControlPlaneSouthbound) DeleteExecutionPlan(ctx context.Context, re
 	if req.GetServiceGeneration() != 13 {
 		s.t.Fatalf("unexpected service generation: %d", req.GetServiceGeneration())
 	}
-	if req.GetPlanId() != "svc-1-delete-g13" {
-		s.t.Fatalf("unexpected delete plan id: %q", req.GetPlanId())
-	}
-	return &cloudplanev1.DeleteExecutionPlanResponse{
+	return &cloudplanev1.DeleteServiceResponse{
 		ServiceId: req.GetServiceId(),
 		Deleted:   true,
 	}, nil
@@ -137,10 +142,10 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		t.Fatalf("unexpected execution snapshots: %+v", snapshot.GetExecutions())
 	}
 
-	applyResp, err := client.ApplyExecutionPlan(context.Background(), &cloudplanev1.ApplyExecutionPlanRequest{
-		PlanId:            "svc-1-g12",
+	applyResp, err := client.ApplyService(context.Background(), &cloudplanev1.ApplyServiceRequest{
 		ServiceId:         "svc-1",
 		ServiceName:       "svc-demo",
+		DisplayName:       "Demo",
 		ServiceGeneration: 12,
 		Image:             "nginx:latest",
 		ContainerPort:     8080,
@@ -148,18 +153,17 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 		InstanceClass:     "small",
 	})
 	if err != nil {
-		t.Fatalf("ApplyExecutionPlan returned error: %v", err)
+		t.Fatalf("ApplyService returned error: %v", err)
 	}
-	if applyResp.GetPlanId() != "svc-1-g12" {
-		t.Fatalf("unexpected execution plan response: %+v", applyResp)
+	if applyResp.GetService().GetServiceId() != "svc-1" {
+		t.Fatalf("unexpected apply service response: %+v", applyResp)
 	}
 
-	if err := client.DeleteExecutionPlan(context.Background(), &cloudplanev1.DeleteExecutionPlanRequest{
+	if err := client.DeleteService(context.Background(), &cloudplanev1.DeleteServiceRequest{
 		ServiceId:         "svc-1",
 		ServiceGeneration: 13,
-		PlanId:            "svc-1-delete-g13",
 	}); err != nil {
-		t.Fatalf("DeleteExecutionPlan returned error: %v", err)
+		t.Fatalf("DeleteService returned error: %v", err)
 	}
 }
 

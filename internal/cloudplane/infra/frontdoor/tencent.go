@@ -25,9 +25,9 @@ type tencentCDNAPI interface {
 }
 
 type tencentCDNClient struct {
-	client       tencentCDNAPI
-	origin       string
-	dnsPodDomain string
+	client        tencentCDNAPI
+	origin        string
+	dnsRootDomain string
 }
 
 func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error) {
@@ -42,10 +42,10 @@ func newTencentCDNClient(cfg cloudplaneconfig.Config) (*tencentCDNClient, error)
 	if err != nil {
 		return nil, fmt.Errorf("create Tencent CDN client: %w", err)
 	}
-	return &tencentCDNClient{client: client, origin: cfg.Ingress.PublicOrigin, dnsPodDomain: cfg.Ingress.FrontDoor.DNSPodDomain}, nil
+	return &tencentCDNClient{client: client, origin: cfg.Ingress.PublicOrigin, dnsRootDomain: rootDomain(cfg.Ingress.BaseDomain)}, nil
 }
 
-func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) (*DNSRecord, error) {
+func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSRecord, error) {
 	host = cleanDomain(host)
 	if host == "" {
 		return nil, nil
@@ -66,14 +66,11 @@ func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns d
 	if recordResp == nil || recordResp.Response == nil || recordResp.Response.SubDomain == nil || recordResp.Response.Record == nil || recordResp.Response.RecordType == nil {
 		return nil, fmt.Errorf("tencent CDN verify record response is incomplete")
 	}
-	verifyHost := cleanDomain(*recordResp.Response.SubDomain + "." + c.dnsPodDomain)
+	verifyHost := cleanDomain(*recordResp.Response.SubDomain + "." + c.dnsRootDomain)
 	verifyRecord := &DNSRecord{
 		Subdomain: verifyHost,
 		Type:      *recordResp.Response.RecordType,
 		Value:     *recordResp.Response.Record,
-	}
-	if err := dns.EnsureRecord(ctx, verifyRecord.Subdomain, verifyRecord.Type, verifyRecord.Value); err != nil {
-		return verifyRecord, err
 	}
 	verifyType := "dns"
 	verifyReq := cdn.NewVerifyDomainRecordRequest()
@@ -90,6 +87,14 @@ func (c *tencentCDNClient) PrepareDomain(ctx context.Context, host string, dns d
 		return verifyRecord, errDomainVerificationPending
 	}
 	return verifyRecord, nil
+}
+
+func rootDomain(value string) string {
+	parts := strings.Split(cleanDomain(value), ".")
+	if len(parts) < 2 {
+		return cleanDomain(value)
+	}
+	return strings.Join(parts[len(parts)-2:], ".")
 }
 
 func (c *tencentCDNClient) EnsureDomain(ctx context.Context, host string) (string, error) {

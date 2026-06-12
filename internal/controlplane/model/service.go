@@ -36,6 +36,7 @@ type ServiceMetadata struct {
 	ID          string
 	Name        string
 	DisplayName string
+	Host        string
 	Generation  int64
 }
 

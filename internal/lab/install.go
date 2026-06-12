@@ -14,12 +14,15 @@ type installFiles struct {
 }
 
 type controlPlaneTemplateData struct {
-	HTTPAddr        string
-	InstallRoot     string
-	AdminToken      string
-	SouthboundToken string
-	LokiURL         string
-	LokiTenantID    string
+	HTTPAddr          string
+	InstallRoot       string
+	AdminToken        string
+	SouthboundToken   string
+	ServiceBaseDomain string
+	DNSPodDomain      string
+	DNSPodCredential  tencentCredential
+	LokiURL           string
+	LokiTenantID      string
 }
 
 type cloudPlaneTemplateData struct {
@@ -41,8 +44,6 @@ type cloudPlaneTemplateData struct {
 	NodeProvider                NodeProviderConfig
 	IngressBaseDomain           string
 	IngressPublicOrigin         string
-	DNSPodDomain                string
-	DNSPodCredential            tencentCredential
 	LokiURL                     string
 	LokiTenantID                string
 	OTLPEndpoint                string
@@ -150,13 +151,27 @@ func (r *Runner) installCloudPlane(ctx context.Context, plane Plane) error {
 }
 
 func (r *Runner) renderControlPlaneInstallFiles() (installFiles, error) {
+	dnspodCredential := tencentCredential{}
+	if strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != "" {
+		var err error
+		dnspodCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
+		if err != nil {
+			return installFiles{}, err
+		}
+		if strings.TrimSpace(dnspodCredential.SecretID) == "" || strings.TrimSpace(dnspodCredential.SecretKey) == "" {
+			return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
+		}
+	}
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
-		HTTPAddr:        r.cfg.ControlPlane.ListenHTTPAddr,
-		InstallRoot:     r.cfg.Install.Root,
-		AdminToken:      r.cfg.Tokens.ControlPlaneAdmin,
-		SouthboundToken: r.cfg.Tokens.ControlPlaneSouthbound,
-		LokiURL:         r.cfg.Observability.WorkloadLogLokiURL,
-		LokiTenantID:    r.cfg.Observability.WorkloadLogLokiTenantID,
+		HTTPAddr:          r.cfg.ControlPlane.ListenHTTPAddr,
+		InstallRoot:       r.cfg.Install.Root,
+		AdminToken:        r.cfg.Tokens.ControlPlaneAdmin,
+		SouthboundToken:   r.cfg.Tokens.ControlPlaneSouthbound,
+		ServiceBaseDomain: strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
+		DNSPodDomain:      rootDomain(r.cfg.Install.IngressBaseDomain),
+		DNSPodCredential:  dnspodCredential,
+		LokiURL:           r.cfg.Observability.WorkloadLogLokiURL,
+		LokiTenantID:      r.cfg.Observability.WorkloadLogLokiTenantID,
 	})
 	if err != nil {
 		return installFiles{}, err
@@ -209,9 +224,8 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		return installFiles{}, fmt.Errorf("node_provider_config.instanceType is required")
 	}
 	tencentProviderCredential := tencentCredential{}
-	dnspodCredential := tencentCredential{}
 	ingressEnabled := strings.TrimSpace(r.cfg.Install.IngressBaseDomain) != ""
-	if provider == "tencent" || ingressEnabled {
+	if provider == "tencent" {
 		var err error
 		tencentProviderCredential, err = readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
 		if err != nil {
@@ -220,7 +234,6 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		if strings.TrimSpace(tencentProviderCredential.SecretID) == "" || strings.TrimSpace(tencentProviderCredential.SecretKey) == "" {
 			return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
 		}
-		dnspodCredential = tencentProviderCredential
 	}
 
 	artifactPort := out.Network.Value.ArtifactHTTPPort
@@ -260,8 +273,6 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		NodeProvider:                nodeProvider,
 		IngressBaseDomain:           r.cfg.Install.IngressBaseDomain,
 		IngressPublicOrigin:         platformPublicIP,
-		DNSPodDomain:                rootDomain(r.cfg.Install.IngressBaseDomain),
-		DNSPodCredential:            dnspodCredential,
 		LokiURL:                     r.cfg.Observability.WorkloadLogLokiURL,
 		LokiTenantID:                r.cfg.Observability.WorkloadLogLokiTenantID,
 		OTLPEndpoint:                r.cfg.Observability.WorkloadOTLPEndpoint,

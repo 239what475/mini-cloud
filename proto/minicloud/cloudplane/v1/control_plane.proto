@@ -51,18 +51,50 @@ message PlaneExecutionSnapshot {
   google.protobuf.Timestamp observed_at = 7 [json_name = "observedAt"];
 }
 
+message PlaneServiceSpec {
+  string instance_class = 1 [json_name = "instanceClass"];
+  string exposure = 2;
+  string image = 3;
+  repeated string command = 4;
+  repeated string args = 5;
+  map<string, string> env = 6;
+  int32 container_port = 7 [json_name = "containerPort"];
+  string readiness_path = 8 [json_name = "readinessPath"];
+}
+
+message PlaneService {
+  string service_id = 1 [json_name = "serviceID"];
+  string name = 2;
+  string display_name = 3 [json_name = "displayName"];
+  int64 generation = 4;
+  string desired_state = 5 [json_name = "desiredState"];
+  PlaneServiceSpec spec = 6;
+  google.protobuf.Timestamp updated_at = 7 [json_name = "updatedAt"];
+  string host = 8;
+}
+
+message PlaneFrontDoorDomain {
+  string host = 1;
+  string cname = 2;
+  string verify_subdomain = 3 [json_name = "verifySubdomain"];
+  string verify_type = 4 [json_name = "verifyType"];
+  string verify_value = 5 [json_name = "verifyValue"];
+}
+
 message PlaneSnapshot {
   PlaneSummary plane = 1;
   google.protobuf.Timestamp checked_at = 2 [json_name = "checkedAt"];
   PlaneReliability reliability = 3;
   PlaneNodeInventory node_inventory = 4 [json_name = "nodeInventory"];
   repeated PlaneExecutionSnapshot executions = 5;
+  repeated PlaneService services = 6;
+  repeated PlaneFrontDoorDomain frontdoor_domains = 7 [json_name = "frontdoorDomains"];
 }
 
-message ApplyExecutionPlanRequest {
-  string plan_id = 1 [json_name = "planID"];
+message ApplyServiceRequest {
   string service_id = 2 [json_name = "serviceID"];
   string service_name = 3 [json_name = "serviceName"];
+  string display_name = 13 [json_name = "displayName"];
   int64 service_generation = 4 [json_name = "serviceGeneration"];
   string image = 5;
   repeated string command = 6;
@@ -72,19 +104,19 @@ message ApplyExecutionPlanRequest {
   string readiness_path = 10 [json_name = "readinessPath"];
   string instance_class = 11 [json_name = "instanceClass"];
   string exposure = 12;
+  string host = 14;
 }
 
-message ApplyExecutionPlanResponse {
-  string plan_id = 1 [json_name = "planID"];
+message ApplyServiceResponse {
+  PlaneService service = 1;
 }
 
-message DeleteExecutionPlanRequest {
+message DeleteServiceRequest {
   string service_id = 1 [json_name = "serviceID"];
   int64 service_generation = 2 [json_name = "serviceGeneration"];
-  string plan_id = 3 [json_name = "planID"];
 }
 
-message DeleteExecutionPlanResponse {
+message DeleteServiceResponse {
   string service_id = 1 [json_name = "serviceID"];
   bool deleted = 2;
 }
@@ -94,7 +126,7 @@ service ControlPlaneSnapshotService {
 }
 
 service ControlPlaneExecutionService {
-  rpc ApplyExecutionPlan(ApplyExecutionPlanRequest) returns (ApplyExecutionPlanResponse);
+  rpc ApplyService(ApplyServiceRequest) returns (ApplyServiceResponse);
 
-  rpc DeleteExecutionPlan(DeleteExecutionPlanRequest) returns (DeleteExecutionPlanResponse);
+  rpc DeleteService(DeleteServiceRequest) returns (DeleteServiceResponse);
 }

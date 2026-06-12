@@ -16,10 +16,6 @@ import (
 )
 
 const (
-	backgroundPlaneSyncPerPlaneTimeout = 30 * time.Second
-)
-
-const (
 	planeExecutionStatusFailed     = "failed"
 	planeExecutionStatusRunning    = "running"
 	planeExecutionStatusSucceeded  = "succeeded"
@@ -30,6 +26,7 @@ type PlaneSyncer struct {
 	logger          *slog.Logger
 	store           *store.Store
 	southboundToken string
+	dns             dnsClient
 	now             func() time.Time
 }
 
@@ -50,7 +47,7 @@ func (e *syncError) Error() string {
 	return e.message
 }
 
-func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string) *PlaneSyncer {
+func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string, dns dnsClient) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -58,6 +55,7 @@ func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken st
 		logger:          logger,
 		store:           stores,
 		southboundToken: strings.TrimSpace(southboundToken),
+		dns:             dns,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -118,7 +116,18 @@ func (s *PlaneSyncer) syncPlane(ctx context.Context, planeID string) error {
 	if err := s.applyExecutionSnapshots(ctx, planeID, snapshot.GetExecutions()); err != nil {
 		return err
 	}
+	if err := s.applyFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
+	return s.syncPlane(ctx, planeID)
+}
+
+func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
+	return s.syncRegisteredPlanes(ctx, perPlaneTimeout)
 }
 
 func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
@@ -143,30 +152,6 @@ func (s *PlaneSyncer) syncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 		}
 	}
 	return nil
-}
-
-func RunPlaneSyncLoop(ctx context.Context, logger *slog.Logger, syncer *PlaneSyncer, interval int) {
-	if logger == nil {
-		logger = slog.Default()
-	}
-
-	if err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout); err != nil && !errors.Is(err, context.Canceled) {
-		logger.Error("plane background sync failed", "error", err)
-	}
-
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if err := syncer.syncRegisteredPlanes(ctx, backgroundPlaneSyncPerPlaneTimeout); err != nil {
-				logger.Error("plane background sync failed", "error", err)
-			}
-		}
-	}
 }
 
 func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot) error {
@@ -209,6 +194,33 @@ func (s *PlaneSyncer) applyExecutionSnapshots(ctx context.Context, planeID strin
 				continue
 			}
 			return err
+		}
+	}
+	return nil
+}
+
+func (s *PlaneSyncer) applyFrontDoorDNS(ctx context.Context, planeID string, domains []*cloudplanev1.PlaneFrontDoorDomain) error {
+	if s.dns == nil {
+		return nil
+	}
+	for _, item := range domains {
+		if item == nil || strings.TrimSpace(item.GetHost()) == "" {
+			continue
+		}
+		if strings.TrimSpace(item.GetVerifySubdomain()) != "" && strings.TrimSpace(item.GetVerifyValue()) != "" {
+			recordType := strings.TrimSpace(item.GetVerifyType())
+			if recordType == "" {
+				recordType = "TXT"
+			}
+			if err := s.dns.EnsureRecord(ctx, item.GetVerifySubdomain(), recordType, item.GetVerifyValue()); err != nil {
+				return fmt.Errorf("ensure frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+			}
+		}
+		if strings.TrimSpace(item.GetCname()) == "" {
+			continue
+		}
+		if err := s.dns.EnsureRecord(ctx, item.GetHost(), "CNAME", item.GetCname()); err != nil {
+			return fmt.Errorf("ensure frontdoor CNAME DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
 		}
 	}
 	return nil

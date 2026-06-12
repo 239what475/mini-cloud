@@ -18,6 +18,13 @@ database:
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+dns:
+  serviceBaseDomain: apps.whatcloud.cn
+  dnspod:
+    domain: whatcloud.cn
+    secretId: sid
+    secretKey: skey
+    token: stok
 logs:
   loki:
     url: http://127.0.0.1:3100
@@ -47,6 +54,12 @@ logs:
 	}
 	if cfg.Auth.SouthboundToken != "southbound-secret" {
 		t.Fatalf("auth.southboundToken = %q", cfg.Auth.SouthboundToken)
+	}
+	if cfg.DNS.ServiceBaseDomain != "apps.whatcloud.cn" {
+		t.Fatalf("dns.serviceBaseDomain = %q", cfg.DNS.ServiceBaseDomain)
+	}
+	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" || cfg.DNS.DNSPod.SecretID != "sid" || cfg.DNS.DNSPod.SecretKey != "skey" || cfg.DNS.DNSPod.Token != "stok" {
+		t.Fatalf("unexpected DNSPod config: %+v", cfg.DNS.DNSPod)
 	}
 	if cfg.Logs.Loki.URL != "http://127.0.0.1:3100" || cfg.Logs.Loki.TenantID != "tenant-a" {
 		t.Fatalf("unexpected Loki config: %+v", cfg)
@@ -84,6 +97,8 @@ database:
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+dns:
+  serviceBaseDomain: apps.example.test
 sync:
   planeIntervalSeconds: 30
 `), 0600); err != nil {

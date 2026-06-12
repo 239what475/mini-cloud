@@ -11,7 +11,7 @@ import (
 	util "github.com/alibabacloud-go/tea-utils/v2/service"
 )
 
-func TestAliyunPrepareDomainWritesOwnerVerifyTXT(t *testing.T) {
+func TestAliyunPrepareDomainReturnsOwnerVerifyTXT(t *testing.T) {
 	t.Parallel()
 
 	api := &fakeAliyunCDN{
@@ -21,19 +21,14 @@ func TestAliyunPrepareDomainWritesOwnerVerifyTXT(t *testing.T) {
 			"verifyKey":  "verification",
 		},
 	}
-	dns := &fakeDNS{records: map[string]DNSRecord{}}
 	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
 
-	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn", dns)
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
 	if err != nil {
 		t.Fatalf("PrepareDomain returned error: %v", err)
 	}
 	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" || verification.Type != "TXT" || verification.Value != "verify_test" {
 		t.Fatalf("verification = %+v", verification)
-	}
-	record := dns.records["verification.whatcloud.cn"]
-	if record.Type != "TXT" || record.Value != "verify_test" {
-		t.Fatalf("verify record = %+v", record)
 	}
 	if api.verifiedDomain != "demo.apps.whatcloud.cn" {
 		t.Fatalf("verified domain = %q", api.verifiedDomain)
@@ -51,18 +46,14 @@ func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.
 		},
 		verifyErr: fmt.Errorf("DomainOwnerVerifyFail: owner verification pending"),
 	}
-	dns := &fakeDNS{records: map[string]DNSRecord{}}
 	client := &aliyunCDNClient{client: api, rawClient: api, origin: "203.0.113.10"}
 
-	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn", dns)
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
 	if !errors.Is(err, errDomainVerificationPending) {
 		t.Fatalf("PrepareDomain error = %v, want errDomainVerificationPending", err)
 	}
 	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" {
 		t.Fatalf("verification = %+v", verification)
-	}
-	if dns.records["verification.whatcloud.cn"].Value != "verify_test" {
-		t.Fatalf("verify record = %+v", dns.records)
 	}
 }
 

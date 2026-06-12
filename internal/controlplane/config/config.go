@@ -15,6 +15,7 @@ type Config struct {
 	UI       UIConfig       `yaml:"ui"`
 	Database DatabaseConfig `yaml:"database"`
 	Auth     AuthConfig     `yaml:"auth"`
+	DNS      DNSConfig      `yaml:"dns"`
 	Logs     LogsConfig     `yaml:"logs"`
 }
 
@@ -33,6 +34,18 @@ type DatabaseConfig struct {
 type AuthConfig struct {
 	AdminToken      string `yaml:"adminToken"`
 	SouthboundToken string `yaml:"southboundToken"`
+}
+
+type DNSConfig struct {
+	ServiceBaseDomain string       `yaml:"serviceBaseDomain"`
+	DNSPod            DNSPodConfig `yaml:"dnspod"`
+}
+
+type DNSPodConfig struct {
+	Domain    string `yaml:"domain"`
+	SecretID  string `yaml:"secretId"`
+	SecretKey string `yaml:"secretKey"`
+	Token     string `yaml:"token"`
 }
 
 type LogsConfig struct {
@@ -82,6 +95,11 @@ func (c *Config) normalize() {
 	c.Database.URL = strings.TrimSpace(c.Database.URL)
 	c.Auth.AdminToken = strings.TrimSpace(c.Auth.AdminToken)
 	c.Auth.SouthboundToken = strings.TrimSpace(c.Auth.SouthboundToken)
+	c.DNS.ServiceBaseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.ServiceBaseDomain)), ".")
+	c.DNS.DNSPod.Domain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.DNSPod.Domain)), ".")
+	c.DNS.DNSPod.SecretID = strings.TrimSpace(c.DNS.DNSPod.SecretID)
+	c.DNS.DNSPod.SecretKey = strings.TrimSpace(c.DNS.DNSPod.SecretKey)
+	c.DNS.DNSPod.Token = strings.TrimSpace(c.DNS.DNSPod.Token)
 	c.Logs.Loki.URL = strings.TrimSpace(c.Logs.Loki.URL)
 	c.Logs.Loki.TenantID = strings.TrimSpace(c.Logs.Loki.TenantID)
 }
@@ -95,6 +113,23 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Auth.SouthboundToken) == "" {
 		return fmt.Errorf("auth.southboundToken is required")
+	}
+	if strings.TrimSpace(c.DNS.ServiceBaseDomain) == "" {
+		return fmt.Errorf("dns.serviceBaseDomain is required")
+	}
+	dnsConfigured := strings.TrimSpace(c.DNS.DNSPod.Domain) != "" ||
+		strings.TrimSpace(c.DNS.DNSPod.SecretID) != "" ||
+		strings.TrimSpace(c.DNS.DNSPod.SecretKey) != ""
+	if dnsConfigured {
+		if strings.TrimSpace(c.DNS.DNSPod.Domain) == "" {
+			return fmt.Errorf("dns.dnspod.domain is required when dns.dnspod is configured")
+		}
+		if strings.TrimSpace(c.DNS.DNSPod.SecretID) == "" {
+			return fmt.Errorf("dns.dnspod.secretId is required when dns.dnspod is configured")
+		}
+		if strings.TrimSpace(c.DNS.DNSPod.SecretKey) == "" {
+			return fmt.Errorf("dns.dnspod.secretKey is required when dns.dnspod is configured")
+		}
 	}
 	return nil
 }

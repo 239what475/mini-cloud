@@ -18,6 +18,7 @@ type Options struct {
 	UIDir             string
 	LogQueryService   *logquery.Service
 	ServiceController *coordination.ServiceController
+	PlaneSyncer       *coordination.PlaneSyncer
 }
 
 func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler {
@@ -57,7 +58,7 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) http.Handler
 	services.DELETE("/:serviceID", serviceHandler.deleteService)
 
 	logQueryHandler := newLogQueryHandler(logger, opts.LogQueryService)
-	planeHandler := newPlaneHandler(logger, stores)
+	planeHandler := newPlaneHandler(logger, stores, opts.PlaneSyncer)
 	eventHandler := newEventHandler(logger, stores)
 
 	control := api.Group("/control")

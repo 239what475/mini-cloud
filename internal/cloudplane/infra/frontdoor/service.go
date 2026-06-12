@@ -15,16 +15,9 @@ import (
 var errDomainVerificationPending = errors.New("CDN domain verification is pending")
 
 type cdnClient interface {
-	PrepareDomain(context.Context, string, dnsClient) (*DNSRecord, error)
+	PrepareDomain(context.Context, string) (*DNSRecord, error)
 	EnsureDomain(context.Context, string) (string, error)
 	DeleteDomain(context.Context, string) error
-	OwnsCNAME(string) bool
-}
-
-type dnsClient interface {
-	ListRecords(context.Context) ([]DNSRecord, error)
-	EnsureRecord(context.Context, string, string, string) error
-	DeleteRecord(context.Context, DNSRecord) error
 }
 
 type domainStore interface {
@@ -45,26 +38,21 @@ type Service struct {
 	logger     *slog.Logger
 	baseDomain string
 	cdn        cdnClient
-	dns        dnsClient
 	store      domainStore
 }
 
 func NewService(logger *slog.Logger, cfg cloudplaneconfig.Config, stores domainStore) (*Service, error) {
-	if strings.TrimSpace(cfg.Ingress.FrontDoor.DNSPodDomain) == "" {
+	if strings.TrimSpace(cfg.Ingress.PublicOrigin) == "" {
 		return nil, nil
 	}
 	cdn, err := newCDNClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	dns, err := newDNSPodClient(cfg.Ingress.FrontDoor)
-	if err != nil {
-		return nil, err
-	}
-	return newServiceWithClients(logger, cfg.Ingress.BaseDomain, cdn, dns, stores), nil
+	return newServiceWithClients(logger, cfg.Ingress.BaseDomain, cdn, stores), nil
 }
 
-func newServiceWithClients(logger *slog.Logger, baseDomain string, cdn cdnClient, dns dnsClient, stores domainStore) *Service {
+func newServiceWithClients(logger *slog.Logger, baseDomain string, cdn cdnClient, stores domainStore) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -72,7 +60,6 @@ func newServiceWithClients(logger *slog.Logger, baseDomain string, cdn cdnClient
 		logger:     logger,
 		baseDomain: cleanDomain(baseDomain),
 		cdn:        cdn,
-		dns:        dns,
 		store:      stores,
 	}
 }
@@ -91,20 +78,16 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	}
 
 	var managed []ManagedDomain
-	managedByHost := map[string]ManagedDomain{}
 	if s.store != nil {
 		items, err := s.store.ListFrontDoorDomains(ctx)
 		if err != nil {
 			return err
 		}
 		managed = items
-		for _, item := range items {
-			managedByHost[cleanDomain(item.Host)] = item
-		}
 	}
 
 	for _, host := range sortedHosts(desired) {
-		verification, err := s.cdn.PrepareDomain(ctx, host, s.dns)
+		verification, err := s.cdn.PrepareDomain(ctx, host)
 		if s.store != nil && verification != nil {
 			if saveErr := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, Verification: verification}); saveErr != nil {
 				return saveErr
@@ -130,18 +113,6 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 				return err
 			}
 		}
-		if err := s.dns.EnsureRecord(ctx, host, "CNAME", cname); err != nil {
-			return fmt.Errorf("ensure DNS record %s: %w", host, err)
-		}
-		verificationToDelete := verification
-		if verificationToDelete == nil && managedByHost[host].Verification != nil {
-			verificationToDelete = managedByHost[host].Verification
-		}
-		if verificationToDelete != nil {
-			if err := s.deleteDNSRecordIfPresent(ctx, *verificationToDelete); err != nil {
-				return fmt.Errorf("delete CDN verification DNS record %s: %w", verificationToDelete.Subdomain, err)
-			}
-		}
 		if s.store != nil {
 			if err := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, CNAME: cname}); err != nil {
 				return err
@@ -158,17 +129,6 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 		return nil
 	}
 
-	records, err := s.dns.ListRecords(ctx)
-	if err != nil {
-		return fmt.Errorf("list DNS records: %w", err)
-	}
-	recordsByHost := map[string]DNSRecord{}
-	for _, record := range records {
-		if record.Type == "CNAME" && s.cdn.OwnsCNAME(record.Value) {
-			recordsByHost[cleanDomain(record.Subdomain)] = record
-		}
-	}
-
 	for _, domain := range managed {
 		host := cleanDomain(domain.Host)
 		if !domainIsUnder(host, s.baseDomain) {
@@ -180,16 +140,6 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 		if _, ok := desired[host]; ok {
 			continue
 		}
-		if record, ok := recordsByHost[host]; ok {
-			if err := s.dns.DeleteRecord(ctx, record); err != nil {
-				return fmt.Errorf("delete stale DNS record %s: %w", host, err)
-			}
-		}
-		if domain.Verification != nil {
-			if err := s.deleteDNSRecordFromSnapshot(ctx, records, *domain.Verification); err != nil {
-				return fmt.Errorf("delete CDN verification DNS record %s: %w", domain.Verification.Subdomain, err)
-			}
-		}
 		if err := s.cdn.DeleteDomain(ctx, host); err != nil {
 			return fmt.Errorf("delete stale CDN domain %s: %w", host, err)
 		}
@@ -199,33 +149,6 @@ func (s *Service) Apply(ctx context.Context, routes []cloudmodel.Route) error {
 	}
 
 	s.logger.Debug("cloud-plane reconciled frontdoor", "routes", len(desired))
-	return nil
-}
-
-func (s *Service) deleteDNSRecordIfPresent(ctx context.Context, desired DNSRecord) error {
-	records, err := s.dns.ListRecords(ctx)
-	if err != nil {
-		return err
-	}
-	return s.deleteDNSRecordFromSnapshot(ctx, records, desired)
-}
-
-func (s *Service) deleteDNSRecordFromSnapshot(ctx context.Context, records []DNSRecord, desired DNSRecord) error {
-	desired.Subdomain = cleanDomain(desired.Subdomain)
-	desired.Type = cleanRecordType(desired.Type)
-	desired.Value = cleanRecordValue(&desired.Value, desired.Type)
-	for _, record := range records {
-		if cleanDomain(record.Subdomain) != desired.Subdomain {
-			continue
-		}
-		if cleanRecordType(record.Type) != desired.Type {
-			continue
-		}
-		if cleanRecordValue(&record.Value, record.Type) != desired.Value {
-			continue
-		}
-		return s.dns.DeleteRecord(ctx, record)
-	}
 	return nil
 }
 

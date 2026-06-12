@@ -198,22 +198,19 @@ func TestValidateAcceptsCaddyAdminURLWithoutIngressDomain(t *testing.T) {
 	}
 }
 
-func TestValidateRequiresFrontDoorFieldsWhenConfigured(t *testing.T) {
+func TestValidateRequiresBaseDomainWhenFrontDoorConfigured(t *testing.T) {
 	t.Parallel()
 
 	cfg := validConfig()
 	cfg.Ingress = IngressConfig{
-		BaseDomain:    "apps.example.com",
 		CaddyAdminURL: "http://127.0.0.1:2019",
-		FrontDoor:     FrontDoorConfig{DNSPodDomain: "example.com"},
+		PublicOrigin:  "203.0.113.10",
 	}
 	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want frontDoor field requirement")
+		t.Fatal("Validate error = nil, want baseDomain requirement")
 	}
 
-	cfg.Ingress.PublicOrigin = "203.0.113.10"
-	cfg.Ingress.FrontDoor.DNSPodDomain = "example.com"
-	cfg.Ingress.FrontDoor.DNSPodCredential = TencentCredentialConfig{SecretID: "sid", SecretKey: "skey"}
+	cfg.Ingress.BaseDomain = "apps.example.com"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate error: %v", err)
 	}

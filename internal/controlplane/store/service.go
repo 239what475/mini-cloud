@@ -18,8 +18,10 @@ import (
 var (
 	ErrServiceNotFound           = errors.New("service not found")
 	ErrServiceNameAlreadyExists  = errors.New("service name already exists")
+	ErrServiceHostAlreadyExists  = errors.New("service host already exists")
 	ErrServiceGenerationConflict = errors.New("service generation changed before reconcile write could be committed")
 	errServiceNameRequired       = errors.New("name is required")
+	errServiceHostRequired       = errors.New("host is required")
 	errInvalidServiceName        = errors.New("name must use lowercase letters, digits, and hyphens")
 	errDisplayNameRequired       = errors.New("displayName is required")
 	errInvalidExposure           = errors.New("exposure must be one of public, private")
@@ -39,6 +41,7 @@ const serviceSelectColumns = `
 	id,
 	name,
 	display_name,
+	host,
 	spec_plane_id,
 	spec_instance_class,
 	spec_exposure,
@@ -62,6 +65,7 @@ const serviceSelectColumns = `
 type CreateServiceInput struct {
 	Name        string
 	DisplayName string
+	Host        string
 	Spec        model.ServiceSpec
 }
 
@@ -108,6 +112,9 @@ func (in CreateServiceInput) validate() error {
 	if strings.TrimSpace(in.DisplayName) == "" {
 		return invalidInput(errDisplayNameRequired)
 	}
+	if strings.TrimSpace(in.Host) == "" {
+		return invalidInput(errServiceHostRequired)
+	}
 	return validateServiceSpec(in.Spec)
 }
 
@@ -144,8 +151,8 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		return model.Service{}, err
 	}
 
-	initialStatus := model.PendingServiceStatus(0, "waiting for service reconcile")
-	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for service reconcile"))
+	initialStatus := model.PendingServiceStatus(0, "waiting for cloud-plane service apply")
+	runJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service initial run: %w", err)
 	}
@@ -155,6 +162,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			id,
 			name,
 			display_name,
+			host,
 			spec_plane_id,
 			spec_instance_class,
 			spec_exposure,
@@ -172,12 +180,13 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			status_message,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, $14, $15, $16, $17, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 1, $15, $16, $17, $18, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
 		strings.TrimSpace(input.Name),
 		strings.TrimSpace(input.DisplayName),
+		strings.TrimSpace(input.Host),
 		specColumns.PlaneID,
 		specColumns.InstanceClass,
 		specColumns.Exposure,
@@ -198,7 +207,12 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		if errors.As(err, &pgErr) {
 			switch pgErr.Code {
 			case "23505":
-				return model.Service{}, ErrServiceNameAlreadyExists
+				switch pgErr.ConstraintName {
+				case "services_host_key":
+					return model.Service{}, ErrServiceHostAlreadyExists
+				default:
+					return model.Service{}, ErrServiceNameAlreadyExists
+				}
 			}
 		}
 		return model.Service{}, fmt.Errorf("insert service: %w", err)
@@ -285,13 +299,13 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 	if _, err := s.GetPlane(ctx, specColumns.PlaneID); err != nil {
 		return model.Service{}, err
 	}
-	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for service reconcile"))
+	pendingRunJSON, err := encodeServiceRun(model.PendingRunStatus("waiting for cloud-plane service apply"))
 	if err != nil {
 		return model.Service{}, fmt.Errorf("marshal service run for update: %w", err)
 	}
 
 	nextGeneration := current.Metadata.Generation + 1
-	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for service reconcile")
+	pendingStatus := model.PendingServiceStatus(current.Status.Observed.ObservedGeneration, "waiting for cloud-plane service apply")
 
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		UPDATE services
@@ -516,6 +530,7 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		&item.Metadata.ID,
 		&item.Metadata.Name,
 		&item.Metadata.DisplayName,
+		&item.Metadata.Host,
 		&item.Spec.PlaneID,
 		&item.Spec.InstanceClass,
 		&item.Spec.Exposure,

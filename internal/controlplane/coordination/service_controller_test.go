@@ -19,13 +19,13 @@ import (
 	"google.golang.org/grpc"
 )
 
-func TestCreateQueuesServiceForReconcile(t *testing.T) {
+func TestCreateAppliesServiceToSpecPlane(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceControllerPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-create", planeServer.endpoint)
+	planeItem := mustCreateReadyPlane(t, db, "plane-create-apply", planeServer.endpoint)
 
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
 
 	service, err := controller.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
@@ -34,42 +34,21 @@ func TestCreateQueuesServiceForReconcile(t *testing.T) {
 	if service.Metadata.Generation != 1 {
 		t.Fatalf("generation = %d, want 1", service.Metadata.Generation)
 	}
-	if service.Status.Observed.Phase != model.PhasePending {
-		t.Fatalf("phase = %s, want pending", service.Status.Observed.Phase)
+	if service.Status.Observed.Phase != model.PhaseProgressing {
+		t.Fatalf("phase = %s, want progressing", service.Status.Observed.Phase)
 	}
 	if service.Spec.PlaneID != planeItem.ID {
 		t.Fatalf("planeID = %q, want %s", service.Spec.PlaneID, planeItem.ID)
 	}
-	if len(planeServer.applyRequests()) != 0 {
-		t.Fatalf("apply requests = %d, want 0 before reconcile", len(planeServer.applyRequests()))
-	}
-}
-
-func TestReconcileDispatchesCreatedServiceToSpecPlane(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceControllerPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-reconcile-create", planeServer.endpoint)
-
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
-
-	service, err := controller.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce returned error: %v", err)
-	}
-	reloaded, err := controller.Get(ctx, service.Metadata.ID)
-	if err != nil {
-		t.Fatalf("Get returned error: %v", err)
-	}
-	if reloaded.Status.Observed.Phase != model.PhaseProgressing {
-		t.Fatalf("phase = %s, want progressing", reloaded.Status.Observed.Phase)
+	if service.Metadata.Host != "web.apps.example.test" {
+		t.Fatalf("host = %q, want web.apps.example.test", service.Metadata.Host)
 	}
 	applyRequests := planeServer.applyRequests()
 	if len(applyRequests) != 1 || applyRequests[0].GetServiceName() != "web" {
 		t.Fatalf("unexpected apply requests: %+v", applyRequests)
+	}
+	if applyRequests[0].GetHost() != "web.apps.example.test" {
+		t.Fatalf("apply host = %q, want web.apps.example.test", applyRequests[0].GetHost())
 	}
 }
 
@@ -82,7 +61,7 @@ func TestCreateAllowsDegradedPlane(t *testing.T) {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
 
 	service, err := controller.Create(ctx, createInput(planeItem.ID, "degraded-web", "Degraded Web", "nginx:1.27-alpine"))
 	if err != nil {
@@ -90,9 +69,6 @@ func TestCreateAllowsDegradedPlane(t *testing.T) {
 	}
 	if service.Spec.PlaneID != planeItem.ID {
 		t.Fatalf("planeID = %q, want %s", service.Spec.PlaneID, planeItem.ID)
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce returned error: %v", err)
 	}
 	if len(planeServer.applyRequests()) != 1 {
 		t.Fatalf("apply requests = %d, want 1", len(planeServer.applyRequests()))
@@ -105,14 +81,11 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	planeServer := startServiceControllerPlane(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-update", planeServer.endpoint)
 
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
 
 	created, err := controller.Create(ctx, createInput(planeItem.ID, "api", "API", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce after create returned error: %v", err)
 	}
 	updated, err := controller.Update(ctx, created.Metadata.ID, updateInput(planeItem.ID, "API v2", "nginx:1.28-alpine"))
 	if err != nil {
@@ -121,11 +94,8 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	if updated.Spec.PlaneID != planeItem.ID {
 		t.Fatalf("planeID = %q, want %s", updated.Spec.PlaneID, planeItem.ID)
 	}
-	if updated.Status.Observed.Phase != model.PhasePending {
-		t.Fatalf("phase = %s, want pending after update", updated.Status.Observed.Phase)
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce after update returned error: %v", err)
+	if updated.Status.Observed.Phase != model.PhaseProgressing {
+		t.Fatalf("phase = %s, want progressing after update", updated.Status.Observed.Phase)
 	}
 	applyRequests := planeServer.applyRequests()
 	if len(applyRequests) != 2 {
@@ -144,7 +114,7 @@ func TestUpdateRejectsPlaneIDChange(t *testing.T) {
 	planeA := mustCreateReadyPlane(t, db, "plane-move-a", planeServerA.endpoint)
 	planeB := mustCreateReadyPlane(t, db, "plane-move-b", planeServerB.endpoint)
 
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
 
 	created, err := controller.Create(ctx, createInput(planeA.ID, "move", "Move", "nginx:1.27-alpine"))
 	if err != nil {
@@ -153,8 +123,8 @@ func TestUpdateRejectsPlaneIDChange(t *testing.T) {
 	if _, err := controller.Update(ctx, created.Metadata.ID, updateInput(planeB.ID, "Move", "nginx:1.28-alpine")); err == nil {
 		t.Fatalf("Update returned nil error, want immutable plane error")
 	}
-	if len(planeServerA.applyRequests()) != 0 {
-		t.Fatalf("plane A apply requests = %d, want 0", len(planeServerA.applyRequests()))
+	if len(planeServerA.applyRequests()) != 1 {
+		t.Fatalf("plane A apply requests = %d, want 1 create request", len(planeServerA.applyRequests()))
 	}
 	if len(planeServerB.applyRequests()) != 0 {
 		t.Fatalf("plane B apply requests = %d, want 0", len(planeServerB.applyRequests()))
@@ -164,20 +134,17 @@ func TestUpdateRejectsPlaneIDChange(t *testing.T) {
 	}
 }
 
-func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
+func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceControllerPlane(t)
 	planeItem := mustCreateReadyPlane(t, db, "plane-delete", planeServer.endpoint)
 
-	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token")
+	controller := NewServiceController(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test")
 
 	created, err := controller.Create(ctx, createInput(planeItem.ID, "gone", "Gone", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce after create returned error: %v", err)
 	}
 	serviceID := created.Metadata.ID
 	if _, err := controller.Delete(ctx, serviceID); err != nil {
@@ -190,24 +157,13 @@ func TestDeleteDispatchesDeletePlanAndKeepsServiceUntilPlaneSync(t *testing.T) {
 	if reloaded.Status.DesiredState != model.DesiredStateDeleted || reloaded.Status.Observed.Phase != model.PhaseDeleting {
 		t.Fatalf("service status after delete = %+v, want deleting", reloaded.Status)
 	}
-	if len(planeServer.deleteRequests()) != 0 {
-		t.Fatalf("delete requests before reconcile = %d, want 0", len(planeServer.deleteRequests()))
-	}
-	if err := controller.reconcileOnce(ctx); err != nil {
-		t.Fatalf("reconcileOnce after delete returned error: %v", err)
-	}
-	reloaded, err = db.Store.GetService(ctx, serviceID)
-	if err != nil {
-		t.Fatalf("GetService after delete reconcile returned error: %v", err)
-	}
 	deleteRequests := planeServer.deleteRequests()
 	if len(deleteRequests) != 1 {
 		t.Fatalf("deleteRequests len = %d, want 1", len(deleteRequests))
 	}
 	if deleteRequests[0].GetServiceId() != serviceID ||
-		deleteRequests[0].GetServiceGeneration() != reloaded.Metadata.Generation ||
-		deleteRequests[0].GetPlanId() != serviceID+"-delete-g2" {
-		t.Fatalf("delete input = %+v, want service generation delete plan", deleteRequests[0])
+		deleteRequests[0].GetServiceGeneration() != reloaded.Metadata.Generation {
+		t.Fatalf("delete input = %+v, want service generation delete", deleteRequests[0])
 	}
 }
 
@@ -235,8 +191,8 @@ type serviceControllerPlane struct {
 
 	mu       sync.Mutex
 	endpoint string
-	apply    []*cloudplanev1.ApplyExecutionPlanRequest
-	delete   []*cloudplanev1.DeleteExecutionPlanRequest
+	apply    []*cloudplanev1.ApplyServiceRequest
+	delete   []*cloudplanev1.DeleteServiceRequest
 }
 
 func startServiceControllerPlane(t *testing.T) *serviceControllerPlane {
@@ -255,35 +211,52 @@ func startServiceControllerPlane(t *testing.T) *serviceControllerPlane {
 	return plane
 }
 
-func (p *serviceControllerPlane) ApplyExecutionPlan(_ context.Context, req *cloudplanev1.ApplyExecutionPlanRequest) (*cloudplanev1.ApplyExecutionPlanResponse, error) {
+func (p *serviceControllerPlane) ApplyService(_ context.Context, req *cloudplanev1.ApplyServiceRequest) (*cloudplanev1.ApplyServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.apply = append(p.apply, req)
-	return &cloudplanev1.ApplyExecutionPlanResponse{
-		PlanId: req.GetPlanId(),
+	return &cloudplanev1.ApplyServiceResponse{
+		Service: &cloudplanev1.PlaneService{
+			ServiceId:    req.GetServiceId(),
+			Name:         req.GetServiceName(),
+			DisplayName:  req.GetDisplayName(),
+			Host:         req.GetHost(),
+			Generation:   req.GetServiceGeneration(),
+			DesiredState: model.DesiredStateActive,
+			Spec: &cloudplanev1.PlaneServiceSpec{
+				InstanceClass: req.GetInstanceClass(),
+				Exposure:      req.GetExposure(),
+				Image:         req.GetImage(),
+				Command:       append([]string(nil), req.GetCommand()...),
+				Args:          append([]string(nil), req.GetArgs()...),
+				Env:           req.GetEnv(),
+				ContainerPort: req.GetContainerPort(),
+				ReadinessPath: req.GetReadinessPath(),
+			},
+		},
 	}, nil
 }
 
-func (p *serviceControllerPlane) DeleteExecutionPlan(_ context.Context, req *cloudplanev1.DeleteExecutionPlanRequest) (*cloudplanev1.DeleteExecutionPlanResponse, error) {
+func (p *serviceControllerPlane) DeleteService(_ context.Context, req *cloudplanev1.DeleteServiceRequest) (*cloudplanev1.DeleteServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.delete = append(p.delete, req)
-	return &cloudplanev1.DeleteExecutionPlanResponse{
+	return &cloudplanev1.DeleteServiceResponse{
 		ServiceId: req.GetServiceId(),
 		Deleted:   true,
 	}, nil
 }
 
-func (p *serviceControllerPlane) applyRequests() []*cloudplanev1.ApplyExecutionPlanRequest {
+func (p *serviceControllerPlane) applyRequests() []*cloudplanev1.ApplyServiceRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]*cloudplanev1.ApplyExecutionPlanRequest(nil), p.apply...)
+	return append([]*cloudplanev1.ApplyServiceRequest(nil), p.apply...)
 }
 
-func (p *serviceControllerPlane) deleteRequests() []*cloudplanev1.DeleteExecutionPlanRequest {
+func (p *serviceControllerPlane) deleteRequests() []*cloudplanev1.DeleteServiceRequest {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	return append([]*cloudplanev1.DeleteExecutionPlanRequest(nil), p.delete...)
+	return append([]*cloudplanev1.DeleteServiceRequest(nil), p.delete...)
 }
 
 func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string, endpoint string) model.PlaneDetail {

@@ -18,10 +18,7 @@ import (
 	"mini-cloud/internal/controlplane/store/migrations"
 )
 
-const (
-	planeSyncIntervalSeconds = 30
-	logQueryTimeout          = 5 * time.Second
-)
+const logQueryTimeout = 5 * time.Second
 
 type App struct {
 	Config  config.Config
@@ -30,12 +27,8 @@ type App struct {
 	logger *slog.Logger
 	db     *sql.DB
 
-	planeSyncer       *coordination.PlaneSyncer
-	serviceController *coordination.ServiceController
-	backgroundCancel  context.CancelFunc
-	backgroundWG      sync.WaitGroup
-	closeOnce         sync.Once
-	closeErr          error
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func Build(logger *slog.Logger, cfg config.Config) (App, error) {
@@ -55,8 +48,15 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 
 	stores := store.New(db)
 
-	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken)
-	serviceController := coordination.NewServiceController(logger, stores, cfg.Auth.SouthboundToken)
+	dns, err := coordination.NewDNSClient(cfg.DNS.DNSPod)
+	if err != nil {
+		if closeErr := db.Close(); closeErr != nil {
+			return App{}, errors.Join(err, closeErr)
+		}
+		return App{}, err
+	}
+	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
+	serviceController := coordination.NewServiceController(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain)
 
 	logQueryService := logquery.NewService(
 		cfg.Logs.Loki.URL,
@@ -69,21 +69,19 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		UIDir:             cfg.UI.Dir,
 		LogQueryService:   logQueryService,
 		ServiceController: serviceController,
+		PlaneSyncer:       planeSyncer,
 	}, logger, stores)
 
 	return App{
-		Config:            cfg,
-		Handler:           handler,
-		logger:            logger,
-		db:                db,
-		planeSyncer:       planeSyncer,
-		serviceController: serviceController,
+		Config:  cfg,
+		Handler: handler,
+		logger:  logger,
+		db:      db,
 	}, nil
 }
 
 func (a *App) Close() error {
 	a.closeOnce.Do(func() {
-		a.stopBackground()
 		if a.db != nil {
 			a.closeErr = a.db.Close()
 		}
@@ -92,10 +90,6 @@ func (a *App) Close() error {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	backgroundCtx, cancelBackground := context.WithCancel(ctx)
-	a.startBackground(backgroundCtx, cancelBackground)
-	defer a.stopBackground()
-
 	server := &http.Server{
 		Addr:    a.Config.Server.HTTPAddr,
 		Handler: a.Handler,
@@ -112,7 +106,6 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		return err
 	case <-ctx.Done():
-		a.stopBackground()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
@@ -130,24 +123,4 @@ func (a *App) Run(ctx context.Context) error {
 		}
 		return err
 	}
-}
-
-func (a *App) startBackground(ctx context.Context, cancel context.CancelFunc) {
-	a.backgroundCancel = cancel
-	a.backgroundWG.Add(2)
-	go func() {
-		defer a.backgroundWG.Done()
-		coordination.RunPlaneSyncLoop(ctx, a.logger, a.planeSyncer, planeSyncIntervalSeconds)
-	}()
-	go func() {
-		defer a.backgroundWG.Done()
-		a.serviceController.Run(ctx)
-	}()
-}
-
-func (a *App) stopBackground() {
-	if a.backgroundCancel != nil {
-		a.backgroundCancel()
-	}
-	a.backgroundWG.Wait()
 }

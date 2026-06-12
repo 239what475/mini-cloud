@@ -11,6 +11,16 @@ auth:
   adminToken: {{printf "%q" .AdminToken}}
   southboundToken: {{printf "%q" .SouthboundToken}}
 
+{{- if .DNSPodDomain}}
+dns:
+  serviceBaseDomain: {{printf "%q" .ServiceBaseDomain}}
+  dnspod:
+    domain: {{printf "%q" .DNSPodDomain}}
+    secretId: {{printf "%q" .DNSPodCredential.SecretID}}
+    secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
+    token: {{printf "%q" .DNSPodCredential.Token}}
+
+{{- end}}
 logs:
   loki:
     url: {{printf "%q" .LokiURL}}

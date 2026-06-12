@@ -64,6 +64,18 @@ func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		return nil, fmt.Errorf("load execution snapshots: %w", err)
 	}
 
+	services, err := s.store.ListServices(ctx)
+	if err != nil {
+		s.logger.Error("load services for snapshot failed", "error", err)
+		return nil, fmt.Errorf("load services: %w", err)
+	}
+
+	frontdoorDomains, err := s.store.ListFrontDoorDomains(ctx)
+	if err != nil {
+		s.logger.Error("load frontdoor domains for snapshot failed", "error", err)
+		return nil, fmt.Errorf("load frontdoor domains: %w", err)
+	}
+
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:     s.config.Plane.Name,
@@ -74,9 +86,62 @@ func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: int32(alertSignal.AlertsFiring),
 		},
-		NodeInventory: protoNodeInventory(checkedAt, nodes),
-		Executions:    protoExecutionSnapshots(executions),
+		NodeInventory:    protoNodeInventory(checkedAt, nodes),
+		Executions:       protoExecutionSnapshots(executions),
+		Services:         protoServices(services),
+		FrontdoorDomains: protoFrontDoorDomains(frontdoorDomains),
 	}, nil
+}
+
+func protoServices(items []cloudmodel.Service) []*cloudplanev1.PlaneService {
+	out := make([]*cloudplanev1.PlaneService, 0, len(items))
+	for _, item := range items {
+		out = append(out, protoService(item))
+	}
+	return out
+}
+
+func protoService(item cloudmodel.Service) *cloudplanev1.PlaneService {
+	env := make(map[string]string, len(item.Spec.Env))
+	for key, value := range item.Spec.Env {
+		env[key] = value
+	}
+	return &cloudplanev1.PlaneService{
+		ServiceId:    item.ID,
+		Name:         item.Name,
+		DisplayName:  item.DisplayName,
+		Host:         item.Host,
+		Generation:   item.Generation,
+		DesiredState: item.DesiredState,
+		Spec: &cloudplanev1.PlaneServiceSpec{
+			InstanceClass: item.Spec.InstanceClass,
+			Exposure:      item.Spec.Exposure,
+			Image:         item.Spec.Image,
+			Command:       append([]string(nil), item.Spec.Command...),
+			Args:          append([]string(nil), item.Spec.Args...),
+			Env:           env,
+			ContainerPort: int32(item.Spec.ContainerPort),
+			ReadinessPath: item.Spec.ReadinessPath,
+		},
+		UpdatedAt: protoTimestamp(item.UpdatedAt),
+	}
+}
+
+func protoFrontDoorDomains(items []cloudmodel.ManagedFrontDoorDomain) []*cloudplanev1.PlaneFrontDoorDomain {
+	out := make([]*cloudplanev1.PlaneFrontDoorDomain, 0, len(items))
+	for _, item := range items {
+		protoDomain := &cloudplanev1.PlaneFrontDoorDomain{
+			Host:  item.Host,
+			Cname: item.CNAME,
+		}
+		if item.Verification != nil {
+			protoDomain.VerifySubdomain = item.Verification.Subdomain
+			protoDomain.VerifyType = item.Verification.Type
+			protoDomain.VerifyValue = item.Verification.Value
+		}
+		out = append(out, protoDomain)
+	}
+	return out
 }
 
 func protoNodeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloudplanev1.PlaneNodeInventory {

@@ -36,6 +36,38 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 	}
 }
 
+func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
+	rendered, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
+		HTTPAddr:          "127.0.0.1:18080",
+		InstallRoot:       "/opt/mini-cloud",
+		AdminToken:        "admin",
+		SouthboundToken:   "southbound",
+		ServiceBaseDomain: "apps.whatcloud.cn",
+		DNSPodDomain:      "whatcloud.cn",
+		DNSPodCredential: tencentCredential{
+			SecretID:  "sid",
+			SecretKey: "skey",
+			Token:     "stok",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(rendered)
+	for _, want := range []string{
+		"  dnspod:",
+		"  serviceBaseDomain: \"apps.whatcloud.cn\"",
+		"    domain: \"whatcloud.cn\"",
+		"    secretId: \"sid\"",
+		"    secretKey: \"skey\"",
+		"    token: \"stok\"",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("control-plane config does not contain %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 	control, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
 		InstallRoot string
@@ -94,14 +126,8 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 		},
 		IngressBaseDomain:   "apps.example.com",
 		IngressPublicOrigin: "203.0.113.10",
-		DNSPodDomain:        "example.com",
-		DNSPodCredential: tencentCredential{
-			SecretID:  "dns-sid",
-			SecretKey: "dns-skey",
-			Token:     "dns-stok",
-		},
-		LokiURL:      "http://loki.example:3100",
-		LokiTenantID: "tenant-a",
+		LokiURL:             "http://loki.example:3100",
+		LokiTenantID:        "tenant-a",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,8 +158,6 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	}
 	for _, want := range []string{
 		"  publicOrigin: \"203.0.113.10\"",
-		"    dnsPodDomain: \"example.com\"",
-		"      secretId: \"dns-sid\"",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("cloud-plane config does not contain %q:\n%s", want, text)
@@ -141,7 +165,7 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	}
 }
 
-func TestCloudPlaneConfigTemplateOmitsFrontDoorWhenNotConfigured(t *testing.T) {
+func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 	rendered, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:           "0.0.0.0:18081",
 		PlaneName:                "mini-cloud-lab",
@@ -166,8 +190,8 @@ func TestCloudPlaneConfigTemplateOmitsFrontDoorWhenNotConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(rendered), "frontDoor:") {
-		t.Fatalf("cloud-plane config should omit frontDoor when DNSPodDomain is empty:\n%s", rendered)
+	if strings.Contains(string(rendered), "dnsPod") || strings.Contains(string(rendered), "frontDoor:") {
+		t.Fatalf("cloud-plane config should not contain DNSPod frontdoor settings:\n%s", rendered)
 	}
 }
 

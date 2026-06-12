@@ -55,7 +55,7 @@ func newAliyunCDNClient(cfg cloudplaneconfig.Config) (*aliyunCDNClient, error) {
 	}, nil
 }
 
-func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string, dns dnsClient) (*DNSRecord, error) {
+func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string) (*DNSRecord, error) {
 	host = cleanDomain(host)
 	domain, err := c.getDomain(host)
 	if err != nil {
@@ -72,9 +72,6 @@ func (c *aliyunCDNClient) PrepareDomain(ctx context.Context, host string, dns dn
 		Subdomain: verify.host(),
 		Type:      "TXT",
 		Value:     verify.VerifyCode,
-	}
-	if err := dns.EnsureRecord(ctx, verifyRecord.Subdomain, verifyRecord.Type, verifyRecord.Value); err != nil {
-		return verifyRecord, err
 	}
 	verifyType := "dnsCheck"
 	_, err = c.client.VerifyDomainOwner(&cdn20180510.VerifyDomainOwnerRequest{

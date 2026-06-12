@@ -13,8 +13,8 @@ func TestBuildRoutesPublishesOnlyPublicReadyBackends(t *testing.T) {
 
 	stores := &fakeStore{
 		sources: []cloudmodel.RouteSource{
-			{ServiceName: "api", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
-			{ServiceName: "api", NodeID: "node-offline", HostPort: 30081, HasBackend: true},
+			{Host: "api.apps.example.test", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
+			{Host: "api.apps.example.test", NodeID: "node-offline", HostPort: 30081, HasBackend: true},
 		},
 		nodes: map[string]cloudmodel.Node{
 			"node-ready":   {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
@@ -43,7 +43,7 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 
 	stores := &fakeStore{
 		sources: []cloudmodel.RouteSource{
-			{ServiceName: "api"},
+			{Host: "api.apps.example.test"},
 		},
 		nodes: map[string]cloudmodel.Node{},
 	}
@@ -64,12 +64,12 @@ func TestBuildRoutesKeepsPublicRouteWithoutReadyBackends(t *testing.T) {
 	}
 }
 
-func TestBuildRoutesUsesServiceNameHost(t *testing.T) {
+func TestBuildRoutesUsesExplicitHost(t *testing.T) {
 	t.Parallel()
 
 	stores := &fakeStore{
 		sources: []cloudmodel.RouteSource{
-			{ServiceName: "sub2-api", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
+			{Host: "sub2-api.apps.example.test", NodeID: "node-ready", HostPort: 30080, HasBackend: true},
 		},
 		nodes: map[string]cloudmodel.Node{
 			"node-ready": {ID: "node-ready", PrivateIP: "10.0.1.20", Status: cloudmodel.StatusReady},
@@ -126,7 +126,7 @@ func TestIngressReconcileAppliesRoutes(t *testing.T) {
 	sink := &fakeSink{}
 	frontDoor := &fakeSink{}
 	stores := &fakeStore{
-		sources: []cloudmodel.RouteSource{{ServiceName: "api"}},
+		sources: []cloudmodel.RouteSource{{Host: "api.apps.example.test"}},
 		nodes:   map[string]cloudmodel.Node{},
 	}
 	controller := newIngressReconciler(nil, stores, cloudplaneconfig.Config{Ingress: cloudplaneconfig.IngressConfig{BaseDomain: "apps.example.test"}}, sink, frontDoor)
