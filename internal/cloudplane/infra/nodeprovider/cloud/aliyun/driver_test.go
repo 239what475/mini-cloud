@@ -100,8 +100,11 @@ func TestBuildNodeUserDataDoesNotTraceNodeAgentToken(t *testing.T) {
 	if strings.Contains(script, "metadata.tencentyun.com") || strings.Contains(script, "local-ipv4") {
 		t.Fatalf("aliyun node user-data contains tencent metadata flow")
 	}
-	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "HTTP_PROXY=") || strings.Contains(script, "HTTPS_PROXY=") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
-		t.Fatalf("aliyun node user-data applies workload proxy to bootstrap, docker daemon, or node-agent process")
+	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
+		t.Fatalf("aliyun node user-data applies workload proxy to apt or node-agent process")
+	}
+	if !strings.Contains(script, `Environment="HTTP_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"`) || !strings.Contains(script, `Environment="HTTPS_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"`) {
+		t.Fatalf("aliyun node user-data does not configure docker daemon proxy")
 	}
 	if !strings.Contains(script, "endpoint: \"http://10.0.0.10:3128\"") {
 		t.Fatalf("aliyun node user-data does not pass workload egress proxy to node-agent config")

@@ -184,6 +184,21 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	var deletePlanExists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM execution_intents
+			WHERE plan_id = $1
+			  AND work_action = $2
+		)
+	`, input.PlanID, cloudmodel.WorkActionDelete).Scan(&deletePlanExists); err != nil {
+		return fmt.Errorf("check delete execution plan: %w", err)
+	}
+	if deletePlanExists {
+		return tx.Commit()
+	}
+
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
 		SET
@@ -198,17 +213,42 @@ func (s *Store) DeleteExecutionPlansForService(ctx context.Context, input cloudm
 		return fmt.Errorf("supersede unstarted execution intents for delete: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
-		UPDATE execution_intents
+		WITH locked AS (
+			SELECT id, node_id, cpu_milli_request, memory_mi_request
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND work_action = $5
+			  AND status = $4
+			  AND container_id = ''
+			  AND node_id IS NOT NULL
+			FOR UPDATE
+		),
+		updated AS (
+			UPDATE execution_intents
+			SET
+				status = $2,
+				status_reason = $3,
+				finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
+				updated_at = now()
+			FROM locked
+			WHERE execution_intents.id = locked.id
+			RETURNING locked.node_id, locked.cpu_milli_request, locked.memory_mi_request
+		),
+		freed AS (
+			SELECT
+				node_id,
+				SUM(cpu_milli_request) AS cpu_milli,
+				SUM(memory_mi_request) AS memory_mi
+			FROM updated
+			GROUP BY node_id
+		)
+		UPDATE nodes
 		SET
-			status = $2,
-			status_reason = $3,
-			finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
+			cpu_milli_allocated = GREATEST(cpu_milli_allocated - freed.cpu_milli, 0),
+			memory_mi_allocated = GREATEST(memory_mi_allocated - freed.memory_mi, 0),
 			updated_at = now()
-		WHERE service_id = $1
-		  AND work_action = $5
-		  AND status = $4
-		  AND container_id = ''
-		  AND node_id IS NOT NULL
+		FROM freed
+		WHERE nodes.id = freed.node_id
 	`, input.ServiceID, cloudmodel.StatusSuperseded, "service deletion requested before container was created", cloudmodel.StatusDeploying, cloudmodel.WorkActionRun); err != nil {
 		return fmt.Errorf("supersede containerless deploying execution intents for delete: %w", err)
 	}

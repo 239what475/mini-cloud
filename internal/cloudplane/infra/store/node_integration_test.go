@@ -253,6 +253,9 @@ func TestIntegrationNodeScaleInLifecycle(t *testing.T) {
 	if draining.Status != cloudmodel.StatusDraining || draining.Schedulable {
 		t.Fatalf("node after draining = status %s schedulable %v, want draining false", draining.Status, draining.Schedulable)
 	}
+	if draining.InstanceID != node.InstanceID || draining.PrivateIP != node.PrivateIP {
+		t.Fatalf("draining node lost provider identity: instanceID=%q privateIP=%q", draining.InstanceID, draining.PrivateIP)
+	}
 
 	refreshed, err := db.Store.GetNode(ctx, node.ID)
 	if err != nil {
@@ -261,6 +264,9 @@ func TestIntegrationNodeScaleInLifecycle(t *testing.T) {
 	if refreshed.Status != cloudmodel.StatusDraining {
 		t.Fatalf("node status after PrepareNodeDeletion = %s, want draining", refreshed.Status)
 	}
+	if refreshed.InstanceID != node.InstanceID || refreshed.PrivateIP != node.PrivateIP {
+		t.Fatalf("stored draining node lost provider identity: instanceID=%q privateIP=%q", refreshed.InstanceID, refreshed.PrivateIP)
+	}
 
 	deleted, err := db.Store.MarkNodeDeleted(ctx, node.ID, "test deleted", time.Now().UTC())
 	if err != nil {
@@ -268,6 +274,9 @@ func TestIntegrationNodeScaleInLifecycle(t *testing.T) {
 	}
 	if deleted.Status != cloudmodel.StatusDeleted || deleted.Schedulable {
 		t.Fatalf("node after delete = status %s schedulable %v, want deleted false", deleted.Status, deleted.Schedulable)
+	}
+	if deleted.InstanceID != "" || deleted.PrivateIP != "" {
+		t.Fatalf("deleted node still keeps provider identity: instanceID=%q privateIP=%q", deleted.InstanceID, deleted.PrivateIP)
 	}
 
 	if _, err := db.Store.RecordNodeHeartbeat(ctx, node.ID, cloudmodel.HeartbeatInput{
@@ -356,6 +365,37 @@ func TestIntegrationProvisioningNodeIsCompletedByAgentRegistration(t *testing.T)
 	}
 	if registered.Status != cloudmodel.StatusRegistering {
 		t.Fatalf("registered node status = %s, want registering", registered.Status)
+	}
+}
+
+func TestIntegrationDeletedNodeReleasesProviderInstanceID(t *testing.T) {
+	ctx := context.Background()
+	db := testutil.OpenCloudPlaneTestDatabase(t)
+
+	first := seedReadyElasticNode(t, ctx, db.Store, "provider-reuse-a", "i-provider-reuse")
+	if _, err := db.Store.MarkNodeDeleted(ctx, first.ID, "provider node deleted", time.Now().UTC()); err != nil {
+		t.Fatalf("MarkNodeDeleted returned error: %v", err)
+	}
+	deleted, err := db.Store.GetNode(ctx, first.ID)
+	if err != nil {
+		t.Fatalf("GetNode deleted node returned error: %v", err)
+	}
+	if deleted.InstanceID != "" || deleted.PrivateIP != "" {
+		t.Fatalf("deleted node still keeps provider identity: instanceID=%q privateIP=%q", deleted.InstanceID, deleted.PrivateIP)
+	}
+
+	second, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
+		Provider:     "aliyun",
+		Region:       "cn-beijing",
+		Name:         "provider-reuse-b",
+		InstanceType: "ecs.u1-c1m2.large",
+		StatusReason: "retry scale out",
+	})
+	if err != nil {
+		t.Fatalf("CreateProvisioningNode(second) returned error: %v", err)
+	}
+	if _, err := db.Store.BindProvisionedNode(ctx, second.ID, "i-provider-reuse", "provider-reuse-b", "ecs.u1-c1m2.large", "provider accepted retry", time.Now().UTC()); err != nil {
+		t.Fatalf("BindProvisionedNode(second) returned error: %v", err)
 	}
 }
 

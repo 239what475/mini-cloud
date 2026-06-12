@@ -270,6 +270,22 @@ func TestIntegrationDeleteExecutionPlanClaimsRunningIntentAndReportsSnapshot(t *
 		t.Fatalf("UpdateExecutionFromNodeReport(delete succeeded) returned error: %v", err)
 	}
 
+	if err := db.Store.DeleteExecutionPlansForService(ctx, cloudmodel.DeletePlanInput{
+		ServiceID:         "svc-delete",
+		ServiceGeneration: 2,
+		PlanID:            "svc-delete-delete-g2",
+	}); err != nil {
+		t.Fatalf("DeleteExecutionPlansForService(second) returned error: %v", err)
+	}
+
+	afterSecondDelete, err := db.Store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("GetNode after second delete returned error: %v", err)
+	}
+	if afterSecondDelete.CPUMilliAllocated != 0 || afterSecondDelete.MemoryMiAllocated != 0 {
+		t.Fatalf("node allocation after idempotent delete = cpu %d memory %d, want 0/0", afterSecondDelete.CPUMilliAllocated, afterSecondDelete.MemoryMiAllocated)
+	}
+
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
 	if err != nil {
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
@@ -360,6 +376,14 @@ func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNode
 		PlanID:            "svc-delete-deploying-delete-g2",
 	}); err != nil {
 		t.Fatalf("DeleteExecutionPlansForService returned error: %v", err)
+	}
+
+	afterDelete, err := db.Store.GetNode(ctx, node.ID)
+	if err != nil {
+		t.Fatalf("GetNode after DeleteExecutionPlansForService returned error: %v", err)
+	}
+	if afterDelete.CPUMilliAllocated != 0 || afterDelete.MemoryMiAllocated != 0 {
+		t.Fatalf("node allocation after deleting containerless deploying intent = cpu %d memory %d, want 0/0", afterDelete.CPUMilliAllocated, afterDelete.MemoryMiAllocated)
 	}
 
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)

@@ -38,6 +38,7 @@ type templateData struct {
 	InstallRoot                 string
 	AgentBinaryURL              string
 	DockerDaemonJSONBase64      string
+	DockerNoProxy               string
 	WorkloadEgressProxyEndpoint string
 	Token                       string
 	BootstrapLog                string
@@ -76,6 +77,7 @@ func RenderBase64(cfg Config) (string, error) {
 		InstallRoot:                 shellQuote("/opt/mini-cloud"),
 		AgentBinaryURL:              shellQuote(cfg.AgentBinaryURL),
 		DockerDaemonJSONBase64:      shellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
+		DockerNoProxy:               shellQuote(strings.Join(cleanNoProxyItems(cfg.NoProxyItems), ",")),
 		WorkloadEgressProxyEndpoint: shellQuote(workloadEgressProxyEndpoint),
 		Token:                       shellQuote(strings.TrimSpace(cfg.Token)),
 		BootstrapLog:                shellQuote("/var/log/mini-cloud-node-bootstrap.log"),
@@ -108,6 +110,18 @@ func RenderBase64(cfg Config) (string, error) {
 		return "", fmt.Errorf("render node bootstrap template: %w", err)
 	}
 	return base64.StdEncoding.EncodeToString(script.Bytes()), nil
+}
+
+func cleanNoProxyItems(items []string) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return out
 }
 
 func shellQuote(value string) string {

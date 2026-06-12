@@ -489,6 +489,8 @@ func (s *Store) MarkNodeDeleted(ctx context.Context, nodeID string, reason strin
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE nodes
 		SET
+			private_ip = '',
+			instance_id = NULL,
 			status = $2,
 			status_reason = $3,
 			schedulable = FALSE,
