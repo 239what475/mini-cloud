@@ -117,11 +117,8 @@ func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPl
 		return nil, errServiceIDRequired
 	}
 
-	env := make(map[string]string, len(service.Spec.Env)+len(service.Spec.SecretEnv))
+	env := make(map[string]string, len(service.Spec.Env))
 	for key, value := range service.Spec.Env {
-		env[key] = value
-	}
-	for key, value := range service.Spec.SecretEnv {
 		env[key] = value
 	}
 	return &cloudplanev1.ApplyExecutionPlanRequest{
@@ -133,21 +130,9 @@ func executionPlanRequest(service model.Service) (*cloudplanev1.ApplyExecutionPl
 		Command:           append([]string(nil), service.Spec.Command...),
 		Args:              append([]string(nil), service.Spec.Args...),
 		Env:               env,
-		ImageCredential:   executionImageCredential(service.Spec.RegistryCredential),
 		ContainerPort:     int32(service.Spec.DefaultPort),
 		ReadinessPath:     service.Spec.ReadinessPath,
 		InstanceClass:     service.Spec.InstanceClass,
 		Exposure:          service.Spec.Exposure,
 	}, nil
-}
-
-func executionImageCredential(input *model.ServiceRegistryCredential) *cloudplanev1.ExecutionImageCredential {
-	if input == nil {
-		return nil
-	}
-	return &cloudplanev1.ExecutionImageCredential{
-		Server:   input.Server,
-		Username: input.Username,
-		Password: input.Password,
-	}
 }

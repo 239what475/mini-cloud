@@ -41,21 +41,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 	if err != nil {
 		return "", fmt.Errorf("marshal execution env: %w", err)
 	}
-	var credentialServer sql.NullString
-	var credentialUsername sql.NullString
-	var credentialPassword sql.NullString
-	if input.ImageCredential != nil {
-		if input.ImageCredential.Server != "" {
-			credentialServer = sql.NullString{String: input.ImageCredential.Server, Valid: true}
-		}
-		if input.ImageCredential.Username != "" {
-			credentialUsername = sql.NullString{String: input.ImageCredential.Username, Valid: true}
-		}
-		if input.ImageCredential.Password != "" {
-			credentialPassword = sql.NullString{String: input.ImageCredential.Password, Valid: true}
-		}
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("begin apply execution plan tx: %w", err)
@@ -93,9 +78,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				command_json,
 				args_json,
 				env_json,
-				image_credential_server,
-				image_credential_username,
-				image_credential_password,
 				container_port,
 				readiness_path,
 				cpu_milli_request,
@@ -103,7 +85,7 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				status,
 				status_reason
 			)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			ON CONFLICT (plan_id) DO UPDATE
 			SET
 				work_action = EXCLUDED.work_action,
@@ -114,21 +96,18 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 				command_json = EXCLUDED.command_json,
 				args_json = EXCLUDED.args_json,
 				env_json = EXCLUDED.env_json,
-				image_credential_server = EXCLUDED.image_credential_server,
-				image_credential_username = EXCLUDED.image_credential_username,
-				image_credential_password = EXCLUDED.image_credential_password,
 				container_port = EXCLUDED.container_port,
 				readiness_path = EXCLUDED.readiness_path,
 				cpu_milli_request = EXCLUDED.cpu_milli_request,
 				memory_mi_request = EXCLUDED.memory_mi_request,
-				node_id = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.node_id END,
-				container_name = CASE WHEN execution_intents.status IN ($21, $22) THEN '' ELSE execution_intents.container_name END,
-				container_id = CASE WHEN execution_intents.status IN ($21, $22) THEN '' ELSE execution_intents.container_id END,
-				host_port = CASE WHEN execution_intents.status IN ($21, $22) THEN 0 ELSE execution_intents.host_port END,
-				status = CASE WHEN execution_intents.status IN ($21, $22) THEN EXCLUDED.status ELSE execution_intents.status END,
-				status_reason = CASE WHEN execution_intents.status IN ($21, $22) THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
-				started_at = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.started_at END,
-				finished_at = CASE WHEN execution_intents.status IN ($21, $22) THEN NULL ELSE execution_intents.finished_at END,
+				node_id = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.node_id END,
+				container_name = CASE WHEN execution_intents.status IN ($18, $19) THEN '' ELSE execution_intents.container_name END,
+				container_id = CASE WHEN execution_intents.status IN ($18, $19) THEN '' ELSE execution_intents.container_id END,
+				host_port = CASE WHEN execution_intents.status IN ($18, $19) THEN 0 ELSE execution_intents.host_port END,
+				status = CASE WHEN execution_intents.status IN ($18, $19) THEN EXCLUDED.status ELSE execution_intents.status END,
+				status_reason = CASE WHEN execution_intents.status IN ($18, $19) THEN EXCLUDED.status_reason ELSE execution_intents.status_reason END,
+				started_at = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.started_at END,
+				finished_at = CASE WHEN execution_intents.status IN ($18, $19) THEN NULL ELSE execution_intents.finished_at END,
 				updated_at = now()
 		`,
 		id,
@@ -142,9 +121,6 @@ func (s *Store) ApplyExecutionPlan(ctx context.Context, input cloudmodel.PlanInp
 		commandJSON,
 		argsJSON,
 		envJSON,
-		credentialServer,
-		credentialUsername,
-		credentialPassword,
 		input.ContainerPort,
 		input.ReadinessPath,
 		input.CPUMilliRequest,
@@ -515,9 +491,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
-	var credentialServer sql.NullString
-	var credentialUsername sql.NullString
-	var credentialPassword sql.NullString
 	var cpuMilliRequest int
 	var memoryMiRequest int
 	var serviceGeneration int64
@@ -535,9 +508,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 			command_json,
 			args_json,
 			env_json,
-			image_credential_server,
-			image_credential_username,
-			image_credential_password,
 			container_port,
 			readiness_path,
 			container_name,
@@ -597,9 +567,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 		&commandJSON,
 		&argsJSON,
 		&envJSON,
-		&credentialServer,
-		&credentialUsername,
-		&credentialPassword,
 		&work.ContainerPort,
 		&work.ReadinessPath,
 		&work.ContainerName,
@@ -662,13 +629,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	}
 	if work.Env == nil {
 		work.Env = map[string]string{}
-	}
-	if credentialServer.Valid {
-		work.ImageCredential = &cloudmodel.ImageCredential{
-			Server:   credentialServer.String,
-			Username: credentialUsername.String,
-			Password: credentialPassword.String,
-		}
 	}
 	superseded, err := loadRunningIntentForServiceOnNode(ctx, tx, work.ServiceID, work.PlanID, nodeID)
 	if err != nil {

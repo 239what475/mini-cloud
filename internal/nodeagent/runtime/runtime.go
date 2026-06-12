@@ -3,20 +3,19 @@ package runtime
 import "time"
 
 type RunInput struct {
-	ContainerName   string
-	NodeID          string
-	ExecutionID     string
-	PlanID          string
-	ServiceID       string
-	Image           string
-	Command         []string
-	Args            []string
-	Env             map[string]string
-	ImageCredential *ImageCredential
-	ContainerPort   int
-	HostBindIP      string
-	HostPortMin     int
-	HostPortMax     int
+	ContainerName string
+	NodeID        string
+	ExecutionID   string
+	PlanID        string
+	ServiceID     string
+	Image         string
+	Command       []string
+	Args          []string
+	Env           map[string]string
+	ContainerPort int
+	HostBindIP    string
+	HostPortMin   int
+	HostPortMax   int
 }
 
 type RunResult struct {
@@ -32,9 +31,3 @@ type LogRecord struct {
 }
 
 type LogEmitter func(LogRecord)
-
-type ImageCredential struct {
-	Server   string
-	Username string
-	Password string
-}

@@ -252,20 +252,19 @@ func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 	})
 	env = injectEgressProxyEnv(env, e.opts)
 	return e.containerRuntime.Run(runCtx, runtime.RunInput{
-		ContainerName:   item.GetContainerName(),
-		NodeID:          e.opts.Node.ID,
-		ExecutionID:     item.GetExecutionId(),
-		PlanID:          item.GetPlanId(),
-		ServiceID:       item.GetServiceId(),
-		Image:           item.GetImage(),
-		Command:         append([]string(nil), item.GetCommand()...),
-		Args:            append([]string(nil), item.GetArgs()...),
-		Env:             env,
-		ImageCredential: convertExecutionImageCredential(item.GetImageCredential()),
-		ContainerPort:   int(item.GetContainerPort()),
-		HostBindIP:      e.opts.Node.PrivateIP,
-		HostPortMin:     e.opts.Runtime.HostPortMin,
-		HostPortMax:     e.opts.Runtime.HostPortMax,
+		ContainerName: item.GetContainerName(),
+		NodeID:        e.opts.Node.ID,
+		ExecutionID:   item.GetExecutionId(),
+		PlanID:        item.GetPlanId(),
+		ServiceID:     item.GetServiceId(),
+		Image:         item.GetImage(),
+		Command:       append([]string(nil), item.GetCommand()...),
+		Args:          append([]string(nil), item.GetArgs()...),
+		Env:           env,
+		ContainerPort: int(item.GetContainerPort()),
+		HostBindIP:    e.opts.Node.PrivateIP,
+		HostPortMin:   e.opts.Runtime.HostPortMin,
+		HostPortMax:   e.opts.Runtime.HostPortMax,
 	})
 }
 
@@ -488,17 +487,6 @@ func truncateReason(value string) string {
 		return value
 	}
 	return value[:maxLen-3] + "..."
-}
-
-func convertExecutionImageCredential(value *nodeagentv1.ImageCredential) *runtime.ImageCredential {
-	if value == nil {
-		return nil
-	}
-	return &runtime.ImageCredential{
-		Server:   value.GetServer(),
-		Username: value.GetUsername(),
-		Password: value.GetPassword(),
-	}
 }
 
 func validateWorkItem(item *nodeagentv1.WorkItem) error {

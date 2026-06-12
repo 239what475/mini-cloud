@@ -34,7 +34,6 @@ type PlanInput struct {
 	Command           []string
 	Args              []string
 	Env               map[string]string
-	ImageCredential   *ImageCredential
 	ContainerPort     int
 	ReadinessPath     string
 	CPUMilliRequest   int
@@ -131,19 +130,12 @@ type WorkItem struct {
 	Command             []string
 	Args                []string
 	Env                 map[string]string
-	ImageCredential     *ImageCredential
 	SupersededExecution *SupersededExecution
 	ContainerPort       int
 	ReadinessPath       string
 	ContainerName       string
 	ContainerID         string
 	HostPort            int
-}
-
-type ImageCredential struct {
-	Server   string
-	Username string
-	Password string
 }
 
 type SupersededExecution struct {

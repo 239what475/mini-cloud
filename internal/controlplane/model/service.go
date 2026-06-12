@@ -40,23 +40,15 @@ type ServiceMetadata struct {
 }
 
 type ServiceSpec struct {
-	PlaneID            string
-	InstanceClass      string
-	Exposure           string
-	Image              string
-	Command            []string
-	Args               []string
-	DefaultPort        int
-	ReadinessPath      string
-	Env                map[string]string
-	SecretEnv          map[string]string
-	RegistryCredential *ServiceRegistryCredential
-}
-
-type ServiceRegistryCredential struct {
-	Server   string
-	Username string
-	Password string
+	PlaneID       string
+	InstanceClass string
+	Exposure      string
+	Image         string
+	Command       []string
+	Args          []string
+	DefaultPort   int
+	ReadinessPath string
+	Env           map[string]string
 }
 
 type ServiceStatus struct {

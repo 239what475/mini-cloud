@@ -27,9 +27,6 @@ var (
 	errInvalidDefaultPort        = errors.New("defaultPort must be between 1 and 65535")
 	errInvalidReadinessPath      = errors.New("readinessPath must start with /")
 	errInvalidEnvironmentKey     = errors.New("env keys must not be empty")
-	errRegistryServerRequired    = errors.New("registryCredential.server is required")
-	errRegistryUsernameRequired  = errors.New("registryCredential.username is required")
-	errRegistryPasswordRequired  = errors.New("registryCredential.password is required")
 	errPlaneIDRequired           = errors.New("planeID is required")
 	errServicePlaneImmutable     = errors.New("planeID cannot be changed after service creation")
 	errInvalidInstanceClass      = errors.New("instanceClass must be one of small, medium, large")
@@ -51,10 +48,6 @@ const serviceSelectColumns = `
 	spec_default_port,
 	spec_readiness_path,
 	spec_env_json,
-	spec_secret_env_json,
-	spec_registry_server,
-	spec_registry_username,
-	spec_registry_password,
 	status_run_json,
 	generation,
 	status_desired_state,
@@ -86,19 +79,15 @@ type UpdateServiceStatusInput struct {
 }
 
 type serviceSpecColumns struct {
-	PlaneID                  string
-	InstanceClass            string
-	Exposure                 string
-	Image                    string
-	CommandJSON              []byte
-	ArgsJSON                 []byte
-	DefaultPort              int
-	ReadinessPath            string
-	EnvJSON                  []byte
-	SecretEnvJSON            []byte
-	RegistryCredentialServer string
-	RegistryCredentialUser   string
-	RegistryCredentialPass   string
+	PlaneID       string
+	InstanceClass string
+	Exposure      string
+	Image         string
+	CommandJSON   []byte
+	ArgsJSON      []byte
+	DefaultPort   int
+	ReadinessPath string
+	EnvJSON       []byte
 }
 
 type serviceRunRecord struct {
@@ -175,10 +164,6 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			spec_default_port,
 			spec_readiness_path,
 			spec_env_json,
-			spec_secret_env_json,
-			spec_registry_server,
-			spec_registry_username,
-			spec_registry_password,
 			status_run_json,
 			generation,
 			status_desired_state,
@@ -187,7 +172,7 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 			status_message,
 			status_last_reconciled_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 1, $18, $19, $20, $21, NULL)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, $14, $15, $16, $17, NULL)
 		RETURNING `+serviceSelectColumns+`
 	`,
 		id,
@@ -202,10 +187,6 @@ func (s *Store) CreateService(ctx context.Context, input CreateServiceInput) (mo
 		specColumns.DefaultPort,
 		specColumns.ReadinessPath,
 		specColumns.EnvJSON,
-		specColumns.SecretEnvJSON,
-		specColumns.RegistryCredentialServer,
-		specColumns.RegistryCredentialUser,
-		specColumns.RegistryCredentialPass,
 		runJSON,
 		model.DesiredStateActive,
 		initialStatus.ObservedGeneration,
@@ -325,20 +306,16 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 			spec_default_port = $9,
 			spec_readiness_path = $10,
 			spec_env_json = $11,
-			spec_secret_env_json = $12,
-			spec_registry_server = $13,
-			spec_registry_username = $14,
-			spec_registry_password = $15,
-			status_run_json = $16,
-			generation = $17,
-			status_desired_state = $18,
-			status_observed_generation = $19,
-			status_phase = $20,
-			status_message = $21,
+			status_run_json = $12,
+			generation = $13,
+			status_desired_state = $14,
+			status_observed_generation = $15,
+			status_phase = $16,
+			status_message = $17,
 			status_last_reconciled_at = NULL,
 			updated_at = now()
 		WHERE id = $1
-			AND generation = $22
+			AND generation = $18
 		RETURNING `+serviceSelectColumns+`
 	`,
 		serviceID,
@@ -352,10 +329,6 @@ func (s *Store) UpdateService(ctx context.Context, serviceID string, input Updat
 		specColumns.DefaultPort,
 		specColumns.ReadinessPath,
 		specColumns.EnvJSON,
-		specColumns.SecretEnvJSON,
-		specColumns.RegistryCredentialServer,
-		specColumns.RegistryCredentialUser,
-		specColumns.RegistryCredentialPass,
 		pendingRunJSON,
 		nextGeneration,
 		model.DesiredStateActive,
@@ -525,10 +498,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
-	var secretEnvJSON []byte
-	var registryServerValue string
-	var registryUsernameValue string
-	var registryPasswordValue string
 	var runJSON []byte
 	var lastReconciledAt sql.NullTime
 	if err := scanner.Scan(
@@ -544,10 +513,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 		&item.Spec.DefaultPort,
 		&item.Spec.ReadinessPath,
 		&envJSON,
-		&secretEnvJSON,
-		&registryServerValue,
-		&registryUsernameValue,
-		&registryPasswordValue,
 		&runJSON,
 		&item.Metadata.Generation,
 		&item.Status.DesiredState,
@@ -586,22 +551,6 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (model.Service, e
 	}
 	if item.Spec.Env == nil {
 		item.Spec.Env = map[string]string{}
-	}
-	item.Spec.SecretEnv = map[string]string{}
-	if len(secretEnvJSON) > 0 {
-		if err := json.Unmarshal(secretEnvJSON, &item.Spec.SecretEnv); err != nil {
-			return model.Service{}, fmt.Errorf("decode service secret env: %w", err)
-		}
-	}
-	if item.Spec.SecretEnv == nil {
-		item.Spec.SecretEnv = map[string]string{}
-	}
-	if strings.TrimSpace(registryServerValue) != "" || strings.TrimSpace(registryUsernameValue) != "" || registryPasswordValue != "" {
-		item.Spec.RegistryCredential = &model.ServiceRegistryCredential{
-			Server:   registryServerValue,
-			Username: registryUsernameValue,
-			Password: registryPasswordValue,
-		}
 	}
 	if len(runJSON) == 0 {
 		return model.Service{}, fmt.Errorf("service run status is missing")
@@ -686,30 +635,6 @@ func validateServiceSpec(spec model.ServiceSpec) error {
 			return invalidInput(errInvalidEnvironmentKey)
 		}
 	}
-	for key := range spec.SecretEnv {
-		if strings.TrimSpace(key) == "" {
-			return invalidInput(errInvalidEnvironmentKey)
-		}
-	}
-	if err := validateRegistryCredential(spec.RegistryCredential); err != nil {
-		return invalidInput(err)
-	}
-	return nil
-}
-
-func validateRegistryCredential(input *model.ServiceRegistryCredential) error {
-	if input == nil {
-		return nil
-	}
-	if strings.TrimSpace(input.Server) == "" {
-		return errRegistryServerRequired
-	}
-	if strings.TrimSpace(input.Username) == "" {
-		return errRegistryUsernameRequired
-	}
-	if strings.TrimSpace(input.Password) == "" {
-		return errRegistryPasswordRequired
-	}
 	return nil
 }
 
@@ -746,14 +671,6 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 	if err != nil {
 		return serviceSpecColumns{}, fmt.Errorf("marshal service env: %w", err)
 	}
-	secretEnv := spec.SecretEnv
-	if secretEnv == nil {
-		secretEnv = map[string]string{}
-	}
-	secretEnvJSON, err := json.Marshal(secretEnv)
-	if err != nil {
-		return serviceSpecColumns{}, fmt.Errorf("marshal service secret env: %w", err)
-	}
 	out := serviceSpecColumns{
 		PlaneID:       planeID,
 		InstanceClass: instanceClass,
@@ -764,12 +681,6 @@ func buildServiceSpecColumns(spec model.ServiceSpec) (serviceSpecColumns, error)
 		DefaultPort:   spec.DefaultPort,
 		ReadinessPath: strings.TrimSpace(spec.ReadinessPath),
 		EnvJSON:       envJSON,
-		SecretEnvJSON: secretEnvJSON,
-	}
-	if spec.RegistryCredential != nil {
-		out.RegistryCredentialServer = strings.TrimSpace(spec.RegistryCredential.Server)
-		out.RegistryCredentialUser = strings.TrimSpace(spec.RegistryCredential.Username)
-		out.RegistryCredentialPass = spec.RegistryCredential.Password
 	}
 	return out, nil
 }

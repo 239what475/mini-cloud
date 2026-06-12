@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"net/http"
 	"slices"
-	"sort"
 	"strings"
 	"time"
 
@@ -17,25 +16,16 @@ import (
 )
 
 type serviceSpec struct {
-	PlaneID            string                     `json:"planeID"`
-	InstanceClass      string                     `json:"instanceClass"`
-	Exposure           string                     `json:"exposure"`
-	Image              string                     `json:"image"`
-	Command            []string                   `json:"command,omitempty"`
-	Args               []string                   `json:"args,omitempty"`
-	DefaultPort        int                        `json:"defaultPort"`
-	ReadinessPath      string                     `json:"readinessPath"`
-	Env                map[string]string          `json:"env,omitempty"`
-	SecretEnvKeys      []string                   `json:"secretEnvKeys,omitempty"`
-	RegistryCredential *registryCredentialSummary `json:"registryCredential,omitempty"`
+	PlaneID       string            `json:"planeID"`
+	InstanceClass string            `json:"instanceClass"`
+	Exposure      string            `json:"exposure"`
+	Image         string            `json:"image"`
+	Command       []string          `json:"command,omitempty"`
+	Args          []string          `json:"args,omitempty"`
+	DefaultPort   int               `json:"defaultPort"`
+	ReadinessPath string            `json:"readinessPath"`
+	Env           map[string]string `json:"env,omitempty"`
 }
-
-type registryCredentialSummary struct {
-	Server             string `json:"server"`
-	Username           string `json:"username"`
-	PasswordConfigured bool   `json:"passwordConfigured"`
-}
-
 type serviceRunStatus struct {
 	CurrentRunID   string `json:"currentRunID,omitempty"`
 	LatestRunID    string `json:"latestRunID,omitempty"`
@@ -67,25 +57,16 @@ type serviceResource struct {
 }
 
 type serviceSpecInput struct {
-	PlaneID            string                     `json:"planeID"`
-	InstanceClass      string                     `json:"instanceClass"`
-	Exposure           string                     `json:"exposure"`
-	Image              string                     `json:"image"`
-	Command            []string                   `json:"command"`
-	Args               []string                   `json:"args"`
-	DefaultPort        int                        `json:"defaultPort"`
-	ReadinessPath      string                     `json:"readinessPath"`
-	Env                map[string]string          `json:"env"`
-	SecretEnv          map[string]string          `json:"secretEnv"`
-	RegistryCredential *registryCredentialRequest `json:"registryCredential"`
+	PlaneID       string            `json:"planeID"`
+	InstanceClass string            `json:"instanceClass"`
+	Exposure      string            `json:"exposure"`
+	Image         string            `json:"image"`
+	Command       []string          `json:"command"`
+	Args          []string          `json:"args"`
+	DefaultPort   int               `json:"defaultPort"`
+	ReadinessPath string            `json:"readinessPath"`
+	Env           map[string]string `json:"env"`
 }
-
-type registryCredentialRequest struct {
-	Server   string `json:"server"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type serviceCreateRequest struct {
 	Name        string            `json:"name"`
 	DisplayName string            `json:"displayName"`
@@ -265,17 +246,15 @@ func buildServiceResource(service model.Service) serviceResource {
 			Generation:  service.Metadata.Generation,
 		},
 		Spec: serviceSpec{
-			PlaneID:            service.Spec.PlaneID,
-			InstanceClass:      service.Spec.InstanceClass,
-			Exposure:           service.Spec.Exposure,
-			Image:              service.Spec.Image,
-			Command:            slices.Clone(service.Spec.Command),
-			Args:               slices.Clone(service.Spec.Args),
-			DefaultPort:        service.Spec.DefaultPort,
-			ReadinessPath:      service.Spec.ReadinessPath,
-			Env:                service.Spec.Env,
-			SecretEnvKeys:      sortedKeys(service.Spec.SecretEnv),
-			RegistryCredential: buildRegistryCredentialSummary(service.Spec.RegistryCredential),
+			PlaneID:       service.Spec.PlaneID,
+			InstanceClass: service.Spec.InstanceClass,
+			Exposure:      service.Spec.Exposure,
+			Image:         service.Spec.Image,
+			Command:       slices.Clone(service.Spec.Command),
+			Args:          slices.Clone(service.Spec.Args),
+			DefaultPort:   service.Spec.DefaultPort,
+			ReadinessPath: service.Spec.ReadinessPath,
+			Env:           service.Spec.Env,
 		},
 		Status: serviceStatus{
 			ObservedGeneration: service.Status.Observed.ObservedGeneration,
@@ -301,29 +280,6 @@ func buildServiceRun(input model.RunStatus) serviceRunStatus {
 	return out
 }
 
-func sortedKeys(values map[string]string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func buildRegistryCredentialSummary(input *model.ServiceRegistryCredential) *registryCredentialSummary {
-	if input == nil {
-		return nil
-	}
-	return &registryCredentialSummary{
-		Server:             input.Server,
-		Username:           input.Username,
-		PasswordConfigured: input.Password != "",
-	}
-}
-
 func (r serviceCreateRequest) toCreateInput() (store.CreateServiceInput, error) {
 	if r.Spec == nil {
 		return store.CreateServiceInput{}, errServiceSpecRequired
@@ -347,27 +303,14 @@ func (r serviceUpdateRequest) toUpdateInput() (store.UpdateServiceInput, error) 
 
 func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 	return model.ServiceSpec{
-		PlaneID:            strings.TrimSpace(s.PlaneID),
-		InstanceClass:      strings.TrimSpace(s.InstanceClass),
-		Exposure:           strings.TrimSpace(s.Exposure),
-		Image:              strings.TrimSpace(s.Image),
-		Command:            slices.Clone(s.Command),
-		Args:               slices.Clone(s.Args),
-		DefaultPort:        s.DefaultPort,
-		ReadinessPath:      strings.TrimSpace(s.ReadinessPath),
-		Env:                s.Env,
-		SecretEnv:          s.SecretEnv,
-		RegistryCredential: s.RegistryCredential.toRegistryCredential(),
-	}
-}
-
-func (r *registryCredentialRequest) toRegistryCredential() *model.ServiceRegistryCredential {
-	if r == nil {
-		return nil
-	}
-	return &model.ServiceRegistryCredential{
-		Server:   strings.TrimSpace(r.Server),
-		Username: strings.TrimSpace(r.Username),
-		Password: r.Password,
+		PlaneID:       strings.TrimSpace(s.PlaneID),
+		InstanceClass: strings.TrimSpace(s.InstanceClass),
+		Exposure:      strings.TrimSpace(s.Exposure),
+		Image:         strings.TrimSpace(s.Image),
+		Command:       slices.Clone(s.Command),
+		Args:          slices.Clone(s.Args),
+		DefaultPort:   s.DefaultPort,
+		ReadinessPath: strings.TrimSpace(s.ReadinessPath),
+		Env:           s.Env,
 	}
 }

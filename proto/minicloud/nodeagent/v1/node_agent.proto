@@ -32,12 +32,6 @@ message HeartbeatResponse {
   string observed_status = 2 [json_name = "observedStatus"];
 }
 
-message ImageCredential {
-  string server = 1;
-  string username = 2;
-  string password = 3;
-}
-
 message SupersededExecution {
   string plan_id = 1 [json_name = "planID"];
   string execution_id = 2 [json_name = "executionID"];
@@ -55,7 +49,6 @@ message WorkItem {
   repeated string command = 7;
   repeated string args = 8;
   map<string, string> env = 9;
-  ImageCredential image_credential = 10 [json_name = "imageCredential"];
   SupersededExecution superseded_execution = 11 [json_name = "supersededExecution"];
   int32 container_port = 12 [json_name = "containerPort"];
   string readiness_path = 13 [json_name = "readinessPath"];

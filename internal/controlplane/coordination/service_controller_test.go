@@ -71,13 +71,6 @@ func TestReconcileDispatchesCreatedServiceToSpecPlane(t *testing.T) {
 	if len(applyRequests) != 1 || applyRequests[0].GetServiceName() != "web" {
 		t.Fatalf("unexpected apply requests: %+v", applyRequests)
 	}
-	credential := applyRequests[0].GetImageCredential()
-	if credential == nil ||
-		credential.GetServer() != "registry.example.com" ||
-		credential.GetUsername() != "svc-user" ||
-		credential.GetPassword() != "svc-password" {
-		t.Fatalf("unexpected registry credential: %+v", credential)
-	}
 }
 
 func TestCreateAllowsDegradedPlane(t *testing.T) {
@@ -234,11 +227,6 @@ func serviceSpec(planeID string, image string) model.ServiceSpec {
 		Image:         image,
 		DefaultPort:   80,
 		ReadinessPath: "/",
-		RegistryCredential: &model.ServiceRegistryCredential{
-			Server:   "registry.example.com",
-			Username: "svc-user",
-			Password: "svc-password",
-		},
 	}
 }
 

@@ -1,12 +1,8 @@
 package runtime
 
 import (
-	"encoding/base64"
-	"encoding/json"
 	"testing"
 	"time"
-
-	"github.com/docker/docker/api/types/registry"
 )
 
 func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T) {
@@ -89,32 +85,6 @@ func TestResolveContainerCommandKeepsCurrentCliSemantics(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("resolveContainerCommand[%d] = %q, want %q", i, got[i], want[i])
 		}
-	}
-}
-
-func TestBuildRegistryAuthEncodesCredential(t *testing.T) {
-	t.Parallel()
-
-	encoded, err := buildRegistryAuth(&ImageCredential{
-		Server:   "registry.example.com",
-		Username: "demo",
-		Password: "secret",
-	})
-	if err != nil {
-		t.Fatalf("buildRegistryAuth returned error: %v", err)
-	}
-
-	data, err := base64.URLEncoding.DecodeString(encoded)
-	if err != nil {
-		t.Fatalf("decode registry auth returned error: %v", err)
-	}
-
-	var decoded registry.AuthConfig
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("unmarshal registry auth returned error: %v", err)
-	}
-	if decoded.ServerAddress != "registry.example.com" || decoded.Username != "demo" || decoded.Password != "secret" {
-		t.Fatalf("decoded registry auth = %+v", decoded)
 	}
 }
 

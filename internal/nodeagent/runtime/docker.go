@@ -3,8 +3,6 @@ package runtime
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,7 +17,6 @@ import (
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
@@ -60,11 +57,7 @@ func NewDockerEngine(logger *slog.Logger) (*Docker, error) {
 }
 
 func (d *Docker) Run(ctx context.Context, input RunInput) (RunResult, error) {
-	registryAuth, err := buildRegistryAuth(input.ImageCredential)
-	if err != nil {
-		return RunResult{}, fmt.Errorf("build docker registry auth: %w", err)
-	}
-	if err := d.ensureImageAvailable(ctx, input.Image, registryAuth); err != nil {
+	if err := d.ensureImageAvailable(ctx, input.Image); err != nil {
 		return RunResult{}, err
 	}
 
@@ -256,7 +249,7 @@ func (d *Docker) Close() error {
 	return nil
 }
 
-func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, registryAuth string) error {
+func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string) error {
 	if _, err := d.client.ImageInspect(ctx, imageRef); err == nil {
 		return nil
 	} else if !cerrdefs.IsNotFound(err) {
@@ -270,9 +263,7 @@ func (d *Docker) ensureImageAvailable(ctx context.Context, imageRef string, regi
 		logger.Info("runtime docker api pull image", "image", imageRef, "attempt", attempt, "max_attempts", dockerImagePullAttempts)
 
 		pullCtx, cancel := context.WithTimeout(ctx, dockerImagePullTimeout)
-		reader, err := d.client.ImagePull(pullCtx, imageRef, image.PullOptions{
-			RegistryAuth: registryAuth,
-		})
+		reader, err := d.client.ImagePull(pullCtx, imageRef, image.PullOptions{})
 		if err == nil {
 			if _, copyErr := io.Copy(io.Discard, reader); copyErr != nil {
 				err = fmt.Errorf("drain docker image pull stream: %w", copyErr)
@@ -497,22 +488,6 @@ func resolveContainerCommand(input RunInput) []string {
 	command := make([]string, 0, len(input.Args))
 	command = append(command, input.Args...)
 	return command
-}
-
-func buildRegistryAuth(credential *ImageCredential) (string, error) {
-	if credential == nil {
-		return "", nil
-	}
-
-	payload, err := json.Marshal(registry.AuthConfig{
-		Username:      credential.Username,
-		Password:      credential.Password,
-		ServerAddress: credential.Server,
-	})
-	if err != nil {
-		return "", fmt.Errorf("marshal registry auth config: %w", err)
-	}
-	return base64.URLEncoding.EncodeToString(payload), nil
 }
 
 func (d *Docker) removeCreatedContainer(ctx context.Context, containerID string) {

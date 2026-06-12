@@ -56,14 +56,6 @@ func (s *executionServer) ApplyExecutionPlan(ctx context.Context, req *cloudplan
 		MemoryMiRequest:   memoryMiRequest,
 		Exposure:          exposure,
 	}
-	if cred := req.GetImageCredential(); cred != nil {
-		input.ImageCredential = &cloudmodel.ImageCredential{
-			Server:   strings.TrimSpace(cred.GetServer()),
-			Username: strings.TrimSpace(cred.GetUsername()),
-			Password: cred.GetPassword(),
-		}
-	}
-
 	planID, err := s.store.ApplyExecutionPlan(ctx, input)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())

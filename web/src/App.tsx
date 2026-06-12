@@ -34,7 +34,6 @@ type ServiceSpec = {
   readinessPath: string;
   configSetID?: string;
   secretSetID?: string;
-  registryCredentialID?: string;
 };
 
 type ServiceRunStatus = {
@@ -109,20 +108,6 @@ type SecretSetListResponse = {
   items: SecretSetResource[];
 };
 
-type RegistryCredentialResource = {
-  id: string;
-  name: string;
-  server: string;
-  username: string;
-  passwordConfigured: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type RegistryCredentialListResponse = {
-  items: RegistryCredentialResource[];
-};
-
 type ConfigSetFormState = {
   name: string;
   valuesText: string;
@@ -131,13 +116,6 @@ type ConfigSetFormState = {
 type SecretSetFormState = {
   name: string;
   valuesText: string;
-};
-
-type RegistryCredentialFormState = {
-  name: string;
-  server: string;
-  username: string;
-  password: string;
 };
 
 type ServiceFormState = {
@@ -152,7 +130,6 @@ type ServiceFormState = {
   envText: string;
   configSetID: string;
   secretSetID: string;
-  registryCredentialID: string;
 };
 
 type ServiceEditFormState = {
@@ -166,7 +143,6 @@ type ServiceEditFormState = {
   envText: string;
   configSetID: string;
   secretSetID: string;
-  registryCredentialID: string;
 };
 
 async function fetchJSON<T>(
@@ -212,15 +188,6 @@ function defaultSecretSetForm(): SecretSetFormState {
   };
 }
 
-function defaultRegistryCredentialForm(): RegistryCredentialFormState {
-  return {
-    name: "",
-    server: "",
-    username: "",
-    password: "",
-  };
-}
-
 function defaultCreateServiceForm(): ServiceFormState {
   return {
     name: "",
@@ -234,7 +201,6 @@ function defaultCreateServiceForm(): ServiceFormState {
     envText: "PORT=8080",
     configSetID: "",
     secretSetID: "",
-    registryCredentialID: "",
   };
 }
 
@@ -250,7 +216,6 @@ function defaultEditServiceForm(): ServiceEditFormState {
     envText: "",
     configSetID: "",
     secretSetID: "",
-    registryCredentialID: "",
   };
 }
 
@@ -266,7 +231,6 @@ function editFormFromService(service: ServiceResource): ServiceEditFormState {
     envText: stringifyKeyValueMap(service.spec.env),
     configSetID: service.spec.configSetID ?? "",
     secretSetID: service.spec.secretSetID ?? "",
-    registryCredentialID: service.spec.registryCredentialID ?? "",
   };
 }
 
@@ -345,7 +309,6 @@ function toCreateServicePayload(form: ServiceFormState) {
       env: parseKeyValueText(form.envText),
       configSetID: form.configSetID.trim(),
       secretSetID: form.secretSetID.trim(),
-      registryCredentialID: form.registryCredentialID.trim(),
     },
   };
 }
@@ -366,7 +329,6 @@ function toUpdateServicePayload(form: ServiceEditFormState) {
       env: parseKeyValueText(form.envText),
       configSetID: form.configSetID.trim(),
       secretSetID: form.secretSetID.trim(),
-      registryCredentialID: form.registryCredentialID.trim(),
     },
   };
 }
@@ -388,8 +350,6 @@ function App() {
   const [secretSetForm, setSecretSetForm] = useState<SecretSetFormState>(
     defaultSecretSetForm(),
   );
-  const [registryCredentialForm, setRegistryCredentialForm] =
-    useState<RegistryCredentialFormState>(defaultRegistryCredentialForm());
   const [serviceForm, setServiceForm] = useState<ServiceFormState>(
     defaultCreateServiceForm(),
   );
@@ -424,12 +384,6 @@ function App() {
   const secretSetsQuery = useQuery({
     queryKey: ["secret-sets"],
     queryFn: () => fetchJSON<SecretSetListResponse>("/api/v1/secret-sets"),
-  });
-
-  const registryCredentialsQuery = useQuery({
-    queryKey: ["registry-credentials"],
-    queryFn: () =>
-      fetchJSON<RegistryCredentialListResponse>("/api/v1/registry-credentials"),
   });
 
   const serviceItems = servicesQuery.data?.items ?? [];
@@ -487,7 +441,6 @@ function App() {
       queryClient.invalidateQueries({ queryKey: ["services"] }),
       queryClient.invalidateQueries({ queryKey: ["config-sets"] }),
       queryClient.invalidateQueries({ queryKey: ["secret-sets"] }),
-      queryClient.invalidateQueries({ queryKey: ["registry-credentials"] }),
       serviceID
         ? queryClient.invalidateQueries({ queryKey: ["service", serviceID] })
         : Promise.resolve(),
@@ -520,23 +473,6 @@ function App() {
       }),
     onSuccess: async () => {
       setSecretSetForm(defaultSecretSetForm());
-      await invalidateResourceArea();
-    },
-  });
-
-  const createRegistryCredential = useMutation({
-    mutationFn: (form: RegistryCredentialFormState) =>
-      fetchJSON<RegistryCredentialResource>("/api/v1/registry-credentials", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          server: form.server.trim(),
-          username: form.username.trim(),
-          password: form.password,
-        }),
-      }),
-    onSuccess: async () => {
-      setRegistryCredentialForm(defaultRegistryCredentialForm());
       await invalidateResourceArea();
     },
   });
@@ -794,102 +730,6 @@ function App() {
                 <p className="error-text">{createSecretSet.error.message}</p>
               ) : null}
             </article>
-
-            <article className="app-card">
-              <div className="app-card__header">
-                <div>
-                  <strong>Registry Credentials</strong>
-                  <p>私有镜像仓库访问凭据</p>
-                </div>
-              </div>
-              <form
-                className="project-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  createRegistryCredential.mutate(registryCredentialForm);
-                }}
-              >
-                <label>
-                  <span>名称</span>
-                  <input
-                    value={registryCredentialForm.name}
-                    onChange={(event) =>
-                      setRegistryCredentialForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                      }))
-                    }
-                    placeholder="acr-main"
-                  />
-                </label>
-                <label>
-                  <span>Registry</span>
-                  <input
-                    value={registryCredentialForm.server}
-                    onChange={(event) =>
-                      setRegistryCredentialForm((current) => ({
-                        ...current,
-                        server: event.target.value,
-                      }))
-                    }
-                    placeholder="registry.example.com"
-                  />
-                </label>
-                <label>
-                  <span>用户名</span>
-                  <input
-                    value={registryCredentialForm.username}
-                    onChange={(event) =>
-                      setRegistryCredentialForm((current) => ({
-                        ...current,
-                        username: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label>
-                  <span>密码</span>
-                  <input
-                    type="password"
-                    value={registryCredentialForm.password}
-                    onChange={(event) =>
-                      setRegistryCredentialForm((current) => ({
-                        ...current,
-                        password: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <button
-                  type="submit"
-                  disabled={createRegistryCredential.isPending}
-                >
-                  {createRegistryCredential.isPending
-                    ? "创建中..."
-                    : "创建 registry credential"}
-                </button>
-              </form>
-              <div className="history-list">
-                {(registryCredentialsQuery.data?.items ?? []).map((item) => (
-                  <div key={item.id} className="history-row">
-                    <div>
-                      <strong>{item.name}</strong>
-                      <p>
-                        {item.server} · {item.username}
-                      </p>
-                    </div>
-                    <div>
-                      <p>{item.passwordConfigured ? "password set" : "-"}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              {createRegistryCredential.error instanceof Error ? (
-                <p className="error-text">
-                  {createRegistryCredential.error.message}
-                </p>
-              ) : null}
-            </article>
           </div>
         </section>
 
@@ -1029,25 +869,6 @@ function App() {
               </select>
             </label>
             <label>
-              <span>Registry Credential</span>
-              <select
-                value={serviceForm.registryCredentialID}
-                onChange={(event) =>
-                  setServiceForm((current) => ({
-                    ...current,
-                    registryCredentialID: event.target.value,
-                  }))
-                }
-              >
-                <option value="">不使用</option>
-                {(registryCredentialsQuery.data?.items ?? []).map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
               <span>容器端口</span>
               <input
                 type="number"
@@ -1076,7 +897,7 @@ function App() {
               />
             </label>
             <label style={{ gridColumn: "1 / -1" }}>
-              <span>Inline Env</span>
+              <span>Env</span>
               <textarea
                 rows={5}
                 value={serviceForm.envText}
@@ -1132,9 +953,6 @@ function App() {
                   <p>
                     config {item.service.spec.configSetID || "-"} · secret{" "}
                     {item.service.spec.secretSetID || "-"}
-                  </p>
-                  <p>
-                    registry {item.service.spec.registryCredentialID || "-"}
                   </p>
                 </div>
                 <div className="app-card__section">
@@ -1218,11 +1036,6 @@ function App() {
                   <p>
                     secret{" "}
                     {selectedServiceDetail.service.spec.secretSetID || "-"}
-                  </p>
-                  <p>
-                    registry{" "}
-                    {selectedServiceDetail.service.spec.registryCredentialID ||
-                      "-"}
                   </p>
                 </div>
               </div>
@@ -1322,27 +1135,6 @@ function App() {
                   </select>
                 </label>
                 <label>
-                  <span>Registry Credential</span>
-                  <select
-                    value={editForm.registryCredentialID}
-                    onChange={(event) =>
-                      updateEditFormField(
-                        "registryCredentialID",
-                        event.target.value,
-                      )
-                    }
-                  >
-                    <option value="">不使用</option>
-                    {(registryCredentialsQuery.data?.items ?? []).map(
-                      (item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </label>
-                <label>
                   <span>容器端口</span>
                   <input
                     type="number"
@@ -1365,7 +1157,7 @@ function App() {
                   />
                 </label>
                 <label style={{ gridColumn: "1 / -1" }}>
-                  <span>Inline Env</span>
+                  <span>Env</span>
                   <textarea
                     rows={5}
                     value={editForm.envText}
@@ -1387,11 +1179,6 @@ function App() {
               ) : null}
               {secretSetsQuery.error instanceof Error ? (
                 <p className="error-text">{secretSetsQuery.error.message}</p>
-              ) : null}
-              {registryCredentialsQuery.error instanceof Error ? (
-                <p className="error-text">
-                  {registryCredentialsQuery.error.message}
-                </p>
               ) : null}
 
               <div className="app-card__section">

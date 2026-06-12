@@ -8,7 +8,7 @@ import (
 	"mini-cloud/internal/controlplane/model"
 )
 
-func TestBuildServiceResourceRedactsSecrets(t *testing.T) {
+func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 	t.Parallel()
 
 	resource := buildServiceResource(model.Service{
@@ -26,15 +26,8 @@ func TestBuildServiceResourceRedactsSecrets(t *testing.T) {
 			DefaultPort:   8080,
 			ReadinessPath: "/healthz",
 			Env: map[string]string{
-				"MODE": "demo",
-			},
-			SecretEnv: map[string]string{
-				"API_TOKEN": "super-secret-token",
-			},
-			RegistryCredential: &model.ServiceRegistryCredential{
-				Server:   "registry.example.com",
-				Username: "demo",
-				Password: "registry-password",
+				"MODE":      "demo",
+				"API_TOKEN": "service-token",
 			},
 		},
 		Status: model.ServiceStatus{
@@ -51,10 +44,7 @@ func TestBuildServiceResourceRedactsSecrets(t *testing.T) {
 		t.Fatalf("marshal service resource returned error: %v", err)
 	}
 	body := string(payload)
-	if strings.Contains(body, "super-secret-token") || strings.Contains(body, "registry-password") {
-		t.Fatalf("service resource leaked secret material: %s", body)
-	}
-	if !strings.Contains(body, "API_TOKEN") || !strings.Contains(body, `"passwordConfigured":true`) {
-		t.Fatalf("service resource did not expose redacted secret metadata: %s", body)
+	if !strings.Contains(body, "API_TOKEN") || !strings.Contains(body, "service-token") {
+		t.Fatalf("service resource did not include env: %s", body)
 	}
 }

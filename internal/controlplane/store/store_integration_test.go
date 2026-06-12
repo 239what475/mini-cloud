@@ -122,7 +122,7 @@ func TestIntegrationPlaneStatusCapacityAndNodeInventoryLifecycle(t *testing.T) {
 	}
 }
 
-func TestIntegrationCreateServicePersistsSecretEnvAndRegistryCredential(t *testing.T) {
+func TestIntegrationCreateServicePersistsEnv(t *testing.T) {
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	ctx := context.Background()
 	planeItem, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
@@ -146,35 +146,24 @@ func TestIntegrationCreateServicePersistsSecretEnvAndRegistryCredential(t *testi
 			Image:         "ghcr.io/example/cliproxyapi:v1",
 			DefaultPort:   8317,
 			ReadinessPath: "/healthz",
-			SecretEnv: map[string]string{
+			Env: map[string]string{
 				"CLIPROXY_TOKEN": "token-v1",
-			},
-			RegistryCredential: &model.ServiceRegistryCredential{
-				Server:   "ghcr.io",
-				Username: "cliproxy",
-				Password: "registry-token",
 			},
 		},
 	})
 	if err != nil {
 		t.Fatalf("CreateService returned error: %v", err)
 	}
-	if serviceItem.Spec.SecretEnv["CLIPROXY_TOKEN"] != "token-v1" {
-		t.Fatalf("service secret env was not persisted")
-	}
-	if serviceItem.Spec.RegistryCredential == nil || serviceItem.Spec.RegistryCredential.Password != "registry-token" {
-		t.Fatalf("service registry credential was not persisted")
+	if serviceItem.Spec.Env["CLIPROXY_TOKEN"] != "token-v1" {
+		t.Fatalf("service env was not persisted")
 	}
 
 	reloaded, err := db.Store.GetService(ctx, serviceItem.Metadata.ID)
 	if err != nil {
 		t.Fatalf("GetService returned error: %v", err)
 	}
-	if reloaded.Spec.RegistryCredential == nil ||
-		reloaded.Spec.RegistryCredential.Server != "ghcr.io" ||
-		reloaded.Spec.RegistryCredential.Username != "cliproxy" ||
-		reloaded.Spec.RegistryCredential.Password != "registry-token" {
-		t.Fatalf("unexpected reloaded registry credential: %+v", reloaded.Spec.RegistryCredential)
+	if reloaded.Spec.Env["CLIPROXY_TOKEN"] != "token-v1" {
+		t.Fatalf("unexpected reloaded env: %+v", reloaded.Spec.Env)
 	}
 }
 
@@ -201,11 +190,6 @@ func TestIntegrationCreateServiceNormalizesStoredSpec(t *testing.T) {
 			Image:         " ghcr.io/example/normalized-api:v1 ",
 			DefaultPort:   8080,
 			ReadinessPath: " /healthz ",
-			RegistryCredential: &model.ServiceRegistryCredential{
-				Server:   " ghcr.io ",
-				Username: " normalized-api ",
-				Password: "registry-token",
-			},
 		},
 	})
 	if err != nil {
@@ -223,11 +207,6 @@ func TestIntegrationCreateServiceNormalizesStoredSpec(t *testing.T) {
 	}
 	if serviceItem.Spec.Image != "ghcr.io/example/normalized-api:v1" || serviceItem.Spec.ReadinessPath != "/healthz" {
 		t.Fatalf("service spec was not normalized: %+v", serviceItem.Spec)
-	}
-	if serviceItem.Spec.RegistryCredential == nil ||
-		serviceItem.Spec.RegistryCredential.Server != "ghcr.io" ||
-		serviceItem.Spec.RegistryCredential.Username != "normalized-api" {
-		t.Fatalf("registry credential was not normalized: %+v", serviceItem.Spec.RegistryCredential)
 	}
 }
 

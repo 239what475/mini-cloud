@@ -59,12 +59,6 @@ message PlaneSnapshot {
   repeated PlaneExecutionSnapshot executions = 5;
 }
 
-message ExecutionImageCredential {
-  string server = 1;
-  string username = 2;
-  string password = 3;
-}
-
 message ApplyExecutionPlanRequest {
   string plan_id = 1 [json_name = "planID"];
   string service_id = 2 [json_name = "serviceID"];
@@ -74,7 +68,6 @@ message ApplyExecutionPlanRequest {
   repeated string command = 6;
   repeated string args = 7;
   map<string, string> env = 8;
-  ExecutionImageCredential image_credential = 10 [json_name = "imageCredential"];
   int32 container_port = 11 [json_name = "containerPort"];
   string readiness_path = 12 [json_name = "readinessPath"];
   string instance_class = 13 [json_name = "instanceClass"];

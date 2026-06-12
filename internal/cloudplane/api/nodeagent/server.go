@@ -132,13 +132,6 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 		ContainerId:   item.ContainerID,
 		HostPort:      int32(item.HostPort),
 	}
-	if item.ImageCredential != nil {
-		work.ImageCredential = &nodeagentv1.ImageCredential{
-			Server:   item.ImageCredential.Server,
-			Username: item.ImageCredential.Username,
-			Password: item.ImageCredential.Password,
-		}
-	}
 	if item.SupersededExecution != nil {
 		work.SupersededExecution = &nodeagentv1.SupersededExecution{
 			PlanId:        item.SupersededExecution.PlanID,
