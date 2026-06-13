@@ -4,75 +4,84 @@ import (
 	"testing"
 	"time"
 
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
+	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestBuildAggregatesSummaryProvidersRegionsAndPlanes(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
-	view := buildInventoryView([]model.PlaneDetail{
+	view := buildInventoryView([]coordination.PlaneSnapshotView{
 		{
-			Plane: model.Plane{
-				ID:           "pln_a",
-				Name:         "aliyun-bj-primary",
-				DisplayName:  "Aliyun Beijing Primary",
-				Provider:     "aliyun",
-				Region:       "cn-beijing",
-				GRPCEndpoint: "plane-a.example.com:443",
+			Plane: model.PlaneDetail{
+				Plane: model.Plane{
+					ID:           "pln_a",
+					Name:         "aliyun-bj-primary",
+					DisplayName:  "Aliyun Beijing Primary",
+					Provider:     "aliyun",
+					Region:       "cn-beijing",
+					GRPCEndpoint: "plane-a.example.com:443",
+				},
+				Status: model.PlaneStatus{
+					Status:          model.StatusReady,
+					Message:         "healthy",
+					LastHeartbeatAt: &now,
+					LastSyncAt:      &now,
+				},
 			},
-			Status: model.PlaneStatus{
-				Status:          model.StatusReady,
-				Message:         "healthy",
-				LastHeartbeatAt: &now,
-				LastSyncAt:      &now,
-			},
-			LatestNodeInventory: &model.NodeInventorySnapshot{
-				NodesTotal:        2,
-				NodesReady:        2,
-				CPUMilliCapacity:  4000,
-				CPUMilliAllocated: 1500,
-				MemoryMiCapacity:  8192,
-				MemoryMiAllocated: 2048,
-				ObservedAt:        now,
+			Snapshot: &cloudplanev1.PlaneSnapshot{
+				NodeInventory: &cloudplanev1.PlaneNodeInventory{
+					ObservedAt: timestamppb.New(now),
+					Nodes: []*cloudplanev1.PlaneNode{
+						{Status: "ready", CpuMilliAllocatable: 2000, CpuMilliAllocated: 500, MemoryMiAllocatable: 4096, MemoryMiAllocated: 1024},
+						{Status: "ready", CpuMilliAllocatable: 2000, CpuMilliAllocated: 1000, MemoryMiAllocatable: 4096, MemoryMiAllocated: 1024},
+					},
+				},
 			},
 		},
 		{
-			Plane: model.Plane{
-				ID:           "pln_b",
-				Name:         "tencent-bj-primary",
-				DisplayName:  "Tencent Beijing Primary",
-				Provider:     "tencent",
-				Region:       "ap-beijing",
-				GRPCEndpoint: "plane-b.example.com:443",
+			Plane: model.PlaneDetail{
+				Plane: model.Plane{
+					ID:           "pln_b",
+					Name:         "tencent-bj-primary",
+					DisplayName:  "Tencent Beijing Primary",
+					Provider:     "tencent",
+					Region:       "ap-beijing",
+					GRPCEndpoint: "plane-b.example.com:443",
+				},
+				Status: model.PlaneStatus{
+					Status:          model.StatusDegraded,
+					Message:         "one node offline",
+					LastHeartbeatAt: &now,
+					LastSyncAt:      &now,
+				},
 			},
-			Status: model.PlaneStatus{
-				Status:          model.StatusDegraded,
-				Message:         "one node offline",
-				LastHeartbeatAt: &now,
-				LastSyncAt:      &now,
-			},
-			LatestNodeInventory: &model.NodeInventorySnapshot{
-				NodesTotal:        1,
-				NodesReady:        0,
-				CPUMilliCapacity:  2000,
-				CPUMilliAllocated: 500,
-				MemoryMiCapacity:  4096,
-				MemoryMiAllocated: 1024,
-				ObservedAt:        now,
+			Snapshot: &cloudplanev1.PlaneSnapshot{
+				NodeInventory: &cloudplanev1.PlaneNodeInventory{
+					ObservedAt: timestamppb.New(now),
+					Nodes: []*cloudplanev1.PlaneNode{
+						{Status: "offline", CpuMilliAllocatable: 2000, CpuMilliAllocated: 500, MemoryMiAllocatable: 4096, MemoryMiAllocated: 1024},
+					},
+				},
 			},
 		},
 		{
-			Plane: model.Plane{
-				ID:           "pln_c",
-				Name:         "aliyun-hz-secondary",
-				DisplayName:  "Aliyun Hangzhou Secondary",
-				Provider:     "aliyun",
-				Region:       "cn-hangzhou",
-				GRPCEndpoint: "plane-c.example.com:443",
-			},
-			Status: model.PlaneStatus{
-				Status:  model.StatusSyncing,
-				Message: "awaiting first sync",
+			Plane: model.PlaneDetail{
+				Plane: model.Plane{
+					ID:           "pln_c",
+					Name:         "aliyun-hz-secondary",
+					DisplayName:  "Aliyun Hangzhou Secondary",
+					Provider:     "aliyun",
+					Region:       "cn-hangzhou",
+					GRPCEndpoint: "plane-c.example.com:443",
+				},
+				Status: model.PlaneStatus{
+					Status:  model.StatusSyncing,
+					Message: "awaiting first sync",
+				},
 			},
 		},
 	})

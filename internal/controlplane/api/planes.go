@@ -107,6 +107,16 @@ func (h planeHandler) listPlanes(c *gin.Context) {
 		if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), coordination.RequestPlaneSyncTimeout); err != nil {
 			h.logger.Warn("sync planes for request failed", "error", err)
 		}
+		views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
+		if err == nil {
+			out := make([]planeResource, 0, len(views))
+			for _, item := range views {
+				out = append(out, buildPlaneResourceFromSnapshotView(item))
+			}
+			c.JSON(http.StatusOK, map[string]any{"items": out})
+			return
+		}
+		h.logger.Warn("load plane snapshot views failed", "error", err)
 	}
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
@@ -127,6 +137,12 @@ func (h planeHandler) inventory(c *gin.Context) {
 		if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), coordination.RequestPlaneSyncTimeout); err != nil {
 			h.logger.Warn("sync planes for request failed", "error", err)
 		}
+		views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
+		if err == nil {
+			c.JSON(http.StatusOK, buildInventoryView(views))
+			return
+		}
+		h.logger.Warn("load inventory snapshot views failed", "error", err)
 	}
 	items, err := h.store.ListPlanes(c.Request.Context())
 	if err != nil {
@@ -134,7 +150,11 @@ func (h planeHandler) inventory(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
-	c.JSON(http.StatusOK, buildInventoryView(items))
+	views := make([]coordination.PlaneSnapshotView, 0, len(items))
+	for _, item := range items {
+		views = append(views, coordination.PlaneSnapshotView{Plane: item})
+	}
+	c.JSON(http.StatusOK, buildInventoryView(views))
 }
 
 func (h planeHandler) getPlane(c *gin.Context) {
@@ -149,6 +169,12 @@ func (h planeHandler) getPlane(c *gin.Context) {
 		if err := h.syncer.SyncPlane(c.Request.Context(), planeID); err != nil {
 			logger.Warn("sync plane for request failed", "error", err)
 		}
+		view, err := h.syncer.GetPlaneSnapshotView(c.Request.Context(), planeID)
+		if err == nil {
+			c.JSON(http.StatusOK, buildPlaneResourceFromSnapshotView(view))
+			return
+		}
+		logger.Warn("load plane snapshot view failed", "error", err)
 	}
 	item, err := h.store.GetPlane(c.Request.Context(), planeID)
 	if err != nil {
@@ -244,6 +270,26 @@ func buildPlaneResource(item model.PlaneDetail) planeResource {
 			MemoryMiAllocated: inventory.MemoryMiAllocated,
 			UpdatedAt:         inventory.UpdatedAt,
 		}
+	}
+	return out
+}
+
+func buildPlaneResourceFromSnapshotView(item coordination.PlaneSnapshotView) planeResource {
+	out := buildPlaneResource(item.Plane)
+	if item.Snapshot == nil {
+		return out
+	}
+	inventory := nodeInventoryFromSnapshot(item.Plane.ID, item.Snapshot)
+	out.LatestNodeInventory = &nodeInventoryResource{
+		PlaneID:           inventory.PlaneID,
+		ObservedAt:        inventory.ObservedAt,
+		NodesTotal:        inventory.NodesTotal,
+		NodesReady:        inventory.NodesReady,
+		CPUMilliCapacity:  inventory.CPUMilliCapacity,
+		CPUMilliAllocated: inventory.CPUMilliAllocated,
+		MemoryMiCapacity:  inventory.MemoryMiCapacity,
+		MemoryMiAllocated: inventory.MemoryMiAllocated,
+		UpdatedAt:         inventory.UpdatedAt,
 	}
 	return out
 }

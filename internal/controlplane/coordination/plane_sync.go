@@ -38,6 +38,11 @@ type syncOverview struct {
 	ActiveRunsTotal int
 }
 
+type PlaneSnapshotView struct {
+	Plane    model.PlaneDetail
+	Snapshot *cloudplanev1.PlaneSnapshot
+}
+
 func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string, dns dnsClient) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
@@ -60,27 +65,7 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 		return err
 	}
 
-	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
-	client, err := newPlaneClient(grpcEndpoint, s.southboundToken)
-	if err != nil {
-		message := fmt.Sprintf("initialize plane southbound client failed: %v", err)
-		syncedAt := s.now()
-		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-			Status:     model.StatusOffline,
-			Message:    message,
-			LastSyncAt: &syncedAt,
-		}); updateErr != nil {
-			logger.Error("update failed plane status failed", "error", updateErr)
-		}
-		return errors.New(message)
-	}
-	defer func() {
-		if closeErr := client.Close(); closeErr != nil {
-			logger.Warn("close plane southbound client failed", "error", closeErr)
-		}
-	}()
-
-	snapshot, err := client.Snapshot(ctx)
+	snapshot, err := s.loadSnapshot(ctx, planeDetail)
 	if err != nil {
 		message := fmt.Sprintf("load plane snapshot failed: %v", err)
 		syncedAt := s.now()
@@ -103,12 +88,6 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 		LastHeartbeatAt: &checkedAt,
 		LastSyncAt:      &syncedAt,
 	}); err != nil {
-		return err
-	}
-	if err := s.store.ReplacePlaneNodeInventory(ctx, planeID, buildNodeInventory(snapshot)); err != nil {
-		return err
-	}
-	if err := s.syncServiceSnapshots(ctx, planeID, checkedAt, snapshot.GetServices()); err != nil {
 		return err
 	}
 	if err := s.syncExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
@@ -142,6 +121,60 @@ func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 		}
 	}
 	return nil
+}
+
+func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSnapshotView, error) {
+	planes, err := s.store.ListPlanes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	views := make([]PlaneSnapshotView, 0, len(planes))
+	for _, plane := range planes {
+		view := PlaneSnapshotView{Plane: plane}
+		planeCtx := ctx
+		cancel := func() {}
+		if perPlaneTimeout > 0 {
+			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
+		}
+		snapshot, err := s.loadSnapshot(planeCtx, plane)
+		cancel()
+		if err != nil {
+			s.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
+		} else {
+			view.Snapshot = snapshot
+		}
+		views = append(views, view)
+		if ctx.Err() != nil {
+			return views, ctx.Err()
+		}
+	}
+	return views, nil
+}
+
+func (s *PlaneSyncer) GetPlaneSnapshotView(ctx context.Context, planeID string) (PlaneSnapshotView, error) {
+	plane, err := s.store.GetPlane(ctx, planeID)
+	if err != nil {
+		return PlaneSnapshotView{}, err
+	}
+	snapshot, err := s.loadSnapshot(ctx, plane)
+	if err != nil {
+		s.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
+	}
+	return PlaneSnapshotView{Plane: plane, Snapshot: snapshot}, nil
+}
+
+func (s *PlaneSyncer) loadSnapshot(ctx context.Context, planeDetail model.PlaneDetail) (*cloudplanev1.PlaneSnapshot, error) {
+	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
+	client, err := newPlaneClient(grpcEndpoint, s.southboundToken)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if closeErr := client.Close(); closeErr != nil {
+			s.logger.Warn("close plane southbound client failed", "plane_id", planeDetail.ID, "error", closeErr)
+		}
+	}()
+	return client.Snapshot(ctx)
 }
 
 func (s *PlaneSyncer) syncExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot, frontdoorDomains []*cloudplanev1.PlaneFrontDoorDomain) error {
@@ -179,19 +212,6 @@ func (s *PlaneSyncer) syncExecutionSnapshots(ctx context.Context, planeID string
 			}
 			continue
 		}
-		status := serviceStatusFromExecutionSnapshot(item)
-		if err := s.store.UpdateServiceStatusForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration(), store.UpdateServiceStatusInput{
-			ObservedGeneration: status.Observed.ObservedGeneration,
-			Phase:              status.Observed.Phase,
-			Message:            status.Observed.Message,
-			LastObservedAt:     status.Observed.LastObservedAt,
-			Run:                &status.Run,
-		}); err != nil {
-			if errors.Is(err, store.ErrServiceGenerationConflict) || errors.Is(err, store.ErrServiceNotFound) {
-				continue
-			}
-			return err
-		}
 	}
 	return nil
 }
@@ -213,27 +233,6 @@ func frontDoorHosts(domains []*cloudplanev1.PlaneFrontDoorDomain) map[string]str
 
 func cleanSyncDomain(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
-}
-
-func (s *PlaneSyncer) syncServiceSnapshots(ctx context.Context, planeID string, observedAt time.Time, services []*cloudplanev1.PlaneService) error {
-	for _, item := range services {
-		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" {
-			continue
-		}
-		if err := s.store.UpsertServiceSnapshot(ctx, store.UpsertServiceSnapshotInput{
-			PlaneID:       planeID,
-			ServiceID:     item.GetServiceId(),
-			Name:          item.GetName(),
-			Host:          item.GetHost(),
-			Generation:    item.GetGeneration(),
-			DesiredState:  item.GetDesiredState(),
-			ObservedAt:    observedAt,
-			StatusMessage: "observed from cloud-plane snapshot",
-		}); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 type executionDerivedStatus struct {
@@ -325,44 +324,6 @@ func derivePlaneStatus(planeDetail model.PlaneDetail, snapshot *cloudplanev1.Pla
 	return model.StatusDegraded, "sync degraded: " + strings.Join(issues, "; ")
 }
 
-func buildNodeInventory(snapshot *cloudplanev1.PlaneSnapshot) store.RecordNodeInventoryInput {
-	nodeInventory := snapshot.GetNodeInventory()
-	out := store.RecordNodeInventoryInput{
-		ObservedAt: protoTime(nodeInventory.GetObservedAt()),
-		Nodes:      make([]model.PlaneNode, 0, len(nodeInventory.GetNodes())),
-	}
-	for _, item := range nodeInventory.GetNodes() {
-		if item == nil {
-			continue
-		}
-		if item.GetStatus() == "ready" {
-			out.NodesReady++
-		}
-		out.NodesTotal++
-		out.CPUMilliCapacity += int(item.GetCpuMilliAllocatable())
-		out.CPUMilliAllocated += int(item.GetCpuMilliAllocated())
-		out.MemoryMiCapacity += int(item.GetMemoryMiAllocatable())
-		out.MemoryMiAllocated += int(item.GetMemoryMiAllocated())
-		out.Nodes = append(out.Nodes, model.PlaneNode{
-			NodeID:            item.GetNodeId(),
-			Name:              item.GetName(),
-			Provider:          item.GetProvider(),
-			Region:            item.GetRegion(),
-			InstanceID:        item.GetInstanceId(),
-			InstanceType:      item.GetInstanceType(),
-			Status:            item.GetStatus(),
-			Schedulable:       item.GetSchedulable(),
-			Elastic:           item.GetElastic(),
-			CPUMilliCapacity:  int(item.GetCpuMilliAllocatable()),
-			CPUMilliAllocated: int(item.GetCpuMilliAllocated()),
-			MemoryMiCapacity:  int(item.GetMemoryMiAllocatable()),
-			MemoryMiAllocated: int(item.GetMemoryMiAllocated()),
-			LastHeartbeatAt:   protoTimePtr(item.GetLastHeartbeatAt()),
-		})
-	}
-	return out
-}
-
 func snapshotOverview(snapshot *cloudplanev1.PlaneSnapshot) syncOverview {
 	out := syncOverview{ActiveRunsTotal: len(snapshot.GetExecutions())}
 	for _, item := range snapshot.GetNodeInventory().GetNodes() {
@@ -387,12 +348,4 @@ func protoTime(item *timestamppb.Timestamp) time.Time {
 		return time.Time{}
 	}
 	return item.AsTime().UTC()
-}
-
-func protoTimePtr(item *timestamppb.Timestamp) *time.Time {
-	if item == nil {
-		return nil
-	}
-	value := item.AsTime().UTC()
-	return &value
 }

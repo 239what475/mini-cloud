@@ -185,28 +185,6 @@ func TestSyncExecutionSnapshotsWaitsForFrontDoorRemovalBeforeDeletingService(t *
 	}
 }
 
-func TestSyncServiceSnapshotsIgnoresUnknownService(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createSyncTestPlane(t, db.Store, "plane-unknown-service")
-	syncer := &PlaneSyncer{store: db.Store}
-
-	if err := syncer.syncServiceSnapshots(ctx, plane.ID, time.Now().UTC(), []*cloudplanev1.PlaneService{
-		{
-			ServiceId:   "svc-unknown",
-			Name:        "unknown",
-			DisplayName: "Unknown",
-			Host:        "unknown.apps.example.com",
-			Generation:  1,
-		},
-	}); err != nil {
-		t.Fatalf("syncServiceSnapshots returned error: %v", err)
-	}
-	if _, err := db.Store.GetService(ctx, "svc-unknown"); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
-		t.Fatalf("GetService unknown snapshot error = %v, want service not found", err)
-	}
-}
-
 func createSyncTestPlane(t *testing.T, stores *controlplanestore.Store, name string) model.PlaneDetail {
 	t.Helper()
 	item, err := stores.RegisterPlane(context.Background(), controlplanestore.RegisterPlaneInput{
@@ -241,33 +219,6 @@ func createSyncTestService(t *testing.T, stores *controlplanestore.Store, planeI
 		t.Fatalf("CreateService returned error: %v", err)
 	}
 	return item
-}
-
-func TestBuildNodeInventoryIncludesElasticNodeSource(t *testing.T) {
-	observedAt := time.Now().UTC()
-	input := buildNodeInventory(&cloudplanev1.PlaneSnapshot{
-		NodeInventory: &cloudplanev1.PlaneNodeInventory{
-			ObservedAt: timestamppb.New(observedAt),
-			Nodes: []*cloudplanev1.PlaneNode{
-				{
-					NodeId:              "node-a",
-					Name:                "node-a",
-					Status:              "ready",
-					Schedulable:         true,
-					Elastic:             true,
-					CpuMilliAllocatable: 1000,
-					MemoryMiAllocatable: 1024,
-				},
-			},
-		},
-	})
-
-	if !input.ObservedAt.Equal(observedAt) {
-		t.Fatalf("observedAt = %v, want %v", input.ObservedAt, observedAt)
-	}
-	if len(input.Nodes) != 1 || !input.Nodes[0].Elastic {
-		t.Fatalf("node inventory nodes = %+v, want elastic node", input.Nodes)
-	}
 }
 
 func TestServiceStatusFromExecutionSnapshotRunning(t *testing.T) {

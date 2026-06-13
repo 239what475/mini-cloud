@@ -57,6 +57,14 @@ message PlaneService {
   string desired_state = 5 [json_name = "desiredState"];
   google.protobuf.Timestamp updated_at = 6 [json_name = "updatedAt"];
   string host = 7;
+  string instance_class = 8 [json_name = "instanceClass"];
+  string exposure = 9;
+  string image = 10;
+  repeated string command = 11;
+  repeated string args = 12;
+  map<string, string> env = 13;
+  int32 container_port = 14 [json_name = "containerPort"];
+  string readiness_path = 15 [json_name = "readinessPath"];
 }
 
 message PlaneFrontDoorDomain {

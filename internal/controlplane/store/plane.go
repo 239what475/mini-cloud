@@ -281,21 +281,10 @@ func planeDetailBaseQuery(suffix string) string {
 			s.message,
 			s.last_heartbeat_at,
 			s.last_sync_at,
-			s.updated_at,
-			ris.plane_id,
-			ris.observed_at,
-			ris.nodes_total,
-			ris.nodes_ready,
-			ris.cpu_milli_capacity,
-			ris.cpu_milli_allocated,
-			ris.memory_mi_capacity,
-			ris.memory_mi_allocated,
-			ris.updated_at
+			s.updated_at
 		FROM planes p
 		JOIN plane_statuses s
 			ON s.plane_id = p.id
-		LEFT JOIN plane_node_inventory_states ris
-			ON ris.plane_id = p.id
 	` + suffix
 }
 
@@ -303,15 +292,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 	var item model.PlaneDetail
 	var heartbeat sql.NullTime
 	var syncAt sql.NullTime
-	var inventoryPlaneID sql.NullString
-	var inventoryObservedAt sql.NullTime
-	var inventoryNodesTotal sql.NullInt64
-	var inventoryNodesReady sql.NullInt64
-	var inventoryCPUMilliCapacity sql.NullInt64
-	var inventoryCPUMilliAllocated sql.NullInt64
-	var inventoryMemoryMiCapacity sql.NullInt64
-	var inventoryMemoryMiAllocated sql.NullInt64
-	var inventoryUpdatedAt sql.NullTime
 
 	if err := scanner.Scan(
 		&item.ID,
@@ -327,15 +307,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 		&heartbeat,
 		&syncAt,
 		&item.Status.UpdatedAt,
-		&inventoryPlaneID,
-		&inventoryObservedAt,
-		&inventoryNodesTotal,
-		&inventoryNodesReady,
-		&inventoryCPUMilliCapacity,
-		&inventoryCPUMilliAllocated,
-		&inventoryMemoryMiCapacity,
-		&inventoryMemoryMiAllocated,
-		&inventoryUpdatedAt,
 	); err != nil {
 		return model.PlaneDetail{}, err
 	}
@@ -346,19 +317,6 @@ func scanPlaneDetail(scanner interface{ Scan(dest ...any) error }) (model.PlaneD
 	if syncAt.Valid {
 		value := syncAt.Time
 		item.Status.LastSyncAt = &value
-	}
-	if inventoryPlaneID.Valid {
-		item.LatestNodeInventory = &model.NodeInventorySnapshot{
-			PlaneID:           inventoryPlaneID.String,
-			ObservedAt:        inventoryObservedAt.Time,
-			NodesTotal:        int(inventoryNodesTotal.Int64),
-			NodesReady:        int(inventoryNodesReady.Int64),
-			CPUMilliCapacity:  int(inventoryCPUMilliCapacity.Int64),
-			CPUMilliAllocated: int(inventoryCPUMilliAllocated.Int64),
-			MemoryMiCapacity:  int(inventoryMemoryMiCapacity.Int64),
-			MemoryMiAllocated: int(inventoryMemoryMiAllocated.Int64),
-			UpdatedAt:         inventoryUpdatedAt.Time,
-		}
 	}
 	return item, nil
 }

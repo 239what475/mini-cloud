@@ -50,26 +50,6 @@ CREATE TABLE IF NOT EXISTS service_bindings (
 CREATE INDEX IF NOT EXISTS idx_service_bindings_created_at
     ON service_bindings (created_at DESC);
 
--- service_caches stores the control-plane dispatch payload and display status.
--- Cloud-plane remains the runtime truth after a service spec is accepted.
-CREATE TABLE IF NOT EXISTS service_caches (
-    service_id TEXT PRIMARY KEY REFERENCES service_bindings(id) ON DELETE CASCADE,
-    instance_class TEXT NOT NULL DEFAULT 'small',
-    exposure TEXT NOT NULL,
-    image TEXT NOT NULL,
-    command_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    args_json JSONB NOT NULL DEFAULT '[]'::jsonb,
-    default_port INTEGER NOT NULL,
-    readiness_path TEXT NOT NULL,
-    env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-    run_json JSONB NOT NULL DEFAULT '{"phase":"pending","message":""}'::jsonb,
-    observed_generation BIGINT NOT NULL DEFAULT 0,
-    phase TEXT NOT NULL DEFAULT 'pending',
-    message TEXT NOT NULL DEFAULT '',
-    last_observed_at TIMESTAMPTZ NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS service_dns_records (
     service_id TEXT NOT NULL REFERENCES service_bindings(id) ON DELETE CASCADE,
     host TEXT NOT NULL,
@@ -84,49 +64,9 @@ CREATE TABLE IF NOT EXISTS service_dns_records (
 CREATE INDEX IF NOT EXISTS idx_service_dns_records_host_type
     ON service_dns_records (host, record_type);
 
-CREATE TABLE IF NOT EXISTS plane_node_inventory_states (
-    plane_id TEXT PRIMARY KEY REFERENCES planes(id) ON DELETE CASCADE,
-    observed_at TIMESTAMPTZ NOT NULL,
-    nodes_total INTEGER NOT NULL,
-    nodes_ready INTEGER NOT NULL,
-    cpu_milli_capacity INTEGER NOT NULL,
-    cpu_milli_allocated INTEGER NOT NULL,
-    memory_mi_capacity INTEGER NOT NULL,
-    memory_mi_allocated INTEGER NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE IF NOT EXISTS plane_nodes (
-    plane_id TEXT NOT NULL REFERENCES planes(id) ON DELETE CASCADE,
-    node_id TEXT NOT NULL,
-    name TEXT NOT NULL,
-    provider TEXT NOT NULL,
-    region TEXT NOT NULL,
-    instance_id TEXT NOT NULL,
-    instance_type TEXT NOT NULL,
-    status TEXT NOT NULL,
-    schedulable BOOLEAN NOT NULL,
-    elastic BOOLEAN NOT NULL DEFAULT FALSE,
-    cpu_milli_capacity INTEGER NOT NULL,
-    cpu_milli_allocated INTEGER NOT NULL,
-    memory_mi_capacity INTEGER NOT NULL,
-    memory_mi_allocated INTEGER NOT NULL,
-    last_heartbeat_at TIMESTAMPTZ NULL,
-    observed_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (plane_id, node_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_plane_nodes_plane_status
-    ON plane_nodes (plane_id, status, schedulable);
-
 -- +goose Down
-DROP INDEX IF EXISTS idx_plane_nodes_plane_status;
-DROP TABLE IF EXISTS plane_nodes;
-DROP TABLE IF EXISTS plane_node_inventory_states;
 DROP INDEX IF EXISTS idx_service_dns_records_host_type;
 DROP TABLE IF EXISTS service_dns_records;
-DROP TABLE IF EXISTS service_caches;
 DROP INDEX IF EXISTS idx_service_bindings_created_at;
 DROP TABLE IF EXISTS service_bindings;
 DROP TABLE IF EXISTS plane_statuses;

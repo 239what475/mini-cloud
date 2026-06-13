@@ -4,7 +4,9 @@ import (
 	"sort"
 	"time"
 
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
+	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 )
 
 type inventorySummary struct {
@@ -61,7 +63,7 @@ type inventoryView struct {
 	Planes    []inventoryPlane `json:"planes"`
 }
 
-func buildInventoryView(items []model.PlaneDetail) inventoryView {
+func buildInventoryView(items []coordination.PlaneSnapshotView) inventoryView {
 	view := inventoryView{
 		Providers: make([]inventoryGroup, 0),
 		Regions:   make([]inventoryGroup, 0),
@@ -123,22 +125,22 @@ func buildInventoryView(items []model.PlaneDetail) inventoryView {
 	return view
 }
 
-func buildPlane(item model.PlaneDetail) inventoryPlane {
+func buildPlane(item coordination.PlaneSnapshotView) inventoryPlane {
 	plane := inventoryPlane{
-		ID:              item.ID,
-		Name:            item.Name,
-		DisplayName:     item.DisplayName,
-		Provider:        item.Provider,
-		Region:          item.Region,
-		GRPCEndpoint:    item.GRPCEndpoint,
-		Status:          item.Status.Status,
-		StatusMessage:   item.Status.Message,
-		LastHeartbeatAt: item.Status.LastHeartbeatAt,
-		LastSyncAt:      item.Status.LastSyncAt,
+		ID:              item.Plane.ID,
+		Name:            item.Plane.Name,
+		DisplayName:     item.Plane.DisplayName,
+		Provider:        item.Plane.Provider,
+		Region:          item.Plane.Region,
+		GRPCEndpoint:    item.Plane.GRPCEndpoint,
+		Status:          item.Plane.Status.Status,
+		StatusMessage:   item.Plane.Status.Message,
+		LastHeartbeatAt: item.Plane.Status.LastHeartbeatAt,
+		LastSyncAt:      item.Plane.Status.LastSyncAt,
 	}
 
-	if item.LatestNodeInventory != nil {
-		record := item.LatestNodeInventory
+	if item.Snapshot != nil {
+		record := nodeInventoryFromSnapshot(item.Plane.ID, item.Snapshot)
 		plane.NodesTotal = record.NodesTotal
 		plane.NodesReady = record.NodesReady
 		plane.NodesUnavailable = unavailableNodes(record.NodesTotal, record.NodesReady)
@@ -153,6 +155,32 @@ func buildPlane(item model.PlaneDetail) inventoryPlane {
 	}
 
 	return plane
+}
+
+func nodeInventoryFromSnapshot(planeID string, snapshot *cloudplanev1.PlaneSnapshot) model.NodeInventorySnapshot {
+	nodeInventory := snapshot.GetNodeInventory()
+	out := model.NodeInventorySnapshot{
+		PlaneID:    planeID,
+		ObservedAt: time.Now().UTC(),
+		UpdatedAt:  time.Now().UTC(),
+	}
+	if observedAt := nodeInventory.GetObservedAt(); observedAt != nil {
+		out.ObservedAt = observedAt.AsTime().UTC()
+	}
+	for _, item := range nodeInventory.GetNodes() {
+		if item == nil {
+			continue
+		}
+		out.NodesTotal++
+		if item.GetStatus() == "ready" {
+			out.NodesReady++
+		}
+		out.CPUMilliCapacity += int(item.GetCpuMilliAllocatable())
+		out.CPUMilliAllocated += int(item.GetCpuMilliAllocated())
+		out.MemoryMiCapacity += int(item.GetMemoryMiAllocatable())
+		out.MemoryMiAllocated += int(item.GetMemoryMiAllocated())
+	}
+	return out
 }
 
 func accumulateSummary(summary *inventorySummary, planeView inventoryPlane) {
