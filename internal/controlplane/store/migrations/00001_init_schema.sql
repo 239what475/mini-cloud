@@ -31,34 +31,16 @@ CREATE TABLE IF NOT EXISTS plane_statuses (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE IF NOT EXISTS service_bindings (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    display_name TEXT NOT NULL,
-    host TEXT NOT NULL,
-    plane_id TEXT NOT NULL,
-    generation BIGINT NOT NULL DEFAULT 1,
-    desired_state TEXT NOT NULL DEFAULT 'active',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT service_bindings_name_key UNIQUE (name),
-    CONSTRAINT service_bindings_host_key UNIQUE (host),
-    CONSTRAINT service_bindings_plane_fk
-        FOREIGN KEY (plane_id) REFERENCES planes(id) ON DELETE RESTRICT DEFERRABLE INITIALLY DEFERRED
-);
-
-CREATE INDEX IF NOT EXISTS idx_service_bindings_created_at
-    ON service_bindings (created_at DESC);
-
 CREATE TABLE IF NOT EXISTS service_dns_records (
-    service_id TEXT NOT NULL REFERENCES service_bindings(id) ON DELETE CASCADE,
+    plane_id TEXT NOT NULL REFERENCES planes(id) ON DELETE CASCADE,
+    service_id TEXT NOT NULL,
     host TEXT NOT NULL,
     record_type TEXT NOT NULL,
     value TEXT NOT NULL DEFAULT '',
     purpose TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    PRIMARY KEY (service_id, host, record_type, purpose)
+    PRIMARY KEY (plane_id, service_id, host, record_type, purpose)
 );
 
 CREATE INDEX IF NOT EXISTS idx_service_dns_records_host_type
@@ -67,8 +49,6 @@ CREATE INDEX IF NOT EXISTS idx_service_dns_records_host_type
 -- +goose Down
 DROP INDEX IF EXISTS idx_service_dns_records_host_type;
 DROP TABLE IF EXISTS service_dns_records;
-DROP INDEX IF EXISTS idx_service_bindings_created_at;
-DROP TABLE IF EXISTS service_bindings;
 DROP TABLE IF EXISTS plane_statuses;
 DROP TABLE IF EXISTS planes;
 DROP INDEX IF EXISTS idx_control_events_action_created_at;

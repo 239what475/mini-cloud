@@ -44,6 +44,10 @@ CREATE TABLE IF NOT EXISTS services (
     env_json JSONB NOT NULL DEFAULT '{}'::jsonb,
     container_port INTEGER NOT NULL CHECK (container_port > 0 AND container_port <= 65535),
     readiness_path TEXT NOT NULL,
+    frontdoor_cname TEXT NOT NULL DEFAULT '',
+    frontdoor_verify_subdomain TEXT NOT NULL DEFAULT '',
+    frontdoor_verify_type TEXT NOT NULL DEFAULT '',
+    frontdoor_verify_value TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -83,18 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_service_runs_status_created_at
 CREATE INDEX IF NOT EXISTS idx_service_runs_node_status
     ON service_runs (node_id, status, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS frontdoor_domains (
-    host TEXT PRIMARY KEY,
-    cname TEXT NOT NULL DEFAULT '',
-    verify_subdomain TEXT NOT NULL DEFAULT '',
-    verify_type TEXT NOT NULL DEFAULT '',
-    verify_value TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
 -- +goose Down
-DROP TABLE IF EXISTS frontdoor_domains;
 DROP TABLE IF EXISTS service_runs;
 DROP TABLE IF EXISTS services;
 DROP TABLE IF EXISTS nodes;

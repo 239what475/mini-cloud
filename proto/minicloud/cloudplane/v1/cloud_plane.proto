@@ -65,14 +65,10 @@ message PlaneService {
   map<string, string> env = 13;
   int32 container_port = 14 [json_name = "containerPort"];
   string readiness_path = 15 [json_name = "readinessPath"];
-}
-
-message PlaneFrontDoorDomain {
-  string host = 1;
-  string cname = 2;
-  string verify_subdomain = 3 [json_name = "verifySubdomain"];
-  string verify_type = 4 [json_name = "verifyType"];
-  string verify_value = 5 [json_name = "verifyValue"];
+  string frontdoor_cname = 16 [json_name = "frontdoorCNAME"];
+  string frontdoor_verify_subdomain = 17 [json_name = "frontdoorVerifySubdomain"];
+  string frontdoor_verify_type = 18 [json_name = "frontdoorVerifyType"];
+  string frontdoor_verify_value = 19 [json_name = "frontdoorVerifyValue"];
 }
 
 message PlaneSnapshot {
@@ -82,7 +78,6 @@ message PlaneSnapshot {
   PlaneNodeInventory node_inventory = 4 [json_name = "nodeInventory"];
   repeated PlaneExecutionSnapshot executions = 5;
   repeated PlaneService services = 6;
-  repeated PlaneFrontDoorDomain frontdoor_domains = 7 [json_name = "frontdoorDomains"];
 }
 
 message GetSnapshotRequest {}

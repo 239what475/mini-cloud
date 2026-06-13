@@ -30,6 +30,10 @@ const serviceSelectColumns = `
 	env_json,
 	container_port,
 	readiness_path,
+	frontdoor_cname,
+	frontdoor_verify_subdomain,
+	frontdoor_verify_type,
+	frontdoor_verify_value,
 	created_at,
 	updated_at
 `
@@ -214,6 +218,82 @@ func (s *Store) ListServices(ctx context.Context) ([]cloudmodel.Service, error) 
 	return items, nil
 }
 
+func (s *Store) ListServiceFrontDoors(ctx context.Context) ([]cloudmodel.Service, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+serviceSelectColumns+`
+		FROM services
+		WHERE frontdoor_cname <> ''
+		   OR frontdoor_verify_subdomain <> ''
+		ORDER BY host ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query service frontdoors: %w", err)
+	}
+	defer rows.Close()
+
+	items := make([]cloudmodel.Service, 0)
+	for rows.Next() {
+		item, err := scanService(rows)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate service frontdoors: %w", err)
+	}
+	return items, nil
+}
+
+func (s *Store) SaveServiceFrontDoor(ctx context.Context, host string, status cloudmodel.FrontDoorStatus) error {
+	host = cleanDomain(host)
+	if host == "" {
+		return nil
+	}
+	cname := cleanDomain(status.CNAME)
+	verifySubdomain := ""
+	verifyType := ""
+	verifyValue := ""
+	if status.Verification != nil {
+		verifySubdomain = cleanDomain(status.Verification.Subdomain)
+		verifyType = strings.ToUpper(strings.TrimSpace(status.Verification.Type))
+		verifyValue = strings.TrimSpace(status.Verification.Value)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE services
+		SET
+			frontdoor_cname = $2,
+			frontdoor_verify_subdomain = $3,
+			frontdoor_verify_type = $4,
+			frontdoor_verify_value = $5,
+			updated_at = now()
+		WHERE host = $1
+	`, host, cname, verifySubdomain, verifyType, verifyValue); err != nil {
+		return fmt.Errorf("save service frontdoor: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) ClearServiceFrontDoor(ctx context.Context, host string) error {
+	host = cleanDomain(host)
+	if host == "" {
+		return nil
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE services
+		SET
+			frontdoor_cname = '',
+			frontdoor_verify_subdomain = '',
+			frontdoor_verify_type = '',
+			frontdoor_verify_value = '',
+			updated_at = now()
+		WHERE host = $1
+	`, host); err != nil {
+		return fmt.Errorf("clear service frontdoor: %w", err)
+	}
+	return nil
+}
+
 func getServiceTx(ctx context.Context, tx *sql.Tx, serviceID string) (cloudmodel.Service, error) {
 	item, err := scanService(tx.QueryRowContext(ctx, `
 		SELECT `+serviceSelectColumns+`
@@ -263,11 +343,18 @@ func serviceSpecRecord(spec cloudmodel.ServiceSpec) (serviceSpecJSON, error) {
 	return serviceSpecJSON{CommandJSON: commandJSON, ArgsJSON: argsJSON, EnvJSON: envJSON}, nil
 }
 
+func cleanDomain(value string) string {
+	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
+}
+
 func scanService(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Service, error) {
 	var item cloudmodel.Service
 	var commandJSON []byte
 	var argsJSON []byte
 	var envJSON []byte
+	var frontdoorVerifySubdomain string
+	var frontdoorVerifyType string
+	var frontdoorVerifyValue string
 	if err := scanner.Scan(
 		&item.ID,
 		&item.Name,
@@ -283,6 +370,10 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Servi
 		&envJSON,
 		&item.Spec.ContainerPort,
 		&item.Spec.ReadinessPath,
+		&item.FrontDoor.CNAME,
+		&frontdoorVerifySubdomain,
+		&frontdoorVerifyType,
+		&frontdoorVerifyValue,
 		&item.CreatedAt,
 		&item.UpdatedAt,
 	); err != nil {
@@ -304,6 +395,14 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Servi
 	if len(envJSON) > 0 {
 		if err := json.Unmarshal(envJSON, &item.Spec.Env); err != nil {
 			return cloudmodel.Service{}, fmt.Errorf("decode service env: %w", err)
+		}
+	}
+	item.FrontDoor.CNAME = cleanDomain(item.FrontDoor.CNAME)
+	if frontdoorVerifySubdomain != "" && frontdoorVerifyType != "" && frontdoorVerifyValue != "" {
+		item.FrontDoor.Verification = &cloudmodel.FrontDoorDNSRecord{
+			Subdomain: cleanDomain(frontdoorVerifySubdomain),
+			Type:      strings.ToUpper(strings.TrimSpace(frontdoorVerifyType)),
+			Value:     strings.TrimSpace(frontdoorVerifyValue),
 		}
 	}
 	return item, nil

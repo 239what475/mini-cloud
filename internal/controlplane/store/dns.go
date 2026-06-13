@@ -12,6 +12,7 @@ const (
 )
 
 type DNSRecord struct {
+	PlaneID    string
 	ServiceID  string
 	Host       string
 	RecordType string
@@ -21,22 +22,23 @@ type DNSRecord struct {
 
 func (s *Store) SaveServiceDNSRecord(ctx context.Context, record DNSRecord) error {
 	record = normalizeDNSRecord(record)
-	if record.ServiceID == "" || record.Host == "" || record.RecordType == "" || record.Purpose == "" {
-		return invalidInput(fmt.Errorf("service DNS record requires serviceID, host, recordType and purpose"))
+	if record.PlaneID == "" || record.ServiceID == "" || record.Host == "" || record.RecordType == "" || record.Purpose == "" {
+		return invalidInput(fmt.Errorf("service DNS record requires planeID, serviceID, host, recordType and purpose"))
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO service_dns_records (
+			plane_id,
 			service_id,
 			host,
 			record_type,
 			value,
 			purpose
 		)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (service_id, host, record_type, purpose) DO UPDATE
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT (plane_id, service_id, host, record_type, purpose) DO UPDATE
 		SET value = EXCLUDED.value,
 		    updated_at = now()
-	`, record.ServiceID, record.Host, record.RecordType, record.Value, record.Purpose)
+	`, record.PlaneID, record.ServiceID, record.Host, record.RecordType, record.Value, record.Purpose)
 	if err != nil {
 		return fmt.Errorf("save service DNS record: %w", err)
 	}
@@ -45,28 +47,30 @@ func (s *Store) SaveServiceDNSRecord(ctx context.Context, record DNSRecord) erro
 
 func (s *Store) DeleteServiceDNSRecord(ctx context.Context, record DNSRecord) error {
 	record = normalizeDNSRecord(record)
-	if record.ServiceID == "" || record.Host == "" || record.RecordType == "" || record.Purpose == "" {
+	if record.PlaneID == "" || record.ServiceID == "" || record.Host == "" || record.RecordType == "" || record.Purpose == "" {
 		return nil
 	}
 	if _, err := s.db.ExecContext(ctx, `
 		DELETE FROM service_dns_records
-		WHERE service_id = $1
-		  AND host = $2
-		  AND record_type = $3
-		  AND purpose = $4
-	`, record.ServiceID, record.Host, record.RecordType, record.Purpose); err != nil {
+		WHERE plane_id = $1
+		  AND service_id = $2
+		  AND host = $3
+		  AND record_type = $4
+		  AND purpose = $5
+	`, record.PlaneID, record.ServiceID, record.Host, record.RecordType, record.Purpose); err != nil {
 		return fmt.Errorf("delete service DNS record: %w", err)
 	}
 	return nil
 }
 
-func (s *Store) ListServiceDNSRecords(ctx context.Context, serviceID string) ([]DNSRecord, error) {
+func (s *Store) ListServiceDNSRecords(ctx context.Context, planeID string, serviceID string) ([]DNSRecord, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT service_id, host, record_type, value, purpose
+		SELECT plane_id, service_id, host, record_type, value, purpose
 		FROM service_dns_records
-		WHERE service_id = $1
+		WHERE plane_id = $1
+		  AND service_id = $2
 		ORDER BY created_at ASC, host ASC, record_type ASC, purpose ASC
-	`, strings.TrimSpace(serviceID))
+	`, strings.TrimSpace(planeID), strings.TrimSpace(serviceID))
 	if err != nil {
 		return nil, fmt.Errorf("query service DNS records: %w", err)
 	}
@@ -75,7 +79,7 @@ func (s *Store) ListServiceDNSRecords(ctx context.Context, serviceID string) ([]
 	items := make([]DNSRecord, 0)
 	for rows.Next() {
 		var item DNSRecord
-		if err := rows.Scan(&item.ServiceID, &item.Host, &item.RecordType, &item.Value, &item.Purpose); err != nil {
+		if err := rows.Scan(&item.PlaneID, &item.ServiceID, &item.Host, &item.RecordType, &item.Value, &item.Purpose); err != nil {
 			return nil, fmt.Errorf("scan service DNS record: %w", err)
 		}
 		items = append(items, normalizeDNSRecord(item))
@@ -86,11 +90,12 @@ func (s *Store) ListServiceDNSRecords(ctx context.Context, serviceID string) ([]
 	return items, nil
 }
 
-func (s *Store) DeleteServiceDNSRecords(ctx context.Context, serviceID string) error {
+func (s *Store) DeleteServiceDNSRecords(ctx context.Context, planeID string, serviceID string) error {
 	if _, err := s.db.ExecContext(ctx, `
 		DELETE FROM service_dns_records
-		WHERE service_id = $1
-	`, strings.TrimSpace(serviceID)); err != nil {
+		WHERE plane_id = $1
+		  AND service_id = $2
+	`, strings.TrimSpace(planeID), strings.TrimSpace(serviceID)); err != nil {
 		return fmt.Errorf("delete service DNS records: %w", err)
 	}
 	return nil
@@ -98,6 +103,7 @@ func (s *Store) DeleteServiceDNSRecords(ctx context.Context, serviceID string) e
 
 func normalizeDNSRecord(record DNSRecord) DNSRecord {
 	return DNSRecord{
+		PlaneID:    strings.TrimSpace(record.PlaneID),
 		ServiceID:  strings.TrimSpace(record.ServiceID),
 		Host:       cleanServiceDomain(record.Host),
 		RecordType: strings.ToUpper(strings.TrimSpace(record.RecordType)),

@@ -19,8 +19,7 @@ type FrontDoorDNSRecord struct {
 	Value     string
 }
 
-type ManagedFrontDoorDomain struct {
-	Host         string
+type FrontDoorStatus struct {
 	CNAME        string
 	Verification *FrontDoorDNSRecord
 }

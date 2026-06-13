@@ -21,9 +21,9 @@ type cdnClient interface {
 }
 
 type domainStore interface {
-	SaveFrontDoorDomain(context.Context, ManagedDomain) error
-	ListFrontDoorDomains(context.Context) ([]ManagedDomain, error)
-	DeleteFrontDoorDomain(context.Context, string) error
+	SaveServiceFrontDoor(context.Context, string, FrontDoorStatus) error
+	ListServiceFrontDoors(context.Context) ([]cloudmodel.Service, error)
+	ClearServiceFrontDoor(context.Context, string) error
 }
 
 type cdnDomain struct {
@@ -32,7 +32,7 @@ type cdnDomain struct {
 }
 
 type DNSRecord = cloudmodel.FrontDoorDNSRecord
-type ManagedDomain = cloudmodel.ManagedFrontDoorDomain
+type FrontDoorStatus = cloudmodel.FrontDoorStatus
 
 type Service struct {
 	logger     *slog.Logger
@@ -84,9 +84,9 @@ func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) err
 		desired[host] = struct{}{}
 	}
 
-	var managed []ManagedDomain
+	var managed []cloudmodel.Service
 	if s.store != nil {
-		items, err := s.store.ListFrontDoorDomains(ctx)
+		items, err := s.store.ListServiceFrontDoors(ctx)
 		if err != nil {
 			return err
 		}
@@ -96,7 +96,7 @@ func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) err
 	for _, host := range sortedHosts(desired) {
 		verification, err := s.cdn.PrepareDomain(ctx, host)
 		if s.store != nil && verification != nil {
-			if saveErr := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, Verification: verification}); saveErr != nil {
+			if saveErr := s.store.SaveServiceFrontDoor(ctx, host, FrontDoorStatus{Verification: verification}); saveErr != nil {
 				return saveErr
 			}
 		}
@@ -116,7 +116,7 @@ func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) err
 			continue
 		}
 		if s.store != nil {
-			if err := s.store.SaveFrontDoorDomain(ctx, ManagedDomain{Host: host, CNAME: cname}); err != nil {
+			if err := s.store.SaveServiceFrontDoor(ctx, host, FrontDoorStatus{CNAME: cname}); err != nil {
 				return err
 			}
 		}
@@ -131,10 +131,10 @@ func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) err
 		return nil
 	}
 
-	for _, domain := range managed {
-		host := cleanDomain(domain.Host)
+	for _, service := range managed {
+		host := cleanDomain(service.Host)
 		if !domainIsUnder(host, s.baseDomain) {
-			if err := s.store.DeleteFrontDoorDomain(ctx, host); err != nil {
+			if err := s.store.ClearServiceFrontDoor(ctx, host); err != nil {
 				return err
 			}
 			continue
@@ -145,7 +145,7 @@ func (s *Service) SyncRoutes(ctx context.Context, routes []cloudmodel.Route) err
 		if err := s.cdn.DeleteDomain(ctx, host); err != nil {
 			return fmt.Errorf("delete stale CDN domain %s: %w", host, err)
 		}
-		if err := s.store.DeleteFrontDoorDomain(ctx, host); err != nil {
+		if err := s.store.ClearServiceFrontDoor(ctx, host); err != nil {
 			return err
 		}
 	}

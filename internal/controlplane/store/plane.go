@@ -10,13 +10,10 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-
-	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var (
 	ErrPlaneNotFound             = errors.New("plane not found")
-	ErrPlaneHasServices          = errors.New("plane has service bindings")
 	ErrPlaneNameAlreadyExists    = errors.New("plane name already exists")
 	errPlaneNameRequired         = errors.New("name is required")
 	errInvalidPlaneName          = errors.New("name must use lowercase letters, digits, and hyphens")
@@ -197,10 +194,6 @@ func (s *Store) GetPlane(ctx context.Context, planeID string) (model.PlaneDetail
 func (s *Store) DeletePlane(ctx context.Context, planeID string) error {
 	result, err := s.db.ExecContext(ctx, `DELETE FROM planes WHERE id = $1`, planeID)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
-			return ErrPlaneHasServices
-		}
 		return fmt.Errorf("delete plane: %w", err)
 	}
 	if affected, _ := result.RowsAffected(); affected == 0 {

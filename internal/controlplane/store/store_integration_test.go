@@ -103,156 +103,37 @@ func TestIntegrationRegisterPlaneRefreshDoesNotResetCurrentStatus(t *testing.T) 
 	}
 }
 
-func TestIntegrationServiceBindingLifecycle(t *testing.T) {
+func TestIntegrationServiceDNSRecords(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createPlane(t, db)
-
-	service, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "api",
-		DisplayName: "API",
-		Host:        "api.apps.example.test",
-		Spec: model.ServiceSpec{
-			PlaneID:       plane.ID,
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      model.ExposurePublic,
-			Image:         "nginx:1.27-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CreateService returned error: %v", err)
-	}
-	if service.Spec.PlaneID != plane.ID {
-		t.Fatalf("planeID = %q, want %q", service.Spec.PlaneID, plane.ID)
-	}
-	if service.Spec.Image != "" {
-		t.Fatalf("control-plane persisted workload image = %q, want empty binding-only spec", service.Spec.Image)
-	}
-
-	updated, err := db.Store.UpdateServiceBinding(ctx, service.Metadata.ID, controlplanestore.UpdateServiceInput{
-		DisplayName: "API v2",
-		Spec: model.WorkloadSpec{
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      model.ExposurePublic,
-			Image:         "nginx:1.28-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-	})
-	if err != nil {
-		t.Fatalf("UpdateServiceBinding returned error: %v", err)
-	}
-	if updated.Metadata.Generation != service.Metadata.Generation+1 || updated.Metadata.DisplayName != "API v2" {
-		t.Fatalf("updated binding = %+v, want generation increment and display name update", updated.Metadata)
-	}
-	if updated.Spec.Image != "" {
-		t.Fatalf("updated binding image = %q, want workload spec not persisted in control-plane", updated.Spec.Image)
-	}
-
-	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, service.Metadata.ID)
-	if err != nil {
-		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
-	}
-	if deleting.Status.DesiredState != model.DesiredStateDeleted || deleting.Metadata.Generation != updated.Metadata.Generation+1 {
-		t.Fatalf("deleting binding = %+v, want deleted state and generation increment", deleting)
-	}
-	if _, err := db.Store.UpdateServiceBinding(ctx, service.Metadata.ID, controlplanestore.UpdateServiceInput{
-		DisplayName: "API v3",
-		Spec: model.WorkloadSpec{
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      model.ExposurePublic,
-			Image:         "nginx:1.29-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-	}); !errors.Is(err, controlplanestore.ErrServiceDeleting) {
-		t.Fatalf("UpdateServiceBinding deleting error = %v, want ErrServiceDeleting", err)
-	}
-
-	if err := db.Store.DeleteServiceForGeneration(ctx, service.Metadata.ID, deleting.Metadata.Generation); err != nil {
-		t.Fatalf("DeleteServiceForGeneration returned error: %v", err)
-	}
-	if _, err := db.Store.GetService(ctx, service.Metadata.ID); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
-		t.Fatalf("GetService after delete error = %v, want ErrServiceNotFound", err)
-	}
-}
-
-func TestIntegrationDeletePlaneWithServicesReturnsConflict(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createPlane(t, db)
-
-	if _, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "bound-service",
-		DisplayName: "Bound Service",
-		Host:        "bound-service.apps.example.test",
-		Spec: model.ServiceSpec{
-			PlaneID:       plane.ID,
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      model.ExposurePublic,
-			Image:         "nginx:1.27-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-	}); err != nil {
-		t.Fatalf("CreateService returned error: %v", err)
-	}
-
-	if err := db.Store.DeletePlane(ctx, plane.ID); !errors.Is(err, controlplanestore.ErrPlaneHasServices) {
-		t.Fatalf("DeletePlane error = %v, want ErrPlaneHasServices", err)
-	}
-}
-
-func TestIntegrationDeletingServiceLookupAndDNSRecords(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createPlane(t, db)
-	service, err := db.Store.CreateService(ctx, controlplanestore.CreateServiceInput{
-		Name:        "delete-api",
-		DisplayName: "Delete API",
-		Host:        "delete-api.apps.example.test",
-		Spec: model.ServiceSpec{
-			PlaneID:       plane.ID,
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      model.ExposurePublic,
-			Image:         "nginx:1.27-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-	})
-	if err != nil {
-		t.Fatalf("CreateService returned error: %v", err)
-	}
-	deleting, err := db.Store.MarkServiceDeletionRequested(ctx, service.Metadata.ID)
-	if err != nil {
-		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
-	}
-
-	items, err := db.Store.ListDeletingServices(ctx)
-	if err != nil {
-		t.Fatalf("ListDeletingServices returned error: %v", err)
-	}
-	if len(items) != 1 || items[0].Metadata.ID != service.Metadata.ID {
-		t.Fatalf("ListDeletingServices = %+v, want deleting service", items)
-	}
 
 	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
-		ServiceID:  deleting.Metadata.ID,
-		Host:       deleting.Metadata.Host,
+		PlaneID:    plane.ID,
+		ServiceID:  "svc_dns",
+		Host:       "api.apps.example.test",
 		RecordType: "CNAME",
-		Value:      "delete-api.apps.example.test.cdn.example.net",
+		Value:      "api.apps.example.test.cdn.example.net.",
 		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
 	}); err != nil {
 		t.Fatalf("SaveServiceDNSRecord returned error: %v", err)
 	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, deleting.Metadata.ID)
+	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_dns")
 	if err != nil {
 		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
 	}
-	if len(records) != 1 || records[0].Host != deleting.Metadata.Host {
+	if len(records) != 1 || records[0].PlaneID != plane.ID || records[0].Host != "api.apps.example.test" || records[0].Value != "api.apps.example.test.cdn.example.net" {
 		t.Fatalf("DNS records = %+v, want saved record", records)
+	}
+	if err := db.Store.DeleteServiceDNSRecords(ctx, plane.ID, "svc_dns"); err != nil {
+		t.Fatalf("DeleteServiceDNSRecords returned error: %v", err)
+	}
+	records, err = db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_dns")
+	if err != nil {
+		t.Fatalf("ListServiceDNSRecords after delete returned error: %v", err)
+	}
+	if len(records) != 0 {
+		t.Fatalf("DNS records after delete = %+v, want none", records)
 	}
 }
 

@@ -2,7 +2,6 @@ package coordination
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net/http/httptest"
@@ -91,9 +90,12 @@ func TestCreateFailsWithoutPersistingBindingWhenInitialDispatchFails(t *testing.
 	if err == nil {
 		t.Fatalf("Create returned nil error, want dispatch failure")
 	}
-	_, err = db.Store.GetServiceByHost(ctx, "pending-web.apps.example.test")
-	if !errors.Is(err, controlplanestore.ErrServiceNotFound) {
-		t.Fatalf("GetServiceByHost after failed create error = %v, want ErrServiceNotFound", err)
+	services, err := operations.List(ctx)
+	if err != nil {
+		t.Fatalf("List after failed create returned error: %v", err)
+	}
+	if len(services) != 0 {
+		t.Fatalf("services after failed create = %+v, want none", services)
 	}
 	if len(planeServer.dispatchRequests()) != 0 {
 		t.Fatalf("dispatch requests = %d, want 0 while plane is offline", len(planeServer.dispatchRequests()))
@@ -112,7 +114,7 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
-	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput("API v2", "nginx:1.28-alpine"))
+	updated, err := operations.Update(ctx, updateInput(planeItem.ID, created.Metadata.ID, "API v2", "nginx:1.28-alpine"))
 	if err != nil {
 		t.Fatalf("Update returned error: %v", err)
 	}
@@ -131,7 +133,7 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	}
 }
 
-func TestUpdateFailsWithoutChangingBindingWhenDispatchFails(t *testing.T) {
+func TestUpdateFailsWithoutDispatchWhenPlaneIsOffline(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
@@ -147,46 +149,12 @@ func TestUpdateFailsWithoutChangingBindingWhenDispatchFails(t *testing.T) {
 		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
 	}
 
-	_, err = operations.Update(ctx, created.Metadata.ID, updateInput("Update Offline v2", "nginx:1.28-alpine"))
+	_, err = operations.Update(ctx, updateInput(planeItem.ID, created.Metadata.ID, "Update Offline v2", "nginx:1.28-alpine"))
 	if err == nil {
-		t.Fatalf("Update returned nil error, want dispatch failure")
-	}
-	current, err := db.Store.GetService(ctx, created.Metadata.ID)
-	if err != nil {
-		t.Fatalf("GetService returned error: %v", err)
-	}
-	if current.Metadata.Generation != created.Metadata.Generation || current.Metadata.DisplayName != created.Metadata.DisplayName {
-		t.Fatalf("binding after failed update = %+v, want unchanged", current.Metadata)
-	}
-}
-
-func TestUpdateRejectsDeletingService(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-update-deleting", planeServer.endpoint)
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "update-deleting", "Update Deleting", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if _, err := operations.Delete(ctx, created.Metadata.ID); err != nil {
-		t.Fatalf("Delete returned error: %v", err)
-	}
-	if _, err := operations.Update(ctx, created.Metadata.ID, updateInput("Update Deleting v2", "nginx:1.28-alpine")); !errors.Is(err, controlplanestore.ErrServiceDeleting) {
-		t.Fatalf("Update deleting service error = %v, want ErrServiceDeleting", err)
-	}
-	current, err := db.Store.GetService(ctx, created.Metadata.ID)
-	if err != nil {
-		t.Fatalf("GetService returned error: %v", err)
-	}
-	if current.Status.DesiredState != model.DesiredStateDeleted {
-		t.Fatalf("desired state = %s, want deleted", current.Status.DesiredState)
+		t.Fatalf("Update returned nil error, want plane offline error")
 	}
 	if len(planeServer.dispatchRequests()) != 1 {
-		t.Fatalf("dispatch requests = %d, want only initial dispatch", len(planeServer.dispatchRequests()))
+		t.Fatalf("dispatch requests = %d, want only initial create dispatch", len(planeServer.dispatchRequests()))
 	}
 }
 
@@ -203,22 +171,19 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 		t.Fatalf("Create returned error: %v", err)
 	}
 	serviceID := created.Metadata.ID
-	if _, err := operations.Delete(ctx, serviceID); err != nil {
+	deleting, err := operations.Delete(ctx, DeleteServiceInput{PlaneID: planeItem.ID, ServiceID: serviceID})
+	if err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	reloaded, err := db.Store.GetService(ctx, serviceID)
-	if err != nil {
-		t.Fatalf("GetService after delete returned error: %v", err)
-	}
-	if reloaded.Status.DesiredState != model.DesiredStateDeleted || reloaded.Status.Observed.Phase != model.PhaseDeleting {
-		t.Fatalf("service status after delete = %+v, want deleting", reloaded.Status)
+	if deleting.Status.DesiredState != model.DesiredStateDeleted || deleting.Status.Observed.Phase != model.PhaseDeleting {
+		t.Fatalf("service status after delete = %+v, want deleting", deleting.Status)
 	}
 	deleteRequests := planeServer.deleteRequests()
 	if len(deleteRequests) != 1 {
 		t.Fatalf("deleteRequests len = %d, want 1", len(deleteRequests))
 	}
 	if deleteRequests[0].GetServiceId() != serviceID ||
-		deleteRequests[0].GetServiceGeneration() != reloaded.Metadata.Generation {
+		deleteRequests[0].GetServiceGeneration() != deleting.Metadata.Generation {
 		t.Fatalf("delete input = %+v, want service generation delete", deleteRequests[0])
 	}
 }
@@ -239,7 +204,7 @@ func TestDeleteSyncsPlaneAfterDispatchToAdvanceDNSCleanup(t *testing.T) {
 	}
 	dns.deleted = nil
 
-	if _, err := operations.Delete(ctx, created.Metadata.ID); err != nil {
+	if _, err := operations.Delete(ctx, DeleteServiceInput{PlaneID: planeItem.ID, ServiceID: created.Metadata.ID}); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
 	if len(dns.deleted) == 0 {
@@ -247,7 +212,7 @@ func TestDeleteSyncsPlaneAfterDispatchToAdvanceDNSCleanup(t *testing.T) {
 	}
 }
 
-func TestListMergesLiveCloudPlaneSnapshotsAndCleansDeletedServices(t *testing.T) {
+func TestListUsesLiveCloudPlaneSnapshots(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
@@ -257,14 +222,6 @@ func TestListMergesLiveCloudPlaneSnapshotsAndCleansDeletedServices(t *testing.T)
 	service, err := operations.Create(ctx, createInput(planeItem.ID, "listed", "Listed", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
-	}
-	deleting, err := operations.Create(ctx, createInput(planeItem.ID, "listed-delete", "Listed Delete", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create(deleting) returned error: %v", err)
-	}
-	deleting, err = db.Store.MarkServiceDeletionRequested(ctx, deleting.Metadata.ID)
-	if err != nil {
-		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
 	}
 	now := time.Now().UTC()
 	planeServer.setSnapshot(&cloudplanev1.PlaneSnapshot{
@@ -281,13 +238,6 @@ func TestListMergesLiveCloudPlaneSnapshotsAndCleansDeletedServices(t *testing.T)
 				ServiceName:       service.Metadata.Name,
 				ServiceGeneration: service.Metadata.Generation,
 				Status:            planeExecutionStatusRunning,
-				ObservedAt:        timestamppb.New(now),
-			},
-			{
-				ServiceId:         deleting.Metadata.ID,
-				ServiceName:       deleting.Metadata.Name,
-				ServiceGeneration: deleting.Metadata.Generation,
-				Status:            planeExecutionStatusSucceeded,
 				ObservedAt:        timestamppb.New(now),
 			},
 		},
@@ -320,12 +270,12 @@ func TestListMergesLiveCloudPlaneSnapshotsAndCleansDeletedServices(t *testing.T)
 	}
 }
 
-func createInput(planeID string, name string, displayName string, image string) controlplanestore.CreateServiceInput {
-	return controlplanestore.CreateServiceInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
+func createInput(planeID string, name string, displayName string, image string) CreateServiceInput {
+	return CreateServiceInput{Name: name, DisplayName: displayName, Spec: serviceSpec(planeID, image)}
 }
 
-func updateInput(displayName string, image string) controlplanestore.UpdateServiceInput {
-	return controlplanestore.UpdateServiceInput{DisplayName: displayName, Spec: workloadSpec(image)}
+func updateInput(planeID string, serviceID string, displayName string, image string) UpdateServiceInput {
+	return UpdateServiceInput{PlaneID: planeID, ServiceID: serviceID, DisplayName: displayName, Spec: workloadSpec(image)}
 }
 
 func serviceSpec(planeID string, image string) model.ServiceSpec {
@@ -407,29 +357,9 @@ func (p *serviceOperationsPlane) UpsertService(_ context.Context, req *cloudplan
 	defer p.mu.Unlock()
 	p.dispatch = append(p.dispatch, req)
 	if p.frontDoorFromDispatch {
-		p.snapshot = &cloudplanev1.PlaneSnapshot{
-			Plane:         &cloudplanev1.PlaneSummary{Name: "test-plane", Provider: "aliyun", Region: "cn-beijing"},
-			CheckedAt:     timestamppb.Now(),
-			NodeInventory: &cloudplanev1.PlaneNodeInventory{},
-			Services: []*cloudplanev1.PlaneService{
-				{
-					ServiceId:    req.GetServiceId(),
-					Name:         req.GetServiceName(),
-					Host:         req.GetHost(),
-					Generation:   req.GetServiceGeneration(),
-					DesiredState: model.DesiredStateActive,
-				},
-			},
-			FrontdoorDomains: []*cloudplanev1.PlaneFrontDoorDomain{
-				{
-					Host:            req.GetHost(),
-					Cname:           req.GetHost() + ".cdn.example.net",
-					VerifySubdomain: "_cdnauth." + req.GetHost(),
-					VerifyType:      "TXT",
-					VerifyValue:     "verify-token",
-				},
-			},
-		}
+		p.snapshot = snapshotFromUpsert(req, true)
+	} else {
+		p.snapshot = snapshotFromUpsert(req, false)
 	}
 	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
@@ -457,6 +387,37 @@ func (p *serviceOperationsPlane) DeleteService(_ context.Context, req *cloudplan
 		}
 	}
 	return &cloudplanev1.DeleteServiceResponse{}, nil
+}
+
+func snapshotFromUpsert(req *cloudplanev1.UpsertServiceRequest, includeFrontDoor bool) *cloudplanev1.PlaneSnapshot {
+	service := &cloudplanev1.PlaneService{
+		ServiceId:     req.GetServiceId(),
+		Name:          req.GetServiceName(),
+		DisplayName:   req.GetDisplayName(),
+		Host:          req.GetHost(),
+		Generation:    req.GetServiceGeneration(),
+		DesiredState:  model.DesiredStateActive,
+		InstanceClass: req.GetInstanceClass(),
+		Exposure:      req.GetExposure(),
+		Image:         req.GetImage(),
+		Command:       append([]string(nil), req.GetCommand()...),
+		Args:          append([]string(nil), req.GetArgs()...),
+		Env:           req.GetEnv(),
+		ContainerPort: req.GetContainerPort(),
+		ReadinessPath: req.GetReadinessPath(),
+	}
+	if includeFrontDoor {
+		service.FrontdoorCname = req.GetHost() + ".cdn.example.net"
+		service.FrontdoorVerifySubdomain = "_cdnauth." + req.GetHost()
+		service.FrontdoorVerifyType = "TXT"
+		service.FrontdoorVerifyValue = "verify-token"
+	}
+	return &cloudplanev1.PlaneSnapshot{
+		Plane:         &cloudplanev1.PlaneSummary{Name: "test-plane", Provider: "aliyun", Region: "cn-beijing"},
+		CheckedAt:     timestamppb.Now(),
+		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
+		Services:      []*cloudplanev1.PlaneService{service},
+	}
 }
 
 func (p *serviceOperationsPlane) dispatchRequests() []*cloudplanev1.UpsertServiceRequest {

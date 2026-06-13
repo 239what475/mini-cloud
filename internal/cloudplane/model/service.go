@@ -22,6 +22,7 @@ type Service struct {
 	Generation   int64
 	DesiredState string
 	Spec         ServiceSpec
+	FrontDoor    FrontDoorStatus
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

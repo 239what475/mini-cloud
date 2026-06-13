@@ -427,24 +427,28 @@ func (x *PlaneExecutionSnapshot) GetObservedAt() *timestamppb.Timestamp {
 }
 
 type PlaneService struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ServiceId     string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	DisplayName   string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
-	Generation    int64                  `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
-	DesiredState  string                 `protobuf:"bytes,5,opt,name=desired_state,json=desiredState,proto3" json:"desired_state,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	Host          string                 `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
-	InstanceClass string                 `protobuf:"bytes,8,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
-	Exposure      string                 `protobuf:"bytes,9,opt,name=exposure,proto3" json:"exposure,omitempty"`
-	Image         string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"`
-	Command       []string               `protobuf:"bytes,11,rep,name=command,proto3" json:"command,omitempty"`
-	Args          []string               `protobuf:"bytes,12,rep,name=args,proto3" json:"args,omitempty"`
-	Env           map[string]string      `protobuf:"bytes,13,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	ContainerPort int32                  `protobuf:"varint,14,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
-	ReadinessPath string                 `protobuf:"bytes,15,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state                    protoimpl.MessageState `protogen:"open.v1"`
+	ServiceId                string                 `protobuf:"bytes,1,opt,name=service_id,json=serviceID,proto3" json:"service_id,omitempty"`
+	Name                     string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	DisplayName              string                 `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	Generation               int64                  `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
+	DesiredState             string                 `protobuf:"bytes,5,opt,name=desired_state,json=desiredState,proto3" json:"desired_state,omitempty"`
+	UpdatedAt                *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	Host                     string                 `protobuf:"bytes,7,opt,name=host,proto3" json:"host,omitempty"`
+	InstanceClass            string                 `protobuf:"bytes,8,opt,name=instance_class,json=instanceClass,proto3" json:"instance_class,omitempty"`
+	Exposure                 string                 `protobuf:"bytes,9,opt,name=exposure,proto3" json:"exposure,omitempty"`
+	Image                    string                 `protobuf:"bytes,10,opt,name=image,proto3" json:"image,omitempty"`
+	Command                  []string               `protobuf:"bytes,11,rep,name=command,proto3" json:"command,omitempty"`
+	Args                     []string               `protobuf:"bytes,12,rep,name=args,proto3" json:"args,omitempty"`
+	Env                      map[string]string      `protobuf:"bytes,13,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	ContainerPort            int32                  `protobuf:"varint,14,opt,name=container_port,json=containerPort,proto3" json:"container_port,omitempty"`
+	ReadinessPath            string                 `protobuf:"bytes,15,opt,name=readiness_path,json=readinessPath,proto3" json:"readiness_path,omitempty"`
+	FrontdoorCname           string                 `protobuf:"bytes,16,opt,name=frontdoor_cname,json=frontdoorCNAME,proto3" json:"frontdoor_cname,omitempty"`
+	FrontdoorVerifySubdomain string                 `protobuf:"bytes,17,opt,name=frontdoor_verify_subdomain,json=frontdoorVerifySubdomain,proto3" json:"frontdoor_verify_subdomain,omitempty"`
+	FrontdoorVerifyType      string                 `protobuf:"bytes,18,opt,name=frontdoor_verify_type,json=frontdoorVerifyType,proto3" json:"frontdoor_verify_type,omitempty"`
+	FrontdoorVerifyValue     string                 `protobuf:"bytes,19,opt,name=frontdoor_verify_value,json=frontdoorVerifyValue,proto3" json:"frontdoor_verify_value,omitempty"`
+	unknownFields            protoimpl.UnknownFields
+	sizeCache                protoimpl.SizeCache
 }
 
 func (x *PlaneService) Reset() {
@@ -582,98 +586,49 @@ func (x *PlaneService) GetReadinessPath() string {
 	return ""
 }
 
-type PlaneFrontDoorDomain struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Host            string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
-	Cname           string                 `protobuf:"bytes,2,opt,name=cname,proto3" json:"cname,omitempty"`
-	VerifySubdomain string                 `protobuf:"bytes,3,opt,name=verify_subdomain,json=verifySubdomain,proto3" json:"verify_subdomain,omitempty"`
-	VerifyType      string                 `protobuf:"bytes,4,opt,name=verify_type,json=verifyType,proto3" json:"verify_type,omitempty"`
-	VerifyValue     string                 `protobuf:"bytes,5,opt,name=verify_value,json=verifyValue,proto3" json:"verify_value,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
-}
-
-func (x *PlaneFrontDoorDomain) Reset() {
-	*x = PlaneFrontDoorDomain{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[6]
-	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-	ms.StoreMessageInfo(mi)
-}
-
-func (x *PlaneFrontDoorDomain) String() string {
-	return protoimpl.X.MessageStringOf(x)
-}
-
-func (*PlaneFrontDoorDomain) ProtoMessage() {}
-
-func (x *PlaneFrontDoorDomain) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[6]
+func (x *PlaneService) GetFrontdoorCname() string {
 	if x != nil {
-		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
-		if ms.LoadMessageInfo() == nil {
-			ms.StoreMessageInfo(mi)
-		}
-		return ms
-	}
-	return mi.MessageOf(x)
-}
-
-// Deprecated: Use PlaneFrontDoorDomain.ProtoReflect.Descriptor instead.
-func (*PlaneFrontDoorDomain) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{6}
-}
-
-func (x *PlaneFrontDoorDomain) GetHost() string {
-	if x != nil {
-		return x.Host
+		return x.FrontdoorCname
 	}
 	return ""
 }
 
-func (x *PlaneFrontDoorDomain) GetCname() string {
+func (x *PlaneService) GetFrontdoorVerifySubdomain() string {
 	if x != nil {
-		return x.Cname
+		return x.FrontdoorVerifySubdomain
 	}
 	return ""
 }
 
-func (x *PlaneFrontDoorDomain) GetVerifySubdomain() string {
+func (x *PlaneService) GetFrontdoorVerifyType() string {
 	if x != nil {
-		return x.VerifySubdomain
+		return x.FrontdoorVerifyType
 	}
 	return ""
 }
 
-func (x *PlaneFrontDoorDomain) GetVerifyType() string {
+func (x *PlaneService) GetFrontdoorVerifyValue() string {
 	if x != nil {
-		return x.VerifyType
-	}
-	return ""
-}
-
-func (x *PlaneFrontDoorDomain) GetVerifyValue() string {
-	if x != nil {
-		return x.VerifyValue
+		return x.FrontdoorVerifyValue
 	}
 	return ""
 }
 
 type PlaneSnapshot struct {
-	state            protoimpl.MessageState    `protogen:"open.v1"`
-	Plane            *PlaneSummary             `protobuf:"bytes,1,opt,name=plane,proto3" json:"plane,omitempty"`
-	CheckedAt        *timestamppb.Timestamp    `protobuf:"bytes,2,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
-	Reliability      *PlaneReliability         `protobuf:"bytes,3,opt,name=reliability,proto3" json:"reliability,omitempty"`
-	NodeInventory    *PlaneNodeInventory       `protobuf:"bytes,4,opt,name=node_inventory,json=nodeInventory,proto3" json:"node_inventory,omitempty"`
-	Executions       []*PlaneExecutionSnapshot `protobuf:"bytes,5,rep,name=executions,proto3" json:"executions,omitempty"`
-	Services         []*PlaneService           `protobuf:"bytes,6,rep,name=services,proto3" json:"services,omitempty"`
-	FrontdoorDomains []*PlaneFrontDoorDomain   `protobuf:"bytes,7,rep,name=frontdoor_domains,json=frontdoorDomains,proto3" json:"frontdoor_domains,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	state         protoimpl.MessageState    `protogen:"open.v1"`
+	Plane         *PlaneSummary             `protobuf:"bytes,1,opt,name=plane,proto3" json:"plane,omitempty"`
+	CheckedAt     *timestamppb.Timestamp    `protobuf:"bytes,2,opt,name=checked_at,json=checkedAt,proto3" json:"checked_at,omitempty"`
+	Reliability   *PlaneReliability         `protobuf:"bytes,3,opt,name=reliability,proto3" json:"reliability,omitempty"`
+	NodeInventory *PlaneNodeInventory       `protobuf:"bytes,4,opt,name=node_inventory,json=nodeInventory,proto3" json:"node_inventory,omitempty"`
+	Executions    []*PlaneExecutionSnapshot `protobuf:"bytes,5,rep,name=executions,proto3" json:"executions,omitempty"`
+	Services      []*PlaneService           `protobuf:"bytes,6,rep,name=services,proto3" json:"services,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PlaneSnapshot) Reset() {
 	*x = PlaneSnapshot{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[7]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -685,7 +640,7 @@ func (x *PlaneSnapshot) String() string {
 func (*PlaneSnapshot) ProtoMessage() {}
 
 func (x *PlaneSnapshot) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[7]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -698,7 +653,7 @@ func (x *PlaneSnapshot) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PlaneSnapshot.ProtoReflect.Descriptor instead.
 func (*PlaneSnapshot) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{7}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *PlaneSnapshot) GetPlane() *PlaneSummary {
@@ -743,13 +698,6 @@ func (x *PlaneSnapshot) GetServices() []*PlaneService {
 	return nil
 }
 
-func (x *PlaneSnapshot) GetFrontdoorDomains() []*PlaneFrontDoorDomain {
-	if x != nil {
-		return x.FrontdoorDomains
-	}
-	return nil
-}
-
 type GetSnapshotRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -758,7 +706,7 @@ type GetSnapshotRequest struct {
 
 func (x *GetSnapshotRequest) Reset() {
 	*x = GetSnapshotRequest{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[8]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +718,7 @@ func (x *GetSnapshotRequest) String() string {
 func (*GetSnapshotRequest) ProtoMessage() {}
 
 func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[8]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +731,7 @@ func (x *GetSnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotRequest.ProtoReflect.Descriptor instead.
 func (*GetSnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{8}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{7}
 }
 
 type GetSnapshotResponse struct {
@@ -795,7 +743,7 @@ type GetSnapshotResponse struct {
 
 func (x *GetSnapshotResponse) Reset() {
 	*x = GetSnapshotResponse{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[9]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -807,7 +755,7 @@ func (x *GetSnapshotResponse) String() string {
 func (*GetSnapshotResponse) ProtoMessage() {}
 
 func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[9]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -820,7 +768,7 @@ func (x *GetSnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSnapshotResponse.ProtoReflect.Descriptor instead.
 func (*GetSnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{9}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *GetSnapshotResponse) GetSnapshot() *PlaneSnapshot {
@@ -851,7 +799,7 @@ type UpsertServiceRequest struct {
 
 func (x *UpsertServiceRequest) Reset() {
 	*x = UpsertServiceRequest{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[10]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -863,7 +811,7 @@ func (x *UpsertServiceRequest) String() string {
 func (*UpsertServiceRequest) ProtoMessage() {}
 
 func (x *UpsertServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[10]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -876,7 +824,7 @@ func (x *UpsertServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertServiceRequest.ProtoReflect.Descriptor instead.
 func (*UpsertServiceRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{10}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *UpsertServiceRequest) GetServiceId() string {
@@ -978,7 +926,7 @@ type UpsertServiceResponse struct {
 
 func (x *UpsertServiceResponse) Reset() {
 	*x = UpsertServiceResponse{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[11]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -990,7 +938,7 @@ func (x *UpsertServiceResponse) String() string {
 func (*UpsertServiceResponse) ProtoMessage() {}
 
 func (x *UpsertServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[11]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1003,7 +951,7 @@ func (x *UpsertServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpsertServiceResponse.ProtoReflect.Descriptor instead.
 func (*UpsertServiceResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{11}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{10}
 }
 
 type DeleteServiceRequest struct {
@@ -1016,7 +964,7 @@ type DeleteServiceRequest struct {
 
 func (x *DeleteServiceRequest) Reset() {
 	*x = DeleteServiceRequest{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1028,7 +976,7 @@ func (x *DeleteServiceRequest) String() string {
 func (*DeleteServiceRequest) ProtoMessage() {}
 
 func (x *DeleteServiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[12]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1041,7 +989,7 @@ func (x *DeleteServiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteServiceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteServiceRequest) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{12}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteServiceRequest) GetServiceId() string {
@@ -1066,7 +1014,7 @@ type DeleteServiceResponse struct {
 
 func (x *DeleteServiceResponse) Reset() {
 	*x = DeleteServiceResponse{}
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[13]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1078,7 +1026,7 @@ func (x *DeleteServiceResponse) String() string {
 func (*DeleteServiceResponse) ProtoMessage() {}
 
 func (x *DeleteServiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[13]
+	mi := &file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1091,7 +1039,7 @@ func (x *DeleteServiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteServiceResponse.ProtoReflect.Descriptor instead.
 func (*DeleteServiceResponse) Descriptor() ([]byte, []int) {
-	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{13}
+	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP(), []int{12}
 }
 
 var File_minicloud_cloudplane_v1_cloud_plane_proto protoreflect.FileDescriptor
@@ -1136,7 +1084,7 @@ const file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc = "" +
 	"\x06status\x18\x04 \x01(\tR\x06status\x12,\n" +
 	"\x12last_status_reason\x18\x05 \x01(\tR\x10lastStatusReason\x12;\n" +
 	"\vobserved_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"observedAt\"\xc7\x04\n" +
+	"observedAt\"\x98\x06\n" +
 	"\fPlaneService\x12\x1d\n" +
 	"\n" +
 	"service_id\x18\x01 \x01(\tR\tserviceID\x12\x12\n" +
@@ -1157,17 +1105,14 @@ const file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc = "" +
 	"\x04args\x18\f \x03(\tR\x04args\x12@\n" +
 	"\x03env\x18\r \x03(\v2..minicloud.cloudplane.v1.PlaneService.EnvEntryR\x03env\x12%\n" +
 	"\x0econtainer_port\x18\x0e \x01(\x05R\rcontainerPort\x12%\n" +
-	"\x0ereadiness_path\x18\x0f \x01(\tR\rreadinessPath\x1a6\n" +
+	"\x0ereadiness_path\x18\x0f \x01(\tR\rreadinessPath\x12'\n" +
+	"\x0ffrontdoor_cname\x18\x10 \x01(\tR\x0efrontdoorCNAME\x12<\n" +
+	"\x1afrontdoor_verify_subdomain\x18\x11 \x01(\tR\x18frontdoorVerifySubdomain\x122\n" +
+	"\x15frontdoor_verify_type\x18\x12 \x01(\tR\x13frontdoorVerifyType\x124\n" +
+	"\x16frontdoor_verify_value\x18\x13 \x01(\tR\x14frontdoorVerifyValue\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaf\x01\n" +
-	"\x14PlaneFrontDoorDomain\x12\x12\n" +
-	"\x04host\x18\x01 \x01(\tR\x04host\x12\x14\n" +
-	"\x05cname\x18\x02 \x01(\tR\x05cname\x12)\n" +
-	"\x10verify_subdomain\x18\x03 \x01(\tR\x0fverifySubdomain\x12\x1f\n" +
-	"\vverify_type\x18\x04 \x01(\tR\n" +
-	"verifyType\x12!\n" +
-	"\fverify_value\x18\x05 \x01(\tR\vverifyValue\"\x98\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xbc\x03\n" +
 	"\rPlaneSnapshot\x12;\n" +
 	"\x05plane\x18\x01 \x01(\v2%.minicloud.cloudplane.v1.PlaneSummaryR\x05plane\x129\n" +
 	"\n" +
@@ -1177,8 +1122,7 @@ const file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc = "" +
 	"\n" +
 	"executions\x18\x05 \x03(\v2/.minicloud.cloudplane.v1.PlaneExecutionSnapshotR\n" +
 	"executions\x12A\n" +
-	"\bservices\x18\x06 \x03(\v2%.minicloud.cloudplane.v1.PlaneServiceR\bservices\x12Z\n" +
-	"\x11frontdoor_domains\x18\a \x03(\v2-.minicloud.cloudplane.v1.PlaneFrontDoorDomainR\x10frontdoorDomains\"\x14\n" +
+	"\bservices\x18\x06 \x03(\v2%.minicloud.cloudplane.v1.PlaneServiceR\bservices\"\x14\n" +
 	"\x12GetSnapshotRequest\"Y\n" +
 	"\x13GetSnapshotResponse\x12B\n" +
 	"\bsnapshot\x18\x01 \x01(\v2&.minicloud.cloudplane.v1.PlaneSnapshotR\bsnapshot\"\x95\x04\n" +
@@ -1225,7 +1169,7 @@ func file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescGZIP() []byte {
 	return file_minicloud_cloudplane_v1_cloud_plane_proto_rawDescData
 }
 
-var file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_minicloud_cloudplane_v1_cloud_plane_proto_msgTypes = make([]protoimpl.MessageInfo, 15)
 var file_minicloud_cloudplane_v1_cloud_plane_proto_goTypes = []any{
 	(*PlaneSummary)(nil),           // 0: minicloud.cloudplane.v1.PlaneSummary
 	(*PlaneReliability)(nil),       // 1: minicloud.cloudplane.v1.PlaneReliability
@@ -1233,45 +1177,43 @@ var file_minicloud_cloudplane_v1_cloud_plane_proto_goTypes = []any{
 	(*PlaneNodeInventory)(nil),     // 3: minicloud.cloudplane.v1.PlaneNodeInventory
 	(*PlaneExecutionSnapshot)(nil), // 4: minicloud.cloudplane.v1.PlaneExecutionSnapshot
 	(*PlaneService)(nil),           // 5: minicloud.cloudplane.v1.PlaneService
-	(*PlaneFrontDoorDomain)(nil),   // 6: minicloud.cloudplane.v1.PlaneFrontDoorDomain
-	(*PlaneSnapshot)(nil),          // 7: minicloud.cloudplane.v1.PlaneSnapshot
-	(*GetSnapshotRequest)(nil),     // 8: minicloud.cloudplane.v1.GetSnapshotRequest
-	(*GetSnapshotResponse)(nil),    // 9: minicloud.cloudplane.v1.GetSnapshotResponse
-	(*UpsertServiceRequest)(nil),   // 10: minicloud.cloudplane.v1.UpsertServiceRequest
-	(*UpsertServiceResponse)(nil),  // 11: minicloud.cloudplane.v1.UpsertServiceResponse
-	(*DeleteServiceRequest)(nil),   // 12: minicloud.cloudplane.v1.DeleteServiceRequest
-	(*DeleteServiceResponse)(nil),  // 13: minicloud.cloudplane.v1.DeleteServiceResponse
-	nil,                            // 14: minicloud.cloudplane.v1.PlaneService.EnvEntry
-	nil,                            // 15: minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
-	(*timestamppb.Timestamp)(nil),  // 16: google.protobuf.Timestamp
+	(*PlaneSnapshot)(nil),          // 6: minicloud.cloudplane.v1.PlaneSnapshot
+	(*GetSnapshotRequest)(nil),     // 7: minicloud.cloudplane.v1.GetSnapshotRequest
+	(*GetSnapshotResponse)(nil),    // 8: minicloud.cloudplane.v1.GetSnapshotResponse
+	(*UpsertServiceRequest)(nil),   // 9: minicloud.cloudplane.v1.UpsertServiceRequest
+	(*UpsertServiceResponse)(nil),  // 10: minicloud.cloudplane.v1.UpsertServiceResponse
+	(*DeleteServiceRequest)(nil),   // 11: minicloud.cloudplane.v1.DeleteServiceRequest
+	(*DeleteServiceResponse)(nil),  // 12: minicloud.cloudplane.v1.DeleteServiceResponse
+	nil,                            // 13: minicloud.cloudplane.v1.PlaneService.EnvEntry
+	nil,                            // 14: minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
+	(*timestamppb.Timestamp)(nil),  // 15: google.protobuf.Timestamp
 }
 var file_minicloud_cloudplane_v1_cloud_plane_proto_depIdxs = []int32{
-	16, // 0: minicloud.cloudplane.v1.PlaneNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
-	16, // 1: minicloud.cloudplane.v1.PlaneNodeInventory.observed_at:type_name -> google.protobuf.Timestamp
+	15, // 0: minicloud.cloudplane.v1.PlaneNode.last_heartbeat_at:type_name -> google.protobuf.Timestamp
+	15, // 1: minicloud.cloudplane.v1.PlaneNodeInventory.observed_at:type_name -> google.protobuf.Timestamp
 	2,  // 2: minicloud.cloudplane.v1.PlaneNodeInventory.nodes:type_name -> minicloud.cloudplane.v1.PlaneNode
-	16, // 3: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
-	16, // 4: minicloud.cloudplane.v1.PlaneService.updated_at:type_name -> google.protobuf.Timestamp
-	14, // 5: minicloud.cloudplane.v1.PlaneService.env:type_name -> minicloud.cloudplane.v1.PlaneService.EnvEntry
+	15, // 3: minicloud.cloudplane.v1.PlaneExecutionSnapshot.observed_at:type_name -> google.protobuf.Timestamp
+	15, // 4: minicloud.cloudplane.v1.PlaneService.updated_at:type_name -> google.protobuf.Timestamp
+	13, // 5: minicloud.cloudplane.v1.PlaneService.env:type_name -> minicloud.cloudplane.v1.PlaneService.EnvEntry
 	0,  // 6: minicloud.cloudplane.v1.PlaneSnapshot.plane:type_name -> minicloud.cloudplane.v1.PlaneSummary
-	16, // 7: minicloud.cloudplane.v1.PlaneSnapshot.checked_at:type_name -> google.protobuf.Timestamp
+	15, // 7: minicloud.cloudplane.v1.PlaneSnapshot.checked_at:type_name -> google.protobuf.Timestamp
 	1,  // 8: minicloud.cloudplane.v1.PlaneSnapshot.reliability:type_name -> minicloud.cloudplane.v1.PlaneReliability
 	3,  // 9: minicloud.cloudplane.v1.PlaneSnapshot.node_inventory:type_name -> minicloud.cloudplane.v1.PlaneNodeInventory
 	4,  // 10: minicloud.cloudplane.v1.PlaneSnapshot.executions:type_name -> minicloud.cloudplane.v1.PlaneExecutionSnapshot
 	5,  // 11: minicloud.cloudplane.v1.PlaneSnapshot.services:type_name -> minicloud.cloudplane.v1.PlaneService
-	6,  // 12: minicloud.cloudplane.v1.PlaneSnapshot.frontdoor_domains:type_name -> minicloud.cloudplane.v1.PlaneFrontDoorDomain
-	7,  // 13: minicloud.cloudplane.v1.GetSnapshotResponse.snapshot:type_name -> minicloud.cloudplane.v1.PlaneSnapshot
-	15, // 14: minicloud.cloudplane.v1.UpsertServiceRequest.env:type_name -> minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
-	8,  // 15: minicloud.cloudplane.v1.CloudPlaneSnapshotService.GetSnapshot:input_type -> minicloud.cloudplane.v1.GetSnapshotRequest
-	10, // 16: minicloud.cloudplane.v1.CloudPlaneService.UpsertService:input_type -> minicloud.cloudplane.v1.UpsertServiceRequest
-	12, // 17: minicloud.cloudplane.v1.CloudPlaneService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
-	9,  // 18: minicloud.cloudplane.v1.CloudPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.GetSnapshotResponse
-	11, // 19: minicloud.cloudplane.v1.CloudPlaneService.UpsertService:output_type -> minicloud.cloudplane.v1.UpsertServiceResponse
-	13, // 20: minicloud.cloudplane.v1.CloudPlaneService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
-	18, // [18:21] is the sub-list for method output_type
-	15, // [15:18] is the sub-list for method input_type
-	15, // [15:15] is the sub-list for extension type_name
-	15, // [15:15] is the sub-list for extension extendee
-	0,  // [0:15] is the sub-list for field type_name
+	6,  // 12: minicloud.cloudplane.v1.GetSnapshotResponse.snapshot:type_name -> minicloud.cloudplane.v1.PlaneSnapshot
+	14, // 13: minicloud.cloudplane.v1.UpsertServiceRequest.env:type_name -> minicloud.cloudplane.v1.UpsertServiceRequest.EnvEntry
+	7,  // 14: minicloud.cloudplane.v1.CloudPlaneSnapshotService.GetSnapshot:input_type -> minicloud.cloudplane.v1.GetSnapshotRequest
+	9,  // 15: minicloud.cloudplane.v1.CloudPlaneService.UpsertService:input_type -> minicloud.cloudplane.v1.UpsertServiceRequest
+	11, // 16: minicloud.cloudplane.v1.CloudPlaneService.DeleteService:input_type -> minicloud.cloudplane.v1.DeleteServiceRequest
+	8,  // 17: minicloud.cloudplane.v1.CloudPlaneSnapshotService.GetSnapshot:output_type -> minicloud.cloudplane.v1.GetSnapshotResponse
+	10, // 18: minicloud.cloudplane.v1.CloudPlaneService.UpsertService:output_type -> minicloud.cloudplane.v1.UpsertServiceResponse
+	12, // 19: minicloud.cloudplane.v1.CloudPlaneService.DeleteService:output_type -> minicloud.cloudplane.v1.DeleteServiceResponse
+	17, // [17:20] is the sub-list for method output_type
+	14, // [14:17] is the sub-list for method input_type
+	14, // [14:14] is the sub-list for extension type_name
+	14, // [14:14] is the sub-list for extension extendee
+	0,  // [0:14] is the sub-list for field type_name
 }
 
 func init() { file_minicloud_cloudplane_v1_cloud_plane_proto_init() }
@@ -1285,7 +1227,7 @@ func file_minicloud_cloudplane_v1_cloud_plane_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc), len(file_minicloud_cloudplane_v1_cloud_plane_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   15,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

@@ -8,51 +8,57 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestIntegrationFrontDoorDomainLifecycle(t *testing.T) {
+func TestIntegrationServiceFrontDoorLifecycle(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
-	if err := db.Store.SaveFrontDoorDomain(ctx, cloudmodel.ManagedFrontDoorDomain{
-		Host:  "API.Apps.Example.com.",
-		CNAME: "api.apps.example.com.cdn.example.net.",
+	upsertTestService(t, ctx, db, testServiceInput{
+		ID:         "svc-frontdoor",
+		Name:       "api",
+		Generation: 1,
+		Image:      "nginx:1.27-alpine",
+	})
+	if err := db.Store.SaveServiceFrontDoor(ctx, "API.Apps.Example.Test.", cloudmodel.FrontDoorStatus{
+		CNAME: "api.apps.example.test.cdn.example.net.",
 		Verification: &cloudmodel.FrontDoorDNSRecord{
-			Subdomain: "_cdnauth.apps.example.com.",
+			Subdomain: "_cdnauth.apps.example.test.",
 			Type:      "TXT",
 			Value:     "verify-token",
 		},
 	}); err != nil {
-		t.Fatalf("SaveFrontDoorDomain returned error: %v", err)
+		t.Fatalf("SaveServiceFrontDoor returned error: %v", err)
 	}
-	items, err := db.Store.ListFrontDoorDomains(ctx)
+	items, err := db.Store.ListServiceFrontDoors(ctx)
 	if err != nil {
-		t.Fatalf("ListFrontDoorDomains returned error: %v", err)
+		t.Fatalf("ListServiceFrontDoors returned error: %v", err)
 	}
-	if len(items) != 1 || items[0].Host != "api.apps.example.com" || items[0].CNAME != "api.apps.example.com.cdn.example.net" {
-		t.Fatalf("frontdoor domains = %+v", items)
+	if len(items) != 1 || items[0].Host != "api.apps.example.test" || items[0].FrontDoor.CNAME != "api.apps.example.test.cdn.example.net" {
+		t.Fatalf("service frontdoors = %+v", items)
 	}
-	if items[0].Verification == nil || items[0].Verification.Subdomain != "_cdnauth.apps.example.com" || items[0].Verification.Type != "TXT" || items[0].Verification.Value != "verify-token" {
-		t.Fatalf("frontdoor verification = %+v", items[0].Verification)
+	verification := items[0].FrontDoor.Verification
+	if verification == nil || verification.Subdomain != "_cdnauth.apps.example.test" || verification.Type != "TXT" || verification.Value != "verify-token" {
+		t.Fatalf("frontdoor verification = %+v", verification)
 	}
 
-	if err := db.Store.SaveFrontDoorDomain(ctx, cloudmodel.ManagedFrontDoorDomain{Host: "api.apps.example.com", CNAME: "api.apps.example.com.next-cdn.example.net"}); err != nil {
-		t.Fatalf("second SaveFrontDoorDomain returned error: %v", err)
+	if err := db.Store.SaveServiceFrontDoor(ctx, "api.apps.example.test", cloudmodel.FrontDoorStatus{CNAME: "api.apps.example.test.next-cdn.example.net"}); err != nil {
+		t.Fatalf("second SaveServiceFrontDoor returned error: %v", err)
 	}
-	items, err = db.Store.ListFrontDoorDomains(ctx)
+	items, err = db.Store.ListServiceFrontDoors(ctx)
 	if err != nil {
-		t.Fatalf("second ListFrontDoorDomains returned error: %v", err)
+		t.Fatalf("second ListServiceFrontDoors returned error: %v", err)
 	}
-	if len(items) != 1 || items[0].CNAME != "api.apps.example.com.next-cdn.example.net" || items[0].Verification != nil {
-		t.Fatalf("frontdoor domains after update = %+v", items)
+	if len(items) != 1 || items[0].FrontDoor.CNAME != "api.apps.example.test.next-cdn.example.net" || items[0].FrontDoor.Verification != nil {
+		t.Fatalf("service frontdoor after update = %+v", items)
 	}
 
-	if err := db.Store.DeleteFrontDoorDomain(ctx, "api.apps.example.com"); err != nil {
-		t.Fatalf("DeleteFrontDoorDomain returned error: %v", err)
+	if err := db.Store.ClearServiceFrontDoor(ctx, "api.apps.example.test"); err != nil {
+		t.Fatalf("ClearServiceFrontDoor returned error: %v", err)
 	}
-	items, err = db.Store.ListFrontDoorDomains(ctx)
+	items, err = db.Store.ListServiceFrontDoors(ctx)
 	if err != nil {
-		t.Fatalf("third ListFrontDoorDomains returned error: %v", err)
+		t.Fatalf("third ListServiceFrontDoors returned error: %v", err)
 	}
 	if len(items) != 0 {
-		t.Fatalf("frontdoor domains after delete = %+v", items)
+		t.Fatalf("service frontdoors after clear = %+v", items)
 	}
 }

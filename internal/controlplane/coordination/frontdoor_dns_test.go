@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"mini-cloud/internal/controlplane/model"
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 	"mini-cloud/internal/testutil"
@@ -13,17 +14,18 @@ func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-a")
-	service := createSyncTestService(t, db.Store, plane.ID, "api", "api.apps.example.com")
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
 		{
-			Host:            "api.apps.example.com",
-			Cname:           "api.apps.example.com.cdn.example.net",
-			VerifySubdomain: "_cdnauth.example.com",
-			VerifyType:      "TXT",
-			VerifyValue:     "verify-token",
+			ServiceId:                "svc_api",
+			Host:                     "api.apps.example.com",
+			DesiredState:             "active",
+			FrontdoorCname:           "api.apps.example.com.cdn.example.net",
+			FrontdoorVerifySubdomain: "_cdnauth.example.com",
+			FrontdoorVerifyType:      "TXT",
+			FrontdoorVerifyValue:     "verify-token",
 		},
 	})
 	if err != nil {
@@ -41,7 +43,7 @@ func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	if len(dns.deleted) != 1 || dns.deleted[0].host != "_cdnauth.example.com" || dns.deleted[0].recordType != "TXT" || dns.deleted[0].value != "verify-token" {
 		t.Fatalf("deleted records = %+v, want verification TXT deletion", dns.deleted)
 	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, service.Metadata.ID)
+	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_api")
 	if err != nil {
 		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
 	}
@@ -54,9 +56,9 @@ func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) 
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-cname-ready")
-	service := createSyncTestService(t, db.Store, plane.ID, "ready", "ready.apps.example.com")
 	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
-		ServiceID:  service.Metadata.ID,
+		PlaneID:    plane.ID,
+		ServiceID:  "svc_ready",
 		Host:       "_cdnauth.ready.apps.example.com",
 		RecordType: "TXT",
 		Value:      "old-verify-token",
@@ -67,10 +69,12 @@ func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) 
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
 		{
-			Host:  "ready.apps.example.com",
-			Cname: "ready.apps.example.com.cdn.example.net",
+			ServiceId:      "svc_ready",
+			Host:           "ready.apps.example.com",
+			DesiredState:   "active",
+			FrontdoorCname: "ready.apps.example.com.cdn.example.net",
 		},
 	}); err != nil {
 		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
@@ -78,7 +82,7 @@ func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) 
 	if len(dns.deleted) != 1 || dns.deleted[0].host != "_cdnauth.ready.apps.example.com" || dns.deleted[0].value != "old-verify-token" {
 		t.Fatalf("deleted records = %+v, want stored verification deletion", dns.deleted)
 	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, service.Metadata.ID)
+	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_ready")
 	if err != nil {
 		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
 	}
@@ -87,24 +91,22 @@ func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) 
 	}
 }
 
-func TestSyncFrontDoorDNSSkipsDeletingService(t *testing.T) {
+func TestSyncFrontDoorDNSSkipsDeletedService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	plane := createSyncTestPlane(t, db.Store, "plane-deleting-frontdoor")
-	service := createSyncTestService(t, db.Store, plane.ID, "deleting-frontdoor", "deleting-frontdoor.apps.example.com")
-	if _, err := db.Store.MarkServiceDeletionRequested(ctx, service.Metadata.ID); err != nil {
-		t.Fatalf("MarkServiceDeletionRequested returned error: %v", err)
-	}
 	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneFrontDoorDomain{
+	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
 		{
-			Host:            "deleting-frontdoor.apps.example.com",
-			Cname:           "deleting-frontdoor.apps.example.com.cdn.example.net",
-			VerifySubdomain: "_cdnauth.deleting-frontdoor.apps.example.com",
-			VerifyType:      "TXT",
-			VerifyValue:     "verify-token",
+			ServiceId:                "svc_deleting",
+			Host:                     "deleting-frontdoor.apps.example.com",
+			DesiredState:             "deleted",
+			FrontdoorCname:           "deleting-frontdoor.apps.example.com.cdn.example.net",
+			FrontdoorVerifySubdomain: "_cdnauth.deleting-frontdoor.apps.example.com",
+			FrontdoorVerifyType:      "TXT",
+			FrontdoorVerifyValue:     "verify-token",
 		},
 	}); err != nil {
 		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
@@ -112,7 +114,7 @@ func TestSyncFrontDoorDNSSkipsDeletingService(t *testing.T) {
 	if len(dns.records) != 0 || len(dns.deleted) != 0 {
 		t.Fatalf("DNS operations = create %+v delete %+v, want none for deleting service", dns.records, dns.deleted)
 	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, service.Metadata.ID)
+	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_deleting")
 	if err != nil {
 		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
 	}
@@ -146,4 +148,19 @@ func (f *fakeDNSClient) EnsureRecord(_ context.Context, host string, recordType 
 func (f *fakeDNSClient) DeleteRecord(_ context.Context, host string, recordType string, value string) error {
 	f.deleted = append(f.deleted, fakeDeletedDNSRecord{host: host, recordType: recordType, value: value})
 	return nil
+}
+
+func createSyncTestPlane(t *testing.T, stores *controlplanestore.Store, name string) model.PlaneDetail {
+	t.Helper()
+	item, err := stores.RegisterPlane(context.Background(), controlplanestore.RegisterPlaneInput{
+		Name:         name,
+		DisplayName:  name,
+		Provider:     "tencent",
+		Region:       "ap-guangzhou",
+		GRPCEndpoint: name + ".example.test:18081",
+	})
+	if err != nil {
+		t.Fatalf("RegisterPlane returned error: %v", err)
+	}
+	return item
 }

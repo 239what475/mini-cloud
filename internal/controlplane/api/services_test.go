@@ -68,7 +68,7 @@ func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 	}
 }
 
-func TestUpdateServiceRejectsPlaneIDInRequest(t *testing.T) {
+func TestUpdateServiceRequiresPlaneIDQuery(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceAPIPlane(t)
@@ -127,7 +127,6 @@ func TestUpdateServiceRejectsPlaneIDInRequest(t *testing.T) {
 	updateBody := []byte(`{
 		"displayName": "Strict Web v2",
 		"spec": {
-			"planeID": "` + plane.ID + `",
 			"instanceClass": "small",
 			"exposure": "public",
 			"image": "nginx:1.28-alpine",
@@ -141,7 +140,16 @@ func TestUpdateServiceRejectsPlaneIDInRequest(t *testing.T) {
 	updateReq.Header.Set("Content-Type", "application/json")
 	handler.ServeHTTP(updateResp, updateReq)
 	if updateResp.Code != http.StatusBadRequest {
-		t.Fatalf("update status = %d body = %s, want 400 for unknown planeID field", updateResp.Code, updateResp.Body.String())
+		t.Fatalf("update status = %d body = %s, want 400 without planeID query", updateResp.Code, updateResp.Body.String())
+	}
+
+	updateResp = httptest.NewRecorder()
+	updateReq = httptest.NewRequest(http.MethodPut, "/api/v1/services/"+created.Metadata.ID+"?planeID="+plane.ID, bytes.NewReader(updateBody))
+	updateReq.Header.Set("Authorization", "Bearer admin-token")
+	updateReq.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(updateResp, updateReq)
+	if updateResp.Code != http.StatusOK {
+		t.Fatalf("update status = %d body = %s, want 200 with planeID query", updateResp.Code, updateResp.Body.String())
 	}
 }
 
@@ -151,6 +159,7 @@ type serviceAPIPlane struct {
 
 	mu       sync.Mutex
 	endpoint string
+	service  *cloudplanev1.PlaneService
 }
 
 func startServiceAPIPlane(t *testing.T) *serviceAPIPlane {
@@ -171,15 +180,35 @@ func startServiceAPIPlane(t *testing.T) *serviceAPIPlane {
 }
 
 func (p *serviceAPIPlane) GetSnapshot(context.Context, *cloudplanev1.GetSnapshotRequest) (*cloudplanev1.GetSnapshotResponse, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	services := make([]*cloudplanev1.PlaneService, 0, 1)
+	if p.service != nil {
+		services = append(services, p.service)
+	}
 	return &cloudplanev1.GetSnapshotResponse{Snapshot: &cloudplanev1.PlaneSnapshot{
 		Plane:         &cloudplanev1.PlaneSummary{Name: "api-plane", Provider: "aliyun", Region: "cn-beijing"},
 		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
+		Services:      services,
 	}}, nil
 }
 
-func (p *serviceAPIPlane) UpsertService(context.Context, *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
+func (p *serviceAPIPlane) UpsertService(_ context.Context, req *cloudplanev1.UpsertServiceRequest) (*cloudplanev1.UpsertServiceResponse, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.service = &cloudplanev1.PlaneService{
+		ServiceId:     req.GetServiceId(),
+		Name:          req.GetServiceName(),
+		DisplayName:   req.GetDisplayName(),
+		Host:          req.GetHost(),
+		Generation:    req.GetServiceGeneration(),
+		DesiredState:  model.DesiredStateActive,
+		InstanceClass: req.GetInstanceClass(),
+		Exposure:      req.GetExposure(),
+		Image:         req.GetImage(),
+		ContainerPort: req.GetContainerPort(),
+		ReadinessPath: req.GetReadinessPath(),
+	}
 	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 

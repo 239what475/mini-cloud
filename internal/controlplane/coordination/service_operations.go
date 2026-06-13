@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"regexp"
 	"strings"
 	"time"
 
@@ -17,12 +18,33 @@ var (
 	errPlaneNotReady    = errors.New("plane is not ready")
 	errPlaneIDRequired  = errors.New("planeID is required")
 	errServiceIDMissing = errors.New("serviceID is required")
+	errServiceSpec      = errors.New("invalid service spec")
 )
 
 const (
 	dispatchServiceTimeout = 15 * time.Second
 	dispatchDeleteTimeout  = 15 * time.Second
 )
+
+var serviceNamePattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+
+type CreateServiceInput struct {
+	Name        string
+	DisplayName string
+	Spec        model.ServiceSpec
+}
+
+type UpdateServiceInput struct {
+	PlaneID     string
+	ServiceID   string
+	DisplayName string
+	Spec        model.WorkloadSpec
+}
+
+type DeleteServiceInput struct {
+	PlaneID   string
+	ServiceID string
+}
 
 type ServiceOperations struct {
 	logger            *slog.Logger
@@ -45,92 +67,82 @@ func NewServiceOperations(logger *slog.Logger, stores *store.Store, southboundTo
 	}
 }
 
-func (c *ServiceOperations) Create(ctx context.Context, input store.CreateServiceInput) (model.Service, error) {
-	input.Host = serviceHost(input.Name, c.serviceBaseDomain)
-	created, err := c.store.CreateService(ctx, input)
+func (c *ServiceOperations) Create(ctx context.Context, input CreateServiceInput) (model.Service, error) {
+	if err := validateCreateServiceInput(input); err != nil {
+		return model.Service{}, err
+	}
+	planeID := strings.TrimSpace(input.Spec.PlaneID)
+	if _, err := c.readyPlane(ctx, planeID); err != nil {
+		return model.Service{}, err
+	}
+	serviceID, err := store.NewPublicID("svc")
 	if err != nil {
 		return model.Service{}, err
 	}
-	created.Spec = input.Spec
-	created.Status.Observed = acceptedServiceStatus(created.Metadata.Generation, "service accepted by cloud-plane")
-	created.Status.Run = model.RunStatus{Phase: model.RunPhaseDispatching, Message: "service accepted by cloud-plane; waiting for node-agent execution result"}
-
-	if err := c.dispatchServiceSpec(ctx, created); err != nil {
-		if deleteErr := c.store.DeleteServiceForGeneration(ctx, created.Metadata.ID, created.Metadata.Generation); deleteErr != nil && !errors.Is(deleteErr, store.ErrServiceNotFound) {
-			return model.Service{}, errors.Join(err, deleteErr)
-		}
+	service := model.Service{
+		Metadata: model.ServiceMetadata{
+			ID:          serviceID,
+			Name:        strings.TrimSpace(input.Name),
+			DisplayName: strings.TrimSpace(input.DisplayName),
+			Host:        serviceHost(input.Name, c.serviceBaseDomain),
+			Generation:  1,
+		},
+		Spec: input.Spec,
+		Status: model.ServiceStatus{
+			DesiredState: model.DesiredStateActive,
+			Observed:     acceptedServiceStatus(1, "service accepted by cloud-plane"),
+			Run:          model.RunStatus{Phase: model.RunPhaseDispatching, Message: "service accepted by cloud-plane; waiting for node-agent execution result"},
+		},
+	}
+	if err := c.sendServiceSpecToPlane(ctx, planeID, service); err != nil {
 		return model.Service{}, err
 	}
-	c.syncServicePlane(ctx, created.Metadata.ID, created.Spec.PlaneID)
-	return created, nil
-}
-
-func serviceHost(name string, baseDomain string) string {
-	name = strings.Trim(strings.ToLower(strings.TrimSpace(name)), ".")
-	baseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(baseDomain)), ".")
-	if name == "" || baseDomain == "" {
-		return ""
-	}
-	return name + "." + baseDomain
+	c.bestEffortSyncPlane(ctx, service.Metadata.ID, planeID)
+	return service, nil
 }
 
 func (c *ServiceOperations) List(ctx context.Context) ([]model.Service, error) {
-	bindings, err := c.store.ListServices(ctx)
+	views, err := c.loadPlaneSnapshotViews(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if len(bindings) == 0 {
-		return bindings, nil
-	}
-
-	snapshots := make(map[string]*cloudplanev1.PlaneSnapshot)
-	for _, binding := range bindings {
-		planeID := strings.TrimSpace(binding.Spec.PlaneID)
-		if planeID == "" || snapshots[planeID] != nil {
-			continue
-		}
-		snapshot, err := c.loadPlaneSnapshot(ctx, planeID)
-		if err != nil {
-			c.logger.Warn("load plane snapshot for service list failed", "plane_id", planeID, "error", err)
-			continue
-		}
-		snapshots[planeID] = snapshot
-	}
-
-	out := make([]model.Service, 0, len(bindings))
-	for _, binding := range bindings {
-		out = append(out, c.serviceFromSnapshot(binding, snapshots[binding.Spec.PlaneID]))
+	out := make([]model.Service, 0)
+	for _, view := range views {
+		out = append(out, servicesFromSnapshot(view.Plane.ID, view.Snapshot)...)
 	}
 	return out, nil
 }
 
-func (c *ServiceOperations) Get(ctx context.Context, serviceID string) (model.Service, error) {
-	binding, err := c.store.GetService(ctx, serviceID)
+func (c *ServiceOperations) Get(ctx context.Context, planeID string, serviceID string) (model.Service, error) {
+	serviceID = strings.TrimSpace(serviceID)
+	if serviceID == "" {
+		return model.Service{}, errServiceIDMissing
+	}
+	view, err := c.loadPlaneSnapshotView(ctx, planeID)
 	if err != nil {
 		return model.Service{}, err
 	}
-	snapshot, err := c.loadPlaneSnapshot(ctx, binding.Spec.PlaneID)
-	if err != nil {
-		c.logger.Warn("load plane snapshot for service get failed", "service_id", serviceID, "plane_id", binding.Spec.PlaneID, "error", err)
-		return binding, nil
+	for _, service := range servicesFromSnapshot(view.Plane.ID, view.Snapshot) {
+		if service.Metadata.ID == serviceID {
+			return service, nil
+		}
 	}
-	return c.serviceFromSnapshot(binding, snapshot), nil
+	return model.Service{}, store.ErrServiceNotFound
 }
 
-func (c *ServiceOperations) Update(ctx context.Context, serviceID string, input store.UpdateServiceInput) (model.Service, error) {
-	current, err := c.store.GetService(ctx, serviceID)
+func (c *ServiceOperations) Update(ctx context.Context, input UpdateServiceInput) (model.Service, error) {
+	if err := validateUpdateServiceInput(input); err != nil {
+		return model.Service{}, err
+	}
+	current, err := c.Get(ctx, input.PlaneID, input.ServiceID)
 	if err != nil {
 		return model.Service{}, err
 	}
-	if current.Status.DesiredState == model.DesiredStateDeleted {
-		return model.Service{}, store.ErrServiceDeleting
-	}
-
 	next := current
 	next.Metadata.DisplayName = strings.TrimSpace(input.DisplayName)
 	next.Metadata.Generation++
 	next.Spec = model.ServiceSpec{
-		PlaneID:       current.Spec.PlaneID,
+		PlaneID:       strings.TrimSpace(input.PlaneID),
 		InstanceClass: input.Spec.InstanceClass,
 		Exposure:      input.Spec.Exposure,
 		Image:         input.Spec.Image,
@@ -142,68 +154,65 @@ func (c *ServiceOperations) Update(ctx context.Context, serviceID string, input 
 	}
 	next.Status.Observed = acceptedServiceStatus(next.Metadata.Generation, "service update accepted by cloud-plane")
 	next.Status.Run = model.RunStatus{Phase: model.RunPhaseDispatching, Message: "service update accepted by cloud-plane; waiting for node-agent execution result"}
-
-	if err := c.dispatchServiceSpec(ctx, next); err != nil {
+	if err := c.sendServiceSpecToPlane(ctx, input.PlaneID, next); err != nil {
 		return model.Service{}, err
 	}
-	updated, err := c.store.UpdateServiceBinding(ctx, serviceID, input)
-	if err != nil {
-		return model.Service{}, err
-	}
-	updated.Spec = next.Spec
-	updated.Status = next.Status
-	c.syncServicePlane(ctx, updated.Metadata.ID, updated.Spec.PlaneID)
-	return updated, nil
+	c.bestEffortSyncPlane(ctx, next.Metadata.ID, input.PlaneID)
+	return next, nil
 }
 
-func (c *ServiceOperations) Delete(ctx context.Context, serviceID string) (model.Service, error) {
-	deleting, err := c.store.MarkServiceDeletionRequested(ctx, serviceID)
+func (c *ServiceOperations) Delete(ctx context.Context, input DeleteServiceInput) (model.Service, error) {
+	planeID := strings.TrimSpace(input.PlaneID)
+	serviceID := strings.TrimSpace(input.ServiceID)
+	if planeID == "" {
+		return model.Service{}, errPlaneIDRequired
+	}
+	if serviceID == "" {
+		return model.Service{}, errServiceIDMissing
+	}
+	current, err := c.Get(ctx, planeID, serviceID)
 	if err != nil {
 		return model.Service{}, err
 	}
-	if err := c.dispatchDeletingService(ctx, deleting); err != nil {
-		c.logger.Warn("service delete dispatch failed; service remains deleting", "service_id", deleting.Metadata.ID, "error", err)
-	} else {
-		c.syncServicePlane(ctx, deleting.Metadata.ID, deleting.Spec.PlaneID)
-	}
-	deleting.Status.Observed = model.DeletingServiceStatus(deleting.Metadata.Generation, "service deletion requested")
-	deleting.Status.Run = model.PendingRunStatus("waiting for cloud-plane cleanup")
-	current, err := c.store.GetService(ctx, deleting.Metadata.ID)
-	if err != nil {
-		if errors.Is(err, store.ErrServiceNotFound) {
-			return deleting, nil
+	deleteGeneration := current.Metadata.Generation + 1
+	if err := c.deleteRemoteService(ctx, planeID, serviceID, deleteGeneration); err != nil {
+		if errors.Is(err, errPlaneObjectNotFound) {
+			c.cleanupServiceDNS(ctx, planeID, serviceID)
+			current.Status.DesiredState = model.DesiredStateDeleted
+			current.Status.Observed = model.DeletingServiceStatus(deleteGeneration, "service already absent from cloud-plane")
+			current.Status.Run = model.PendingRunStatus("service already absent from cloud-plane")
+			return current, nil
 		}
 		return model.Service{}, err
 	}
-	current.Status = deleting.Status
+	current.Metadata.Generation = deleteGeneration
+	current.Status.DesiredState = model.DesiredStateDeleted
+	current.Status.Observed = model.DeletingServiceStatus(deleteGeneration, "service deletion requested")
+	current.Status.Run = model.PendingRunStatus("waiting for cloud-plane cleanup")
+	c.cleanupServiceDNS(ctx, planeID, serviceID)
+	c.bestEffortSyncPlane(ctx, serviceID, planeID)
 	return current, nil
 }
 
-func (c *ServiceOperations) dispatchDeletingService(ctx context.Context, serviceItem model.Service) error {
-	planeID, err := c.boundPlaneID(ctx, serviceItem)
-	if err != nil {
-		return err
+func (c *ServiceOperations) cleanupServiceDNS(ctx context.Context, planeID string, serviceID string) {
+	if c.planeSyncer == nil {
+		return
 	}
-	if err := c.deleteRemoteService(ctx, planeID, serviceItem.Metadata.ID, serviceItem.Metadata.Generation); err != nil {
-		if errors.Is(err, errPlaneObjectNotFound) {
-			if c.planeSyncer != nil {
-				if err := c.planeSyncer.deleteServiceDNS(ctx, serviceItem); err != nil {
-					return err
-				}
-			}
-			if err := c.store.DeleteServiceForGeneration(ctx, serviceItem.Metadata.ID, serviceItem.Metadata.Generation); err != nil &&
-				!errors.Is(err, store.ErrServiceNotFound) &&
-				!errors.Is(err, store.ErrServiceGenerationConflict) {
-				return err
-			}
-			return nil
-		}
-		return err
+	if err := c.planeSyncer.deleteServiceDNS(ctx, planeID, serviceID); err != nil {
+		c.logger.Warn("delete service DNS records failed", "service_id", serviceID, "plane_id", planeID, "error", err)
 	}
-	return nil
 }
 
-func (c *ServiceOperations) syncServicePlane(ctx context.Context, serviceID string, planeID string) {
+func serviceHost(name string, baseDomain string) string {
+	name = strings.Trim(strings.ToLower(strings.TrimSpace(name)), ".")
+	baseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(baseDomain)), ".")
+	if name == "" || baseDomain == "" {
+		return ""
+	}
+	return name + "." + baseDomain
+}
+
+func (c *ServiceOperations) bestEffortSyncPlane(ctx context.Context, serviceID string, planeID string) {
 	if c.planeSyncer == nil {
 		return
 	}
@@ -216,19 +225,7 @@ func (c *ServiceOperations) syncServicePlane(ctx context.Context, serviceID stri
 	}
 }
 
-func (c *ServiceOperations) dispatchServiceSpec(ctx context.Context, service model.Service) error {
-	planeID, err := c.boundPlaneID(ctx, service)
-	if err != nil {
-		return err
-	}
-	return c.sendServiceSpecToPlane(ctx, planeID, service)
-}
-
 func (c *ServiceOperations) sendServiceSpecToPlane(ctx context.Context, planeID string, service model.Service) error {
-	if planeID == "" {
-		return errPlaneIDRequired
-	}
-
 	client, err := c.planeClient(ctx, planeID)
 	if err != nil {
 		return err
@@ -238,14 +235,12 @@ func (c *ServiceOperations) sendServiceSpecToPlane(ctx context.Context, planeID 
 			c.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
 		}
 	}()
-
 	request, err := serviceDispatchRequest(service)
 	if err != nil {
 		return err
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, dispatchServiceTimeout)
 	defer cancel()
-
 	if err := client.UpsertService(requestCtx, request); err != nil {
 		return fmt.Errorf("dispatch service spec to cloud-plane: %w", err)
 	}
@@ -253,16 +248,6 @@ func (c *ServiceOperations) sendServiceSpecToPlane(ctx context.Context, planeID 
 }
 
 func (c *ServiceOperations) deleteRemoteService(ctx context.Context, planeID string, serviceID string, serviceGeneration int64) error {
-	if planeID == "" {
-		return errPlaneIDRequired
-	}
-	if serviceID == "" {
-		return errServiceIDMissing
-	}
-	if serviceGeneration <= 0 {
-		return fmt.Errorf("serviceGeneration must be greater than 0")
-	}
-
 	client, err := c.planeClient(ctx, planeID)
 	if err != nil {
 		return err
@@ -272,47 +257,88 @@ func (c *ServiceOperations) deleteRemoteService(ctx context.Context, planeID str
 			c.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
 		}
 	}()
-
 	requestCtx, cancel := context.WithTimeout(ctx, dispatchDeleteTimeout)
 	defer cancel()
-
-	if err := client.DeleteService(requestCtx, &cloudplanev1.DeleteServiceRequest{
-		ServiceId:         serviceID,
-		ServiceGeneration: serviceGeneration,
-	}); err != nil {
+	if err := client.DeleteService(requestCtx, &cloudplanev1.DeleteServiceRequest{ServiceId: serviceID, ServiceGeneration: serviceGeneration}); err != nil {
 		return fmt.Errorf("delete service from cloud-plane: %w", err)
 	}
 	return nil
 }
 
 func (c *ServiceOperations) planeClient(ctx context.Context, planeID string) (*planeClient, error) {
-	plane, err := c.store.GetPlane(ctx, planeID)
+	plane, err := c.readyPlane(ctx, planeID)
 	if err != nil {
 		return nil, err
 	}
 	return newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
 }
 
-func (c *ServiceOperations) loadPlaneSnapshot(ctx context.Context, planeID string) (*cloudplanev1.PlaneSnapshot, error) {
-	client, err := c.planeClient(ctx, planeID)
+func (c *ServiceOperations) readyPlane(ctx context.Context, planeID string) (model.PlaneDetail, error) {
+	planeID = strings.TrimSpace(planeID)
+	if planeID == "" {
+		return model.PlaneDetail{}, errPlaneIDRequired
+	}
+	plane, err := c.store.GetPlane(ctx, planeID)
+	if err != nil {
+		return model.PlaneDetail{}, err
+	}
+	if plane.Status.Status == model.StatusOffline {
+		return model.PlaneDetail{}, fmt.Errorf("%w: current status is %s", errPlaneNotReady, plane.Status.Status)
+	}
+	return plane, nil
+}
+
+func (c *ServiceOperations) loadPlaneSnapshotViews(ctx context.Context) ([]PlaneSnapshotView, error) {
+	if c.planeSyncer != nil {
+		return c.planeSyncer.ListPlaneSnapshotViews(ctx, RequestPlaneSyncTimeout)
+	}
+	planes, err := c.store.ListPlanes(ctx)
 	if err != nil {
 		return nil, err
 	}
+	views := make([]PlaneSnapshotView, 0, len(planes))
+	for _, plane := range planes {
+		view, err := c.loadPlaneSnapshotView(ctx, plane.ID)
+		if err != nil {
+			c.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
+			views = append(views, PlaneSnapshotView{Plane: plane})
+			continue
+		}
+		views = append(views, view)
+	}
+	return views, nil
+}
+
+func (c *ServiceOperations) loadPlaneSnapshotView(ctx context.Context, planeID string) (PlaneSnapshotView, error) {
+	if c.planeSyncer != nil {
+		return c.planeSyncer.GetPlaneSnapshotView(ctx, planeID)
+	}
+	plane, err := c.readyPlane(ctx, planeID)
+	if err != nil {
+		return PlaneSnapshotView{}, err
+	}
+	client, err := newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
+	if err != nil {
+		return PlaneSnapshotView{}, err
+	}
 	defer func() {
 		if closeErr := client.Close(); closeErr != nil {
-			c.logger.Warn("close plane client failed", "plane_id", planeID, "error", closeErr)
+			c.logger.Warn("close plane client failed", "plane_id", plane.ID, "error", closeErr)
 		}
 	}()
 	requestCtx, cancel := context.WithTimeout(ctx, RequestPlaneSyncTimeout)
 	defer cancel()
-	return client.Snapshot(requestCtx)
+	snapshot, err := client.Snapshot(requestCtx)
+	if err != nil {
+		return PlaneSnapshotView{}, err
+	}
+	return PlaneSnapshotView{Plane: plane, Snapshot: snapshot}, nil
 }
 
 func serviceDispatchRequest(service model.Service) (*cloudplanev1.UpsertServiceRequest, error) {
 	if strings.TrimSpace(service.Metadata.ID) == "" {
 		return nil, errServiceIDMissing
 	}
-
 	env := make(map[string]string, len(service.Spec.Env))
 	for key, value := range service.Spec.Env {
 		env[key] = value
@@ -334,68 +360,140 @@ func serviceDispatchRequest(service model.Service) (*cloudplanev1.UpsertServiceR
 	}, nil
 }
 
-func (c *ServiceOperations) boundPlaneID(ctx context.Context, serviceItem model.Service) (string, error) {
-	planeID := strings.TrimSpace(serviceItem.Spec.PlaneID)
-	if planeID == "" {
-		return "", errPlaneIDRequired
+func servicesFromSnapshot(planeID string, snapshot *cloudplanev1.PlaneSnapshot) []model.Service {
+	if snapshot == nil {
+		return nil
 	}
-	planeDetail, err := c.store.GetPlane(ctx, planeID)
-	if err != nil {
-		return "", err
+	executions := make(map[string]*cloudplanev1.PlaneExecutionSnapshot)
+	for _, execution := range snapshot.GetExecutions() {
+		if execution == nil {
+			continue
+		}
+		executions[execution.GetServiceId()] = execution
 	}
-	if planeDetail.Status.Status == model.StatusOffline {
-		return "", fmt.Errorf("%w: current status is %s", errPlaneNotReady, planeDetail.Status.Status)
+	out := make([]model.Service, 0, len(snapshot.GetServices()))
+	for _, item := range snapshot.GetServices() {
+		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" {
+			continue
+		}
+		service := serviceFromSnapshotItem(planeID, item)
+		if execution := executions[service.Metadata.ID]; execution != nil && execution.GetServiceGeneration() == service.Metadata.Generation {
+			status := serviceStatusFromExecutionSnapshot(execution)
+			service.Status.Observed = status.Observed
+			service.Status.Run = status.Run
+		}
+		out = append(out, service)
 	}
-	return planeID, nil
+	return out
 }
 
-func (c *ServiceOperations) serviceFromSnapshot(binding model.Service, snapshot *cloudplanev1.PlaneSnapshot) model.Service {
-	if binding.Status.DesiredState == model.DesiredStateDeleted {
-		binding.Status.Observed = model.DeletingServiceStatus(binding.Metadata.Generation, "service deletion requested")
-		binding.Status.Run = model.PendingRunStatus("waiting for cloud-plane cleanup")
+func serviceFromSnapshotItem(planeID string, item *cloudplanev1.PlaneService) model.Service {
+	updatedAt := protoTime(item.GetUpdatedAt())
+	service := model.Service{
+		Metadata: model.ServiceMetadata{
+			ID:          item.GetServiceId(),
+			Name:        item.GetName(),
+			DisplayName: item.GetDisplayName(),
+			Host:        item.GetHost(),
+			Generation:  item.GetGeneration(),
+		},
+		Spec: model.ServiceSpec{
+			PlaneID:       planeID,
+			InstanceClass: item.GetInstanceClass(),
+			Exposure:      item.GetExposure(),
+			Image:         item.GetImage(),
+			Command:       append([]string(nil), item.GetCommand()...),
+			Args:          append([]string(nil), item.GetArgs()...),
+			DefaultPort:   int(item.GetContainerPort()),
+			ReadinessPath: item.GetReadinessPath(),
+			Env:           cloneEnv(item.GetEnv()),
+		},
+		Status: model.ServiceStatus{
+			DesiredState: item.GetDesiredState(),
+			Observed:     model.PendingServiceStatus(item.GetGeneration(), "waiting for service run status"),
+			Run:          model.PendingRunStatus("waiting for service run status"),
+		},
+		UpdatedAt: updatedAt,
 	}
-	if snapshot == nil {
-		return binding
+	if service.Status.DesiredState == "" {
+		service.Status.DesiredState = model.DesiredStateActive
 	}
-	for _, item := range snapshot.GetServices() {
-		if item == nil || item.GetServiceId() != binding.Metadata.ID {
-			continue
-		}
-		binding.Metadata.Name = item.GetName()
-		binding.Metadata.DisplayName = item.GetDisplayName()
-		binding.Metadata.Host = item.GetHost()
-		binding.Metadata.Generation = item.GetGeneration()
-		binding.Status.DesiredState = item.GetDesiredState()
-		binding.Spec.InstanceClass = item.GetInstanceClass()
-		binding.Spec.Exposure = item.GetExposure()
-		binding.Spec.Image = item.GetImage()
-		binding.Spec.Command = append([]string(nil), item.GetCommand()...)
-		binding.Spec.Args = append([]string(nil), item.GetArgs()...)
-		binding.Spec.DefaultPort = int(item.GetContainerPort())
-		binding.Spec.ReadinessPath = item.GetReadinessPath()
-		binding.Spec.Env = cloneEnv(item.GetEnv())
-		break
-	}
-	for _, execution := range snapshot.GetExecutions() {
-		if execution == nil || execution.GetServiceId() != binding.Metadata.ID || execution.GetServiceGeneration() != binding.Metadata.Generation {
-			continue
-		}
-		status := serviceStatusFromExecutionSnapshot(execution)
-		binding.Status.Observed = status.Observed
-		binding.Status.Run = status.Run
-		break
-	}
-	return binding
+	return service
 }
 
 func acceptedServiceStatus(generation int64, message string) model.ServiceObservedStatus {
 	now := time.Now().UTC()
-	return model.ServiceObservedStatus{
-		ObservedGeneration: generation,
-		Phase:              model.PhaseProgressing,
-		Message:            message,
-		LastObservedAt:     &now,
+	return model.ServiceObservedStatus{ObservedGeneration: generation, Phase: model.PhaseProgressing, Message: message, LastObservedAt: &now}
+}
+
+func validateCreateServiceInput(input CreateServiceInput) error {
+	if strings.TrimSpace(input.Name) == "" {
+		return fmt.Errorf("%w: name is required", errServiceSpec)
 	}
+	if !serviceNamePattern.MatchString(strings.TrimSpace(input.Name)) {
+		return fmt.Errorf("%w: name must use lowercase letters, digits, and hyphens", errServiceSpec)
+	}
+	if strings.TrimSpace(input.DisplayName) == "" {
+		return fmt.Errorf("%w: displayName is required", errServiceSpec)
+	}
+	return validateServiceSpec(input.Spec)
+}
+
+func validateUpdateServiceInput(input UpdateServiceInput) error {
+	if strings.TrimSpace(input.PlaneID) == "" {
+		return errPlaneIDRequired
+	}
+	if strings.TrimSpace(input.ServiceID) == "" {
+		return errServiceIDMissing
+	}
+	if strings.TrimSpace(input.DisplayName) == "" {
+		return fmt.Errorf("%w: displayName is required", errServiceSpec)
+	}
+	return validateWorkloadSpec(input.Spec)
+}
+
+func validateServiceSpec(spec model.ServiceSpec) error {
+	if strings.TrimSpace(spec.PlaneID) == "" {
+		return errPlaneIDRequired
+	}
+	return validateWorkloadSpec(model.WorkloadSpec{
+		InstanceClass: spec.InstanceClass,
+		Exposure:      spec.Exposure,
+		Image:         spec.Image,
+		Command:       spec.Command,
+		Args:          spec.Args,
+		DefaultPort:   spec.DefaultPort,
+		ReadinessPath: spec.ReadinessPath,
+		Env:           spec.Env,
+	})
+}
+
+func validateWorkloadSpec(spec model.WorkloadSpec) error {
+	if !model.IsInstanceClass(spec.InstanceClass) {
+		return fmt.Errorf("%w: instanceClass must be one of small, medium, large", errServiceSpec)
+	}
+	resolvedExposure := strings.ToLower(strings.TrimSpace(spec.Exposure))
+	if resolvedExposure == "" {
+		resolvedExposure = model.ExposurePublic
+	}
+	if !model.IsServiceExposure(resolvedExposure) {
+		return fmt.Errorf("%w: exposure must be one of public, private", errServiceSpec)
+	}
+	if strings.TrimSpace(spec.Image) == "" {
+		return fmt.Errorf("%w: image is required", errServiceSpec)
+	}
+	if spec.DefaultPort <= 0 || spec.DefaultPort > 65535 {
+		return fmt.Errorf("%w: defaultPort must be between 1 and 65535", errServiceSpec)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(spec.ReadinessPath), "/") {
+		return fmt.Errorf("%w: readinessPath must start with /", errServiceSpec)
+	}
+	for key := range spec.Env {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("%w: env keys must not be empty", errServiceSpec)
+		}
+	}
+	return nil
 }
 
 func cloneEnv(input map[string]string) map[string]string {

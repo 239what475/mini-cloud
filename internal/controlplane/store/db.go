@@ -39,6 +39,10 @@ func New(db *sql.DB) *Store {
 	return &Store{db: db}
 }
 
+func NewPublicID(prefix string) (string, error) {
+	return newID(prefix)
+}
+
 func newID(prefix string) (string, error) {
 	raw := make([]byte, 6)
 	if _, err := rand.Read(raw); err != nil {

@@ -69,12 +69,6 @@ func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		return nil, fmt.Errorf("load services: %w", err)
 	}
 
-	frontdoorDomains, err := s.store.ListFrontDoorDomains(ctx)
-	if err != nil {
-		s.logger.Error("load frontdoor domains for snapshot failed", "error", err)
-		return nil, fmt.Errorf("load frontdoor domains: %w", err)
-	}
-
 	return &cloudplanev1.PlaneSnapshot{
 		Plane: &cloudplanev1.PlaneSummary{
 			Name:     s.config.Plane.Name,
@@ -85,10 +79,9 @@ func (s *snapshotServer) collectSnapshot(ctx context.Context) (*cloudplanev1.Pla
 		Reliability: &cloudplanev1.PlaneReliability{
 			AlertsFiring: int32(alertSignal.AlertsFiring),
 		},
-		NodeInventory:    protoNodeInventory(checkedAt, nodes),
-		Executions:       protoExecutionSnapshots(executions),
-		Services:         protoServices(services),
-		FrontdoorDomains: protoFrontDoorDomains(frontdoorDomains),
+		NodeInventory: protoNodeInventory(checkedAt, nodes),
+		Executions:    protoExecutionSnapshots(executions),
+		Services:      protoServices(services),
 	}, nil
 }
 
@@ -105,7 +98,7 @@ func protoService(item cloudmodel.Service) *cloudplanev1.PlaneService {
 	for key, value := range item.Spec.Env {
 		env[key] = value
 	}
-	return &cloudplanev1.PlaneService{
+	protoItem := &cloudplanev1.PlaneService{
 		ServiceId:     item.ID,
 		Name:          item.Name,
 		DisplayName:   item.DisplayName,
@@ -122,23 +115,13 @@ func protoService(item cloudmodel.Service) *cloudplanev1.PlaneService {
 		ContainerPort: int32(item.Spec.ContainerPort),
 		ReadinessPath: item.Spec.ReadinessPath,
 	}
-}
-
-func protoFrontDoorDomains(items []cloudmodel.ManagedFrontDoorDomain) []*cloudplanev1.PlaneFrontDoorDomain {
-	out := make([]*cloudplanev1.PlaneFrontDoorDomain, 0, len(items))
-	for _, item := range items {
-		protoDomain := &cloudplanev1.PlaneFrontDoorDomain{
-			Host:  item.Host,
-			Cname: item.CNAME,
-		}
-		if item.Verification != nil {
-			protoDomain.VerifySubdomain = item.Verification.Subdomain
-			protoDomain.VerifyType = item.Verification.Type
-			protoDomain.VerifyValue = item.Verification.Value
-		}
-		out = append(out, protoDomain)
+	protoItem.FrontdoorCname = item.FrontDoor.CNAME
+	if item.FrontDoor.Verification != nil {
+		protoItem.FrontdoorVerifySubdomain = item.FrontDoor.Verification.Subdomain
+		protoItem.FrontdoorVerifyType = item.FrontDoor.Verification.Type
+		protoItem.FrontdoorVerifyValue = item.FrontDoor.Verification.Value
 	}
-	return out
+	return protoItem
 }
 
 func protoNodeInventory(observedAt time.Time, nodes []cloudmodel.Node) *cloudplanev1.PlaneNodeInventory {

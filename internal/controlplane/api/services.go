@@ -131,17 +131,11 @@ func (h serviceHandler) createService(c *gin.Context) {
 	service, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case errors.Is(err, store.ErrInvalidInput):
+		case isServiceRequestError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrServiceNameAlreadyExists):
-			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrServiceHostAlreadyExists):
-			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		default:
 			h.logger.Error("create service failed", "error", err)
@@ -163,7 +157,12 @@ func (h serviceHandler) getService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "serviceID is required"})
 		return
 	}
-	service, err := h.services.Get(c.Request.Context(), serviceID)
+	planeID := strings.TrimSpace(c.Query("planeID"))
+	if planeID == "" {
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
+		return
+	}
+	service, err := h.services.Get(c.Request.Context(), planeID, serviceID)
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
@@ -188,23 +187,25 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
 		return
 	}
-	input, err := request.toUpdateInput()
+	planeID := strings.TrimSpace(c.Query("planeID"))
+	if planeID == "" {
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
+		return
+	}
+	input, err := request.toUpdateInput(planeID, serviceID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 		return
 	}
 
-	service, err := h.services.Update(c.Request.Context(), serviceID, input)
+	service, err := h.services.Update(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case errors.Is(err, store.ErrInvalidInput):
+		case isServiceRequestError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		case errors.Is(err, store.ErrServiceDeleting):
-			c.JSON(http.StatusConflict, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, store.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
@@ -230,7 +231,12 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		return
 	}
 
-	service, err := h.services.Delete(c.Request.Context(), serviceID)
+	planeID := strings.TrimSpace(c.Query("planeID"))
+	if planeID == "" {
+		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
+		return
+	}
+	service, err := h.services.Delete(c.Request.Context(), coordination.DeleteServiceInput{PlaneID: planeID, ServiceID: serviceID})
 	if err != nil {
 		switch {
 		case errors.Is(err, store.ErrServiceNotFound):
@@ -285,25 +291,37 @@ func buildServiceRun(input model.RunStatus) serviceRunStatus {
 	}
 }
 
-func (r serviceCreateRequest) toCreateInput() (store.CreateServiceInput, error) {
+func (r serviceCreateRequest) toCreateInput() (coordination.CreateServiceInput, error) {
 	if r.Spec == nil {
-		return store.CreateServiceInput{}, errServiceSpecRequired
+		return coordination.CreateServiceInput{}, errServiceSpecRequired
 	}
-	return store.CreateServiceInput{
+	return coordination.CreateServiceInput{
 		Name:        strings.TrimSpace(r.Name),
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec:        r.Spec.toServiceSpec(),
 	}, nil
 }
 
-func (r serviceUpdateRequest) toUpdateInput() (store.UpdateServiceInput, error) {
+func (r serviceUpdateRequest) toUpdateInput(planeID string, serviceID string) (coordination.UpdateServiceInput, error) {
 	if r.Spec == nil {
-		return store.UpdateServiceInput{}, errServiceSpecRequired
+		return coordination.UpdateServiceInput{}, errServiceSpecRequired
 	}
-	return store.UpdateServiceInput{
+	return coordination.UpdateServiceInput{
+		PlaneID:     strings.TrimSpace(planeID),
+		ServiceID:   strings.TrimSpace(serviceID),
 		DisplayName: strings.TrimSpace(r.DisplayName),
 		Spec:        r.Spec.toWorkloadSpec(),
 	}, nil
+}
+
+func isServiceRequestError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "invalid service spec") ||
+		strings.Contains(message, "planeID is required") ||
+		strings.Contains(message, "serviceID is required")
 }
 
 func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {

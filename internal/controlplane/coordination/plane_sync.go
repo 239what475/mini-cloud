@@ -90,10 +90,7 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	}); err != nil {
 		return err
 	}
-	if err := s.syncExecutionSnapshots(ctx, planeID, snapshot.GetExecutions(), snapshot.GetFrontdoorDomains()); err != nil {
-		return err
-	}
-	if err := s.syncFrontDoorDNS(ctx, planeID, snapshot.GetFrontdoorDomains()); err != nil {
+	if err := s.syncFrontDoorDNS(ctx, planeID, snapshot.GetServices()); err != nil {
 		return err
 	}
 	return nil
@@ -158,7 +155,7 @@ func (s *PlaneSyncer) GetPlaneSnapshotView(ctx context.Context, planeID string) 
 	}
 	snapshot, err := s.loadSnapshot(ctx, plane)
 	if err != nil {
-		s.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
+		return PlaneSnapshotView{}, err
 	}
 	return PlaneSnapshotView{Plane: plane, Snapshot: snapshot}, nil
 }
@@ -175,64 +172,6 @@ func (s *PlaneSyncer) loadSnapshot(ctx context.Context, planeDetail model.PlaneD
 		}
 	}()
 	return client.Snapshot(ctx)
-}
-
-func (s *PlaneSyncer) syncExecutionSnapshots(ctx context.Context, planeID string, executions []*cloudplanev1.PlaneExecutionSnapshot, frontdoorDomains []*cloudplanev1.PlaneFrontDoorDomain) error {
-	activeFrontDoorHosts := frontDoorHosts(frontdoorDomains)
-	for _, item := range executions {
-		if item == nil || strings.TrimSpace(item.GetServiceId()) == "" || item.GetServiceGeneration() <= 0 {
-			continue
-		}
-		serviceItem, err := s.store.GetService(ctx, item.GetServiceId())
-		if err != nil {
-			if errors.Is(err, store.ErrServiceNotFound) {
-				continue
-			}
-			return err
-		}
-		if strings.TrimSpace(serviceItem.Spec.PlaneID) != planeID {
-			continue
-		}
-		if item.GetServiceGeneration() != serviceItem.Metadata.Generation {
-			continue
-		}
-		if serviceItem.Status.DesiredState == model.DesiredStateDeleted {
-			if strings.TrimSpace(item.GetStatus()) == planeExecutionStatusSucceeded {
-				if _, ok := activeFrontDoorHosts[cleanSyncDomain(serviceItem.Metadata.Host)]; ok {
-					continue
-				}
-				if err := s.deleteServiceDNS(ctx, serviceItem); err != nil {
-					return err
-				}
-				if err := s.store.DeleteServiceForGeneration(ctx, item.GetServiceId(), item.GetServiceGeneration()); err != nil &&
-					!errors.Is(err, store.ErrServiceNotFound) &&
-					!errors.Is(err, store.ErrServiceGenerationConflict) {
-					return err
-				}
-			}
-			continue
-		}
-	}
-	return nil
-}
-
-func frontDoorHosts(domains []*cloudplanev1.PlaneFrontDoorDomain) map[string]struct{} {
-	hosts := make(map[string]struct{})
-	for _, item := range domains {
-		if item == nil {
-			continue
-		}
-		host := cleanSyncDomain(item.GetHost())
-		if host == "" {
-			continue
-		}
-		hosts[host] = struct{}{}
-	}
-	return hosts
-}
-
-func cleanSyncDomain(value string) string {
-	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
 type executionDerivedStatus struct {
