@@ -423,6 +423,7 @@ func (s *Store) ClaimServiceRun(ctx context.Context, nodeID string) (*cloudmodel
 	if work == nil {
 		return nil, nil
 	}
+	work.NodeID = nodeID
 	if err := markServiceRunDeploying(ctx, tx, work.ExecutionID, nodeID, work.ContainerName, work.Action); err != nil {
 		return nil, err
 	}

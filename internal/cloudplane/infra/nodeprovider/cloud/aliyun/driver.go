@@ -10,6 +10,7 @@ import (
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	ecs20140526 "github.com/alibabacloud-go/ecs-20140526/v7/client"
+	dara "github.com/alibabacloud-go/tea-utils/v2/service"
 	tea "github.com/alibabacloud-go/tea/tea"
 	"github.com/aliyun/credentials-go/credentials"
 
@@ -163,7 +164,7 @@ func (p *providerDriver) Create(ctx context.Context, request nodeprovider.Create
 	if keyPairName := strings.TrimSpace(p.config.Provider.KeyPairName); keyPairName != "" {
 		runRequest.KeyPairName = new(keyPairName)
 	}
-	response, err := p.client.RunInstancesWithContext(ctx, runRequest, nil)
+	response, err := p.client.RunInstancesWithContext(ctx, runRequest, aliyunRuntimeOptions())
 	if err != nil {
 		return nodeprovider.CreateResult{}, fmt.Errorf("RunInstances failed: %s", formatAliyunSDKError(err))
 	}
@@ -195,7 +196,7 @@ func (p *providerDriver) Delete(ctx context.Context, request nodeprovider.Delete
 		Force:      new(true),
 		ForceStop:  new(false),
 	}
-	if _, err := p.client.DeleteInstancesWithContext(ctx, req, nil); err != nil {
+	if _, err := p.client.DeleteInstancesWithContext(ctx, req, aliyunRuntimeOptions()); err != nil {
 		if isAliyunNodeNotFound(err) {
 			return nil
 		}
@@ -211,7 +212,7 @@ func (p *providerDriver) lookupInstanceTypeCapacity(ctx context.Context) (instan
 	response, err := p.client.DescribeInstanceTypesWithContext(ctx, &ecs20140526.DescribeInstanceTypesRequest{
 		InstanceTypes: []*string{new(p.config.CloudPlane.NodeProvisioning.InstanceType)},
 		MaxResults:    new(int64(1)),
-	}, nil)
+	}, aliyunRuntimeOptions())
 	if err != nil {
 		return instanceTypeCapacity{}, fmt.Errorf("DescribeInstanceTypes failed: %s", formatAliyunSDKError(err))
 	}
@@ -281,6 +282,10 @@ func newECSClient(regionID string) (*ecs20140526.Client, error) {
 		return nil, fmt.Errorf("create ecs client: %w", err)
 	}
 	return client, nil
+}
+
+func aliyunRuntimeOptions() *dara.RuntimeOptions {
+	return &dara.RuntimeOptions{}
 }
 
 func resolveECSEndpoint(regionID string) string {

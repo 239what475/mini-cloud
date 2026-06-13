@@ -34,6 +34,9 @@ func TestIntegrationClaimServiceRunUsesWorkloadInputs(t *testing.T) {
 	if work.Action != cloudmodel.WorkActionRun {
 		t.Fatalf("work action = %q, want run", work.Action)
 	}
+	if work.NodeID != node.ID {
+		t.Fatalf("work nodeID = %q, want %q", work.NodeID, node.ID)
+	}
 	if work.ServiceID != "svc-demo" || work.Image != "registry.example.com/demo:v1" {
 		t.Fatalf("work = %+v, want svc-demo image", work)
 	}
