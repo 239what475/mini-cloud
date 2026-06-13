@@ -44,6 +44,7 @@ type SCFControlPlane struct {
 	FunctionName string `yaml:"functionName"`
 	Role         string `yaml:"role"`
 	Image        string `yaml:"image"`
+	PublicDomain string `yaml:"publicDomain"`
 	Description  string `yaml:"description"`
 	MemoryMB     int64  `yaml:"memoryMB"`
 	TimeoutSec   int64  `yaml:"timeoutSec"`
@@ -118,6 +119,7 @@ func (c *Config) applyDefaults() {
 	c.ControlPlane.SCF.FunctionName = defaultString(c.ControlPlane.SCF.FunctionName, "mini-cloud-control-plane")
 	c.ControlPlane.SCF.Role = defaultString(c.ControlPlane.SCF.Role, "mini-cloud")
 	c.ControlPlane.SCF.Description = defaultString(c.ControlPlane.SCF.Description, "mini-cloud control-plane")
+	c.ControlPlane.SCF.PublicDomain = cleanLabDomain(c.ControlPlane.SCF.PublicDomain)
 	if c.ControlPlane.SCF.MemoryMB == 0 {
 		c.ControlPlane.SCF.MemoryMB = 512
 	}
@@ -203,6 +205,9 @@ func (c Config) validateBase() error {
 	}
 	if strings.TrimSpace(c.ControlPlane.SCF.Image) == "" {
 		return fmt.Errorf("controlPlane.scf.image is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.SCF.PublicDomain) == "" {
+		return fmt.Errorf("controlPlane.scf.publicDomain is required")
 	}
 	if strings.TrimSpace(c.Install.Root) == "" {
 		return fmt.Errorf("install.root is required")

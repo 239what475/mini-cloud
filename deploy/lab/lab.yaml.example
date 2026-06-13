@@ -5,6 +5,7 @@ controlPlane:
     functionName: mini-cloud-control-plane
     role: mini-cloud
     image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+    publicDomain: control.apps.whatcloud.cn
     description: mini-cloud control-plane
     memoryMB: 512
     timeoutSec: 30

@@ -53,6 +53,9 @@ func (r *Runner) upsertSCFFunction(ctx context.Context, image string) error {
 	if err := r.waitForSCFActive(ctx); err != nil {
 		return err
 	}
+	if err := r.ensureSCFCustomDomain(ctx); err != nil {
+		return err
+	}
 	fmt.Printf("[mini-cloud lab] control-plane SCF %s/%s is ready with image %s\n", cfg.Namespace, cfg.FunctionName, image)
 	return nil
 }
@@ -166,6 +169,86 @@ func (r *Runner) ensureSCFHTTPTrigger(ctx context.Context) error {
 	return nil
 }
 
+func (r *Runner) ensureSCFCustomDomain(ctx context.Context) error {
+	cfg := r.cfg.ControlPlane.SCF
+	if strings.TrimSpace(cfg.PublicDomain) == "" {
+		return nil
+	}
+	url, err := r.scfURL(ctx)
+	if err != nil {
+		return err
+	}
+	target := scfCustomDomainCNAMETarget(url)
+	if target == "" {
+		return fmt.Errorf("SCF HTTP trigger URL is missing")
+	}
+	if err := r.ensureDNSPodCNAMERecord(ctx, cfg.PublicDomain, target, "mini-cloud control-plane"); err != nil {
+		return err
+	}
+	fmt.Printf("[mini-cloud lab] wait for control-plane CNAME %s -> %s\n", cfg.PublicDomain, target)
+	if err := r.waitForDNSPodCNAMERecord(ctx, cfg.PublicDomain, target); err != nil {
+		return err
+	}
+	if err := r.ensureSCFCustomDomainBinding(ctx); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Runner) ensureSCFCustomDomainBinding(ctx context.Context) error {
+	cfg := r.cfg.ControlPlane.SCF
+	exists, err := r.scfCustomDomainExists(ctx, cfg.PublicDomain)
+	if err != nil {
+		return err
+	}
+	input := map[string]any{
+		"Domain":   cfg.PublicDomain,
+		"Protocol": "HTTP",
+		"EndpointsConfig": []map[string]any{
+			scfCustomDomainEndpoint(cfg, "/"),
+			scfCustomDomainEndpoint(cfg, "/api/*"),
+			scfCustomDomainEndpoint(cfg, "/assets/*"),
+		},
+	}
+	path, err := writeJSONTempFile("mini-cloud-scf-domain-*.json", input)
+	if err != nil {
+		return err
+	}
+	defer removeFiles([]string{path})
+	action := "CreateCustomDomain"
+	if exists {
+		action = "UpdateCustomDomain"
+	}
+	err = runInteractive(ctx, "tccli", "scf", action, "--region", cfg.Region, "--cli-input-json", "file://"+path)
+	if err != nil && !commandOutputContains(err, "already") && !commandOutputContains(err, "exist") {
+		return err
+	}
+	return nil
+}
+
+func scfCustomDomainEndpoint(cfg SCFControlPlane, path string) map[string]any {
+	return map[string]any{
+		"Namespace":    cfg.Namespace,
+		"FunctionName": cfg.FunctionName,
+		"Qualifier":    "$LATEST",
+		"PathMatch":    path,
+	}
+}
+
+func (r *Runner) scfCustomDomainExists(ctx context.Context, domain string) (bool, error) {
+	err := runJSON(ctx, &struct{}{}, "tccli", "scf", "GetCustomDomain",
+		"--region", r.cfg.ControlPlane.SCF.Region,
+		"--Domain", domain,
+	)
+	if err == nil {
+		return true, nil
+	}
+	if commandOutputIndicatesMissingResource(err) || commandOutputContains(err, "not found") || commandOutputContains(err, "not exist") {
+		return false, nil
+	}
+	return false, err
+}
+
 func (r *Runner) waitForSCFActive(ctx context.Context) error {
 	deadline := time.Now().Add(10 * time.Minute)
 	for {
@@ -224,15 +307,13 @@ func (r *Runner) scfURL(ctx context.Context) (string, error) {
 }
 
 func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
-	url, err := r.scfURL(ctx)
-	if err != nil {
-		return err
-	}
+	url := r.controlPlanePublicURL(ctx)
 	if url == "" {
 		return fmt.Errorf("SCF HTTP trigger URL is missing")
 	}
 	deadline := time.Now().Add(5 * time.Minute)
-	healthURL := url + "/api/healthz"
+	publicURL := r.controlPlanePublicURL(ctx)
+	healthURL := publicURL + "/api/healthz"
 	for {
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 		if err != nil {
@@ -242,7 +323,7 @@ func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("[mini-cloud lab] control-plane URL: %s\n", url)
+				fmt.Printf("[mini-cloud lab] control-plane URL: %s\n", publicURL)
 				return nil
 			}
 		}
@@ -258,6 +339,30 @@ func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+func (r *Runner) controlPlanePublicURL(ctx context.Context) string {
+	if domain := strings.TrimSpace(r.cfg.ControlPlane.SCF.PublicDomain); domain != "" {
+		return "http://" + strings.TrimRight(domain, "/")
+	}
+	url, err := r.scfURL(ctx)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimRight(url, "/")
+}
+
+func scfCustomDomainCNAMETarget(url string) string {
+	host := strings.TrimPrefix(strings.TrimPrefix(strings.TrimRight(strings.TrimSpace(url), "/"), "https://"), "http://")
+	parts := strings.SplitN(host, "-", 2)
+	if len(parts) != 2 {
+		return cleanLabDomain(host)
+	}
+	suffix := parts[1]
+	if dot := strings.Index(suffix, "."); dot >= 0 {
+		return cleanLabDomain(parts[0] + suffix[dot:])
+	}
+	return cleanLabDomain(host)
 }
 
 func writeJSONTempFile(pattern string, value any) (string, error) {

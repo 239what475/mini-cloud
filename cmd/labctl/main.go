@@ -50,6 +50,8 @@ func run(ctx context.Context, args []string) error {
 		return runner.Bootstrap(ctx)
 	case "install":
 		return runner.Install(ctx)
+	case "e2e":
+		return runner.E2E(ctx)
 	case "destroy":
 		return runner.Destroy(ctx)
 	default:
@@ -63,6 +65,7 @@ func printUsage() {
 Usage:
   labctl bootstrap [--config deploy/lab/lab.yaml]
   labctl install   [--config deploy/lab/lab.yaml]
+  labctl e2e       [--config deploy/lab/lab.yaml]
   labctl destroy   [--config deploy/lab/lab.yaml]
 
 The lab config contains one control-plane and one or more cloud-plane entries.`)

@@ -29,6 +29,7 @@ func TestLoadConfigRejectsTwoPlanesOnSameHost(t *testing.T) {
 controlPlane:
   scf:
     image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+    publicDomain: control.apps.whatcloud.cn
 planes:
   - name: a
     provider: aliyun
@@ -62,6 +63,7 @@ func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
 controlPlane:
   scf:
     image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+    publicDomain: control.apps.whatcloud.cn
 planes:
   - name: a
     provider: aliyun
@@ -96,5 +98,30 @@ func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
 	}
 	if err := cfg.validateInstall(); err == nil || !strings.Contains(err.Error(), "install.ingressBaseDomain") {
 		t.Fatalf("validateInstall error = %v, want ingressBaseDomain error", err)
+	}
+}
+
+func TestLoadConfigRequiresControlPlanePublicDomain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "lab.yaml")
+	content := []byte(`
+controlPlane:
+  scf:
+    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+planes:
+  - name: a
+    provider: aliyun
+    region: cn-beijing
+    ssh:
+      host: plane-a
+    terraform:
+      workspace: a
+      varFile: a.tfvars
+`)
+	if err := os.WriteFile(path, content, 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "controlPlane.scf.publicDomain") {
+		t.Fatalf("LoadConfig error = %v, want publicDomain validation error", err)
 	}
 }

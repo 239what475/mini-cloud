@@ -127,6 +127,18 @@ func (r *Runner) uninstallControlPlane(ctx context.Context) error {
 	if strings.TrimSpace(cfg.FunctionName) == "" {
 		return nil
 	}
+	if strings.TrimSpace(cfg.PublicDomain) != "" {
+		err := runInteractive(ctx, "tccli", "scf", "DeleteCustomDomain",
+			"--region", cfg.Region,
+			"--Domain", cfg.PublicDomain,
+		)
+		if err != nil && !commandOutputIndicatesMissingResource(err) && !commandOutputContains(err, "notfound") && !commandOutputContains(err, "not found") {
+			return err
+		}
+		if err := r.deleteDNSPodRecordByRemark(ctx, cfg.PublicDomain, "CNAME", "mini-cloud control-plane"); err != nil {
+			return err
+		}
+	}
 	err := runInteractive(ctx, "tccli", "scf", "DeleteFunction",
 		"--region", cfg.Region,
 		"--Namespace", cfg.Namespace,

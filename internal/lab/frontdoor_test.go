@@ -25,6 +25,17 @@ func TestDNSPodRecordHost(t *testing.T) {
 	}
 }
 
+func TestDNSPodSubdomain(t *testing.T) {
+	t.Parallel()
+
+	if got := dnsPodSubdomain("control.apps.whatcloud.cn", "whatcloud.cn"); got != "control.apps" {
+		t.Fatalf("dnsPodSubdomain = %q, want control.apps", got)
+	}
+	if got := dnsPodSubdomain("whatcloud.cn", "whatcloud.cn"); got != "@" {
+		t.Fatalf("dnsPodSubdomain root = %q, want @", got)
+	}
+}
+
 func TestLabDomainIsUnder(t *testing.T) {
 	t.Parallel()
 
@@ -53,11 +64,38 @@ func TestProviderOwnsCNAME(t *testing.T) {
 	}
 }
 
+func TestSCFCustomDomainCNAMETarget(t *testing.T) {
+	t.Parallel()
+
+	got := scfCustomDomainCNAMETarget("https://1419114191-k51nqyutmf.ap-guangzhou.tencentscf.com")
+	if got != "1419114191.ap-guangzhou.tencentscf.com" {
+		t.Fatalf("scfCustomDomainCNAMETarget = %q", got)
+	}
+}
+
+func TestSCFCustomDomainEndpoint(t *testing.T) {
+	t.Parallel()
+
+	got := scfCustomDomainEndpoint(SCFControlPlane{
+		Namespace:    "default",
+		FunctionName: "mini-cloud-control-plane",
+	}, "/api/*")
+	if got["Namespace"] != "default" ||
+		got["FunctionName"] != "mini-cloud-control-plane" ||
+		got["Qualifier"] != "$LATEST" ||
+		got["PathMatch"] != "/api/*" {
+		t.Fatalf("unexpected endpoint: %#v", got)
+	}
+}
+
 func TestCommandOutputIndicatesMissingResourceDoesNotHideAuthorizationErrors(t *testing.T) {
 	t.Parallel()
 
 	if !commandOutputIndicatesMissingResource(errors.New("ResourceNotFound: domain does not exist")) {
 		t.Fatal("expected missing resource error")
+	}
+	if !commandOutputIndicatesMissingResource(errors.New("FailedOperation.Domain.UnExist: 该域名未找到")) {
+		t.Fatal("expected Tencent unexist domain error")
 	}
 	if commandOutputIndicatesMissingResource(errors.New("not authorized to delete domain")) {
 		t.Fatal("authorization errors must not be treated as missing resources")

@@ -162,14 +162,13 @@ func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) 
 }
 
 func (r *Runner) installCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan) error {
-	remote := func(name string) string { return plan.Host + ":/tmp/" + name }
-	if err := r.scp(ctx, plan.Plane.SSH, r.cfg.Binaries.CloudPlane, remote("mini-cloud-cloud-plane")); err != nil {
+	if err := r.uploadFile(ctx, plan.Plane.SSH, plan.Host, r.cfg.Binaries.CloudPlane, "/tmp/mini-cloud-cloud-plane", 0755); err != nil {
 		return err
 	}
-	if err := r.scp(ctx, plan.Plane.SSH, r.cfg.Binaries.NodeAgent, remote("mini-cloud-node-agent")); err != nil {
+	if err := r.uploadFile(ctx, plan.Plane.SSH, plan.Host, r.cfg.Binaries.NodeAgent, "/tmp/mini-cloud-node-agent", 0755); err != nil {
 		return err
 	}
-	if err := r.scp(ctx, plan.Plane.SSH, plan.Install.Config, remote("mini-cloud-cloud-plane.yaml")); err != nil {
+	if err := r.uploadFile(ctx, plan.Plane.SSH, plan.Host, plan.Install.Config, "/tmp/mini-cloud-cloud-plane.yaml", 0600); err != nil {
 		return err
 	}
 	script, err := os.ReadFile(plan.Install.RemoteScript)
@@ -198,7 +197,7 @@ func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (
 			region = plan.Plane.Region
 		}
 		planes = append(planes, controlPlanePlaneTemplateData{
-			ID:           "pln_" + strings.ReplaceAll(plan.Plane.Name, "-", "_"),
+			ID:           planeID(plan.Plane.Name),
 			Name:         plan.Plane.Name,
 			DisplayName:  plan.Plane.Name,
 			Provider:     provider,

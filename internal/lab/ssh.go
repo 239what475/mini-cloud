@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -29,14 +31,24 @@ func (r *Runner) platformHost(plane Plane, out TerraformOutput) (string, error) 
 	return host, nil
 }
 
-func (r *Runner) scp(ctx context.Context, sshConfig SSHConfig, local string, remote string) error {
-	args := append(sshArgs(sshConfig), local, remote)
-	return runInteractive(ctx, "scp", args...)
-}
+func (r *Runner) uploadFile(ctx context.Context, sshConfig SSHConfig, host string, local string, remote string, mode os.FileMode) error {
+	file, err := os.Open(local)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
 
-func (r *Runner) scpRecursive(ctx context.Context, sshConfig SSHConfig, local string, remote string) error {
-	args := append(sshArgs(sshConfig), "-r", local, remote)
-	return runInteractive(ctx, "scp", args...)
+	remoteDir := filepath.Dir(remote)
+	args := append(sshArgs(sshConfig), host)
+	args = append(args, fmt.Sprintf("mkdir -p %s && cat > %s && chmod %04o %s", shellQuote(remoteDir), shellQuote(remote), mode.Perm(), shellQuote(remote)))
+	cmd := exec.CommandContext(ctx, "ssh", args...)
+	cmd.Stdin = file
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("upload %s to %s:%s: %w", local, host, remote, err)
+	}
+	return nil
 }
 
 func (r *Runner) ssh(ctx context.Context, sshConfig SSHConfig, host string, script []byte) error {
@@ -88,4 +100,11 @@ func writeTempFile(pattern string, data []byte, mode os.FileMode) (string, error
 		return "", err
 	}
 	return path, nil
+}
+
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
