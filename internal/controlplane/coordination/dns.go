@@ -18,11 +18,21 @@ import (
 const (
 	dnsRecordTTL         uint64 = 600
 	dnsPodRequestTimeout        = 15 * time.Second
+	dnsRecordOwner       string = "mini-cloud"
 )
 
 type dnsClient interface {
-	EnsureRecord(context.Context, string, string, string) error
-	DeleteRecord(context.Context, string, string, string) error
+	EnsureRecord(context.Context, managedDNSRecord) error
+	DeleteRecord(context.Context, managedDNSRecord) error
+}
+
+type managedDNSRecord struct {
+	PlaneID    string
+	ServiceID  string
+	Host       string
+	RecordType string
+	Value      string
+	Purpose    string
 }
 
 type dnsPodAPI interface {
@@ -52,45 +62,57 @@ func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	return &dnsPodClient{client: client, domain: cleanDNSDomain(cfg.Domain)}, nil
 }
 
-func (c *dnsPodClient) EnsureRecord(ctx context.Context, host string, recordType string, value string) error {
-	host = cleanDNSDomain(host)
-	recordType = strings.ToUpper(strings.TrimSpace(recordType))
-	value = cleanDNSRecordValue(recordType, value)
-	subdomain, err := c.subdomain(host)
+func (c *dnsPodClient) EnsureRecord(ctx context.Context, record managedDNSRecord) error {
+	record = normalizeManagedDNSRecord(record)
+	if err := validateManagedDNSRecord(record); err != nil {
+		return err
+	}
+	subdomain, err := c.subdomain(record.Host)
 	if err != nil {
 		return err
 	}
 
-	records, err := c.recordsForSubdomain(ctx, subdomain, recordType)
+	records, err := c.recordsForSubdomain(ctx, subdomain, record.RecordType)
 	if err != nil {
 		return err
 	}
-	for _, record := range records {
-		if cleanDNSRecordValue(recordType, record.value) == value {
-			return nil
-		}
-		return c.modifyRecord(ctx, record.id, subdomain, recordType, value)
+	if err := c.ensureAgainstExistingRecords(ctx, subdomain, record, records); err != errDNSRecordMissing {
+		return err
 	}
-	return c.createRecord(ctx, subdomain, recordType, value)
+	if err := c.createRecord(ctx, subdomain, record.RecordType, record.Value, managedDNSRemark(record)); err != nil {
+		if !isDNSPodRecordAlreadyExists(err) {
+			return err
+		}
+		records, listErr := c.recordsForSubdomain(ctx, subdomain, record.RecordType)
+		if listErr != nil {
+			return listErr
+		}
+		return c.ensureAgainstExistingRecords(ctx, subdomain, record, records)
+	}
+	return nil
 }
 
-func (c *dnsPodClient) DeleteRecord(ctx context.Context, host string, recordType string, value string) error {
-	host = cleanDNSDomain(host)
-	recordType = strings.ToUpper(strings.TrimSpace(recordType))
-	value = cleanDNSRecordValue(recordType, value)
-	subdomain, err := c.subdomain(host)
+func (c *dnsPodClient) DeleteRecord(ctx context.Context, record managedDNSRecord) error {
+	record = normalizeManagedDNSRecord(record)
+	if err := validateManagedDNSRecord(record); err != nil {
+		return err
+	}
+	subdomain, err := c.subdomain(record.Host)
 	if err != nil {
 		return err
 	}
-	records, err := c.recordsForSubdomain(ctx, subdomain, recordType)
+	records, err := c.recordsForSubdomain(ctx, subdomain, record.RecordType)
 	if err != nil {
 		return err
 	}
-	for _, record := range records {
-		if value != "" && cleanDNSRecordValue(recordType, record.value) != value {
+	for _, existing := range records {
+		if !dnsRecordOwnedBy(existing.remark, record) {
 			continue
 		}
-		if err := c.deleteRecord(ctx, record.id); err != nil {
+		if record.Value != "" && cleanDNSRecordValue(record.RecordType, existing.value) != record.Value {
+			continue
+		}
+		if err := c.deleteRecord(ctx, existing.id); err != nil {
 			return err
 		}
 	}
@@ -98,12 +120,29 @@ func (c *dnsPodClient) DeleteRecord(ctx context.Context, host string, recordType
 }
 
 type dnsRecord struct {
-	id    uint64
-	value string
+	id     uint64
+	value  string
+	remark string
 }
+
+var errDNSRecordMissing = errors.New("DNS record is missing")
 
 func NewDNSClient(cfg config.DNSPodConfig) (dnsClient, error) {
 	return newDNSPodClient(cfg)
+}
+
+func (c *dnsPodClient) ensureAgainstExistingRecords(ctx context.Context, subdomain string, record managedDNSRecord, records []dnsRecord) error {
+	remark := managedDNSRemark(record)
+	for _, existing := range records {
+		if !dnsRecordOwnedBy(existing.remark, record) {
+			return fmt.Errorf("DNS record %s %s already exists and is not owned by mini-cloud service %s on plane %s", record.Host, record.RecordType, record.ServiceID, record.PlaneID)
+		}
+		if cleanDNSRecordValue(record.RecordType, existing.value) == record.Value && strings.TrimSpace(existing.remark) == remark {
+			return nil
+		}
+		return c.modifyRecord(ctx, existing.id, subdomain, record.RecordType, record.Value, remark)
+	}
+	return errDNSRecordMissing
 }
 
 func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]dnsRecord, error) {
@@ -128,12 +167,16 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 		if item == nil || item.RecordId == nil || item.Value == nil {
 			continue
 		}
-		out = append(out, dnsRecord{id: *item.RecordId, value: *item.Value})
+		remark := ""
+		if item.Remark != nil {
+			remark = *item.Remark
+		}
+		out = append(out, dnsRecord{id: *item.RecordId, value: *item.Value, remark: remark})
 	}
 	return out, nil
 }
 
-func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string) error {
+func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string, remark string) error {
 	line := "默认"
 	req := dnspod.NewCreateRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
@@ -142,14 +185,12 @@ func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recor
 	req.RecordLine = &line
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
+	req.Remark = tccommon.StringPtr(remark)
 	_, err := c.client.CreateRecordWithContext(ctx, req)
-	if isDNSPodRecordAlreadyExists(err) {
-		return nil
-	}
 	return err
 }
 
-func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string) error {
+func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string, remark string) error {
 	line := "默认"
 	req := dnspod.NewModifyRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
@@ -159,6 +200,7 @@ func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdom
 	req.RecordLine = &line
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
+	req.Remark = tccommon.StringPtr(remark)
 	_, err := c.client.ModifyRecordWithContext(ctx, req)
 	return err
 }
@@ -192,6 +234,32 @@ func cleanDNSRecordValue(recordType string, value string) string {
 		return cleanDNSDomain(value)
 	}
 	return value
+}
+
+func normalizeManagedDNSRecord(record managedDNSRecord) managedDNSRecord {
+	record.PlaneID = strings.TrimSpace(record.PlaneID)
+	record.ServiceID = strings.TrimSpace(record.ServiceID)
+	record.Host = cleanDNSDomain(record.Host)
+	record.RecordType = strings.ToUpper(strings.TrimSpace(record.RecordType))
+	record.Value = cleanDNSRecordValue(record.RecordType, record.Value)
+	record.Purpose = strings.TrimSpace(record.Purpose)
+	return record
+}
+
+func validateManagedDNSRecord(record managedDNSRecord) error {
+	if record.PlaneID == "" || record.ServiceID == "" || record.Host == "" || record.RecordType == "" || record.Purpose == "" {
+		return fmt.Errorf("managed DNS record requires planeID, serviceID, host, recordType and purpose")
+	}
+	return nil
+}
+
+func managedDNSRemark(record managedDNSRecord) string {
+	record = normalizeManagedDNSRecord(record)
+	return fmt.Sprintf("%s service=%s plane=%s purpose=%s", dnsRecordOwner, record.ServiceID, record.PlaneID, record.Purpose)
+}
+
+func dnsRecordOwnedBy(remark string, record managedDNSRecord) bool {
+	return strings.TrimSpace(remark) == managedDNSRemark(record)
 }
 
 func isDNSPodRecordAlreadyExists(err error) bool {

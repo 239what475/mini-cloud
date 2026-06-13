@@ -25,16 +25,24 @@ func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, serv
 			if recordType == "" {
 				recordType = "TXT"
 			}
-			if err := s.dns.EnsureRecord(ctx, item.GetFrontdoorVerifySubdomain(), recordType, item.GetFrontdoorVerifyValue()); err != nil {
-				return fmt.Errorf("ensure frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
-			}
-			if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+			record := managedDNSRecord{
 				PlaneID:    planeID,
 				ServiceID:  item.GetServiceId(),
 				Host:       item.GetFrontdoorVerifySubdomain(),
 				RecordType: recordType,
 				Value:      item.GetFrontdoorVerifyValue(),
 				Purpose:    store.DNSRecordPurposeFrontDoorVerification,
+			}
+			if err := s.dns.EnsureRecord(ctx, record); err != nil {
+				return fmt.Errorf("ensure frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+			}
+			if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+				PlaneID:    record.PlaneID,
+				ServiceID:  record.ServiceID,
+				Host:       record.Host,
+				RecordType: record.RecordType,
+				Value:      record.Value,
+				Purpose:    record.Purpose,
 			}); err != nil {
 				return err
 			}
@@ -42,16 +50,24 @@ func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, serv
 		if strings.TrimSpace(item.GetFrontdoorCname()) == "" {
 			continue
 		}
-		if err := s.dns.EnsureRecord(ctx, item.GetHost(), "CNAME", item.GetFrontdoorCname()); err != nil {
-			return fmt.Errorf("ensure frontdoor CNAME DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
-		}
-		if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+		record := managedDNSRecord{
 			PlaneID:    planeID,
 			ServiceID:  item.GetServiceId(),
 			Host:       item.GetHost(),
 			RecordType: "CNAME",
 			Value:      item.GetFrontdoorCname(),
 			Purpose:    store.DNSRecordPurposeFrontDoorCNAME,
+		}
+		if err := s.dns.EnsureRecord(ctx, record); err != nil {
+			return fmt.Errorf("ensure frontdoor CNAME DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+		}
+		if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
+			PlaneID:    record.PlaneID,
+			ServiceID:  record.ServiceID,
+			Host:       record.Host,
+			RecordType: record.RecordType,
+			Value:      record.Value,
+			Purpose:    record.Purpose,
 		}); err != nil {
 			return err
 		}
@@ -71,7 +87,7 @@ func (s *PlaneSyncer) deleteServiceDNS(ctx context.Context, planeID string, serv
 		return err
 	}
 	for _, record := range records {
-		if err := s.dns.DeleteRecord(ctx, record.Host, record.RecordType, record.Value); err != nil {
+		if err := s.dns.DeleteRecord(ctx, managedDNSRecord(record)); err != nil {
 			return fmt.Errorf("delete DNS record %s %s for service %s: %w", record.Host, record.RecordType, serviceID, err)
 		}
 	}
@@ -87,7 +103,7 @@ func (s *PlaneSyncer) deleteServiceVerificationDNS(ctx context.Context, planeID 
 		if record.Purpose != store.DNSRecordPurposeFrontDoorVerification {
 			continue
 		}
-		if err := s.dns.DeleteRecord(ctx, record.Host, record.RecordType, record.Value); err != nil {
+		if err := s.dns.DeleteRecord(ctx, managedDNSRecord(record)); err != nil {
 			return err
 		}
 		if err := s.store.DeleteServiceDNSRecord(ctx, record); err != nil {

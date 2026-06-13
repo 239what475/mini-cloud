@@ -70,7 +70,7 @@ func TestCreateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
 	if len(dns.records) != 2 {
 		t.Fatalf("DNS records = %+v, want verification and CNAME from create request sync", dns.records)
 	}
-	if dns.records[0].host != "_cdnauth.frontdoor-web.apps.example.test" || dns.records[1].host != "frontdoor-web.apps.example.test" {
+	if dns.records[0].Host != "_cdnauth.frontdoor-web.apps.example.test" || dns.records[1].Host != "frontdoor-web.apps.example.test" || dns.records[0].PlaneID != planeItem.ID || dns.records[1].PlaneID != planeItem.ID {
 		t.Fatalf("DNS records = %+v, want frontdoor verification and CNAME", dns.records)
 	}
 }
