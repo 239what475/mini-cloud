@@ -11,7 +11,10 @@ import (
 	cloudmodel "mini-cloud/internal/cloudplane/model"
 )
 
-var ErrServiceNotFound = errors.New("service not found")
+var (
+	ErrServiceNotFound          = errors.New("service not found")
+	ErrServiceExecutionInFlight = errors.New("service has in-flight execution")
+)
 
 const serviceSelectColumns = `
 	id,
@@ -163,16 +166,6 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 
 	current, err := getServiceTx(ctx, tx, input.ID)
 	if err != nil {
-		if errors.Is(err, ErrServiceNotFound) {
-			if ok, completedErr := completedDeleteIntentExistsTx(ctx, tx, input.ID, input.Generation); completedErr != nil {
-				return completedErr
-			} else if ok {
-				if err := tx.Commit(); err != nil {
-					return fmt.Errorf("commit completed delete service tx: %w", err)
-				}
-				return nil
-			}
-		}
 		return err
 	}
 	generation := input.Generation
@@ -194,9 +187,6 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 		ServiceGeneration: generation,
 		IntentKey:         deleteIntentKey(input.ID, generation),
 	}); err != nil {
-		return err
-	}
-	if err := deleteServiceTruthForCompletedDeleteIntent(ctx, tx, input.ID, generation, deleteIntentKey(input.ID, generation)); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -332,22 +322,4 @@ func runIntentKey(serviceID string, generation int64) string {
 
 func deleteIntentKey(serviceID string, generation int64) string {
 	return fmt.Sprintf("%s-delete-g%d", strings.TrimSpace(serviceID), generation)
-}
-
-func completedDeleteIntentExistsTx(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) (bool, error) {
-	var exists bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM execution_intents
-			WHERE service_id = $1
-			  AND service_generation = $2
-			  AND intent_key = $3
-			  AND work_action = $4
-			  AND status = $5
-		)
-	`, strings.TrimSpace(serviceID), generation, deleteIntentKey(serviceID, generation), cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&exists); err != nil {
-		return false, fmt.Errorf("check completed delete service intent: %w", err)
-	}
-	return exists, nil
 }

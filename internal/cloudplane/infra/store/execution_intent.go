@@ -102,44 +102,13 @@ func upsertServiceRunIntentTx(ctx context.Context, tx *sql.Tx, input executionIn
 		return "", fmt.Errorf("marshal execution env: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE execution_intents
-		SET
-			status = $2,
-			status_reason = $3,
-			finished_at = CASE WHEN finished_at IS NULL THEN now() ELSE finished_at END,
-			updated_at = now()
-		WHERE service_id = $1
-		  AND intent_key <> $4
-		  AND work_action = $5
-		  AND status IN ($6, $7)
-	`, input.ServiceID, cloudmodel.StatusFailed, "stopped before startup by newer service generation", input.IntentKey, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusDeploying); err != nil {
-		return "", fmt.Errorf("fail old unstarted execution intents: %w", err)
+	if err := rejectServiceRunUpdateDuringInFlightExecution(ctx, tx, input.ServiceID, input.IntentKey); err != nil {
+		return "", err
 	}
 
 	id, err := newID("exe")
 	if err != nil {
 		return "", err
-	}
-	if _, err := tx.ExecContext(ctx, `
-		UPDATE execution_intents
-		SET
-			work_action = $2,
-			intent_key = $3,
-			service_generation = $4,
-			status = $5,
-			status_reason = $6,
-			started_at = NULL,
-			finished_at = NULL,
-			updated_at = now()
-		WHERE service_id = $1
-		  AND intent_key <> $3
-		  AND work_action = $7
-		  AND status = $8
-		  AND node_id IS NOT NULL
-		  AND container_id <> ''
-	`, input.ServiceID, cloudmodel.WorkActionDelete, replacementDeleteIntentKey(input.ServiceID, input.ServiceGeneration), input.ServiceGeneration, cloudmodel.StatusPending, "new service generation requested; stopping previous container", cloudmodel.WorkActionRun, cloudmodel.StatusRunning); err != nil {
-		return "", fmt.Errorf("mark old running execution intents for replacement delete: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO execution_intents (
@@ -215,18 +184,17 @@ func createServiceDeleteIntentTx(ctx context.Context, tx *sql.Tx, input serviceD
 		return err
 	}
 
-	var deleteIntentExists bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM execution_intents
-			WHERE intent_key = $1
-			  AND work_action = $2
-		)
-	`, input.IntentKey, cloudmodel.WorkActionDelete).Scan(&deleteIntentExists); err != nil {
-		return fmt.Errorf("check delete service intent: %w", err)
+	var existingDeleteStatus string
+	err := tx.QueryRowContext(ctx, `
+		SELECT status
+		FROM execution_intents
+		WHERE intent_key = $1
+		  AND work_action = $2
+	`, input.IntentKey, cloudmodel.WorkActionDelete).Scan(&existingDeleteStatus)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("check existing delete service intent: %w", err)
 	}
-	if deleteIntentExists {
+	if err == nil {
 		return nil
 	}
 
@@ -284,9 +252,9 @@ func createServiceDeleteIntentTx(ctx context.Context, tx *sql.Tx, input serviceD
 		return fmt.Errorf("fail containerless deploying execution intents for delete: %w", err)
 	}
 
-	result, err := tx.ExecContext(ctx, `
+	if _, err := tx.ExecContext(ctx, `
 		WITH locked AS (
-			SELECT id, updated_at
+			SELECT id
 			FROM execution_intents
 			WHERE service_id = $1
 			  AND work_action = $7
@@ -307,83 +275,8 @@ func createServiceDeleteIntentTx(ctx context.Context, tx *sql.Tx, input serviceD
 			updated_at = now()
 		FROM locked
 		WHERE execution_intents.id = locked.id
-	`, input.ServiceID, cloudmodel.WorkActionDelete, input.IntentKey, input.ServiceGeneration, cloudmodel.StatusPending, "service deletion requested by control-plane", cloudmodel.WorkActionRun, cloudmodel.StatusRunning)
-	if err != nil {
+	`, input.ServiceID, cloudmodel.WorkActionDelete, input.IntentKey, input.ServiceGeneration, cloudmodel.StatusPending, "service deletion requested by control-plane", cloudmodel.WorkActionRun, cloudmodel.StatusRunning); err != nil {
 		return fmt.Errorf("mark running execution intents for delete: %w", err)
-	}
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("read delete execution affected rows: %w", err)
-	}
-	if rowsAffected == 0 {
-		if err := insertCompletedServiceDeleteSnapshot(ctx, tx, input); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func insertCompletedServiceDeleteSnapshot(ctx context.Context, tx *sql.Tx, input serviceDeleteIntentInput) error {
-	var serviceName string
-	var serviceExposure string
-	var image string
-	var containerPort int
-	var readinessPath string
-	var cpuMilliRequest int
-	var memoryMiRequest int
-	err := tx.QueryRowContext(ctx, `
-		SELECT
-			service_name,
-			service_exposure,
-			image,
-			container_port,
-			readiness_path,
-			cpu_milli_request,
-			memory_mi_request
-		FROM execution_intents
-		WHERE service_id = $1
-		ORDER BY service_generation DESC, updated_at DESC, id DESC
-		LIMIT 1
-	`, input.ServiceID).Scan(&serviceName, &serviceExposure, &image, &containerPort, &readinessPath, &cpuMilliRequest, &memoryMiRequest)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil
-		}
-		return fmt.Errorf("load service execution metadata for delete snapshot: %w", err)
-	}
-	id, err := newID("exe")
-	if err != nil {
-		return fmt.Errorf("generate delete service delete snapshot id: %w", err)
-	}
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO execution_intents (
-			id,
-			work_action,
-			intent_key,
-			service_id,
-			service_name,
-			service_exposure,
-			service_generation,
-			image,
-			container_port,
-			readiness_path,
-			cpu_milli_request,
-			memory_mi_request,
-			status,
-			status_reason,
-			finished_at,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now(), now(), now())
-		ON CONFLICT (intent_key) DO UPDATE
-		SET
-			status = EXCLUDED.status,
-			status_reason = EXCLUDED.status_reason,
-			finished_at = COALESCE(execution_intents.finished_at, EXCLUDED.finished_at),
-			updated_at = now()
-	`, id, cloudmodel.WorkActionDelete, input.IntentKey, input.ServiceID, serviceName, serviceExposure, input.ServiceGeneration, image, containerPort, readinessPath, cpuMilliRequest, memoryMiRequest, cloudmodel.StatusSucceeded, "service had no running container to delete"); err != nil {
-		return fmt.Errorf("insert completed delete service delete snapshot: %w", err)
 	}
 	return nil
 }
@@ -579,13 +472,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 			OR (
 				work_action = $4
 				AND $5
-				AND NOT EXISTS (
-					SELECT 1
-					FROM execution_intents delete_work
-					WHERE delete_work.service_id = execution_intents.service_id
-					  AND delete_work.work_action = $9
-					  AND delete_work.status IN ($1, $10)
-				)
 				AND (
 					EXISTS (
 						SELECT 1
@@ -593,6 +479,8 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 						WHERE running.service_id = execution_intents.service_id
 						  AND running.status = $8
 						  AND running.node_id = $3
+						  AND execution_intents.cpu_milli_request <= $6 + running.cpu_milli_request
+						  AND execution_intents.memory_mi_request <= $7 + running.memory_mi_request
 					)
 					OR (
 						NOT EXISTS (
@@ -619,8 +507,6 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 		cpuMilliAllocatable-cpuMilliAllocated,
 		memoryMiAllocatable-memoryMiAllocated,
 		cloudmodel.StatusRunning,
-		cloudmodel.WorkActionDelete,
-		cloudmodel.StatusDeploying,
 	).Scan(
 		&work.ExecutionID,
 		&work.Action,
@@ -699,6 +585,15 @@ func (s *Store) CreateExecutionClaim(ctx context.Context, nodeID string) (*cloud
 	work.ContainerName = fmt.Sprintf("mini-cloud-%s", work.IntentKey)
 
 	startedAt := time.Now().UTC()
+	stopped, err := stopRunningServiceExecutionsBeforeNewRun(ctx, tx, work.ServiceID, work.ExecutionID)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range stopped {
+		if err := freeNodeAllocation(ctx, tx, item.NodeID, item.CPUMilliRequest, item.MemoryMiRequest); err != nil {
+			return nil, err
+		}
+	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE execution_intents
 		SET
@@ -792,11 +687,6 @@ func (s *Store) UpdateExecutionFromNodeReport(ctx context.Context, nodeID string
 			return cloudmodel.ReportAck{}, err
 		}
 	}
-	if current.WorkAction == cloudmodel.WorkActionDelete && input.Status == cloudmodel.StatusSucceeded {
-		if err := deleteServiceTruthAfterDeleteExecution(ctx, tx, current.ServiceID, current.ServiceGeneration); err != nil {
-			return cloudmodel.ReportAck{}, err
-		}
-	}
 	if err := tx.Commit(); err != nil {
 		return cloudmodel.ReportAck{}, fmt.Errorf("commit report execution intent tx: %w", err)
 	}
@@ -810,6 +700,66 @@ type executionIntentRecord struct {
 	ServiceGeneration int64
 	CPUMilliRequest   int
 	MemoryMiRequest   int
+}
+
+type stoppedExecutionAllocation struct {
+	NodeID          string
+	CPUMilliRequest int
+	MemoryMiRequest int
+}
+
+func rejectServiceRunUpdateDuringInFlightExecution(ctx context.Context, tx *sql.Tx, serviceID string, nextIntentKey string) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM execution_intents
+			WHERE service_id = $1
+			  AND intent_key <> $2
+			  AND work_action = $3
+			  AND status IN ($4, $5)
+		)
+	`, serviceID, nextIntentKey, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusDeploying).Scan(&exists); err != nil {
+		return fmt.Errorf("check service in-flight execution: %w", err)
+	}
+	if exists {
+		return ErrServiceExecutionInFlight
+	}
+	return nil
+}
+
+func stopRunningServiceExecutionsBeforeNewRun(ctx context.Context, tx *sql.Tx, serviceID string, nextExecutionID string) ([]stoppedExecutionAllocation, error) {
+	rows, err := tx.QueryContext(ctx, `
+		UPDATE execution_intents
+		SET
+			status = $3,
+			status_reason = $4,
+			finished_at = now(),
+			updated_at = now()
+		WHERE service_id = $1
+		  AND id <> $2
+		  AND work_action = $5
+		  AND status = $6
+		  AND node_id IS NOT NULL
+		RETURNING node_id, cpu_milli_request, memory_mi_request
+	`, serviceID, nextExecutionID, cloudmodel.StatusFailed, "stopped before starting newer service generation", cloudmodel.WorkActionRun, cloudmodel.StatusRunning)
+	if err != nil {
+		return nil, fmt.Errorf("stop running service executions before new run: %w", err)
+	}
+	defer rows.Close()
+
+	var items []stoppedExecutionAllocation
+	for rows.Next() {
+		var item stoppedExecutionAllocation
+		if err := rows.Scan(&item.NodeID, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
+			return nil, fmt.Errorf("scan stopped execution allocation: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate stopped execution allocations: %w", err)
+	}
+	return items, nil
 }
 
 func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, executionID string) (executionIntentRecord, error) {
@@ -871,37 +821,6 @@ func loadExecutionIntentRecord(ctx context.Context, tx *sql.Tx, nodeID string, e
 	return current, nil
 }
 
-func deleteServiceTruthAfterDeleteExecution(ctx context.Context, tx *sql.Tx, serviceID string, generation int64) error {
-	if _, err := tx.ExecContext(ctx, `
-		DELETE FROM services
-		WHERE id = $1
-		  AND generation <= $2
-		  AND desired_state = $3
-	`, serviceID, generation, cloudmodel.ServiceDesiredDeleted); err != nil {
-		return fmt.Errorf("delete service truth after delete execution: %w", err)
-	}
-	return nil
-}
-
-func deleteServiceTruthForCompletedDeleteIntent(ctx context.Context, tx *sql.Tx, serviceID string, generation int64, intentKey string) error {
-	var completed bool
-	if err := tx.QueryRowContext(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM execution_intents
-			WHERE intent_key = $1
-			  AND work_action = $2
-			  AND status = $3
-		)
-	`, intentKey, cloudmodel.WorkActionDelete, cloudmodel.StatusSucceeded).Scan(&completed); err != nil {
-		return fmt.Errorf("check completed delete service intent: %w", err)
-	}
-	if !completed {
-		return nil
-	}
-	return deleteServiceTruthAfterDeleteExecution(ctx, tx, serviceID, generation)
-}
-
 func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilliRequest int, memoryMiRequest int) error {
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE nodes
@@ -914,8 +833,4 @@ func freeNodeAllocation(ctx context.Context, tx *sql.Tx, nodeID string, cpuMilli
 		return fmt.Errorf("free node allocation for execution intent: %w", err)
 	}
 	return nil
-}
-
-func replacementDeleteIntentKey(serviceID string, generation int64) string {
-	return fmt.Sprintf("%s-stop-before-g%d", serviceID, generation)
 }

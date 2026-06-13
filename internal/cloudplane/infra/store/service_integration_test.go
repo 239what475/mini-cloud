@@ -8,7 +8,7 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *testing.T) {
+func TestIntegrationDeleteServiceWithoutRunningContainerHidesService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
@@ -37,13 +37,12 @@ func TestIntegrationDeleteServiceWithoutRunningContainerRemovesServiceTruth(t *t
 	if serviceByID(services, "svc-delete-idle") != nil {
 		t.Fatalf("deleted idle service is still exposed in service snapshot: %+v", services)
 	}
-	deleteSnapshot := executionSnapshotByIntentKey(t, ctx, db, "svc-delete-idle-delete-g2")
-	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
-		t.Fatalf("delete execution snapshot = %+v, want succeeded", deleteSnapshot)
+	if deleteSnapshot := findExecutionSnapshotForTest(t, ctx, db, "svc-delete-idle-delete-g2"); deleteSnapshot != nil {
+		t.Fatalf("delete idle service created unexpected delete snapshot: %+v", deleteSnapshot)
 	}
 }
 
-func TestIntegrationDeleteServiceIsIdempotentAfterCompletedDeletePlan(t *testing.T) {
+func TestIntegrationDeleteIdleServiceIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
@@ -166,7 +165,7 @@ func TestIntegrationStaleServiceUpsertDoesNotResurrectDeletedService(t *testing.
 	}
 }
 
-func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAgentReport(t *testing.T) {
+func TestIntegrationDeleteServiceAfterRunningContainerHidesServiceAfterAgentReport(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	node := seedReadyNode(t, ctx, db, "node-delete-service", "i-node-delete-service")
@@ -240,6 +239,12 @@ func TestIntegrationDeleteServiceAfterRunningContainerRemovesServiceTruthAfterAg
 	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
 		t.Fatalf("delete execution snapshot = %+v, want succeeded", deleteSnapshot)
 	}
+	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
+		ID:         "svc-delete-running",
+		Generation: 2,
+	}); err != nil {
+		t.Fatalf("DeleteService retry after completed delete work returned error: %v", err)
+	}
 }
 
 func serviceSpec() cloudmodel.ServiceSpec {
@@ -264,15 +269,24 @@ func serviceByID(items []cloudmodel.Service, serviceID string) *cloudmodel.Servi
 func executionSnapshotByIntentKey(t *testing.T, ctx context.Context, db testutil.TestDatabase, intentKey string) cloudmodel.ExecutionSnapshot {
 	t.Helper()
 
+	snapshot := findExecutionSnapshotForTest(t, ctx, db, intentKey)
+	if snapshot == nil {
+		t.Fatalf("execution snapshot %q not found", intentKey)
+	}
+	return *snapshot
+}
+
+func findExecutionSnapshotForTest(t *testing.T, ctx context.Context, db testutil.TestDatabase, intentKey string) *cloudmodel.ExecutionSnapshot {
+	t.Helper()
+
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
 	if err != nil {
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
 	for _, snapshot := range snapshots {
 		if snapshot.IntentKey == intentKey {
-			return snapshot
+			return &snapshot
 		}
 	}
-	t.Fatalf("execution snapshot %q not found in %+v", intentKey, snapshots)
-	return cloudmodel.ExecutionSnapshot{}
+	return nil
 }
