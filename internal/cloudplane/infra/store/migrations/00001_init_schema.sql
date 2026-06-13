@@ -51,11 +51,9 @@ CREATE TABLE IF NOT EXISTS services (
 CREATE INDEX IF NOT EXISTS idx_services_desired_updated_at
     ON services (desired_state, updated_at DESC);
 
-CREATE TABLE IF NOT EXISTS execution_intents (
+CREATE TABLE IF NOT EXISTS service_runs (
     id TEXT PRIMARY KEY,
-    work_action TEXT NOT NULL DEFAULT 'run',
-    intent_key TEXT NOT NULL,
-    service_id TEXT NOT NULL,
+    service_id TEXT NOT NULL UNIQUE REFERENCES services(id) ON DELETE CASCADE,
     service_name TEXT NOT NULL,
     service_exposure TEXT NOT NULL DEFAULT 'public',
     service_generation BIGINT NOT NULL CHECK (service_generation > 0),
@@ -76,15 +74,14 @@ CREATE TABLE IF NOT EXISTS execution_intents (
     started_at TIMESTAMPTZ NULL,
     finished_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (intent_key)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_execution_intents_status_created_at
-    ON execution_intents (status, created_at ASC, id ASC);
+CREATE INDEX IF NOT EXISTS idx_service_runs_status_created_at
+    ON service_runs (status, created_at ASC, id ASC);
 
-CREATE INDEX IF NOT EXISTS idx_execution_intents_service_status
-    ON execution_intents (service_id, status, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_runs_node_status
+    ON service_runs (node_id, status, updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS frontdoor_domains (
     host TEXT PRIMARY KEY,
@@ -98,6 +95,6 @@ CREATE TABLE IF NOT EXISTS frontdoor_domains (
 
 -- +goose Down
 DROP TABLE IF EXISTS frontdoor_domains;
-DROP TABLE IF EXISTS execution_intents;
+DROP TABLE IF EXISTS service_runs;
 DROP TABLE IF EXISTS services;
 DROP TABLE IF EXISTS nodes;

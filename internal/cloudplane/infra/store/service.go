@@ -12,8 +12,7 @@ import (
 )
 
 var (
-	ErrServiceNotFound          = errors.New("service not found")
-	ErrServiceExecutionInFlight = errors.New("service has in-flight execution")
+	ErrServiceNotFound = errors.New("service not found")
 )
 
 const serviceSelectColumns = `
@@ -129,9 +128,7 @@ func (s *Store) UpsertService(ctx context.Context, input cloudmodel.UpsertServic
 		return cloudmodel.Service{}, fmt.Errorf("upsert service: %w", err)
 	}
 
-	intentKey := runIntentKey(item.ID, item.Generation)
-	if _, err := upsertServiceRunIntentTx(ctx, tx, executionIntentInput{
-		IntentKey:         intentKey,
+	if err := upsertServiceRunTx(ctx, tx, serviceRunInput{
 		ServiceID:         item.ID,
 		ServiceName:       item.Name,
 		ServiceGeneration: item.Generation,
@@ -182,11 +179,7 @@ func (s *Store) DeleteService(ctx context.Context, input cloudmodel.DeleteServic
 	`, input.ID, generation, cloudmodel.ServiceDesiredDeleted); err != nil {
 		return fmt.Errorf("mark service deleted: %w", err)
 	}
-	if err := createServiceDeleteIntentTx(ctx, tx, serviceDeleteIntentInput{
-		ServiceID:         input.ID,
-		ServiceGeneration: generation,
-		IntentKey:         deleteIntentKey(input.ID, generation),
-	}); err != nil {
+	if err := deleteServiceRunTx(ctx, tx, input.ID, generation); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
@@ -314,12 +307,4 @@ func scanService(scanner interface{ Scan(dest ...any) error }) (cloudmodel.Servi
 		}
 	}
 	return item, nil
-}
-
-func runIntentKey(serviceID string, generation int64) string {
-	return fmt.Sprintf("%s-g%d", strings.TrimSpace(serviceID), generation)
-}
-
-func deleteIntentKey(serviceID string, generation int64) string {
-	return fmt.Sprintf("%s-delete-g%d", strings.TrimSpace(serviceID), generation)
 }

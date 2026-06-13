@@ -64,7 +64,7 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	}
 }
 
-func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
+func TestIntegrationStaleNodeHeartbeatFailsServiceRun(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
@@ -95,12 +95,12 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 		Image:      "nginx:1.27-alpine",
 	})
 
-	work, err := db.Store.CreateExecutionClaim(ctx, registered.ID)
+	work, err := db.Store.ClaimServiceRun(ctx, registered.ID)
 	if err != nil {
-		t.Fatalf("CreateExecutionClaim returned error: %v", err)
+		t.Fatalf("ClaimServiceRun returned error: %v", err)
 	}
 	if work == nil {
-		t.Fatal("CreateExecutionClaim returned nil work item")
+		t.Fatal("ClaimServiceRun returned nil work item")
 	}
 	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, registered.ID, work.ExecutionID, cloudmodel.ReportInput{
 		Status:        cloudmodel.StatusRunning,
@@ -161,7 +161,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	}
 	var found bool
 	for _, item := range snapshots {
-		if item.IntentKey != "svc-stale-g1" {
+		if item.ServiceID != "svc-stale" {
 			continue
 		}
 		found = true
@@ -173,7 +173,7 @@ func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("execution snapshot for svc-stale-g1 not found in %+v", snapshots)
+		t.Fatalf("execution snapshot for svc-stale not found in %+v", snapshots)
 	}
 }
 
@@ -253,19 +253,19 @@ func TestIntegrationNodeScaleInSkipsActiveExecutions(t *testing.T) {
 	}
 }
 
-func TestIntegrationNodeScaleInSkipsUnsettledExecutionIntents(t *testing.T) {
+func TestIntegrationNodeScaleInSkipsUnsettledServiceRuns(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	_ = seedReadyElasticNode(t, ctx, db.Store, "scale-in-unsettled", "i-scale-in-unsettled")
-	seedPendingExecutionIntent(t, ctx, db)
+	seedPendingServiceRun(t, ctx, db)
 
-	hasUnsettled, err := db.Store.HasUnsettledExecutionIntents(ctx)
+	hasUnsettled, err := db.Store.HasUnsettledServiceRuns(ctx)
 	if err != nil {
-		t.Fatalf("HasUnsettledExecutionIntents returned error: %v", err)
+		t.Fatalf("HasUnsettledServiceRuns returned error: %v", err)
 	}
 	if !hasUnsettled {
-		t.Fatal("expected pending execution intent to be visible through HasUnsettledExecutionIntents")
+		t.Fatal("expected pending service run to be visible through HasUnsettledServiceRuns")
 	}
 }
 
@@ -365,16 +365,16 @@ func seedActiveExecutionOnNode(t *testing.T, ctx context.Context, db testutil.Te
 		Generation: 1,
 		Image:      "nginx:1.27-alpine",
 	})
-	work, err := db.Store.CreateExecutionClaim(ctx, nodeID)
+	work, err := db.Store.ClaimServiceRun(ctx, nodeID)
 	if err != nil {
-		t.Fatalf("CreateExecutionClaim(active) returned error: %v", err)
+		t.Fatalf("ClaimServiceRun(active) returned error: %v", err)
 	}
 	if work == nil {
-		t.Fatal("CreateExecutionClaim(active) returned nil work item")
+		t.Fatal("ClaimServiceRun(active) returned nil work item")
 	}
 }
 
-func seedPendingExecutionIntent(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
+func seedPendingServiceRun(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
 	t.Helper()
 
 	upsertTestService(t, ctx, db, testServiceInput{

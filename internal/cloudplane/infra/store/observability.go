@@ -13,25 +13,23 @@ func (s *Store) GetAlertSignal(ctx context.Context) (cloudmodel.AlertSignal, err
 	var offlineNodes bool
 	var bootstrapStuck bool
 	if err := s.db.QueryRowContext(ctx, `
-		WITH intent_counts AS (
+		WITH run_counts AS (
 			SELECT
-				intent_key,
 				COUNT(*) FILTER (WHERE status = 'pending')::int AS pending_count,
 				COUNT(*) FILTER (WHERE status = 'deploying')::int AS deploying_count,
 				COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
 				MAX(updated_at) AS updated_at
-			FROM execution_intents
-			GROUP BY intent_key
+			FROM service_runs
 		)
 		SELECT
 			EXISTS (
 				SELECT 1
-				FROM intent_counts
+				FROM run_counts
 				WHERE failed_count > 0
 			),
 			EXISTS (
 				SELECT 1
-				FROM intent_counts
+				FROM run_counts
 				WHERE failed_count = 0
 				  AND (pending_count > 0 OR deploying_count > 0)
 				  AND updated_at <= now() - ($1 * interval '1 second')
@@ -47,7 +45,7 @@ func (s *Store) GetAlertSignal(ctx context.Context) (cloudmodel.AlertSignal, err
 				WHERE status = 'provisioning'
 				  AND created_at <= now() - ($2 * interval '1 second')
 			)
-	`, cloudmodel.ExecutionIntentStuckThresholdSeconds, cloudmodel.NodeRegistrationTimeoutSeconds).Scan(
+	`, cloudmodel.ServiceRunStuckThresholdSeconds, cloudmodel.NodeRegistrationTimeoutSeconds).Scan(
 		&executionFailures,
 		&stuckExecutions,
 		&offlineNodes,

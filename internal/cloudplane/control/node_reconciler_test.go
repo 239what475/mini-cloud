@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -17,13 +18,13 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestReconcileCreatesProvisioningNodeWhenPendingExecutionHasNoCapacity(t *testing.T) {
+func TestReconcileCreatesProvisioningNodeWhenPendingServiceRunHasNoCapacity(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	seedPendingExecution(t, ctx, db.Store, "needs-new-node", "medium")
+	seedPendingServiceRun(t, ctx, db.Store, "needs-new-node", "medium")
 
 	if err := service.reconcileOnce(ctx); err != nil {
 		t.Fatalf("reconcileOnce returned error: %v", err)
@@ -50,7 +51,7 @@ func TestReconcileSkipsProvisioningWhenReadyNodeHasCapacity(t *testing.T) {
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	seedReadyNode(t, ctx, db.Store, "ready-capacity", 2000, 2048)
-	seedPendingExecution(t, ctx, db.Store, "has-capacity", "small")
+	seedPendingServiceRun(t, ctx, db.Store, "has-capacity", "small")
 
 	if err := service.reconcileOnce(ctx); err != nil {
 		t.Fatalf("reconcileOnce returned error: %v", err)
@@ -75,7 +76,7 @@ func TestReconcileSkipsProvisioningWhenNodeAlreadyProvisioning(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateProvisioningNode returned error: %v", err)
 	}
-	seedPendingExecution(t, ctx, db.Store, "existing-provisioning", "small")
+	seedPendingServiceRun(t, ctx, db.Store, "existing-provisioning", "small")
 
 	if err := service.reconcileOnce(ctx); err != nil {
 		t.Fatalf("reconcileOnce returned error: %v", err)
@@ -100,7 +101,7 @@ func TestReconcileCreatesNodeWhenExistingProvisioningNodeUsesDifferentInstanceTy
 	}); err != nil {
 		t.Fatalf("CreateProvisioningNode returned error: %v", err)
 	}
-	seedPendingExecution(t, ctx, db.Store, "new-node-config", "small")
+	seedPendingServiceRun(t, ctx, db.Store, "new-node-config", "small")
 
 	if err := service.reconcileOnce(ctx); err != nil {
 		t.Fatalf("reconcileOnce returned error: %v", err)
@@ -116,7 +117,7 @@ func TestReconcileMarksNodeDeletedWhenProviderCreateFails(t *testing.T) {
 	driver := &fakeDriver{createErr: errors.New("provider unavailable")}
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
-	seedPendingExecution(t, ctx, db.Store, "provider-create-fails", "small")
+	seedPendingServiceRun(t, ctx, db.Store, "provider-create-fails", "small")
 
 	if err := service.reconcileOnce(ctx); err == nil {
 		t.Fatal("reconcileOnce returned nil, want error")
@@ -178,7 +179,7 @@ func TestReconcileDeletesProviderInstanceWhenBindFails(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("RecordNodeHeartbeat returned error: %v", err)
 	}
-	seedPendingExecution(t, ctx, db.Store, "bind-fails", "small")
+	seedPendingServiceRun(t, ctx, db.Store, "bind-fails", "small")
 
 	if err := service.reconcileOnce(ctx); err == nil {
 		t.Fatal("reconcileOnce returned nil, want bind error")
@@ -205,15 +206,13 @@ func TestReconcileDeletesProviderInstanceWhenBindFails(t *testing.T) {
 	}
 }
 
-func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingExecution(t *testing.T) {
+func TestReconcileDeletesStaleProvisioningNodeAndFailsPendingServiceRun(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 	driver := &fakeDriver{}
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
-	intentKey := "stale-provisioning-g1"
-
-	seedPendingExecution(t, ctx, db.Store, "stale-provisioning", "small")
-	nodeName := "demo-node-" + intentHashSuffix(intentKey)
+	seedPendingServiceRun(t, ctx, db.Store, "stale-provisioning", "small")
+	nodeName := "demo-node-" + serviceRunHashSuffix("stale-provisioning", 1)
 	node, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
 		Provider:     "aliyun",
 		Region:       "cn-beijing",
@@ -280,8 +279,8 @@ func TestReconcileDeletesIdleNode(t *testing.T) {
 	}
 }
 
-func intentHashSuffix(intentKey string) string {
-	sum := md5.Sum([]byte(intentKey))
+func serviceRunHashSuffix(serviceID string, generation int64) string {
+	sum := md5.Sum([]byte(fmt.Sprintf("%s-%d", serviceID, generation)))
 	return hex.EncodeToString(sum[:])[:10]
 }
 
@@ -308,7 +307,7 @@ func TestReconcileDoesNotDeleteIdleNodeInNodeCreationRound(t *testing.T) {
 	service := newNodeReconciler(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, driver, testConfig(t))
 
 	seedReadyElasticNode(t, ctx, db.Store, "idle-node", "i-idle-node")
-	seedPendingExecution(t, ctx, db.Store, "new-node-and-idle-node", "large")
+	seedPendingServiceRun(t, ctx, db.Store, "new-node-and-idle-node", "large")
 
 	if err := service.reconcileOnce(ctx); err != nil {
 		t.Fatalf("reconcileOnce returned error: %v", err)
@@ -363,7 +362,7 @@ func testConfig(t *testing.T) cloudplaneconfig.Config {
 	}
 }
 
-func seedPendingExecution(t *testing.T, ctx context.Context, stores *store.Store, name string, class string) {
+func seedPendingServiceRun(t *testing.T, ctx context.Context, stores *store.Store, name string, class string) {
 	t.Helper()
 
 	if _, err := stores.UpsertService(ctx, cloudmodel.UpsertServiceInput{

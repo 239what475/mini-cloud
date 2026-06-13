@@ -325,7 +325,6 @@ func (s *Store) GetNode(ctx context.Context, nodeID string) (cloudmodel.Node, er
 }
 
 type NodeProvisioningCandidate struct {
-	IntentKey       string
 	ServiceID       string
 	CPUMilli        int
 	MemoryMi        int
@@ -341,14 +340,13 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 	err := s.db.QueryRowContext(ctx, `
 		WITH pending AS (
 			SELECT
-				intent_key,
 				service_id,
+				service_generation,
 				cpu_milli_request,
 				memory_mi_request,
 				created_at
-			FROM execution_intents
-			WHERE work_action = $1
-			  AND status = $2
+			FROM service_runs
+			WHERE status = $1
 			ORDER BY created_at ASC, id ASC
 			LIMIT 1
 		),
@@ -356,7 +354,7 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 			SELECT EXISTS (
 				SELECT 1
 				FROM nodes, pending
-				WHERE status = $3
+				WHERE status = $2
 				  AND schedulable
 				  AND cpu_milli_allocatable - cpu_milli_allocated >= pending.cpu_milli_request
 				  AND memory_mi_allocatable - memory_mi_allocated >= pending.memory_mi_request
@@ -366,26 +364,24 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 			SELECT EXISTS (
 				SELECT 1
 				FROM nodes, pending
-				WHERE status = $4
-				  AND name = $5 || '-' || lower(substr(md5(pending.intent_key), 1, 10))
-				  AND instance_type = $6
+				WHERE status = $3
+				  AND name = $4 || '-' || lower(substr(md5(pending.service_id || '-' || pending.service_generation::text), 1, 10))
+				  AND instance_type = $5
 			) AS has_provisioning
 		)
 		SELECT
-			pending.intent_key,
 			pending.service_id,
 			pending.cpu_milli_request,
 			pending.memory_mi_request,
-			$5 || '-' || lower(substr(md5(pending.intent_key), 1, 10)),
-			$6,
-			pending.intent_key,
+			$4 || '-' || lower(substr(md5(pending.service_id || '-' || pending.service_generation::text), 1, 10)),
+			$5,
+			pending.service_id || '-' || pending.service_generation::text,
 			capacity.has_capacity,
 			provisioning.has_provisioning
 		FROM pending
 		CROSS JOIN capacity
 		CROSS JOIN provisioning
-	`, cloudmodel.WorkActionRun, cloudmodel.StatusPending, cloudmodel.StatusReady, cloudmodel.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
-		&candidate.IntentKey,
+	`, cloudmodel.StatusPending, cloudmodel.StatusReady, cloudmodel.StatusProvisioning, nodeNamePrefix, instanceType).Scan(
 		&candidate.ServiceID,
 		&candidate.CPUMilli,
 		&candidate.MemoryMi,
@@ -404,16 +400,16 @@ func (s *Store) GetNodeProvisioningCandidate(ctx context.Context, nodeNamePrefix
 	return &candidate, nil
 }
 
-func (s *Store) HasUnsettledExecutionIntents(ctx context.Context) (bool, error) {
+func (s *Store) HasUnsettledServiceRuns(ctx context.Context) (bool, error) {
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `
 		SELECT EXISTS (
 			SELECT 1
-			FROM execution_intents
+			FROM service_runs
 			WHERE status IN ($1, $2)
 		)
 	`, cloudmodel.StatusPending, cloudmodel.StatusDeploying).Scan(&exists); err != nil {
-		return false, fmt.Errorf("check unsettled execution intents: %w", err)
+		return false, fmt.Errorf("check unsettled service runs: %w", err)
 	}
 	return exists, nil
 }
@@ -452,11 +448,11 @@ func (s *Store) PrepareNodeDeletion(ctx context.Context, nodeID string, reason s
 	var activeCount int
 	if err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*)
-		FROM execution_intents
+		FROM service_runs
 		WHERE node_id = $1
 		  AND status IN ($2, $3)
 	`, current.ID, cloudmodel.StatusDeploying, cloudmodel.StatusRunning).Scan(&activeCount); err != nil {
-		return cloudmodel.Node{}, false, fmt.Errorf("count active executions before node deletion: %w", err)
+		return cloudmodel.Node{}, false, fmt.Errorf("count active service runs before node deletion: %w", err)
 	}
 	if activeCount > 0 {
 		return current, false, nil
@@ -583,7 +579,7 @@ func (s *Store) MarkStaleNodeHeartbeatsOffline(ctx context.Context, staleAfter t
 			cutoffTime.Format(time.RFC3339),
 		)
 
-		failedExecutions, err := failExecutionIntentsForOfflineNode(ctx, tx, staleNode, reason)
+		failedExecutions, err := failServiceRunsForOfflineNode(ctx, tx, staleNode, reason)
 		if err != nil {
 			return StaleNodeHeartbeatResult{}, err
 		}
@@ -596,48 +592,48 @@ func (s *Store) MarkStaleNodeHeartbeatsOffline(ctx context.Context, staleAfter t
 	return result, nil
 }
 
-type impactedExecutionIntent struct {
+type impactedServiceRun struct {
 	CPUMilliRequest int
 	MemoryMiRequest int
 	ID              string
 }
 
-func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode cloudmodel.Node, reason string) (int, error) {
-	intentRows, err := tx.QueryContext(ctx, `
+func failServiceRunsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNode cloudmodel.Node, reason string) (int, error) {
+	runRows, err := tx.QueryContext(ctx, `
 		SELECT
 			id,
 			cpu_milli_request,
 			memory_mi_request
-		FROM execution_intents
+		FROM service_runs
 		WHERE node_id = $1
 		  AND status IN ($2, $3, $4)
 		ORDER BY updated_at ASC, id ASC
 		FOR UPDATE
 	`, staleNode.ID, cloudmodel.StatusPending, cloudmodel.StatusDeploying, cloudmodel.StatusRunning)
 	if err != nil {
-		return 0, fmt.Errorf("query impacted execution intents: %w", err)
+		return 0, fmt.Errorf("query impacted service runs: %w", err)
 	}
 
-	var impacted []impactedExecutionIntent
-	for intentRows.Next() {
-		var item impactedExecutionIntent
-		if err := intentRows.Scan(&item.ID, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
-			_ = intentRows.Close()
-			return 0, fmt.Errorf("scan impacted execution intent: %w", err)
+	var impacted []impactedServiceRun
+	for runRows.Next() {
+		var item impactedServiceRun
+		if err := runRows.Scan(&item.ID, &item.CPUMilliRequest, &item.MemoryMiRequest); err != nil {
+			_ = runRows.Close()
+			return 0, fmt.Errorf("scan impacted service run: %w", err)
 		}
 		impacted = append(impacted, item)
 	}
-	if err := intentRows.Err(); err != nil {
-		_ = intentRows.Close()
-		return 0, fmt.Errorf("iterate impacted execution intents: %w", err)
+	if err := runRows.Err(); err != nil {
+		_ = runRows.Close()
+		return 0, fmt.Errorf("iterate impacted service runs: %w", err)
 	}
-	if err := intentRows.Close(); err != nil {
-		return 0, fmt.Errorf("close impacted execution intent rows: %w", err)
+	if err := runRows.Close(); err != nil {
+		return 0, fmt.Errorf("close impacted service run rows: %w", err)
 	}
 
 	for _, item := range impacted {
 		if _, err := tx.ExecContext(ctx, `
-			UPDATE execution_intents
+			UPDATE service_runs
 			SET
 				status = $2,
 				status_reason = $3,
@@ -645,7 +641,7 @@ func failExecutionIntentsForOfflineNode(ctx context.Context, tx *sql.Tx, staleNo
 				updated_at = now()
 			WHERE id = $1
 		`, item.ID, cloudmodel.StatusFailed, reason); err != nil {
-			return 0, fmt.Errorf("mark execution intent failed during node offline reconcile: %w", err)
+			return 0, fmt.Errorf("mark service run failed during node offline reconcile: %w", err)
 		}
 		if err := freeNodeAllocation(ctx, tx, staleNode.ID, item.CPUMilliRequest, item.MemoryMiRequest); err != nil {
 			return 0, err

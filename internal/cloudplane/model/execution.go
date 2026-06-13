@@ -25,7 +25,6 @@ const (
 )
 
 type ExecutionSnapshot struct {
-	IntentKey         string
 	ServiceID         string
 	ServiceName       string
 	ServiceGeneration int64
@@ -61,7 +60,6 @@ func ParseExposure(value string) (string, error) {
 type WorkItem struct {
 	Action        string
 	ExecutionID   string
-	IntentKey     string
 	NodeID        string
 	ServiceID     string
 	ServiceName   string
@@ -78,7 +76,6 @@ type WorkItem struct {
 
 type ExecutionRecord struct {
 	ID            string
-	IntentKey     string
 	NodeID        string
 	Image         string
 	ContainerName string

@@ -56,9 +56,6 @@ func (s *serviceServer) UpsertService(ctx context.Context, req *cloudplanev1.Ups
 		},
 	}
 	if _, err := s.store.UpsertService(ctx, input); err != nil {
-		if errors.Is(err, store.ErrServiceExecutionInFlight) {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 	return &cloudplanev1.UpsertServiceResponse{}, nil

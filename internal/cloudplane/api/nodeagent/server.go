@@ -106,7 +106,7 @@ func (s *service) PollWork(ctx context.Context, req *nodeagentv1.PollWorkRequest
 		return nil, err
 	}
 
-	item, err := s.store.CreateExecutionClaim(ctx, nodeID)
+	item, err := s.store.ClaimServiceRun(ctx, nodeID)
 	if err != nil {
 		s.logger.Error("claim execution work failed", "node_id", nodeID, "error", err)
 		return nil, status.Error(codes.Internal, "internal server error")

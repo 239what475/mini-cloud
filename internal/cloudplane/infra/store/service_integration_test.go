@@ -37,9 +37,7 @@ func TestIntegrationDeleteServiceWithoutRunningContainerHidesServiceAndIsIdempot
 	if serviceByID(services, "svc-delete-idle") != nil {
 		t.Fatalf("deleted idle service is still exposed in service snapshot: %+v", services)
 	}
-	if deleteSnapshot := findExecutionSnapshotForTest(t, ctx, db, "svc-delete-idle-delete-g2"); deleteSnapshot != nil {
-		t.Fatalf("delete idle service created unexpected delete snapshot: %+v", deleteSnapshot)
-	}
+	assertNoExecutionSnapshots(t, ctx, db)
 	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
 		ID:         "svc-delete-idle",
 		Generation: 2,
@@ -146,12 +144,12 @@ func TestIntegrationDeleteServiceAfterRunningContainerHidesServiceAfterAgentRepo
 	}); err != nil {
 		t.Fatalf("UpsertService returned error: %v", err)
 	}
-	runWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
+	runWork, err := db.Store.ClaimServiceRun(ctx, node.ID)
 	if err != nil {
-		t.Fatalf("CreateExecutionClaim(run) returned error: %v", err)
+		t.Fatalf("ClaimServiceRun(run) returned error: %v", err)
 	}
 	if runWork == nil {
-		t.Fatal("CreateExecutionClaim(run) returned nil work item")
+		t.Fatal("ClaimServiceRun(run) returned nil work item")
 	}
 	if _, err := db.Store.UpdateExecutionFromNodeReport(ctx, node.ID, runWork.ExecutionID, cloudmodel.ReportInput{
 		Status:        cloudmodel.StatusRunning,
@@ -177,9 +175,9 @@ func TestIntegrationDeleteServiceAfterRunningContainerHidesServiceAfterAgentRepo
 		t.Fatalf("delete-pending service is still exposed in active service snapshot: %+v", services)
 	}
 
-	deleteWork, err := db.Store.CreateExecutionClaim(ctx, node.ID)
+	deleteWork, err := db.Store.ClaimServiceRun(ctx, node.ID)
 	if err != nil {
-		t.Fatalf("CreateExecutionClaim(delete) returned error: %v", err)
+		t.Fatalf("ClaimServiceRun(delete) returned error: %v", err)
 	}
 	if deleteWork == nil || deleteWork.Action != cloudmodel.WorkActionDelete {
 		t.Fatalf("delete work = %+v, want delete action", deleteWork)
@@ -201,10 +199,7 @@ func TestIntegrationDeleteServiceAfterRunningContainerHidesServiceAfterAgentRepo
 	if serviceByID(services, "svc-delete-running") != nil {
 		t.Fatalf("deleted running service is still exposed in service snapshot: %+v", services)
 	}
-	deleteSnapshot := executionSnapshotByIntentKey(t, ctx, db, "svc-delete-running-delete-g2")
-	if deleteSnapshot.Status != cloudmodel.StatusSucceeded {
-		t.Fatalf("delete execution snapshot = %+v, want succeeded", deleteSnapshot)
-	}
+	assertNoExecutionSnapshots(t, ctx, db)
 	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
 		ID:         "svc-delete-running",
 		Generation: 2,
@@ -232,27 +227,14 @@ func serviceByID(items []cloudmodel.Service, serviceID string) *cloudmodel.Servi
 	return nil
 }
 
-func executionSnapshotByIntentKey(t *testing.T, ctx context.Context, db testutil.TestDatabase, intentKey string) cloudmodel.ExecutionSnapshot {
-	t.Helper()
-
-	snapshot := findExecutionSnapshotForTest(t, ctx, db, intentKey)
-	if snapshot == nil {
-		t.Fatalf("execution snapshot %q not found", intentKey)
-	}
-	return *snapshot
-}
-
-func findExecutionSnapshotForTest(t *testing.T, ctx context.Context, db testutil.TestDatabase, intentKey string) *cloudmodel.ExecutionSnapshot {
+func assertNoExecutionSnapshots(t *testing.T, ctx context.Context, db testutil.TestDatabase) {
 	t.Helper()
 
 	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
 	if err != nil {
 		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
 	}
-	for _, snapshot := range snapshots {
-		if snapshot.IntentKey == intentKey {
-			return &snapshot
-		}
+	if len(snapshots) != 0 {
+		t.Fatalf("execution snapshots = %+v, want none", snapshots)
 	}
-	return nil
 }
