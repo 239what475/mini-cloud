@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 )
 
@@ -48,19 +47,19 @@ type DeleteServiceInput struct {
 
 type ServiceOperations struct {
 	logger            *slog.Logger
-	store             *store.Store
+	planes            *PlaneCatalog
 	serviceBaseDomain string
 	southboundToken   string
 	planeSyncer       *PlaneSyncer
 }
 
-func NewServiceOperations(logger *slog.Logger, stores *store.Store, southboundToken string, serviceBaseDomain string, planeSyncer *PlaneSyncer) *ServiceOperations {
+func NewServiceOperations(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, serviceBaseDomain string, planeSyncer *PlaneSyncer) *ServiceOperations {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &ServiceOperations{
 		logger:            logger,
-		store:             stores,
+		planes:            planes,
 		serviceBaseDomain: strings.Trim(strings.ToLower(strings.TrimSpace(serviceBaseDomain)), "."),
 		southboundToken:   strings.TrimSpace(southboundToken),
 		planeSyncer:       planeSyncer,
@@ -75,7 +74,7 @@ func (c *ServiceOperations) Create(ctx context.Context, input CreateServiceInput
 	if _, err := c.readyPlane(ctx, planeID); err != nil {
 		return model.Service{}, err
 	}
-	serviceID, err := store.NewPublicID("svc")
+	serviceID, err := newPublicID("svc")
 	if err != nil {
 		return model.Service{}, err
 	}
@@ -127,7 +126,7 @@ func (c *ServiceOperations) Get(ctx context.Context, planeID string, serviceID s
 			return service, nil
 		}
 	}
-	return model.Service{}, store.ErrServiceNotFound
+	return model.Service{}, ErrServiceNotFound
 }
 
 func (c *ServiceOperations) Update(ctx context.Context, input UpdateServiceInput) (model.Service, error) {
@@ -278,7 +277,7 @@ func (c *ServiceOperations) readyPlane(ctx context.Context, planeID string) (mod
 	if planeID == "" {
 		return model.PlaneDetail{}, errPlaneIDRequired
 	}
-	plane, err := c.store.GetPlane(ctx, planeID)
+	plane, err := c.planes.GetPlane(ctx, planeID)
 	if err != nil {
 		return model.PlaneDetail{}, err
 	}
@@ -292,7 +291,7 @@ func (c *ServiceOperations) loadPlaneSnapshotViews(ctx context.Context) ([]Plane
 	if c.planeSyncer != nil {
 		return c.planeSyncer.ListPlaneSnapshotViews(ctx, RequestPlaneSyncTimeout)
 	}
-	planes, err := c.store.ListPlanes(ctx)
+	planes, err := c.planes.ListPlanes(ctx)
 	if err != nil {
 		return nil, err
 	}

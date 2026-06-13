@@ -4,7 +4,6 @@ controlPlane:
     keyPath: ""
     options: []
   listenHTTPAddr: 0.0.0.0:18080
-  url: http://replace-with-control-plane-public-ip:18080
 
 planes:
   - name: mini-cloud-tencent-lab

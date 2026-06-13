@@ -13,8 +13,6 @@ server:
   httpAddr: 127.0.0.1:18080
 ui:
   dir: /opt/mini-cloud/control-plane/web
-database:
-  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
@@ -25,6 +23,13 @@ dns:
     secretId: sid
     secretKey: skey
     token: stok
+planes:
+  - id: pln_test
+    name: test-plane
+    displayName: Test Plane
+    provider: aliyun
+    region: cn-beijing
+    grpcEndpoint: 127.0.0.1:18081
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -42,9 +47,6 @@ dns:
 	if cfg.UI.Dir != "/opt/mini-cloud/control-plane/web" {
 		t.Fatalf("ui.dir = %q", cfg.UI.Dir)
 	}
-	if cfg.Database.URL == "" {
-		t.Fatalf("database.url is empty")
-	}
 	if cfg.Auth.AdminToken != "admin-secret" {
 		t.Fatalf("auth.adminToken = %q", cfg.Auth.AdminToken)
 	}
@@ -57,6 +59,9 @@ dns:
 	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" || cfg.DNS.DNSPod.SecretID != "sid" || cfg.DNS.DNSPod.SecretKey != "skey" || cfg.DNS.DNSPod.Token != "stok" {
 		t.Fatalf("unexpected DNSPod config: %+v", cfg.DNS.DNSPod)
 	}
+	if len(cfg.Planes) != 1 || cfg.Planes[0].ID != "pln_test" || cfg.Planes[0].Provider != "aliyun" {
+		t.Fatalf("unexpected planes: %+v", cfg.Planes)
+	}
 }
 
 func TestLoadRequiresConfigPath(t *testing.T) {
@@ -65,11 +70,9 @@ func TestLoadRequiresConfigPath(t *testing.T) {
 	}
 }
 
-func TestLoadRequiresDatabaseAndAdminToken(t *testing.T) {
+func TestLoadRequiresAdminTokenAndPlanes(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
-database:
-  url: ""
 auth:
   adminToken: ""
   southboundToken: ""
@@ -85,13 +88,17 @@ auth:
 func TestLoadRequiresDNSPodConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
-database:
-  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
 dns:
   serviceBaseDomain: apps.example.test
+planes:
+  - id: pln_test
+    name: test-plane
+    provider: aliyun
+    region: cn-beijing
+    grpcEndpoint: 127.0.0.1:18081
 `), 0600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
@@ -104,13 +111,21 @@ dns:
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
-database:
-  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_control_plane?sslmode=disable
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
 dns:
   serviceBaseDomain: apps.example.test
+  dnspod:
+    domain: example.test
+    secretId: sid
+    secretKey: skey
+planes:
+  - id: pln_test
+    name: test-plane
+    provider: aliyun
+    region: cn-beijing
+    grpcEndpoint: 127.0.0.1:18081
 sync:
   planeIntervalSeconds: 30
 `), 0600); err != nil {

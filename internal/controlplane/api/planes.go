@@ -8,31 +8,20 @@ import (
 
 	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
 )
 
 type planeHandler struct {
 	logger *slog.Logger
-	store  *store.Store
 	syncer *coordination.PlaneSyncer
 }
 
-func newPlaneHandler(logger *slog.Logger, stores *store.Store, syncer *coordination.PlaneSyncer) planeHandler {
+func newPlaneHandler(logger *slog.Logger, syncer *coordination.PlaneSyncer) planeHandler {
 	return planeHandler{
 		logger: logger,
-		store:  stores,
 		syncer: syncer,
 	}
-}
-
-type registerPlaneRequest struct {
-	Name         string `json:"name"`
-	DisplayName  string `json:"displayName"`
-	Provider     string `json:"provider"`
-	Region       string `json:"region"`
-	GRPCEndpoint string `json:"grpcEndpoint"`
 }
 
 type planeResource struct {
@@ -68,91 +57,26 @@ type nodeInventoryResource struct {
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
-func (h planeHandler) registerPlane(c *gin.Context) {
-	var request registerPlaneRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, map[string]any{"error": "invalid json body"})
-		return
-	}
-
-	registered, err := h.store.RegisterPlane(c.Request.Context(), store.RegisterPlaneInput{
-		Name:         request.Name,
-		DisplayName:  request.DisplayName,
-		Provider:     request.Provider,
-		Region:       request.Region,
-		GRPCEndpoint: request.GRPCEndpoint,
-	})
-	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrInvalidInput):
-			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
-			return
-		default:
-			h.logger.Error("register plane failed", "error", err)
-			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:  "control.plane.register",
-		Message: "registered plane " + registered.Name,
-	})
-
-	c.JSON(http.StatusOK, buildPlaneResource(registered))
-}
-
 func (h planeHandler) listPlanes(c *gin.Context) {
-	if h.syncer != nil {
-		if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), coordination.RequestPlaneSyncTimeout); err != nil {
-			h.logger.Warn("sync planes for request failed", "error", err)
-		}
-		views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
-		if err == nil {
-			out := make([]planeResource, 0, len(views))
-			for _, item := range views {
-				out = append(out, buildPlaneResourceFromSnapshotView(item))
-			}
-			c.JSON(http.StatusOK, map[string]any{"items": out})
-			return
-		}
-		h.logger.Warn("load plane snapshot views failed", "error", err)
-	}
-	items, err := h.store.ListPlanes(c.Request.Context())
+	views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
 	if err != nil {
-		h.logger.Error("list control planes failed", "error", err)
+		h.logger.Warn("load plane snapshot views failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
 	}
-
-	out := make([]planeResource, 0, len(items))
-	for _, item := range items {
-		out = append(out, buildPlaneResource(item))
+	out := make([]planeResource, 0, len(views))
+	for _, item := range views {
+		out = append(out, buildPlaneResourceFromSnapshotView(item))
 	}
 	c.JSON(http.StatusOK, map[string]any{"items": out})
 }
 
 func (h planeHandler) inventory(c *gin.Context) {
-	if h.syncer != nil {
-		if err := h.syncer.SyncRegisteredPlanes(c.Request.Context(), coordination.RequestPlaneSyncTimeout); err != nil {
-			h.logger.Warn("sync planes for request failed", "error", err)
-		}
-		views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
-		if err == nil {
-			c.JSON(http.StatusOK, buildInventoryView(views))
-			return
-		}
-		h.logger.Warn("load inventory snapshot views failed", "error", err)
-	}
-	items, err := h.store.ListPlanes(c.Request.Context())
+	views, err := h.syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
 	if err != nil {
-		h.logger.Error("build control inventory failed", "error", err)
+		h.logger.Warn("load inventory snapshot views failed", "error", err)
 		c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 		return
-	}
-	views := make([]coordination.PlaneSnapshotView, 0, len(items))
-	for _, item := range items {
-		views = append(views, coordination.PlaneSnapshotView{Plane: item})
 	}
 	c.JSON(http.StatusOK, buildInventoryView(views))
 }
@@ -165,21 +89,10 @@ func (h planeHandler) getPlane(c *gin.Context) {
 	}
 	logger := h.logger.With("plane_id", planeID)
 
-	if h.syncer != nil {
-		if err := h.syncer.SyncPlane(c.Request.Context(), planeID); err != nil {
-			logger.Warn("sync plane for request failed", "error", err)
-		}
-		view, err := h.syncer.GetPlaneSnapshotView(c.Request.Context(), planeID)
-		if err == nil {
-			c.JSON(http.StatusOK, buildPlaneResourceFromSnapshotView(view))
-			return
-		}
-		logger.Warn("load plane snapshot view failed", "error", err)
-	}
-	item, err := h.store.GetPlane(c.Request.Context(), planeID)
+	view, err := h.syncer.GetPlaneSnapshotView(c.Request.Context(), planeID)
 	if err != nil {
 		switch {
-		case errors.Is(err, store.ErrPlaneNotFound):
+		case errors.Is(err, coordination.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -188,52 +101,7 @@ func (h planeHandler) getPlane(c *gin.Context) {
 			return
 		}
 	}
-
-	c.JSON(http.StatusOK, buildPlaneResource(item))
-}
-
-func (h planeHandler) deletePlane(c *gin.Context) {
-	planeID := c.Param("planeID")
-	if planeID == "" {
-		c.JSON(http.StatusBadRequest, map[string]any{"error": "planeID is required"})
-		return
-	}
-	logger := h.logger.With("plane_id", planeID)
-
-	plane, err := h.store.GetPlane(c.Request.Context(), planeID)
-	if err != nil {
-		switch {
-		case errors.Is(err, store.ErrPlaneNotFound):
-			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("get plane before delete failed", "error", err)
-			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	if err := h.store.DeletePlane(c.Request.Context(), planeID); err != nil {
-		switch {
-		case errors.Is(err, store.ErrPlaneNotFound):
-			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
-			return
-		default:
-			logger.Error("delete plane failed", "error", err)
-			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
-			return
-		}
-	}
-
-	recordControlEvent(logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:  "control.plane.delete",
-		Message: "deleted plane " + plane.Name,
-	})
-
-	c.JSON(http.StatusOK, map[string]any{
-		"deleted": true,
-		"id":      planeID,
-	})
+	c.JSON(http.StatusOK, buildPlaneResourceFromSnapshotView(view))
 }
 
 func buildPlaneResource(item model.PlaneDetail) planeResource {

@@ -45,7 +45,6 @@ type PlaneConfig struct {
 }
 
 type ControlPlaneConfig struct {
-	URL         string `yaml:"url"`
 	BearerToken string `yaml:"bearerToken"`
 }
 
@@ -134,7 +133,6 @@ func Load(path string) (Config, error) {
 func (c *Config) normalize() {
 	c.Plane.Name = strings.TrimSpace(c.Plane.Name)
 	c.Plane.GRPCEndpoint = strings.TrimSpace(c.Plane.GRPCEndpoint)
-	c.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(c.ControlPlane.URL), "/")
 	c.ControlPlane.BearerToken = strings.TrimSpace(c.ControlPlane.BearerToken)
 	c.Infrastructure.Provider = strings.ToLower(strings.TrimSpace(c.Infrastructure.Provider))
 	c.Infrastructure.RegionID = strings.TrimSpace(c.Infrastructure.RegionID)
@@ -179,12 +177,6 @@ func (c Config) Validate() error {
 		return fmt.Errorf("plane.grpcEndpoint is required")
 	}
 	if err := validateGRPCEndpoint(c.Plane.GRPCEndpoint); err != nil {
-		return err
-	}
-	if strings.TrimSpace(c.ControlPlane.URL) == "" {
-		return fmt.Errorf("controlPlane.url is required")
-	}
-	if err := validateControlPlaneURL(c.ControlPlane.URL); err != nil {
 		return err
 	}
 	if strings.TrimSpace(c.ControlPlane.BearerToken) == "" {
@@ -311,20 +303,6 @@ func validateProxyEndpoint(value string) error {
 	}
 	if parsed.Host == "" {
 		return fmt.Errorf("nodeProvisioning.workloadEgressProxyEndpoint must include host")
-	}
-	return nil
-}
-
-func validateControlPlaneURL(value string) error {
-	parsed, err := url.Parse(strings.TrimSpace(value))
-	if err != nil {
-		return fmt.Errorf("parse controlPlane.url: %w", err)
-	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("controlPlane.url must use http or https")
-	}
-	if parsed.Host == "" {
-		return fmt.Errorf("controlPlane.url must include host")
 	}
 	return nil
 }

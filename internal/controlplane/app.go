@@ -2,9 +2,7 @@ package controlplane
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -13,8 +11,6 @@ import (
 	"mini-cloud/internal/controlplane/api"
 	"mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/store"
-	"mini-cloud/internal/controlplane/store/migrations"
 )
 
 type App struct {
@@ -22,7 +18,6 @@ type App struct {
 	Handler http.Handler
 
 	logger *slog.Logger
-	db     *sql.DB
 
 	closeOnce sync.Once
 	closeErr  error
@@ -32,28 +27,16 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	db, err := store.Open(cfg.Database.URL)
+	planes, err := coordination.NewPlaneCatalog(cfg.Planes)
 	if err != nil {
-		return App{}, fmt.Errorf("open database: %w", err)
-	}
-	if err := migrations.Up(db); err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return App{}, errors.Join(fmt.Errorf("run migrations: %w", err), fmt.Errorf("close database after migration failure: %w", closeErr))
-		}
-		return App{}, fmt.Errorf("run migrations: %w", err)
-	}
-
-	stores := store.New(db)
-
-	dns, err := coordination.NewDNSClient(cfg.DNS.DNSPod)
-	if err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return App{}, errors.Join(err, closeErr)
-		}
 		return App{}, err
 	}
-	planeSyncer := coordination.NewPlaneSyncer(logger, stores, cfg.Auth.SouthboundToken, dns)
-	serviceOperations := coordination.NewServiceOperations(logger, stores, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
+	dns, err := coordination.NewDNSClient(cfg.DNS.DNSPod)
+	if err != nil {
+		return App{}, err
+	}
+	planeSyncer := coordination.NewPlaneSyncer(logger, planes, cfg.Auth.SouthboundToken, dns)
+	serviceOperations := coordination.NewServiceOperations(logger, planes, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
 
 	handler, err := api.NewMux(api.Options{
 		AdminToken:        cfg.Auth.AdminToken,
@@ -61,11 +44,8 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		UIDir:             cfg.UI.Dir,
 		ServiceOperations: serviceOperations,
 		PlaneSyncer:       planeSyncer,
-	}, logger, stores)
+	}, logger)
 	if err != nil {
-		if closeErr := db.Close(); closeErr != nil {
-			return App{}, errors.Join(err, closeErr)
-		}
 		return App{}, err
 	}
 
@@ -73,16 +53,11 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 		Config:  cfg,
 		Handler: handler,
 		logger:  logger,
-		db:      db,
 	}, nil
 }
 
 func (a *App) Close() error {
-	a.closeOnce.Do(func() {
-		if a.db != nil {
-			a.closeErr = a.db.Close()
-		}
-	})
+	a.closeOnce.Do(func() {})
 	return a.closeErr
 }
 

@@ -29,7 +29,6 @@ func TestLoadConfigRejectsTwoPlanesOnSameHost(t *testing.T) {
 controlPlane:
   ssh:
     host: control
-  url: http://control:18080
 planes:
   - name: a
     provider: aliyun
@@ -63,7 +62,6 @@ func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
 controlPlane:
   ssh:
     host: control
-  url: http://control:18080
 planes:
   - name: a
     provider: aliyun
@@ -88,7 +86,6 @@ func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
 		ControlPlane: ControlPlane{
 			SSH: SSHConfig{Host: "control"},
-			URL: "http://control:18080",
 		},
 		Install: InstallConfig{
 			Root: "/opt/mini-cloud",

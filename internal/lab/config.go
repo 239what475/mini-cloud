@@ -37,7 +37,6 @@ type SSHConfig struct {
 type ControlPlane struct {
 	SSH            SSHConfig `yaml:"ssh"`
 	ListenHTTPAddr string    `yaml:"listenHTTPAddr"`
-	URL            string    `yaml:"url"`
 }
 
 type Plane struct {
@@ -104,7 +103,6 @@ func (c *Config) applyDefaults() {
 	c.Install.Root = defaultString(c.Install.Root, "/opt/mini-cloud")
 	c.Install.IngressBaseDomain = strings.Trim(strings.TrimSpace(c.Install.IngressBaseDomain), ".")
 	c.ControlPlane.ListenHTTPAddr = defaultString(c.ControlPlane.ListenHTTPAddr, "0.0.0.0:18080")
-	c.ControlPlane.URL = strings.TrimRight(strings.TrimSpace(c.ControlPlane.URL), "/")
 	c.ControlPlane.SSH.applyDefaults(c.SSH)
 
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
@@ -170,9 +168,6 @@ func (s *SSHConfig) applyDefaults(parent SSHConfig) {
 func (c Config) validateBase() error {
 	if strings.TrimSpace(c.ControlPlane.SSH.Host) == "" {
 		return fmt.Errorf("controlPlane.ssh.host is required")
-	}
-	if strings.TrimSpace(c.ControlPlane.URL) == "" {
-		return fmt.Errorf("controlPlane.url is required")
 	}
 	if strings.TrimSpace(c.Install.Root) == "" {
 		return fmt.Errorf("install.root is required")

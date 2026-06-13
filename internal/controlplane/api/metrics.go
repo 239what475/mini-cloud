@@ -6,18 +6,22 @@ import (
 	"strings"
 	"time"
 
+	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
 )
 
-func metricsHandler(stores *store.Store) gin.HandlerFunc {
+func metricsHandler(syncer *coordination.PlaneSyncer) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		items, err := stores.ListPlanes(c.Request.Context())
+		views, err := syncer.ListPlaneSnapshotViews(c.Request.Context(), coordination.RequestPlaneSyncTimeout)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, map[string]any{"error": "internal server error"})
 			return
+		}
+		items := make([]model.PlaneDetail, 0, len(views))
+		for _, view := range views {
+			items = append(items, view.Plane)
 		}
 		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 		fmt.Fprint(c.Writer, renderControlMetrics(items, time.Now().UTC()))
@@ -26,7 +30,7 @@ func metricsHandler(stores *store.Store) gin.HandlerFunc {
 
 func renderControlMetrics(controlPlanes []model.PlaneDetail, now time.Time) string {
 	var out strings.Builder
-	out.WriteString("# HELP minicloud_plane_count Current number of planes in the control-plane store.\n")
+	out.WriteString("# HELP minicloud_plane_count Current number of configured planes.\n")
 	out.WriteString("# TYPE minicloud_plane_count gauge\n")
 	fmt.Fprintf(&out, "minicloud_plane_count %d\n", len(controlPlanes))
 	out.WriteString("# HELP minicloud_plane_status Current plane status, emitted as one-hot samples per plane and status.\n")

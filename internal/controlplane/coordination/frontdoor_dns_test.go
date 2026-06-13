@@ -5,10 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"mini-cloud/internal/controlplane/model"
-	controlplanestore "mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/testutil"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
@@ -17,12 +14,10 @@ import (
 
 func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createSyncTestPlane(t, db.Store, "plane-a")
-	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
+	syncer := &PlaneSyncer{dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
+	err := syncer.syncFrontDoorDNS(ctx, "pln_test", []*cloudplanev1.PlaneService{
 		{
 			ServiceId:                "svc_api",
 			Host:                     "api.apps.example.com",
@@ -39,42 +34,23 @@ func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
 	if len(dns.records) != 2 {
 		t.Fatalf("records = %+v, want verification and CNAME", dns.records)
 	}
-	if dns.records[0].Host != "_cdnauth.example.com" || dns.records[0].RecordType != "TXT" || dns.records[0].Value != "verify-token" || dns.records[0].PlaneID != plane.ID || dns.records[0].ServiceID != "svc_api" {
+	if dns.records[0].Host != "_cdnauth.example.com" || dns.records[0].RecordType != "TXT" || dns.records[0].Value != "verify-token" || dns.records[0].PlaneID != "pln_test" || dns.records[0].ServiceID != "svc_api" {
 		t.Fatalf("verification record = %+v", dns.records[0])
 	}
-	if dns.records[1].Host != "api.apps.example.com" || dns.records[1].RecordType != "CNAME" || dns.records[1].Value != "api.apps.example.com.cdn.example.net" || dns.records[1].PlaneID != plane.ID || dns.records[1].ServiceID != "svc_api" {
+	if dns.records[1].Host != "api.apps.example.com" || dns.records[1].RecordType != "CNAME" || dns.records[1].Value != "api.apps.example.com.cdn.example.net" || dns.records[1].PlaneID != "pln_test" || dns.records[1].ServiceID != "svc_api" {
 		t.Fatalf("cname record = %+v", dns.records[1])
 	}
-	if len(dns.deleted) != 1 || dns.deleted[0].Host != "_cdnauth.example.com" || dns.deleted[0].RecordType != "TXT" || dns.deleted[0].Value != "verify-token" || dns.deleted[0].PlaneID != plane.ID || dns.deleted[0].ServiceID != "svc_api" {
+	if len(dns.deleted) != 1 || dns.deleted[0].Host != "_cdnauth.example.com" || dns.deleted[0].RecordType != "TXT" || dns.deleted[0].Value != "verify-token" || dns.deleted[0].PlaneID != "pln_test" || dns.deleted[0].ServiceID != "svc_api" {
 		t.Fatalf("deleted records = %+v, want verification TXT deletion", dns.deleted)
-	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_api")
-	if err != nil {
-		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
-	}
-	if len(records) != 1 || records[0].Host != "api.apps.example.com" || records[0].RecordType != "CNAME" {
-		t.Fatalf("stored DNS records = %+v, want only CNAME after verification cleanup", records)
 	}
 }
 
-func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) {
+func TestSyncFrontDoorDNSSweepsVerificationAfterCNAMEReady(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createSyncTestPlane(t, db.Store, "plane-cname-ready")
-	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
-		PlaneID:    plane.ID,
-		ServiceID:  "svc_ready",
-		Host:       "_cdnauth.ready.apps.example.com",
-		RecordType: "TXT",
-		Value:      "old-verify-token",
-		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorVerification,
-	}); err != nil {
-		t.Fatalf("SaveServiceDNSRecord returned error: %v", err)
-	}
-	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
+	syncer := &PlaneSyncer{dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
+	if err := syncer.syncFrontDoorDNS(ctx, "pln_test", []*cloudplanev1.PlaneService{
 		{
 			ServiceId:      "svc_ready",
 			Host:           "ready.apps.example.com",
@@ -84,26 +60,17 @@ func TestSyncFrontDoorDNSDeletesStoredVerificationAfterCNAMEReady(t *testing.T) 
 	}); err != nil {
 		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
 	}
-	if len(dns.deleted) != 1 || dns.deleted[0].Host != "_cdnauth.ready.apps.example.com" || dns.deleted[0].Value != "old-verify-token" || dns.deleted[0].PlaneID != plane.ID || dns.deleted[0].ServiceID != "svc_ready" {
-		t.Fatalf("deleted records = %+v, want stored verification deletion", dns.deleted)
-	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_ready")
-	if err != nil {
-		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
-	}
-	if len(records) != 1 || records[0].Purpose != controlplanestore.DNSRecordPurposeFrontDoorCNAME {
-		t.Fatalf("DNS records after CNAME ready = %+v, want only CNAME", records)
+	if len(dns.deletedServices) != 1 || dns.deletedServices[0].PlaneID != "pln_test" || dns.deletedServices[0].ServiceID != "svc_ready" || dns.deletedServices[0].Purpose != dnsRecordPurposeFrontDoorVerification {
+		t.Fatalf("deleted service records = %+v, want verification sweep", dns.deletedServices)
 	}
 }
 
 func TestSyncFrontDoorDNSSkipsDeletedService(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	plane := createSyncTestPlane(t, db.Store, "plane-deleting-frontdoor")
-	syncer := &PlaneSyncer{store: db.Store, dns: &fakeDNSClient{}}
+	syncer := &PlaneSyncer{dns: &fakeDNSClient{}}
 	dns := syncer.dns.(*fakeDNSClient)
 
-	if err := syncer.syncFrontDoorDNS(ctx, plane.ID, []*cloudplanev1.PlaneService{
+	if err := syncer.syncFrontDoorDNS(ctx, "pln_test", []*cloudplanev1.PlaneService{
 		{
 			ServiceId:                "svc_deleting",
 			Host:                     "deleting-frontdoor.apps.example.com",
@@ -116,15 +83,8 @@ func TestSyncFrontDoorDNSSkipsDeletedService(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("syncFrontDoorDNS returned error: %v", err)
 	}
-	if len(dns.records) != 0 || len(dns.deleted) != 0 {
-		t.Fatalf("DNS operations = create %+v delete %+v, want none for deleting service", dns.records, dns.deleted)
-	}
-	records, err := db.Store.ListServiceDNSRecords(ctx, plane.ID, "svc_deleting")
-	if err != nil {
-		t.Fatalf("ListServiceDNSRecords returned error: %v", err)
-	}
-	if len(records) != 0 {
-		t.Fatalf("stored DNS records = %+v, want none for deleting service", records)
+	if len(dns.records) != 0 || len(dns.deleted) != 0 || len(dns.deletedServices) != 0 {
+		t.Fatalf("DNS operations = create %+v delete %+v sweep %+v, want none for deleting service", dns.records, dns.deleted, dns.deletedServices)
 	}
 }
 
@@ -155,7 +115,7 @@ func TestDNSPodEnsureRecordRefusesUnownedRecord(t *testing.T) {
 		Host:       "api.apps.example.com",
 		RecordType: "CNAME",
 		Value:      "api.apps.example.com.cdn.example.net",
-		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
+		Purpose:    dnsRecordPurposeFrontDoorCNAME,
 	})
 	if err == nil || !strings.Contains(err.Error(), "not owned") {
 		t.Fatalf("EnsureRecord error = %v, want ownership refusal", err)
@@ -174,7 +134,7 @@ func TestDNSPodEnsureRecordUpdatesOwnedRecord(t *testing.T) {
 		Host:       "api.apps.example.com",
 		RecordType: "CNAME",
 		Value:      "api.apps.example.com.cdn.example.net",
-		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
+		Purpose:    dnsRecordPurposeFrontDoorCNAME,
 	}
 	api := &fakeDNSPodAPI{records: []fakeDNSPodRecord{{
 		id:         10,
@@ -211,7 +171,7 @@ func TestDNSPodDeleteRecordSkipsUnownedRecord(t *testing.T) {
 		Host:       "api.apps.example.com",
 		RecordType: "CNAME",
 		Value:      "api.apps.example.com.cdn.example.net",
-		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
+		Purpose:    dnsRecordPurposeFrontDoorCNAME,
 	}); err != nil {
 		t.Fatalf("DeleteRecord returned error: %v", err)
 	}
@@ -220,9 +180,50 @@ func TestDNSPodDeleteRecordSkipsUnownedRecord(t *testing.T) {
 	}
 }
 
+func TestDNSPodDeleteServiceRecordsDeletesOnlyOwnedRecords(t *testing.T) {
+	t.Parallel()
+
+	cname := managedDNSRecord{
+		PlaneID:    "pln_test",
+		ServiceID:  "svc_test",
+		Host:       "api.apps.example.com",
+		RecordType: "CNAME",
+		Value:      "api.apps.example.com.cdn.example.net",
+		Purpose:    dnsRecordPurposeFrontDoorCNAME,
+	}
+	verify := managedDNSRecord{
+		PlaneID:    "pln_test",
+		ServiceID:  "svc_test",
+		Host:       "_cdnauth.api.apps.example.com",
+		RecordType: "TXT",
+		Value:      "verify",
+		Purpose:    dnsRecordPurposeFrontDoorVerification,
+	}
+	api := &fakeDNSPodAPI{records: []fakeDNSPodRecord{
+		{id: 10, subdomain: "api.apps", recordType: "CNAME", value: cname.Value, remark: managedDNSRemark(cname)},
+		{id: 11, subdomain: "_cdnauth.api.apps", recordType: "TXT", value: verify.Value, remark: managedDNSRemark(verify)},
+		{id: 12, subdomain: "manual.apps", recordType: "CNAME", value: "manual.example.net", remark: "manual"},
+	}}
+	client := &dnsPodClient{client: api, domain: "example.com"}
+
+	if err := client.DeleteServiceRecords(context.Background(), "pln_test", "svc_test", ""); err != nil {
+		t.Fatalf("DeleteServiceRecords returned error: %v", err)
+	}
+	if len(api.deleted) != 2 || *api.deleted[0].RecordId != 10 || *api.deleted[1].RecordId != 11 {
+		t.Fatalf("deleted records = %+v, want owned service records", api.deleted)
+	}
+}
+
+type deletedServiceRecords struct {
+	PlaneID   string
+	ServiceID string
+	Purpose   string
+}
+
 type fakeDNSClient struct {
-	records []managedDNSRecord
-	deleted []managedDNSRecord
+	records         []managedDNSRecord
+	deleted         []managedDNSRecord
+	deletedServices []deletedServiceRecords
 }
 
 func (f *fakeDNSClient) EnsureRecord(_ context.Context, record managedDNSRecord) error {
@@ -235,19 +236,9 @@ func (f *fakeDNSClient) DeleteRecord(_ context.Context, record managedDNSRecord)
 	return nil
 }
 
-func createSyncTestPlane(t *testing.T, stores *controlplanestore.Store, name string) model.PlaneDetail {
-	t.Helper()
-	item, err := stores.RegisterPlane(context.Background(), controlplanestore.RegisterPlaneInput{
-		Name:         name,
-		DisplayName:  name,
-		Provider:     "tencent",
-		Region:       "ap-guangzhou",
-		GRPCEndpoint: name + ".example.test:18081",
-	})
-	if err != nil {
-		t.Fatalf("RegisterPlane returned error: %v", err)
-	}
-	return item
+func (f *fakeDNSClient) DeleteServiceRecords(_ context.Context, planeID string, serviceID string, purpose string) error {
+	f.deletedServices = append(f.deletedServices, deletedServiceRecords{PlaneID: planeID, ServiceID: serviceID, Purpose: purpose})
+	return nil
 }
 
 type fakeDNSPodAPI struct {
@@ -280,11 +271,16 @@ func (f *fakeDNSPodAPI) DescribeRecordListWithContext(_ context.Context, req *dn
 	subdomain := stringPtrValue(req.Subdomain)
 	recordType := strings.ToUpper(stringPtrValue(req.RecordType))
 	for _, record := range f.records {
-		if record.subdomain != subdomain || strings.ToUpper(record.recordType) != recordType {
+		if subdomain != "" && record.subdomain != subdomain {
+			continue
+		}
+		if recordType != "" && strings.ToUpper(record.recordType) != recordType {
 			continue
 		}
 		items = append(items, &dnspod.RecordListItem{
 			RecordId: tccommon.Uint64Ptr(record.id),
+			Name:     tccommon.StringPtr(record.subdomain),
+			Type:     tccommon.StringPtr(record.recordType),
 			Value:    tccommon.StringPtr(record.value),
 			Remark:   tccommon.StringPtr(record.remark),
 		})

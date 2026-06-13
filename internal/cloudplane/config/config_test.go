@@ -92,7 +92,7 @@ func validConfig() Config {
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
 		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
+		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
 			Token:           "node-agent-token",
@@ -120,7 +120,6 @@ plane:
   name: mini-cloud-lab
   grpcEndpoint: 10.0.0.10:18081
 controlPlane:
-  url: http://127.0.0.1:18080
   bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081

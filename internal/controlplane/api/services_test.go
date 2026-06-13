@@ -12,11 +12,10 @@ import (
 	"sync"
 	"testing"
 
+	controlplaneconfig "mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
-	controlplanestore "mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/testutil"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -110,31 +109,32 @@ func TestBuildServiceResourceKeepsEmptyWorkloadFields(t *testing.T) {
 
 func TestUpdateServiceRequiresPlaneIDQuery(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceAPIPlane(t)
-	plane, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
+	catalog, err := coordination.NewPlaneCatalog([]controlplaneconfig.PlaneConfig{{
+		ID:           "pln_api",
 		Name:         "api-plane",
 		DisplayName:  "API Plane",
 		Provider:     "aliyun",
 		Region:       "cn-beijing",
 		GRPCEndpoint: planeServer.endpoint,
-	})
+	}})
 	if err != nil {
-		t.Fatalf("RegisterPlane returned error: %v", err)
+		t.Fatalf("NewPlaneCatalog returned error: %v", err)
 	}
-	if err := db.Store.UpdatePlaneStatus(ctx, plane.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusReady, Message: "ready"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
+	plane, err := catalog.GetPlane(ctx, "pln_api")
+	if err != nil {
+		t.Fatalf("GetPlane returned error: %v", err)
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	planeSyncer := coordination.NewPlaneSyncer(logger, db.Store, "southbound-token", nil)
-	services := coordination.NewServiceOperations(logger, db.Store, "southbound-token", "apps.example.test", planeSyncer)
+	planeSyncer := coordination.NewPlaneSyncer(logger, catalog, "southbound-token", nil)
+	services := coordination.NewServiceOperations(logger, catalog, "southbound-token", "apps.example.test", planeSyncer)
 	handler, err := NewMux(Options{
 		AdminToken:        "admin-token",
 		SouthboundToken:   "southbound-token",
 		ServiceOperations: services,
 		PlaneSyncer:       planeSyncer,
-	}, logger, db.Store)
+	}, logger)
 	if err != nil {
 		t.Fatalf("NewMux returned error: %v", err)
 	}

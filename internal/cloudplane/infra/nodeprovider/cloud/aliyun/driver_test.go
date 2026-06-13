@@ -12,7 +12,7 @@ import (
 func testDriverConfig(provider cloudplaneconfig.AliyunNodeConfig) cloudplaneconfig.Config {
 	return cloudplaneconfig.Config{
 		Plane:        cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: cloudplaneconfig.ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
+		ControlPlane: cloudplaneconfig.ControlPlaneConfig{BearerToken: "southbound-token"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
 			Provider: Name,
 			RegionID: "cn-beijing",

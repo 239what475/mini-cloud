@@ -24,6 +24,7 @@ const (
 type dnsClient interface {
 	EnsureRecord(context.Context, managedDNSRecord) error
 	DeleteRecord(context.Context, managedDNSRecord) error
+	DeleteServiceRecords(context.Context, string, string, string) error
 }
 
 type managedDNSRecord struct {
@@ -119,10 +120,48 @@ func (c *dnsPodClient) DeleteRecord(ctx context.Context, record managedDNSRecord
 	return nil
 }
 
+func (c *dnsPodClient) DeleteServiceRecords(ctx context.Context, planeID string, serviceID string, purpose string) error {
+	planeID = strings.TrimSpace(planeID)
+	serviceID = strings.TrimSpace(serviceID)
+	purpose = strings.TrimSpace(purpose)
+	if planeID == "" || serviceID == "" {
+		return fmt.Errorf("managed DNS record deletion requires planeID and serviceID")
+	}
+	records, err := c.recordsForDomain(ctx)
+	if err != nil {
+		return err
+	}
+	for _, existing := range records {
+		if existing.id == 0 || existing.subdomain == "" || existing.recordType == "" {
+			continue
+		}
+		record := managedDNSRecord{
+			PlaneID:    planeID,
+			ServiceID:  serviceID,
+			Host:       c.host(existing.subdomain),
+			RecordType: existing.recordType,
+			Value:      existing.value,
+			Purpose:    purposeFromRemark(existing.remark),
+		}
+		if purpose != "" {
+			record.Purpose = purpose
+		}
+		if !dnsRecordOwnedBy(existing.remark, record) {
+			continue
+		}
+		if err := c.deleteRecord(ctx, existing.id); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type dnsRecord struct {
-	id     uint64
-	value  string
-	remark string
+	id         uint64
+	subdomain  string
+	recordType string
+	value      string
+	remark     string
 }
 
 var errDNSRecordMissing = errors.New("DNS record is missing")
@@ -171,7 +210,42 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 		if item.Remark != nil {
 			remark = *item.Remark
 		}
-		out = append(out, dnsRecord{id: *item.RecordId, value: *item.Value, remark: remark})
+		out = append(out, dnsRecord{id: *item.RecordId, subdomain: subdomain, recordType: recordType, value: *item.Value, remark: remark})
+	}
+	return out, nil
+}
+
+func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error) {
+	limit := uint64(3000)
+	errorOnEmpty := "no"
+	req := dnspod.NewDescribeRecordListRequest()
+	req.Domain = tccommon.StringPtr(c.domain)
+	req.Limit = &limit
+	req.ErrorOnEmpty = &errorOnEmpty
+
+	resp, err := c.client.DescribeRecordListWithContext(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response == nil {
+		return nil, nil
+	}
+	out := make([]dnsRecord, 0, len(resp.Response.RecordList))
+	for _, item := range resp.Response.RecordList {
+		if item == nil || item.RecordId == nil || item.Value == nil || item.Name == nil || item.Type == nil {
+			continue
+		}
+		remark := ""
+		if item.Remark != nil {
+			remark = *item.Remark
+		}
+		out = append(out, dnsRecord{
+			id:         *item.RecordId,
+			subdomain:  strings.Trim(strings.ToLower(strings.TrimSpace(*item.Name)), "."),
+			recordType: strings.ToUpper(strings.TrimSpace(*item.Type)),
+			value:      *item.Value,
+			remark:     remark,
+		})
 	}
 	return out, nil
 }
@@ -224,6 +298,14 @@ func (c *dnsPodClient) subdomain(host string) (string, error) {
 	return strings.TrimSuffix(host, suffix), nil
 }
 
+func (c *dnsPodClient) host(subdomain string) string {
+	subdomain = strings.Trim(strings.ToLower(strings.TrimSpace(subdomain)), ".")
+	if subdomain == "" || subdomain == "@" {
+		return c.domain
+	}
+	return subdomain + "." + c.domain
+}
+
 func cleanDNSDomain(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
@@ -260,6 +342,15 @@ func managedDNSRemark(record managedDNSRecord) string {
 
 func dnsRecordOwnedBy(remark string, record managedDNSRecord) bool {
 	return strings.TrimSpace(remark) == managedDNSRemark(record)
+}
+
+func purposeFromRemark(remark string) string {
+	for _, field := range strings.Fields(strings.TrimSpace(remark)) {
+		if value, ok := strings.CutPrefix(field, "purpose="); ok {
+			return value
+		}
+	}
+	return ""
 }
 
 func isDNSPodRecordAlreadyExists(err error) bool {

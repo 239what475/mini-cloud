@@ -14,8 +14,6 @@ import (
 
 	cloudplanestore "mini-cloud/internal/cloudplane/infra/store"
 	cloudplanemigrations "mini-cloud/internal/cloudplane/infra/store/migrations"
-	controlplanestore "mini-cloud/internal/controlplane/store"
-	controlplanemigrations "mini-cloud/internal/controlplane/store/migrations"
 )
 
 const testDatabaseURLEnv = "MINICLOUD_TEST_DATABASE_URL"
@@ -24,12 +22,6 @@ type TestDatabase struct {
 	DatabaseURL string
 	DB          *sql.DB
 	Store       *cloudplanestore.Store
-}
-
-type ControlPlaneTestDatabase struct {
-	DatabaseURL string
-	DB          *sql.DB
-	Store       *controlplanestore.Store
 }
 
 func OpenCloudPlaneTestDatabase(t *testing.T) TestDatabase {
@@ -41,18 +33,6 @@ func OpenCloudPlaneTestDatabase(t *testing.T) TestDatabase {
 		DatabaseURL: testURL,
 		DB:          db,
 		Store:       cloudplanestore.New(db),
-	}
-}
-
-func OpenControlPlaneTestDatabase(t *testing.T) ControlPlaneTestDatabase {
-	t.Helper()
-
-	db, testURL := openIsolatedTestDatabase(t, controlplanestore.Open, controlplanemigrations.Up)
-
-	return ControlPlaneTestDatabase{
-		DatabaseURL: testURL,
-		DB:          db,
-		Store:       controlplanestore.New(db),
 	}
 }
 

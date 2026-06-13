@@ -12,7 +12,7 @@
 # 3. 启动 compose 里的 Postgres。
 # 4. 等待 Postgres 在容器内真正可用。
 # 5. 给 Go 测试注入 MINICLOUD_TEST_DATABASE_URL。
-# 6. 跑依赖真实数据库的 store / API 测试包。
+# 6. 跑依赖真实数据库的 cloud-plane store / API 测试包。
 # 7. 脚本退出时自动 down -v，清理本地测试数据库环境。
 #
 # 注意：
@@ -69,7 +69,5 @@ echo "[integration] run Go integration tests"
 # 具体测试包会按自己的 migration / store 逻辑创建或使用测试所需 schema。
 MINICLOUD_TEST_DATABASE_URL="postgres://mini_cloud:mini_cloud@127.0.0.1:5432/postgres?sslmode=disable" \
   go test -count=1 \
-    ./internal/controlplane/store \
     ./internal/cloudplane/infra/store \
-    ./internal/cloudplane/api/... \
-    ./internal/controlplane/api
+    ./internal/cloudplane/api/...

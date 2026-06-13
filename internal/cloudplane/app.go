@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"sync"
 
 	cloudplaneapi "mini-cloud/internal/cloudplane/api"
 	cloudplaneconfig "mini-cloud/internal/cloudplane/config"
@@ -97,12 +96,6 @@ func (a App) Run(ctx context.Context) error {
 	go func() {
 		errCh <- a.server.Serve(listener)
 	}()
-
-	var registrationWG sync.WaitGroup
-	registrationWG.Go(func() {
-		registerWithControlPlaneUntilReady(runCtx, a.logger, a.Config)
-	})
-	defer registrationWG.Wait()
 
 	select {
 	case err := <-errCh:

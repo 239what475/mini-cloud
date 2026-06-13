@@ -5,8 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
+)
+
+const (
+	dnsRecordPurposeFrontDoorVerification = "frontdoor_verification"
+	dnsRecordPurposeFrontDoorCNAME        = "frontdoor_cname"
 )
 
 func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, services []*cloudplanev1.PlaneService) error {
@@ -31,20 +35,10 @@ func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, serv
 				Host:       item.GetFrontdoorVerifySubdomain(),
 				RecordType: recordType,
 				Value:      item.GetFrontdoorVerifyValue(),
-				Purpose:    store.DNSRecordPurposeFrontDoorVerification,
+				Purpose:    dnsRecordPurposeFrontDoorVerification,
 			}
 			if err := s.dns.EnsureRecord(ctx, record); err != nil {
 				return fmt.Errorf("ensure frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
-			}
-			if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
-				PlaneID:    record.PlaneID,
-				ServiceID:  record.ServiceID,
-				Host:       record.Host,
-				RecordType: record.RecordType,
-				Value:      record.Value,
-				Purpose:    record.Purpose,
-			}); err != nil {
-				return err
 			}
 		}
 		if strings.TrimSpace(item.GetFrontdoorCname()) == "" {
@@ -56,22 +50,28 @@ func (s *PlaneSyncer) syncFrontDoorDNS(ctx context.Context, planeID string, serv
 			Host:       item.GetHost(),
 			RecordType: "CNAME",
 			Value:      item.GetFrontdoorCname(),
-			Purpose:    store.DNSRecordPurposeFrontDoorCNAME,
+			Purpose:    dnsRecordPurposeFrontDoorCNAME,
 		}
 		if err := s.dns.EnsureRecord(ctx, record); err != nil {
 			return fmt.Errorf("ensure frontdoor CNAME DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
 		}
-		if err := s.store.SaveServiceDNSRecord(ctx, store.DNSRecord{
-			PlaneID:    record.PlaneID,
-			ServiceID:  record.ServiceID,
-			Host:       record.Host,
-			RecordType: record.RecordType,
-			Value:      record.Value,
-			Purpose:    record.Purpose,
-		}); err != nil {
-			return err
-		}
-		if err := s.deleteServiceVerificationDNS(ctx, planeID, item.GetServiceId()); err != nil {
+		if strings.TrimSpace(item.GetFrontdoorVerifySubdomain()) != "" && strings.TrimSpace(item.GetFrontdoorVerifyValue()) != "" {
+			recordType := strings.TrimSpace(item.GetFrontdoorVerifyType())
+			if recordType == "" {
+				recordType = "TXT"
+			}
+			record := managedDNSRecord{
+				PlaneID:    planeID,
+				ServiceID:  item.GetServiceId(),
+				Host:       item.GetFrontdoorVerifySubdomain(),
+				RecordType: recordType,
+				Value:      item.GetFrontdoorVerifyValue(),
+				Purpose:    dnsRecordPurposeFrontDoorVerification,
+			}
+			if err := s.dns.DeleteRecord(ctx, record); err != nil {
+				return fmt.Errorf("delete frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
+			}
+		} else if err := s.dns.DeleteServiceRecords(ctx, planeID, item.GetServiceId(), dnsRecordPurposeFrontDoorVerification); err != nil {
 			return fmt.Errorf("delete frontdoor verification DNS for plane %s host %s: %w", planeID, item.GetHost(), err)
 		}
 	}
@@ -82,33 +82,5 @@ func (s *PlaneSyncer) deleteServiceDNS(ctx context.Context, planeID string, serv
 	if s.dns == nil {
 		return nil
 	}
-	records, err := s.store.ListServiceDNSRecords(ctx, planeID, serviceID)
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		if err := s.dns.DeleteRecord(ctx, managedDNSRecord(record)); err != nil {
-			return fmt.Errorf("delete DNS record %s %s for service %s: %w", record.Host, record.RecordType, serviceID, err)
-		}
-	}
-	return s.store.DeleteServiceDNSRecords(ctx, planeID, serviceID)
-}
-
-func (s *PlaneSyncer) deleteServiceVerificationDNS(ctx context.Context, planeID string, serviceID string) error {
-	records, err := s.store.ListServiceDNSRecords(ctx, planeID, serviceID)
-	if err != nil {
-		return err
-	}
-	for _, record := range records {
-		if record.Purpose != store.DNSRecordPurposeFrontDoorVerification {
-			continue
-		}
-		if err := s.dns.DeleteRecord(ctx, managedDNSRecord(record)); err != nil {
-			return err
-		}
-		if err := s.store.DeleteServiceDNSRecord(ctx, record); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.dns.DeleteServiceRecords(ctx, planeID, serviceID, "")
 }

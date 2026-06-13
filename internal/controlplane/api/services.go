@@ -10,7 +10,6 @@ import (
 
 	"mini-cloud/internal/controlplane/coordination"
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -90,14 +89,12 @@ var errServiceSpecRequired = errors.New("spec is required")
 
 type serviceHandler struct {
 	logger   *slog.Logger
-	store    *store.Store
 	services *coordination.ServiceOperations
 }
 
-func newServiceHandler(logger *slog.Logger, stores *store.Store, services *coordination.ServiceOperations) serviceHandler {
+func newServiceHandler(logger *slog.Logger, services *coordination.ServiceOperations) serviceHandler {
 	return serviceHandler{
 		logger:   logger,
-		store:    stores,
 		services: services,
 	}
 }
@@ -134,7 +131,7 @@ func (h serviceHandler) createService(c *gin.Context) {
 		case isServiceRequestError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrPlaneNotFound):
+		case errors.Is(err, coordination.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -143,10 +140,7 @@ func (h serviceHandler) createService(c *gin.Context) {
 			return
 		}
 	}
-	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:  "control.service.create",
-		Message: "created service " + service.Metadata.Name,
-	})
+	h.logger.Info("control service created", "service_id", service.Metadata.ID, "service_name", service.Metadata.Name, "plane_id", service.Spec.PlaneID)
 
 	c.JSON(http.StatusCreated, buildServiceResource(service))
 }
@@ -165,7 +159,7 @@ func (h serviceHandler) getService(c *gin.Context) {
 	service, err := h.services.Get(c.Request.Context(), planeID, serviceID)
 	if err != nil {
 		switch {
-		case errors.Is(err, store.ErrServiceNotFound):
+		case errors.Is(err, coordination.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
 			h.logger.Error("get service failed", "service_id", serviceID, "error", err)
@@ -204,10 +198,10 @@ func (h serviceHandler) updateService(c *gin.Context) {
 		case isServiceRequestError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrServiceNotFound):
+		case errors.Is(err, coordination.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
-		case errors.Is(err, store.ErrPlaneNotFound):
+		case errors.Is(err, coordination.ErrPlaneNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 			return
 		default:
@@ -216,10 +210,7 @@ func (h serviceHandler) updateService(c *gin.Context) {
 			return
 		}
 	}
-	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:  "control.service.update",
-		Message: "updated service " + service.Metadata.Name,
-	})
+	h.logger.Info("control service updated", "service_id", service.Metadata.ID, "service_name", service.Metadata.Name, "plane_id", service.Spec.PlaneID)
 
 	c.JSON(http.StatusOK, buildServiceResource(service))
 }
@@ -239,7 +230,7 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 	service, err := h.services.Delete(c.Request.Context(), coordination.DeleteServiceInput{PlaneID: planeID, ServiceID: serviceID})
 	if err != nil {
 		switch {
-		case errors.Is(err, store.ErrServiceNotFound):
+		case errors.Is(err, coordination.ErrServiceNotFound):
 			c.JSON(http.StatusNotFound, map[string]any{"error": err.Error()})
 		default:
 			h.logger.Error("delete service failed", "service_id", serviceID, "error", err)
@@ -247,10 +238,7 @@ func (h serviceHandler) deleteService(c *gin.Context) {
 		}
 		return
 	}
-	recordControlEvent(h.logger, h.store, c.Request.Context(), store.CreateControlEventInput{
-		Action:  "control.service.delete",
-		Message: "requested service deletion " + service.Metadata.Name,
-	})
+	h.logger.Info("control service deletion requested", "service_id", service.Metadata.ID, "service_name", service.Metadata.Name, "plane_id", service.Spec.PlaneID)
 	c.JSON(http.StatusOK, buildServiceResource(service))
 }
 

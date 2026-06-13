@@ -21,13 +21,22 @@ type controlPlaneTemplateData struct {
 	ServiceBaseDomain string
 	DNSPodDomain      string
 	DNSPodCredential  tencentCredential
+	Planes            []controlPlanePlaneTemplateData
+}
+
+type controlPlanePlaneTemplateData struct {
+	ID           string
+	Name         string
+	DisplayName  string
+	Provider     string
+	Region       string
+	GRPCEndpoint string
 }
 
 type cloudPlaneTemplateData struct {
 	ListenGRPCAddr              string
 	PlaneName                   string
 	PlaneGRPCEndpoint           string
-	ControlPlaneURL             string
 	SouthboundToken             string
 	NodeAgentConnectEndpoint    string
 	NodeAgentToken              string
@@ -60,23 +69,41 @@ type remoteCloudPlaneInstallTemplateData struct {
 	CloudPlaneGRPCPort int
 }
 
+type cloudPlaneInstallPlan struct {
+	Plane        Plane
+	Output       TerraformOutput
+	Host         string
+	PrivateIP    string
+	GRPCEndpoint string
+	Install      installFiles
+}
+
 func (r *Runner) Install(ctx context.Context) error {
 	if err := r.cfg.validateInstall(); err != nil {
 		return err
 	}
-	if err := r.installControlPlane(ctx); err != nil {
+	plans, err := r.prepareCloudPlaneInstallPlans(ctx)
+	if err != nil {
 		return err
 	}
-	for _, plane := range r.cfg.Planes {
-		if err := r.installCloudPlane(ctx, plane); err != nil {
+	defer func() {
+		for _, plan := range plans {
+			removeFiles([]string{plan.Install.Config, plan.Install.RemoteScript})
+		}
+	}()
+	if err := r.installControlPlane(ctx, plans); err != nil {
+		return err
+	}
+	for _, plan := range plans {
+		if err := r.installCloudPlane(ctx, plan); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r *Runner) installControlPlane(ctx context.Context) error {
-	install, err := r.renderControlPlaneInstallFiles()
+func (r *Runner) installControlPlane(ctx context.Context, plans []cloudPlaneInstallPlan) error {
+	install, err := r.renderControlPlaneInstallFiles(plans)
 	if err != nil {
 		return err
 	}
@@ -103,20 +130,32 @@ func (r *Runner) installControlPlane(ctx context.Context) error {
 	return r.ssh(ctx, r.cfg.ControlPlane.SSH, host, script)
 }
 
-func (r *Runner) installCloudPlane(ctx context.Context, plane Plane) error {
+func (r *Runner) prepareCloudPlaneInstallPlans(ctx context.Context) ([]cloudPlaneInstallPlan, error) {
+	plans := make([]cloudPlaneInstallPlan, 0, len(r.cfg.Planes))
+	for _, plane := range r.cfg.Planes {
+		plan, err := r.prepareCloudPlaneInstallPlan(ctx, plane)
+		if err != nil {
+			return nil, err
+		}
+		plans = append(plans, plan)
+	}
+	return plans, nil
+}
+
+func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) (cloudPlaneInstallPlan, error) {
 	if err := r.terraform(ctx, plane, "init"); err != nil {
-		return err
+		return cloudPlaneInstallPlan{}, err
 	}
 	if err := r.selectTerraformWorkspace(ctx, plane); err != nil {
-		return err
+		return cloudPlaneInstallPlan{}, err
 	}
 	out, err := r.terraformOutput(ctx, plane)
 	if err != nil {
-		return err
+		return cloudPlaneInstallPlan{}, err
 	}
 	host, err := r.platformHost(plane, out)
 	if err != nil {
-		return err
+		return cloudPlaneInstallPlan{}, err
 	}
 	platformPrivateIP := strings.TrimSpace(out.Platform.Value.PrivateIP)
 	if platformPrivateIP == "" {
@@ -125,40 +164,69 @@ func (r *Runner) installCloudPlane(ctx context.Context, plane Plane) error {
 	if platformPrivateIP == "" {
 		platformPrivateIP, err = r.detectPrivateIP(ctx, plane.SSH, host)
 		if err != nil {
-			return err
+			return cloudPlaneInstallPlan{}, err
 		}
 	}
 
 	install, err := r.renderCloudPlaneInstallFiles(plane, out, platformPrivateIP)
 	if err != nil {
-		return err
+		return cloudPlaneInstallPlan{}, err
 	}
-	defer removeFiles([]string{install.Config, install.RemoteScript})
+	nodeAgentConnectEndpoint := fmt.Sprintf("%s:%d", platformPrivateIP, out.Network.Value.CloudPlaneGRPCPort)
+	return cloudPlaneInstallPlan{
+		Plane:        plane,
+		Output:       out,
+		Host:         host,
+		PrivateIP:    platformPrivateIP,
+		GRPCEndpoint: r.planeGRPCEndpoint(out, out.platformHost(), nodeAgentConnectEndpoint),
+		Install:      install,
+	}, nil
+}
 
-	remote := func(name string) string { return host + ":/tmp/" + name }
-	if err := r.scp(ctx, plane.SSH, r.cfg.Binaries.CloudPlane, remote("mini-cloud-cloud-plane")); err != nil {
+func (r *Runner) installCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan) error {
+	remote := func(name string) string { return plan.Host + ":/tmp/" + name }
+	if err := r.scp(ctx, plan.Plane.SSH, r.cfg.Binaries.CloudPlane, remote("mini-cloud-cloud-plane")); err != nil {
 		return err
 	}
-	if err := r.scp(ctx, plane.SSH, r.cfg.Binaries.NodeAgent, remote("mini-cloud-node-agent")); err != nil {
+	if err := r.scp(ctx, plan.Plane.SSH, r.cfg.Binaries.NodeAgent, remote("mini-cloud-node-agent")); err != nil {
 		return err
 	}
-	if err := r.scp(ctx, plane.SSH, install.Config, remote("mini-cloud-cloud-plane.yaml")); err != nil {
+	if err := r.scp(ctx, plan.Plane.SSH, plan.Install.Config, remote("mini-cloud-cloud-plane.yaml")); err != nil {
 		return err
 	}
-	script, err := os.ReadFile(install.RemoteScript)
+	script, err := os.ReadFile(plan.Install.RemoteScript)
 	if err != nil {
 		return err
 	}
-	return r.ssh(ctx, plane.SSH, host, script)
+	return r.ssh(ctx, plan.Plane.SSH, plan.Host, script)
 }
 
-func (r *Runner) renderControlPlaneInstallFiles() (installFiles, error) {
+func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (installFiles, error) {
 	dnspodCredential, err := readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
 	if err != nil {
 		return installFiles{}, err
 	}
 	if strings.TrimSpace(dnspodCredential.SecretID) == "" || strings.TrimSpace(dnspodCredential.SecretKey) == "" {
 		return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
+	}
+	planes := make([]controlPlanePlaneTemplateData, 0, len(plans))
+	for _, plan := range plans {
+		provider := plan.Output.ProviderName()
+		if provider == "" {
+			provider = plan.Plane.Provider
+		}
+		region := plan.Output.RegionID()
+		if region == "" {
+			region = plan.Plane.Region
+		}
+		planes = append(planes, controlPlanePlaneTemplateData{
+			ID:           "pln_" + strings.ReplaceAll(plan.Plane.Name, "-", "_"),
+			Name:         plan.Plane.Name,
+			DisplayName:  plan.Plane.Name,
+			Provider:     provider,
+			Region:       region,
+			GRPCEndpoint: plan.GRPCEndpoint,
+		})
 	}
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
 		HTTPAddr:          r.cfg.ControlPlane.ListenHTTPAddr,
@@ -168,6 +236,7 @@ func (r *Runner) renderControlPlaneInstallFiles() (installFiles, error) {
 		ServiceBaseDomain: strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
 		DNSPodDomain:      rootDomain(r.cfg.Install.IngressBaseDomain),
 		DNSPodCredential:  dnspodCredential,
+		Planes:            planes,
 	})
 	if err != nil {
 		return installFiles{}, err
@@ -254,7 +323,6 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 		ListenGRPCAddr:              fmt.Sprintf("0.0.0.0:%d", grpcPort),
 		PlaneName:                   out.Platform.Value.Name,
 		PlaneGRPCEndpoint:           planeGRPCEndpoint,
-		ControlPlaneURL:             r.cfg.ControlPlane.URL,
 		SouthboundToken:             r.cfg.Tokens.ControlPlaneSouthbound,
 		NodeAgentConnectEndpoint:    nodeAgentConnectEndpoint,
 		NodeAgentToken:              r.cfg.Tokens.NodeAgent,

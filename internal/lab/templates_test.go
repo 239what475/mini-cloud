@@ -50,6 +50,16 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 			SecretKey: "skey",
 			Token:     "stok",
 		},
+		Planes: []controlPlanePlaneTemplateData{
+			{
+				ID:           "pln_test",
+				Name:         "test-plane",
+				DisplayName:  "Test Plane",
+				Provider:     "aliyun",
+				Region:       "cn-beijing",
+				GRPCEndpoint: "10.0.0.1:18081",
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -62,6 +72,9 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		"    secretId: \"sid\"",
 		"    secretKey: \"skey\"",
 		"    token: \"stok\"",
+		"planes:",
+		"  - id: \"pln_test\"",
+		"    grpcEndpoint: \"10.0.0.1:18081\"",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("control-plane config does not contain %q:\n%s", want, text)
@@ -100,7 +113,6 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 		ListenGRPCAddr:           "0.0.0.0:18081",
 		PlaneName:                "mini-cloud-lab",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
-		ControlPlaneURL:          "http://127.0.0.1:18080",
 		SouthboundToken:          "southbound",
 		NodeAgentConnectEndpoint: "10.0.0.1:18081",
 		NodeAgentToken:           "node-agent-token",
@@ -170,7 +182,6 @@ func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 		ListenGRPCAddr:           "0.0.0.0:18081",
 		PlaneName:                "mini-cloud-lab",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
-		ControlPlaneURL:          "http://127.0.0.1:18080",
 		SouthboundToken:          "southbound",
 		NodeAgentConnectEndpoint: "10.0.0.1:18081",
 		NodeAgentToken:           "node-agent-token",

@@ -10,10 +10,9 @@ import (
 	"testing"
 	"time"
 
+	controlplaneconfig "mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/model"
-	controlplanestore "mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/testutil"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
@@ -23,11 +22,10 @@ import (
 
 func TestCreateDispatchesServiceToSpecPlane(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-create-dispatch", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-create-dispatch", planeServer.endpoint)
 
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
 
 	service, err := operations.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
@@ -56,13 +54,12 @@ func TestCreateDispatchesServiceToSpecPlane(t *testing.T) {
 
 func TestCreateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
 	planeServer.frontDoorFromDispatch = true
-	planeItem := mustCreateReadyPlane(t, db, "plane-create-frontdoor", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-create-frontdoor", planeServer.endpoint)
 	dns := &fakeDNSClient{}
-	syncer := NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", dns)
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", syncer)
+	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", dns)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", syncer)
 
 	if _, err := operations.Create(ctx, createInput(planeItem.ID, "frontdoor-web", "Frontdoor Web", "nginx:1.27-alpine")); err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -75,40 +72,12 @@ func TestCreateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
 	}
 }
 
-func TestCreateFailsWithoutPersistingBindingWhenInitialDispatchFails(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-create-offline", planeServer.endpoint)
-	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	_, err := operations.Create(ctx, createInput(planeItem.ID, "pending-web", "Pending Web", "nginx:1.27-alpine"))
-	if err == nil {
-		t.Fatalf("Create returned nil error, want dispatch failure")
-	}
-	services, err := operations.List(ctx)
-	if err != nil {
-		t.Fatalf("List after failed create returned error: %v", err)
-	}
-	if len(services) != 0 {
-		t.Fatalf("services after failed create = %+v, want none", services)
-	}
-	if len(planeServer.dispatchRequests()) != 0 {
-		t.Fatalf("dispatch requests = %d, want 0 while plane is offline", len(planeServer.dispatchRequests()))
-	}
-}
-
 func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-update", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-update", planeServer.endpoint)
 
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "api", "API", "nginx:1.27-alpine"))
 	if err != nil {
@@ -133,38 +102,12 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	}
 }
 
-func TestUpdateFailsWithoutDispatchWhenPlaneIsOffline(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-update-offline", planeServer.endpoint)
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "update-offline", "Update Offline", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-
-	_, err = operations.Update(ctx, updateInput(planeItem.ID, created.Metadata.ID, "Update Offline v2", "nginx:1.28-alpine"))
-	if err == nil {
-		t.Fatalf("Update returned nil error, want plane offline error")
-	}
-	if len(planeServer.dispatchRequests()) != 1 {
-		t.Fatalf("dispatch requests = %d, want only initial create dispatch", len(planeServer.dispatchRequests()))
-	}
-}
-
 func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-delete", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-delete", planeServer.endpoint)
 
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "gone", "Gone", "nginx:1.27-alpine"))
 	if err != nil {
@@ -188,37 +131,36 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	}
 }
 
-func TestDeleteSyncsPlaneAfterDispatchToAdvanceDNSCleanup(t *testing.T) {
+func TestDeleteCleansServiceDNSByOwnershipRemark(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
 	planeServer.frontDoorFromDispatch = true
-	planeItem := mustCreateReadyPlane(t, db, "plane-delete-frontdoor", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-delete-frontdoor", planeServer.endpoint)
 	dns := &fakeDNSClient{}
-	syncer := NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", dns)
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", syncer)
+	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", dns)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", syncer)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "frontdoor-delete", "Frontdoor Delete", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
 	dns.deleted = nil
+	dns.deletedServices = nil
 
 	if _, err := operations.Delete(ctx, DeleteServiceInput{PlaneID: planeItem.ID, ServiceID: created.Metadata.ID}); err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if len(dns.deleted) == 0 {
-		t.Fatalf("deleted DNS records = %+v, want DNS cleanup from delete request sync", dns.deleted)
+	if len(dns.deletedServices) == 0 {
+		t.Fatalf("deleted service DNS records = %+v, want service DNS cleanup", dns.deletedServices)
 	}
 }
 
 func TestListUsesLiveCloudPlaneSnapshots(t *testing.T) {
 	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
 	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-list-sync", planeServer.endpoint)
+	catalog, planeItem := mustCreateCatalog(t, "plane-list-sync", planeServer.endpoint)
 
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", nil))
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", NewPlaneSyncer(testLogger(), catalog, "southbound-token", nil))
 	service, err := operations.Create(ctx, createInput(planeItem.ID, "listed", "Listed", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -356,11 +298,7 @@ func (p *serviceOperationsPlane) UpsertService(_ context.Context, req *cloudplan
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.dispatch = append(p.dispatch, req)
-	if p.frontDoorFromDispatch {
-		p.snapshot = snapshotFromUpsert(req, true)
-	} else {
-		p.snapshot = snapshotFromUpsert(req, false)
-	}
+	p.snapshot = snapshotFromUpsert(req, p.frontDoorFromDispatch)
 	return &cloudplanev1.UpsertServiceResponse{}, nil
 }
 
@@ -432,25 +370,28 @@ func (p *serviceOperationsPlane) deleteRequests() []*cloudplanev1.DeleteServiceR
 	return append([]*cloudplanev1.DeleteServiceRequest(nil), p.delete...)
 }
 
-func mustCreateReadyPlane(t *testing.T, db testutil.ControlPlaneTestDatabase, name string, endpoint string) model.PlaneDetail {
+func mustCreateCatalog(t *testing.T, name string, endpoint string) (*PlaneCatalog, model.PlaneDetail) {
 	t.Helper()
-	ctx := context.Background()
-	item, err := db.Store.RegisterPlane(ctx, controlplanestore.RegisterPlaneInput{
-		Name:         name,
-		DisplayName:  name,
-		Provider:     "aliyun",
-		Region:       "cn-beijing",
-		GRPCEndpoint: endpoint,
+	catalog, err := NewPlaneCatalog([]controlplaneconfig.PlaneConfig{
+		{
+			ID:           "pln_" + strings.ReplaceAll(name, "-", "_"),
+			Name:         name,
+			DisplayName:  name,
+			Provider:     "aliyun",
+			Region:       "cn-beijing",
+			GRPCEndpoint: endpoint,
+		},
 	})
 	if err != nil {
-		t.Fatalf("RegisterPlane returned error: %v", err)
+		t.Fatalf("NewPlaneCatalog returned error: %v", err)
 	}
-	if err := db.Store.UpdatePlaneStatus(ctx, item.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusReady, Message: "ready"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-	detail, err := db.Store.GetPlane(ctx, item.ID)
+	plane, err := catalog.GetPlane(context.Background(), "pln_"+strings.ReplaceAll(name, "-", "_"))
 	if err != nil {
 		t.Fatalf("GetPlane returned error: %v", err)
 	}
-	return detail
+	return catalog, plane
+}
+
+func testLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

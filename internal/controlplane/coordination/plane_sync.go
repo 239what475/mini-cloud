@@ -2,14 +2,12 @@ package coordination
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
 
 	"mini-cloud/internal/controlplane/model"
-	"mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -24,7 +22,7 @@ const (
 
 type PlaneSyncer struct {
 	logger          *slog.Logger
-	store           *store.Store
+	planes          *PlaneCatalog
 	southboundToken string
 	dns             dnsClient
 	now             func() time.Time
@@ -43,13 +41,13 @@ type PlaneSnapshotView struct {
 	Snapshot *cloudplanev1.PlaneSnapshot
 }
 
-func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken string, dns dnsClient) *PlaneSyncer {
+func NewPlaneSyncer(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, dns dnsClient) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &PlaneSyncer{
 		logger:          logger,
-		store:           stores,
+		planes:          planes,
 		southboundToken: strings.TrimSpace(southboundToken),
 		dns:             dns,
 		now: func() time.Time {
@@ -59,59 +57,35 @@ func NewPlaneSyncer(logger *slog.Logger, stores *store.Store, southboundToken st
 }
 
 func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
-	logger := s.logger.With("plane_id", planeID)
-	planeDetail, err := s.store.GetPlane(ctx, planeID)
+	view, err := s.GetPlaneSnapshotView(ctx, planeID)
 	if err != nil {
 		return err
 	}
-
-	snapshot, err := s.loadSnapshot(ctx, planeDetail)
-	if err != nil {
-		message := fmt.Sprintf("load plane snapshot failed: %v", err)
-		syncedAt := s.now()
-		if updateErr := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-			Status:     model.StatusOffline,
-			Message:    message,
-			LastSyncAt: &syncedAt,
-		}); updateErr != nil {
-			logger.Error("update failed plane status failed", "error", updateErr)
-		}
-		return errors.New(message)
+	if view.Snapshot == nil {
+		return fmt.Errorf("%s", view.Plane.Status.Message)
 	}
-	checkedAt := protoTime(snapshot.GetCheckedAt())
-
-	syncedAt := s.now()
-	status, message := derivePlaneStatus(planeDetail, snapshot)
-	if err := s.store.UpdatePlaneStatus(ctx, planeID, store.UpdatePlaneStatusInput{
-		Status:          status,
-		Message:         message,
-		LastHeartbeatAt: &checkedAt,
-		LastSyncAt:      &syncedAt,
-	}); err != nil {
-		return err
-	}
-	if err := s.syncFrontDoorDNS(ctx, planeID, snapshot.GetServices()); err != nil {
+	if err := s.syncFrontDoorDNS(ctx, planeID, view.Snapshot.GetServices()); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
-	planeIDs, err := s.store.ListPlaneIDs(ctx)
+	planes, err := s.planes.ListPlanes(ctx)
 	if err != nil {
 		return err
 	}
 
-	for _, planeID := range planeIDs {
+	for _, plane := range planes {
 		planeCtx := ctx
 		cancel := func() {}
 		if perPlaneTimeout > 0 {
 			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
 		}
-		err := s.SyncPlane(planeCtx, planeID)
+		err := s.SyncPlane(planeCtx, plane.ID)
 		cancel()
 		if err != nil {
-			s.logger.Warn("plane sync failed", "plane_id", planeID, "error", err)
+			s.logger.Warn("plane sync failed", "plane_id", plane.ID, "error", err)
 		}
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -121,7 +95,7 @@ func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 }
 
 func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSnapshotView, error) {
-	planes, err := s.store.ListPlanes(ctx)
+	planes, err := s.planes.ListPlanes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -136,9 +110,11 @@ func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeou
 		snapshot, err := s.loadSnapshot(planeCtx, plane)
 		cancel()
 		if err != nil {
+			view.Plane = s.offlinePlane(plane, err)
 			s.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
 		} else {
 			view.Snapshot = snapshot
+			view.Plane = s.syncedPlane(plane, snapshot)
 		}
 		views = append(views, view)
 		if ctx.Err() != nil {
@@ -149,15 +125,42 @@ func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeou
 }
 
 func (s *PlaneSyncer) GetPlaneSnapshotView(ctx context.Context, planeID string) (PlaneSnapshotView, error) {
-	plane, err := s.store.GetPlane(ctx, planeID)
+	plane, err := s.planes.GetPlane(ctx, planeID)
 	if err != nil {
 		return PlaneSnapshotView{}, err
 	}
 	snapshot, err := s.loadSnapshot(ctx, plane)
 	if err != nil {
-		return PlaneSnapshotView{}, err
+		return PlaneSnapshotView{Plane: s.offlinePlane(plane, err)}, nil
 	}
-	return PlaneSnapshotView{Plane: plane, Snapshot: snapshot}, nil
+	return PlaneSnapshotView{Plane: s.syncedPlane(plane, snapshot), Snapshot: snapshot}, nil
+}
+
+func (s *PlaneSyncer) offlinePlane(plane model.PlaneDetail, err error) model.PlaneDetail {
+	now := s.now()
+	plane.Status = model.PlaneStatus{
+		PlaneID:    plane.ID,
+		Status:     model.StatusOffline,
+		Message:    fmt.Sprintf("load plane snapshot failed: %v", err),
+		LastSyncAt: &now,
+		UpdatedAt:  now,
+	}
+	return plane
+}
+
+func (s *PlaneSyncer) syncedPlane(plane model.PlaneDetail, snapshot *cloudplanev1.PlaneSnapshot) model.PlaneDetail {
+	checkedAt := protoTime(snapshot.GetCheckedAt())
+	syncedAt := s.now()
+	status, message := derivePlaneStatus(plane, snapshot)
+	plane.Status = model.PlaneStatus{
+		PlaneID:         plane.ID,
+		Status:          status,
+		Message:         message,
+		LastHeartbeatAt: &checkedAt,
+		LastSyncAt:      &syncedAt,
+		UpdatedAt:       syncedAt,
+	}
+	return plane
 }
 
 func (s *PlaneSyncer) loadSnapshot(ctx context.Context, planeDetail model.PlaneDetail) (*cloudplanev1.PlaneSnapshot, error) {

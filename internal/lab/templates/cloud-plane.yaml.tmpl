@@ -9,7 +9,6 @@ plane:
   grpcEndpoint: {{printf "%q" .PlaneGRPCEndpoint}}
 
 controlPlane:
-  url: {{printf "%q" .ControlPlaneURL}}
   bearerToken: {{printf "%q" .SouthboundToken}}
 
 nodeAgent:

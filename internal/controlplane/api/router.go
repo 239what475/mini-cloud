@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/store"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,15 +19,15 @@ type Options struct {
 	PlaneSyncer       *coordination.PlaneSyncer
 }
 
-func NewMux(opts Options, logger *slog.Logger, stores *store.Store) (http.Handler, error) {
+func NewMux(opts Options, logger *slog.Logger) (http.Handler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	if stores == nil {
-		return nil, fmt.Errorf("control-plane store is required")
-	}
 	if opts.ServiceOperations == nil {
 		return nil, fmt.Errorf("service operations are required")
+	}
+	if opts.PlaneSyncer == nil {
+		return nil, fmt.Errorf("plane syncer is required")
 	}
 
 	gin.SetMode(gin.ReleaseMode)
@@ -37,7 +36,6 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) (http.Handle
 	router.Use(ginRecoverPanics(logger), ginRequestLogger(logger))
 
 	adminAuth := newBearerAuth(opts.AdminToken)
-	southboundAuth := newBearerAuth(opts.SouthboundToken)
 
 	serveRootJSONOrIndex(logger, opts.UIDir, router)
 
@@ -51,11 +49,11 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) (http.Handle
 
 	admin := router.Group("/")
 	admin.Use(adminAuth.requireToken())
-	admin.GET("/metrics/control", metricsHandler(stores))
+	admin.GET("/metrics/control", metricsHandler(opts.PlaneSyncer))
 
 	api := admin.Group("/api/v1")
 
-	serviceHandler := newServiceHandler(logger, stores, opts.ServiceOperations)
+	serviceHandler := newServiceHandler(logger, opts.ServiceOperations)
 
 	services := api.Group("/services")
 	services.GET("", serviceHandler.listServices)
@@ -64,19 +62,12 @@ func NewMux(opts Options, logger *slog.Logger, stores *store.Store) (http.Handle
 	services.PUT("/:serviceID", serviceHandler.updateService)
 	services.DELETE("/:serviceID", serviceHandler.deleteService)
 
-	planeHandler := newPlaneHandler(logger, stores, opts.PlaneSyncer)
-	eventHandler := newEventHandler(logger, stores)
+	planeHandler := newPlaneHandler(logger, opts.PlaneSyncer)
 
 	control := api.Group("/control")
 	control.GET("/inventory", planeHandler.inventory)
 	control.GET("/planes", planeHandler.listPlanes)
 	control.GET("/planes/:planeID", planeHandler.getPlane)
-	control.DELETE("/planes/:planeID", planeHandler.deletePlane)
-	control.GET("/events", eventHandler.listControlEvents)
-
-	internal := router.Group("/api/v1/internal")
-	internal.Use(southboundAuth.requireToken())
-	internal.POST("/planes/register", planeHandler.registerPlane)
 
 	return router, nil
 }
