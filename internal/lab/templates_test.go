@@ -6,13 +6,6 @@ import (
 )
 
 func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
-	control, err := renderTemplate("remote-control-plane-install.sh.tmpl", remoteControlPlaneInstallTemplateData{
-		InstallRoot:          "/opt/mini-cloud",
-		ControlPlaneHTTPPort: "18080",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 	cloud, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneInstallTemplateData{
 		InstallRoot:        "/opt/mini-cloud",
 		IngressHTTPPort:    80,
@@ -25,11 +18,10 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(control) + "\n" + string(cloud)
+	text := string(cloud)
 	for _, want := range []string{
 		"docker ps -a --format '{{.Names}}'",
 		"root * $INSTALL_ROOT/artifacts",
-		"cp -a /tmp/mini-cloud-web/. \"$INSTALL_ROOT/web/\"",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("rendered template does not contain %q", want)
@@ -111,12 +103,6 @@ func TestControlPlaneConfigTemplateCanUseDefaultDNSPodCredentialChain(t *testing
 }
 
 func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
-	control, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
-		InstallRoot string
-	}{InstallRoot: "/opt/mini-cloud"})
-	if err != nil {
-		t.Fatal(err)
-	}
 	cloud, err := renderTemplate("remote-cloud-plane-uninstall.sh.tmpl", struct {
 		InstallRoot    string
 		RemovePostgres bool
@@ -124,7 +110,7 @@ func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(control) + "\n" + string(cloud)
+	text := string(cloud)
 	for _, want := range []string{
 		"docker ps -a --format '{{.Names}}'",
 		"docker volume ls --format '{{.Name}}'",

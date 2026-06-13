@@ -35,8 +35,19 @@ type SSHConfig struct {
 }
 
 type ControlPlane struct {
-	SSH            SSHConfig `yaml:"ssh"`
-	ListenHTTPAddr string    `yaml:"listenHTTPAddr"`
+	SCF SCFControlPlane `yaml:"scf"`
+}
+
+type SCFControlPlane struct {
+	Region       string `yaml:"region"`
+	Namespace    string `yaml:"namespace"`
+	FunctionName string `yaml:"functionName"`
+	Role         string `yaml:"role"`
+	Image        string `yaml:"image"`
+	Description  string `yaml:"description"`
+	MemoryMB     int64  `yaml:"memoryMB"`
+	TimeoutSec   int64  `yaml:"timeoutSec"`
+	InitSec      int64  `yaml:"initSec"`
 }
 
 type Plane struct {
@@ -102,8 +113,20 @@ func LoadConfig(path string) (Config, error) {
 func (c *Config) applyDefaults() {
 	c.Install.Root = defaultString(c.Install.Root, "/opt/mini-cloud")
 	c.Install.IngressBaseDomain = strings.Trim(strings.TrimSpace(c.Install.IngressBaseDomain), ".")
-	c.ControlPlane.ListenHTTPAddr = defaultString(c.ControlPlane.ListenHTTPAddr, "0.0.0.0:18080")
-	c.ControlPlane.SSH.applyDefaults(c.SSH)
+	c.ControlPlane.SCF.Region = defaultString(c.ControlPlane.SCF.Region, "ap-guangzhou")
+	c.ControlPlane.SCF.Namespace = defaultString(c.ControlPlane.SCF.Namespace, "default")
+	c.ControlPlane.SCF.FunctionName = defaultString(c.ControlPlane.SCF.FunctionName, "mini-cloud-control-plane")
+	c.ControlPlane.SCF.Role = defaultString(c.ControlPlane.SCF.Role, "mini-cloud")
+	c.ControlPlane.SCF.Description = defaultString(c.ControlPlane.SCF.Description, "mini-cloud control-plane")
+	if c.ControlPlane.SCF.MemoryMB == 0 {
+		c.ControlPlane.SCF.MemoryMB = 512
+	}
+	if c.ControlPlane.SCF.TimeoutSec == 0 {
+		c.ControlPlane.SCF.TimeoutSec = 30
+	}
+	if c.ControlPlane.SCF.InitSec == 0 {
+		c.ControlPlane.SCF.InitSec = 30
+	}
 
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")
@@ -166,8 +189,20 @@ func (s *SSHConfig) applyDefaults(parent SSHConfig) {
 }
 
 func (c Config) validateBase() error {
-	if strings.TrimSpace(c.ControlPlane.SSH.Host) == "" {
-		return fmt.Errorf("controlPlane.ssh.host is required")
+	if strings.TrimSpace(c.ControlPlane.SCF.Region) == "" {
+		return fmt.Errorf("controlPlane.scf.region is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.SCF.Namespace) == "" {
+		return fmt.Errorf("controlPlane.scf.namespace is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.SCF.FunctionName) == "" {
+		return fmt.Errorf("controlPlane.scf.functionName is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.SCF.Role) == "" {
+		return fmt.Errorf("controlPlane.scf.role is required")
+	}
+	if strings.TrimSpace(c.ControlPlane.SCF.Image) == "" {
+		return fmt.Errorf("controlPlane.scf.image is required")
 	}
 	if strings.TrimSpace(c.Install.Root) == "" {
 		return fmt.Errorf("install.root is required")

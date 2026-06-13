@@ -160,6 +160,6 @@ go run ./cmd/labctl install --config deploy/lab/lab.yaml
 go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 ```
 
-`deploy/lab/lab.yaml`、Terraform var file、token 和云账号密钥只保存在本地，不提交。示例里的 `myserver-control`、`myserver-tencent`、`myserver2` 只是占位名；每个 cloud-plane 入口机必须是独立 host，control-plane 可以单独部署，也可以和某个入口机同机部署。
+`deploy/lab/lab.yaml`、Terraform var file、token 和云账号密钥只保存在本地，不提交。control-plane 部署到腾讯云 SCF HTTP 函数；示例里的 `myserver-tencent`、`myserver2` 只是 cloud-plane 入口机占位名，每个 cloud-plane 入口机必须是独立 host。
 
 更多 lab 细节见 [deploy/lab/README.md](/home/what/myproject/mini-cloud/deploy/lab/README.md)。

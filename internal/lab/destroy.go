@@ -33,7 +33,7 @@ func (r *Runner) Destroy(ctx context.Context) error {
 				return err
 			}
 		} else if strings.TrimSpace(plane.SSH.Host) != "" {
-			if err := r.uninstallCloudPlaneAtHost(ctx, plane.SSH, plane.SSH.Host, r.controlPlaneHost() != plane.SSH.Host); err != nil {
+			if err := r.uninstallCloudPlaneAtHost(ctx, plane.SSH, plane.SSH.Host); err != nil {
 				return err
 			}
 		}
@@ -108,14 +108,14 @@ func (r *Runner) uninstallCloudPlane(ctx context.Context, plane Plane, out Terra
 	if err != nil {
 		return err
 	}
-	return r.uninstallCloudPlaneAtHost(ctx, plane.SSH, host, r.controlPlaneHost() != host)
+	return r.uninstallCloudPlaneAtHost(ctx, plane.SSH, host)
 }
 
-func (r *Runner) uninstallCloudPlaneAtHost(ctx context.Context, sshConfig SSHConfig, host string, removePostgres bool) error {
+func (r *Runner) uninstallCloudPlaneAtHost(ctx context.Context, sshConfig SSHConfig, host string) error {
 	script, err := renderTemplate("remote-cloud-plane-uninstall.sh.tmpl", struct {
 		InstallRoot    string
 		RemovePostgres bool
-	}{InstallRoot: r.cfg.Install.Root, RemovePostgres: removePostgres})
+	}{InstallRoot: r.cfg.Install.Root, RemovePostgres: true})
 	if err != nil {
 		return fmt.Errorf("render remote cloud-plane uninstall script: %w", err)
 	}
@@ -123,21 +123,19 @@ func (r *Runner) uninstallCloudPlaneAtHost(ctx context.Context, sshConfig SSHCon
 }
 
 func (r *Runner) uninstallControlPlane(ctx context.Context) error {
-	host := r.controlPlaneHost()
-	if host == "" {
+	cfg := r.cfg.ControlPlane.SCF
+	if strings.TrimSpace(cfg.FunctionName) == "" {
 		return nil
 	}
-	script, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
-		InstallRoot string
-	}{InstallRoot: r.cfg.Install.Root})
-	if err != nil {
-		return fmt.Errorf("render remote control-plane uninstall script: %w", err)
+	err := runInteractive(ctx, "tccli", "scf", "DeleteFunction",
+		"--region", cfg.Region,
+		"--Namespace", cfg.Namespace,
+		"--FunctionName", cfg.FunctionName,
+	)
+	if err != nil && !commandOutputIndicatesMissingResource(err) && !commandOutputContains(err, "notfound") && !commandOutputContains(err, "not found") {
+		return err
 	}
-	return r.ssh(ctx, r.cfg.ControlPlane.SSH, host, script)
-}
-
-func (r *Runner) controlPlaneHost() string {
-	return strings.TrimSpace(r.cfg.ControlPlane.SSH.Host)
+	return nil
 }
 
 func (r *Runner) deleteAliyunWorkerNodes(ctx context.Context, out TerraformOutput) error {

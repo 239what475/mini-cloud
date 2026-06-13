@@ -12,8 +12,8 @@ func TestLoadConfigAcceptsMultiPlaneExample(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig example returned error: %v", err)
 	}
-	if cfg.ControlPlane.SSH.Host != "myserver-control" {
-		t.Fatalf("control-plane host = %q", cfg.ControlPlane.SSH.Host)
+	if cfg.ControlPlane.SCF.FunctionName != "mini-cloud-control-plane" {
+		t.Fatalf("control-plane function = %q", cfg.ControlPlane.SCF.FunctionName)
 	}
 	if len(cfg.Planes) != 2 {
 		t.Fatalf("planes = %d, want 2", len(cfg.Planes))
@@ -27,8 +27,8 @@ func TestLoadConfigRejectsTwoPlanesOnSameHost(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lab.yaml")
 	content := []byte(`
 controlPlane:
-  ssh:
-    host: control
+  scf:
+    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
 planes:
   - name: a
     provider: aliyun
@@ -60,8 +60,8 @@ func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "lab.yaml")
 	content := []byte(`
 controlPlane:
-  ssh:
-    host: control
+  scf:
+    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
 planes:
   - name: a
     provider: aliyun
@@ -84,9 +84,7 @@ planes:
 
 func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
-		ControlPlane: ControlPlane{
-			SSH: SSHConfig{Host: "control"},
-		},
+		ControlPlane: ControlPlane{SCF: SCFControlPlane{Image: "ccr.ccs.tencentyun.com/mini-cloud/control-plane"}},
 		Install: InstallConfig{
 			Root: "/opt/mini-cloud",
 		},

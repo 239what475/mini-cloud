@@ -64,9 +64,6 @@ func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
 	if view.Snapshot == nil {
 		return fmt.Errorf("%s", view.Plane.Status.Message)
 	}
-	if err := s.syncFrontDoorDNS(ctx, planeID, view.Snapshot.GetServices()); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -115,12 +112,16 @@ func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeou
 			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
 		}
 		snapshot, err := s.loadSnapshot(planeCtx, plane)
-		cancel()
 		if err != nil {
+			cancel()
 			view.Plane = s.offlinePlane(plane, err)
 			s.logger.Warn("load plane snapshot view failed", "plane_id", plane.ID, "error", err)
 		} else {
 			view.Snapshot = snapshot
+			if err := s.syncFrontDoorDNS(planeCtx, plane.ID, snapshot.GetServices()); err != nil {
+				s.logger.Warn("sync frontdoor DNS from plane snapshot failed", "plane_id", plane.ID, "error", err)
+			}
+			cancel()
 			view.Plane = s.syncedPlane(plane, snapshot)
 		}
 		views = append(views, view)
@@ -139,6 +140,9 @@ func (s *PlaneSyncer) GetPlaneSnapshotView(ctx context.Context, planeID string) 
 	snapshot, err := s.loadSnapshot(ctx, plane)
 	if err != nil {
 		return PlaneSnapshotView{Plane: s.offlinePlane(plane, err)}, nil
+	}
+	if err := s.syncFrontDoorDNS(ctx, plane.ID, snapshot.GetServices()); err != nil {
+		s.logger.Warn("sync frontdoor DNS from plane snapshot failed", "plane_id", plane.ID, "error", err)
 	}
 	return PlaneSnapshotView{Plane: s.syncedPlane(plane, snapshot), Snapshot: snapshot}, nil
 }

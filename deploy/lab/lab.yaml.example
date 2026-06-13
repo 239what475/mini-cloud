@@ -1,9 +1,14 @@
 controlPlane:
-  ssh:
-    host: myserver-control
-    keyPath: ""
-    options: []
-  listenHTTPAddr: 0.0.0.0:18080
+  scf:
+    region: ap-guangzhou
+    namespace: default
+    functionName: mini-cloud-control-plane
+    role: mini-cloud
+    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+    description: mini-cloud control-plane
+    memoryMB: 512
+    timeoutSec: 30
+    initSec: 30
 
 planes:
   - name: mini-cloud-tencent-lab

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
 type installFiles struct {
@@ -52,11 +54,6 @@ type cloudPlaneTemplateData struct {
 	IngressBaseDomain           string
 	IngressPublicOrigin         string
 	OTLPEndpoint                string
-}
-
-type remoteControlPlaneInstallTemplateData struct {
-	InstallRoot          string
-	ControlPlaneHTTPPort string
 }
 
 type remoteCloudPlaneInstallTemplateData struct {
@@ -108,26 +105,7 @@ func (r *Runner) installControlPlane(ctx context.Context, plans []cloudPlaneInst
 		return err
 	}
 	defer removeFiles([]string{install.Config, install.RemoteScript})
-
-	host := strings.TrimSpace(r.cfg.ControlPlane.SSH.Host)
-	remote := func(name string) string { return host + ":/tmp/" + name }
-	if err := r.scp(ctx, r.cfg.ControlPlane.SSH, r.cfg.Binaries.ControlPlane, remote("mini-cloud-control-plane")); err != nil {
-		return err
-	}
-	if err := r.scp(ctx, r.cfg.ControlPlane.SSH, install.Config, remote("mini-cloud-control-plane.yaml")); err != nil {
-		return err
-	}
-	if err := r.ssh(ctx, r.cfg.ControlPlane.SSH, host, []byte("rm -rf /tmp/mini-cloud-web\n")); err != nil {
-		return err
-	}
-	if err := r.scpRecursive(ctx, r.cfg.ControlPlane.SSH, r.cfg.Binaries.WebDist, remote("mini-cloud-web")); err != nil {
-		return err
-	}
-	script, err := os.ReadFile(install.RemoteScript)
-	if err != nil {
-		return err
-	}
-	return r.ssh(ctx, r.cfg.ControlPlane.SSH, host, script)
+	return r.deployControlPlaneSCF(ctx, install.Config)
 }
 
 func (r *Runner) prepareCloudPlaneInstallPlans(ctx context.Context) ([]cloudPlaneInstallPlan, error) {
@@ -229,7 +207,7 @@ func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (
 		})
 	}
 	controlPlaneConfig, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
-		HTTPAddr:          r.cfg.ControlPlane.ListenHTTPAddr,
+		HTTPAddr:          "0.0.0.0:9000",
 		InstallRoot:       r.cfg.Install.Root,
 		AdminToken:        r.cfg.Tokens.ControlPlaneAdmin,
 		SouthboundToken:   r.cfg.Tokens.ControlPlaneSouthbound,
@@ -241,23 +219,11 @@ func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (
 	if err != nil {
 		return installFiles{}, err
 	}
-	remoteScript, err := renderTemplate("remote-control-plane-install.sh.tmpl", remoteControlPlaneInstallTemplateData{
-		InstallRoot:          r.cfg.Install.Root,
-		ControlPlaneHTTPPort: portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr),
-	})
-	if err != nil {
-		return installFiles{}, err
-	}
 	configPath, err := writeTempFile("mini-cloud-control-plane-*.yaml", controlPlaneConfig, 0600)
 	if err != nil {
 		return installFiles{}, err
 	}
-	scriptPath, err := writeTempFile("mini-cloud-control-plane-install-*.sh", remoteScript, 0700)
-	if err != nil {
-		_ = os.Remove(configPath)
-		return installFiles{}, err
-	}
-	return installFiles{Config: configPath, RemoteScript: scriptPath}, nil
+	return installFiles{Config: configPath}, nil
 }
 
 func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, platformPrivateIP string) (installFiles, error) {
@@ -369,9 +335,6 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 }
 
 func (r *Runner) planeGRPCEndpoint(out TerraformOutput, cloudPlaneHost string, privateEndpoint string) string {
-	if strings.TrimSpace(r.controlPlaneHost()) == strings.TrimSpace(cloudPlaneHost) {
-		return privateEndpoint
-	}
 	if endpoint := strings.TrimSpace(out.Platform.Value.GRPCEndpoint); endpoint != "" {
 		return endpoint
 	}
@@ -379,6 +342,65 @@ func (r *Runner) planeGRPCEndpoint(out TerraformOutput, cloudPlaneHost string, p
 		return fmt.Sprintf("%s:%d", publicIP, out.Network.Value.CloudPlaneGRPCPort)
 	}
 	return privateEndpoint
+}
+
+func (r *Runner) deployControlPlaneSCF(ctx context.Context, configPath string) error {
+	image, err := r.buildAndPushControlPlaneImage(ctx, configPath)
+	if err != nil {
+		return err
+	}
+	if err := r.upsertSCFFunction(ctx, image); err != nil {
+		return err
+	}
+	return r.waitForControlPlaneSCF(ctx)
+}
+
+func (r *Runner) buildAndPushControlPlaneImage(ctx context.Context, configPath string) (string, error) {
+	repo := strings.TrimRight(strings.TrimSpace(r.cfg.ControlPlane.SCF.Image), ":")
+	if repo == "" {
+		return "", fmt.Errorf("controlPlane.scf.image is required")
+	}
+	contextConfig, err := r.copyControlPlaneConfigForDocker(configPath)
+	if err != nil {
+		return "", err
+	}
+	defer removeFiles([]string{contextConfig})
+	tag := "e2e-" + time.Now().UTC().Format("20060102150405")
+	image := repo + ":" + tag
+	localImage := "mini-cloud/control-plane:e2e"
+	if err := runInteractive(ctx, "docker", "build",
+		"--platform", "linux/amd64",
+		"--provenance=false",
+		"-f", "deploy/container/control-plane.Dockerfile",
+		"--build-arg", "CONTROL_PLANE_CONFIG="+filepath.ToSlash(contextConfig),
+		"-t", localImage,
+		".",
+	); err != nil {
+		return "", err
+	}
+	if err := runInteractive(ctx, "docker", "tag", localImage, image); err != nil {
+		return "", err
+	}
+	if err := runInteractive(ctx, "docker", "push", image); err != nil {
+		return "", err
+	}
+	return image, nil
+}
+
+func (r *Runner) copyControlPlaneConfigForDocker(configPath string) (string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join("dist", "lab")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", err
+	}
+	target := filepath.Join(dir, "control-plane.yaml")
+	if err := os.WriteFile(target, data, 0600); err != nil {
+		return "", err
+	}
+	return target, nil
 }
 
 type tencentCredential struct {

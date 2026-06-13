@@ -154,20 +154,9 @@ func (r *Runner) ensureLighthouseFirewallRules(ctx context.Context, out Terrafor
 		cidr        string
 		description string
 	}{
-		{out.Network.Value.CloudPlaneGRPCPort, subnetCIDR, "mini-cloud node to cloud-plane"},
+		{out.Network.Value.CloudPlaneGRPCPort, "0.0.0.0/0", "mini-cloud control-plane to cloud-plane"},
 		{out.Network.Value.EgressProxyPort, subnetCIDR, "mini-cloud node to workload egress proxy"},
 		{out.Network.Value.ArtifactHTTPPort, subnetCIDR, "mini-cloud node to node-agent artifact server"},
-	}
-	if r.controlPlaneHost() == out.platformHost() {
-		controlPlaneHTTPPort, err := strconv.Atoi(portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr))
-		if err != nil {
-			return fmt.Errorf("parse control-plane HTTP port: %w", err)
-		}
-		ports = append(ports, struct {
-			port        int
-			cidr        string
-			description string
-		}{controlPlaneHTTPPort, "0.0.0.0/0", "mini-cloud control-plane HTTP"})
 	}
 	for _, wanted := range ports {
 		if wanted.port == 0 {
@@ -219,16 +208,11 @@ func (r *Runner) deleteLighthouseFirewallRules(ctx context.Context, out Terrafor
 		return nil
 	}
 	wanted := map[string]bool{
-		firewallKey("TCP", strconv.Itoa(out.Network.Value.CloudPlaneGRPCPort), subnetCIDR): true,
-		firewallKey("TCP", strconv.Itoa(out.Network.Value.EgressProxyPort), subnetCIDR):    true,
-		firewallKey("TCP", strconv.Itoa(out.Network.Value.ArtifactHTTPPort), subnetCIDR):   true,
+		firewallKey("TCP", strconv.Itoa(out.Network.Value.CloudPlaneGRPCPort), "0.0.0.0/0"): true,
+		firewallKey("TCP", strconv.Itoa(out.Network.Value.EgressProxyPort), subnetCIDR):     true,
+		firewallKey("TCP", strconv.Itoa(out.Network.Value.ArtifactHTTPPort), subnetCIDR):    true,
+		firewallKey("TCP", "18080", "0.0.0.0/0"):                                            true,
 	}
-	if r.controlPlaneHost() == out.platformHost() {
-		if port := portFromAddr(r.cfg.ControlPlane.ListenHTTPAddr); port != "" {
-			wanted[firewallKey("TCP", port, "0.0.0.0/0")] = true
-		}
-	}
-
 	var response lighthouseFirewallResponse
 	if err := runJSON(ctx, &response, "tccli", "lighthouse", "DescribeFirewallRules", "--region", regionID, "--InstanceId", instanceID); err != nil {
 		return err

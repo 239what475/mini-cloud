@@ -1,8 +1,8 @@
 # mini-cloud lab deployment
 
-`deploy/lab` 是真实云 lab 的本地编排入口。当前 lab 以 multi backend 为目标：
+`deploy/lab` 是真实云 lab 的本地编排入口。当前 lab 以 multi backend 和 serverless control-plane 为目标：
 
-- control-plane 安装一次
+- control-plane 打包成容器并部署到腾讯云 SCF HTTP 函数
 - 每个 cloud-plane 对应一个 `planes[]` 配置
 - 每个 plane 使用独立 Terraform workspace
 - service 必须显式指定 `planeID`
@@ -27,7 +27,7 @@ cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfv
 
 `planes[].region`、`provider_name`、`platform_name`、入口机、VPC、地域和规格等字段必须按 plane 分别填写。不要让两个 plane 共用同一个 Terraform workspace。
 
-`controlPlane.ssh.host` 和 `planes[].ssh.host` 都是本机 SSH alias 或地址。每个 `planes[]` 必须使用独立入口机；control-plane 可以独立部署，也可以和某个入口机同机部署，但入口机仍然不承接 workload。
+`controlPlane.scf` 配置 SCF 函数和 TCR 镜像仓库。`planes[].ssh.host` 是本机 SSH alias 或地址；每个 `planes[]` 必须使用独立入口机，入口机不承接 workload。
 
 腾讯云凭据只从 `provider.tencentCredentialFile` 指向的 JSON 文件读取，并写入远端腾讯云 cloud-plane 配置。不要通过环境变量提供平台 token 或腾讯云 AK/SK。
 
@@ -58,8 +58,12 @@ go run ./cmd/labctl bootstrap --config deploy/lab/lab.yaml
 go run ./cmd/labctl install --config deploy/lab/lab.yaml
 ```
 
-`install` 会先在 `controlPlane.ssh.host` 安装 control-plane，然后逐个在 plane 入口机安装 cloud-plane：
+`install` 会先部署 SCF control-plane，然后逐个在 plane 入口机安装 cloud-plane：
 
+- control-plane 配置渲染成本地快照
+- control-plane 二进制、Web UI 和配置快照打进容器镜像
+- 镜像推送到 `controlPlane.scf.image`
+- 创建或更新 SCF HTTP 函数
 - Docker
 - Postgres
 - Caddy
@@ -83,7 +87,7 @@ go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
 - Terraform 管理的 node 网络资源
 - 腾讯云 Lighthouse 模式下的防火墙规则和 CCN 关联
 
-`destroy` 也会按 provider 兜底删除实验域名下属于当前 plane CDN 的 DNSPod CNAME，避免真实云实验留下入口记录。所有 plane 回收完成后，`destroy` 再卸载 control-plane。
+`destroy` 也会按 provider 兜底删除实验域名下属于当前 plane CDN 的 DNSPod CNAME，避免真实云实验留下入口记录。所有 plane 回收完成后，`destroy` 再删除 SCF control-plane 函数。
 
 ## Requirements
 
