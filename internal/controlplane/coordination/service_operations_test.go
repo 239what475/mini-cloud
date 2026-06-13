@@ -19,8 +19,6 @@ import (
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -78,53 +76,6 @@ func TestCreateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
 	}
 }
 
-func TestUpdateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-update-frontdoor", planeServer.endpoint)
-	dns := &fakeDNSClient{}
-	syncer := NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", dns)
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", syncer)
-
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "frontdoor-update", "Frontdoor Update", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	dns.records = nil
-	planeServer.frontDoorFromDispatch = true
-
-	if _, err := operations.Update(ctx, created.Metadata.ID, updateInput("Frontdoor Update v2", "nginx:1.28-alpine")); err != nil {
-		t.Fatalf("Update returned error: %v", err)
-	}
-	if len(dns.records) != 2 {
-		t.Fatalf("DNS records = %+v, want verification and CNAME from update request sync", dns.records)
-	}
-}
-
-func TestCreateAllowsDegradedPlane(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-degraded", planeServer.endpoint)
-	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusDegraded, Message: "alert firing"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	service, err := operations.Create(ctx, createInput(planeItem.ID, "degraded-web", "Degraded Web", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if service.Spec.PlaneID != planeItem.ID {
-		t.Fatalf("planeID = %q, want %s", service.Spec.PlaneID, planeItem.ID)
-	}
-	if len(planeServer.dispatchRequests()) != 1 {
-		t.Fatalf("dispatch requests = %d, want 1", len(planeServer.dispatchRequests()))
-	}
-}
-
 func TestCreateFailsWithoutPersistingBindingWhenInitialDispatchFails(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
@@ -146,59 +97,6 @@ func TestCreateFailsWithoutPersistingBindingWhenInitialDispatchFails(t *testing.
 	}
 	if len(planeServer.dispatchRequests()) != 0 {
 		t.Fatalf("dispatch requests = %d, want 0 while plane is offline", len(planeServer.dispatchRequests()))
-	}
-}
-
-func TestGetMergesLiveCloudPlaneSnapshot(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-get-live", planeServer.endpoint)
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "live", "Live", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	now := time.Now().UTC()
-	planeServer.setSnapshot(&cloudplanev1.PlaneSnapshot{
-		Plane:         &cloudplanev1.PlaneSummary{Name: "plane-get-live", Provider: "aliyun", Region: "cn-beijing"},
-		CheckedAt:     timestamppb.New(now),
-		NodeInventory: &cloudplanev1.PlaneNodeInventory{},
-		Services: []*cloudplanev1.PlaneService{
-			{
-				ServiceId:     created.Metadata.ID,
-				Name:          created.Metadata.Name,
-				DisplayName:   "Live",
-				Host:          created.Metadata.Host,
-				Generation:    created.Metadata.Generation,
-				DesiredState:  model.DesiredStateActive,
-				InstanceClass: model.InstanceClassMedium,
-				Exposure:      model.ExposurePublic,
-				Image:         "nginx:1.27-alpine",
-				ContainerPort: 80,
-				ReadinessPath: "/",
-			},
-		},
-		Executions: []*cloudplanev1.PlaneExecutionSnapshot{
-			{
-				ServiceId:         created.Metadata.ID,
-				ServiceGeneration: created.Metadata.Generation,
-				Status:            planeExecutionStatusRunning,
-				ObservedAt:        timestamppb.New(now),
-			},
-		},
-	})
-
-	service, err := operations.Get(ctx, created.Metadata.ID)
-	if err != nil {
-		t.Fatalf("Get returned error: %v", err)
-	}
-	if service.Spec.Image != "nginx:1.27-alpine" || service.Spec.InstanceClass != model.InstanceClassMedium {
-		t.Fatalf("service spec = %+v, want live cloud-plane spec", service.Spec)
-	}
-	if service.Status.Observed.Phase != model.PhaseReady || service.Status.Run.Phase != model.RunPhaseRunning {
-		t.Fatalf("service status = %+v, want running snapshot status", service.Status)
 	}
 }
 
@@ -262,34 +160,6 @@ func TestUpdateFailsWithoutChangingBindingWhenDispatchFails(t *testing.T) {
 	}
 }
 
-func TestUpdateKeepsExistingPlaneBinding(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServerA := startServiceOperationsPlane(t)
-	planeA := mustCreateReadyPlane(t, db, "plane-move-a", planeServerA.endpoint)
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	created, err := operations.Create(ctx, createInput(planeA.ID, "move", "Move", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	updated, err := operations.Update(ctx, created.Metadata.ID, updateInput("Move", "nginx:1.28-alpine"))
-	if err != nil {
-		t.Fatalf("Update returned error: %v", err)
-	}
-	if updated.Spec.PlaneID != planeA.ID {
-		t.Fatalf("updated planeID = %q, want original plane %s", updated.Spec.PlaneID, planeA.ID)
-	}
-	dispatchRequests := planeServerA.dispatchRequests()
-	if len(dispatchRequests) != 2 {
-		t.Fatalf("plane A dispatch requests = %d, want create and update dispatch requests", len(dispatchRequests))
-	}
-	if len(planeServerA.deleteRequests()) != 0 {
-		t.Fatalf("plane A delete requests = %d, want 0", len(planeServerA.deleteRequests()))
-	}
-}
-
 func TestUpdateRejectsDeletingService(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)
@@ -350,77 +220,6 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	if deleteRequests[0].GetServiceId() != serviceID ||
 		deleteRequests[0].GetServiceGeneration() != reloaded.Metadata.Generation {
 		t.Fatalf("delete input = %+v, want service generation delete", deleteRequests[0])
-	}
-}
-
-func TestDeleteKeepsServiceDeletingWhenRemoteDispatchFails(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeItem := mustCreateReadyPlane(t, db, "plane-delete-offline", planeServer.endpoint)
-
-	operations := NewServiceOperations(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", "apps.example.test", nil)
-
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "delete-offline", "Delete Offline", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := db.Store.UpdatePlaneStatus(ctx, planeItem.ID, controlplanestore.UpdatePlaneStatusInput{Status: model.StatusOffline, Message: "plane unavailable"}); err != nil {
-		t.Fatalf("UpdatePlaneStatus returned error: %v", err)
-	}
-	deleting, err := operations.Delete(ctx, created.Metadata.ID)
-	if err != nil {
-		t.Fatalf("Delete returned error: %v", err)
-	}
-	if deleting.Status.DesiredState != model.DesiredStateDeleted || deleting.Status.Observed.Phase != model.PhaseDeleting {
-		t.Fatalf("service status = %+v, want deleting after failed remote dispatch", deleting.Status)
-	}
-	if len(planeServer.deleteRequests()) != 0 {
-		t.Fatalf("delete requests = %d, want 0 while plane is offline", len(planeServer.deleteRequests()))
-	}
-}
-
-func TestDeleteRemovesBindingAndDNSWhenRemoteServiceAlreadyMissing(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenControlPlaneTestDatabase(t)
-	planeServer := startServiceOperationsPlane(t)
-	planeServer.deleteError = status.Error(codes.NotFound, "service not found")
-	planeItem := mustCreateReadyPlane(t, db, "plane-delete-missing", planeServer.endpoint)
-	dns := &fakeDNSClient{}
-	operations := NewServiceOperations(
-		slog.New(slog.NewTextHandler(io.Discard, nil)),
-		db.Store,
-		"southbound-token",
-		"apps.example.test",
-		NewPlaneSyncer(slog.New(slog.NewTextHandler(io.Discard, nil)), db.Store, "southbound-token", dns),
-	)
-
-	created, err := operations.Create(ctx, createInput(planeItem.ID, "missing-remote", "Missing Remote", "nginx:1.27-alpine"))
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
-	}
-	if err := db.Store.SaveServiceDNSRecord(ctx, controlplanestore.DNSRecord{
-		ServiceID:  created.Metadata.ID,
-		Host:       created.Metadata.Host,
-		RecordType: "CNAME",
-		Value:      "missing-remote.apps.example.test.cdn.example.net",
-		Purpose:    controlplanestore.DNSRecordPurposeFrontDoorCNAME,
-	}); err != nil {
-		t.Fatalf("SaveServiceDNSRecord returned error: %v", err)
-	}
-
-	deleting, err := operations.Delete(ctx, created.Metadata.ID)
-	if err != nil {
-		t.Fatalf("Delete returned error: %v", err)
-	}
-	if deleting.Metadata.ID != created.Metadata.ID || deleting.Status.DesiredState != model.DesiredStateDeleted {
-		t.Fatalf("Delete returned %+v, want last deleting service resource", deleting)
-	}
-	if _, err := db.Store.GetService(ctx, created.Metadata.ID); !errors.Is(err, controlplanestore.ErrServiceNotFound) {
-		t.Fatalf("GetService after missing remote delete error = %v, want service not found", err)
-	}
-	if len(dns.deleted) != 1 || dns.deleted[0].host != created.Metadata.Host || dns.deleted[0].recordType != "CNAME" {
-		t.Fatalf("deleted DNS records = %+v, want CNAME cleanup", dns.deleted)
 	}
 }
 

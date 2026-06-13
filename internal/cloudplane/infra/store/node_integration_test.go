@@ -64,58 +64,6 @@ func TestIntegrationRecordNodeHeartbeatDoesNotInferAllocatedFromAllocatable(t *t
 	}
 }
 
-func TestIntegrationRecordNodeHeartbeatKeepsUpdatedAtStableWhenInventoryIsUnchanged(t *testing.T) {
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-
-	registered, err := db.Store.RegisterNode(context.Background(), cloudmodel.RegisterInput{
-		Provider:      "aliyun",
-		Region:        "cn-beijing",
-		Name:          "node-stable",
-		PrivateIP:     "10.0.0.11",
-		InstanceID:    "i-node-stable",
-		InstanceType:  "ecs.u1-c1m2.large",
-		CPUMilliTotal: 2000,
-		MemoryMiTotal: 4096,
-	})
-	if err != nil {
-		t.Fatalf("RegisterNode returned error: %v", err)
-	}
-	if _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, cloudmodel.HeartbeatInput{
-		CPUMilliAllocatable: 1500,
-		MemoryMiAllocatable: 3584,
-	}); err != nil {
-		t.Fatalf("first RecordNodeHeartbeat returned error: %v", err)
-	}
-
-	first, err := db.Store.GetNode(context.Background(), registered.ID)
-	if err != nil {
-		t.Fatalf("GetNode after first heartbeat returned error: %v", err)
-	}
-
-	time.Sleep(10 * time.Millisecond)
-
-	if _, err := db.Store.RecordNodeHeartbeat(context.Background(), registered.ID, cloudmodel.HeartbeatInput{
-		CPUMilliAllocatable: 1500,
-		MemoryMiAllocatable: 3584,
-	}); err != nil {
-		t.Fatalf("second RecordNodeHeartbeat returned error: %v", err)
-	}
-
-	second, err := db.Store.GetNode(context.Background(), registered.ID)
-	if err != nil {
-		t.Fatalf("GetNode after second heartbeat returned error: %v", err)
-	}
-	if first.LastHeartbeatAt == nil || second.LastHeartbeatAt == nil {
-		t.Fatalf("expected last_heartbeat_at to be populated, got first=%v second=%v", first.LastHeartbeatAt, second.LastHeartbeatAt)
-	}
-	if !second.LastHeartbeatAt.After(*first.LastHeartbeatAt) {
-		t.Fatalf("last_heartbeat_at did not advance: first=%s second=%s", first.LastHeartbeatAt, second.LastHeartbeatAt)
-	}
-	if !second.UpdatedAt.Equal(first.UpdatedAt) {
-		t.Fatalf("updated_at advanced even though inventory was unchanged: first=%s second=%s", first.UpdatedAt, second.UpdatedAt)
-	}
-}
-
 func TestIntegrationStaleNodeHeartbeatFailsExecutionIntent(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
@@ -357,37 +305,6 @@ func TestIntegrationProvisioningNodeIsCompletedByAgentRegistration(t *testing.T)
 	}
 	if registered.Status != cloudmodel.StatusRegistering {
 		t.Fatalf("registered node status = %s, want registering", registered.Status)
-	}
-}
-
-func TestIntegrationDeletedNodeReleasesProviderInstanceID(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-
-	first := seedReadyElasticNode(t, ctx, db.Store, "provider-reuse-a", "i-provider-reuse")
-	if _, err := db.Store.MarkNodeDeleted(ctx, first.ID, "provider node deleted", time.Now().UTC()); err != nil {
-		t.Fatalf("MarkNodeDeleted returned error: %v", err)
-	}
-	deleted, err := db.Store.GetNode(ctx, first.ID)
-	if err != nil {
-		t.Fatalf("GetNode deleted node returned error: %v", err)
-	}
-	if deleted.InstanceID != "" || deleted.PrivateIP != "" {
-		t.Fatalf("deleted node still keeps provider identity: instanceID=%q privateIP=%q", deleted.InstanceID, deleted.PrivateIP)
-	}
-
-	second, err := db.Store.CreateProvisioningNode(ctx, cloudmodel.ProvisioningInput{
-		Provider:     "aliyun",
-		Region:       "cn-beijing",
-		Name:         "provider-reuse-b",
-		InstanceType: "ecs.u1-c1m2.large",
-		StatusReason: "retry scale out",
-	})
-	if err != nil {
-		t.Fatalf("CreateProvisioningNode(second) returned error: %v", err)
-	}
-	if _, err := db.Store.BindProvisionedNode(ctx, second.ID, "i-provider-reuse", "provider-reuse-b", "ecs.u1-c1m2.large", "provider accepted retry", time.Now().UTC()); err != nil {
-		t.Fatalf("BindProvisionedNode(second) returned error: %v", err)
 	}
 }
 

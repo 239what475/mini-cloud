@@ -6,40 +6,10 @@ import (
 	"testing"
 )
 
-func TestLoadAcceptsMinimalCloudPlaneConfig(t *testing.T) {
+func TestLoadCloudPlaneConfig(t *testing.T) {
 	t.Parallel()
 
-	dir := t.TempDir()
-	path := filepath.Join(dir, "cloud-plane.yaml")
-	data := []byte(`
-server:
-  listenGRPCAddr: 0.0.0.0:18081
-database:
-  url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
-plane:
-  name: mini-cloud-lab
-  grpcEndpoint: 10.0.0.10:18081
-controlPlane:
-  url: http://127.0.0.1:18080
-  bearerToken: southbound-token
-nodeAgent:
-  connectEndpoint: 10.0.0.10:18081
-  token: node-agent-token
-  binaryUrl: https://artifact.example/node-agent-linux-amd64
-infrastructure:
-  provider: aliyun
-  regionId: cn-beijing
-nodeProvisioning:
-  instanceType: ecs.u1-c1m1.large
-  aliyun:
-    imageId: m-test
-    vSwitchId: vsw-test
-    securityGroupId: sg-test
-`)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		t.Fatalf("WriteFile error: %v", err)
-	}
-
+	path := writeConfig(t, validCloudPlaneYAML())
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load error: %v", err)
@@ -47,172 +17,73 @@ nodeProvisioning:
 	if cfg.Path != path {
 		t.Fatalf("Path = %q, want %q", cfg.Path, path)
 	}
-	if cfg.Plane.Name != "mini-cloud-lab" {
-		t.Fatalf("Plane.Name = %q, want mini-cloud-lab", cfg.Plane.Name)
-	}
-	if cfg.Infrastructure.Provider != "aliyun" {
-		t.Fatalf("Infrastructure.Provider = %q, want aliyun", cfg.Infrastructure.Provider)
+	if cfg.Plane.Name != "mini-cloud-lab" || cfg.Infrastructure.Provider != "aliyun" {
+		t.Fatalf("config = %+v", cfg)
 	}
 }
 
-func TestValidateAcceptsHTTPNodeAgentConnectEndpoint(t *testing.T) {
+func TestLoadRejectsUnknownField(t *testing.T) {
 	t.Parallel()
 
-	cfg := Config{
-		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
-		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
-		NodeAgent: NodeAgentConfig{
-			ConnectEndpoint: "https://10.0.0.10:18081",
-			Token:           "node-agent-token",
-			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
+	path := writeConfig(t, validCloudPlaneYAML()+"\nunknownNodeField: true\n")
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load error = nil, want unknown field rejection")
+	}
+}
+
+func TestValidateCloudPlaneConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{
+			name: "unsupported provider",
+			mutate: func(cfg *Config) {
+				cfg.Infrastructure.Provider = "local"
+			},
 		},
-		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		NodeProvisioning: NodeProvisioningConfig{
-			InstanceType: "ecs.u1-c1m1.large",
-			Aliyun: AliyunNodeConfig{
-				ImageID:         "m-test",
-				VSwitchID:       "vsw-test",
-				SecurityGroupID: "sg-test",
+		{
+			name: "missing aliyun node config",
+			mutate: func(cfg *Config) {
+				cfg.NodeProvisioning.Aliyun = AliyunNodeConfig{}
+			},
+		},
+		{
+			name: "missing node provisioning instance type",
+			mutate: func(cfg *Config) {
+				cfg.NodeProvisioning.InstanceType = ""
+			},
+		},
+		{
+			name: "missing caddy admin url when ingress enabled",
+			mutate: func(cfg *Config) {
+				cfg.Ingress = IngressConfig{BaseDomain: "apps.example.test"}
+			},
+		},
+		{
+			name: "public origin without base domain",
+			mutate: func(cfg *Config) {
+				cfg.Ingress = IngressConfig{
+					CaddyAdminURL: "http://127.0.0.1:2019",
+					PublicOrigin:  "203.0.113.10",
+				}
 			},
 		},
 	}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate error: %v", err)
-	}
-}
 
-func TestValidateRejectsLocalProvider(t *testing.T) {
-	t.Parallel()
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	cfg := Config{
-		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
-		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
-		NodeAgent: NodeAgentConfig{
-			ConnectEndpoint: "10.0.0.10:18081",
-			Token:           "node-agent-token",
-			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
-		},
-		Infrastructure: InfrastructureConfig{Provider: "local", RegionID: "local"},
-		NodeProvisioning: NodeProvisioningConfig{
-			InstanceType: "local",
-			Aliyun: AliyunNodeConfig{
-				ImageID:         "m-test",
-				VSwitchID:       "vsw-test",
-				SecurityGroupID: "sg-test",
-			},
-		},
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want local provider rejection")
-	}
-}
-
-func TestValidateRequiresAliyunNodeConfig(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
-		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
-		NodeAgent: NodeAgentConfig{
-			ConnectEndpoint: "10.0.0.10:18081",
-			Token:           "node-agent-token",
-			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
-		},
-		Infrastructure:   InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		NodeProvisioning: NodeProvisioningConfig{InstanceType: "ecs.u1-c1m1.large"},
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want aliyun node provisioning requirement")
-	}
-}
-
-func TestValidateRequiresNodeProvisioningInstanceType(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
-		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
-		NodeAgent: NodeAgentConfig{
-			ConnectEndpoint: "10.0.0.10:18081",
-			Token:           "node-agent-token",
-			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
-		},
-		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		NodeProvisioning: NodeProvisioningConfig{
-			Aliyun: AliyunNodeConfig{
-				ImageID:         "m-test",
-				VSwitchID:       "vsw-test",
-				SecurityGroupID: "sg-test",
-			},
-		},
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want node provisioning instanceType requirement")
-	}
-}
-
-func TestValidateRequiresCaddyAdminURLWhenIngressEnabled(t *testing.T) {
-	t.Parallel()
-
-	cfg := Config{
-		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
-		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
-		ControlPlane: ControlPlaneConfig{URL: "http://127.0.0.1:18080", BearerToken: "southbound-token"},
-		NodeAgent: NodeAgentConfig{
-			ConnectEndpoint: "10.0.0.10:18081",
-			Token:           "node-agent-token",
-			BinaryURL:       "https://artifact.example/node-agent-linux-amd64",
-		},
-		Infrastructure: InfrastructureConfig{Provider: "aliyun", RegionID: "cn-beijing"},
-		NodeProvisioning: NodeProvisioningConfig{
-			InstanceType: "ecs.u1-c1m1.large",
-			Aliyun: AliyunNodeConfig{
-				ImageID:         "m-test",
-				VSwitchID:       "vsw-test",
-				SecurityGroupID: "sg-test",
-			},
-		},
-		Ingress: IngressConfig{BaseDomain: "apps.example.test"},
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want caddy admin URL requirement")
-	}
-}
-
-func TestValidateAcceptsCaddyAdminURLWithoutIngressDomain(t *testing.T) {
-	t.Parallel()
-
-	cfg := validConfig()
-	cfg.Ingress = IngressConfig{CaddyAdminURL: "http://127.0.0.1:2019"}
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate error: %v", err)
-	}
-}
-
-func TestValidateRequiresBaseDomainWhenPublicOriginConfigured(t *testing.T) {
-	t.Parallel()
-
-	cfg := validConfig()
-	cfg.Ingress = IngressConfig{
-		CaddyAdminURL: "http://127.0.0.1:2019",
-		PublicOrigin:  "203.0.113.10",
-	}
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("Validate error = nil, want baseDomain requirement")
-	}
-
-	cfg.Ingress.BaseDomain = "apps.example.com"
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("Validate error: %v", err)
+			cfg := validConfig()
+			tt.mutate(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("Validate error = nil, want validation error")
+			}
+		})
 	}
 }
 
@@ -239,32 +110,40 @@ func validConfig() Config {
 	}
 }
 
-func TestLoadRejectsUnknownField(t *testing.T) {
-	t.Parallel()
-
-	dir := t.TempDir()
-	path := filepath.Join(dir, "cloud-plane.yaml")
-	data := []byte(`
+func validCloudPlaneYAML() string {
+	return `
 server:
   listenGRPCAddr: 0.0.0.0:18081
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
   name: mini-cloud-lab
+  grpcEndpoint: 10.0.0.10:18081
 controlPlane:
+  url: http://127.0.0.1:18080
   bearerToken: southbound-token
 nodeAgent:
   connectEndpoint: 10.0.0.10:18081
   token: node-agent-token
+  binaryUrl: https://artifact.example/node-agent-linux-amd64
 infrastructure:
   provider: aliyun
   regionId: cn-beijing
-unknownNodeField: true
-`)
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+nodeProvisioning:
+  instanceType: ecs.u1-c1m1.large
+  aliyun:
+    imageId: m-test
+    vSwitchId: vsw-test
+    securityGroupId: sg-test
+`
+}
+
+func writeConfig(t *testing.T, data string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "cloud-plane.yaml")
+	if err := os.WriteFile(path, []byte(data), 0o644); err != nil {
 		t.Fatalf("WriteFile error: %v", err)
 	}
-	if _, err := Load(path); err == nil {
-		t.Fatal("Load error = nil, want unknown field rejection")
-	}
+	return path
 }

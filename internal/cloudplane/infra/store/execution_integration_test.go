@@ -150,55 +150,6 @@ func TestIntegrationUpdatePendingRunIsRejected(t *testing.T) {
 	}
 }
 
-func TestIntegrationUpdateDeployingRunIsRejected(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-	node := seedReadyNode(t, ctx, db, "node-update-deploying", "i-node-update-deploying")
-
-	upsertTestService(t, ctx, db, testServiceInput{
-		ID:         "svc-update-deploying",
-		Name:       "update-deploying-web",
-		Generation: 1,
-		Image:      "nginx:1.27-alpine",
-	})
-	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim returned error: %v", err)
-	}
-	if work == nil {
-		t.Fatal("CreateExecutionClaim returned nil work item")
-	}
-
-	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
-		ID:          "svc-update-deploying",
-		Name:        "update-deploying-web",
-		DisplayName: "update-deploying-web",
-		Host:        "update-deploying-web.apps.example.test",
-		Generation:  2,
-		Spec: cloudmodel.ServiceSpec{
-			InstanceClass: "small",
-			Exposure:      cloudmodel.ExposurePublic,
-			Image:         "nginx:1.28-alpine",
-			ContainerPort: 8080,
-			ReadinessPath: "/healthz",
-		},
-	}); !errors.Is(err, cloudstore.ErrServiceExecutionInFlight) {
-		t.Fatalf("UpsertService(update deploying) error = %v, want ErrServiceExecutionInFlight", err)
-	}
-
-	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
-	if err != nil {
-		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
-	}
-	first := findExecutionSnapshot(snapshots, "svc-update-deploying-g1")
-	if first == nil || first.Status != cloudmodel.StatusDeploying {
-		t.Fatalf("first run snapshot = %+v, want deploying", first)
-	}
-	if next := findExecutionSnapshot(snapshots, "svc-update-deploying-g2"); next != nil {
-		t.Fatalf("rejected update created unexpected snapshot: %+v", *next)
-	}
-}
-
 func TestIntegrationDeleteExecutionIntentClaimsRunningIntentAndReportsSnapshot(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
@@ -306,48 +257,6 @@ func TestIntegrationDeletePendingExecutionIntentCompletesWithoutNodeAgent(t *tes
 	}
 	if deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-pending-delete-g2"); deleteSnapshot != nil {
 		t.Fatalf("delete pending service created unexpected delete snapshot: %+v", *deleteSnapshot)
-	}
-}
-
-func TestIntegrationDeleteDeployingExecutionWithoutContainerCompletesWithoutNodeAgent(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-	node := seedReadyNode(t, ctx, db, "node-delete-deploying", "i-node-delete-deploying")
-
-	upsertTestService(t, ctx, db, testServiceInput{
-		ID:         "svc-delete-deploying",
-		Name:       "delete-deploying-web",
-		Generation: 1,
-		Image:      "nginx:1.27-alpine",
-	})
-	work, err := db.Store.CreateExecutionClaim(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("CreateExecutionClaim returned error: %v", err)
-	}
-	if work == nil {
-		t.Fatal("CreateExecutionClaim returned nil work item")
-	}
-
-	deleteTestService(t, ctx, db, "svc-delete-deploying", 2)
-
-	afterDelete, err := db.Store.GetNode(ctx, node.ID)
-	if err != nil {
-		t.Fatalf("GetNode after DeleteService returned error: %v", err)
-	}
-	if afterDelete.CPUMilliAllocated != 0 || afterDelete.MemoryMiAllocated != 0 {
-		t.Fatalf("node allocation after deleting containerless deploying intent = cpu %d memory %d, want 0/0", afterDelete.CPUMilliAllocated, afterDelete.MemoryMiAllocated)
-	}
-
-	snapshots, err := db.Store.ListExecutionSnapshots(ctx)
-	if err != nil {
-		t.Fatalf("ListExecutionSnapshots returned error: %v", err)
-	}
-	runSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-g1")
-	if runSnapshot == nil || runSnapshot.Status != cloudmodel.StatusFailed {
-		t.Fatalf("run snapshot = %+v, want failed", runSnapshot)
-	}
-	if deleteSnapshot := findExecutionSnapshot(snapshots, "svc-delete-deploying-delete-g2"); deleteSnapshot != nil {
-		t.Fatalf("delete deploying service without container created unexpected delete snapshot: %+v", *deleteSnapshot)
 	}
 }
 

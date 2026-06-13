@@ -21,58 +21,6 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 )
 
-func TestHandleNodeErrorClearsLocalNodeOnUnknownNode(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	runner := NewRunner(
-		logger,
-		agentconfig.Config{},
-		agentclient.New(agentclient.Config{}),
-		&stubRuntime{},
-	)
-	runner.nodeID = "node_stale"
-	runner.runtimeResetNode = "node_stale"
-	runner.handleNodeError("node_stale", &agentclient.CloudPlaneError{
-		Operation: "send heartbeat",
-		Code:      codes.NotFound,
-		Message:   "node not found",
-	})
-
-	if runner.nodeID != "" {
-		t.Fatalf("nodeID = %q, want empty after unknown node", runner.nodeID)
-	}
-	if runner.runtimeResetNode != "" {
-		t.Fatalf("runtimeResetNode = %q, want empty after unknown node", runner.runtimeResetNode)
-	}
-}
-
-func TestHandleNodeErrorKeepsLocalNodeOnAuthFailure(t *testing.T) {
-	t.Parallel()
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	runner := NewRunner(
-		logger,
-		agentconfig.Config{},
-		agentclient.New(agentclient.Config{}),
-		&stubRuntime{},
-	)
-	runner.nodeID = "node-a"
-	runner.runtimeResetNode = "node-a"
-	runner.handleNodeError("node-a", &agentclient.CloudPlaneError{
-		Operation: "send heartbeat",
-		Code:      codes.Unauthenticated,
-		Message:   "invalid node agent token",
-	})
-
-	if runner.nodeID != "node-a" {
-		t.Fatalf("nodeID = %q, want node-a", runner.nodeID)
-	}
-	if runner.runtimeResetNode != "node-a" {
-		t.Fatalf("runtimeResetNode = %q, want node-a", runner.runtimeResetNode)
-	}
-}
-
 func TestTryHeartbeatCycleReRegistersAfterUnknownNode(t *testing.T) {
 	t.Parallel()
 

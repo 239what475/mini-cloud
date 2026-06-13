@@ -8,7 +8,7 @@ import (
 	"mini-cloud/internal/testutil"
 )
 
-func TestIntegrationDeleteServiceWithoutRunningContainerHidesService(t *testing.T) {
+func TestIntegrationDeleteServiceWithoutRunningContainerHidesServiceAndIsIdempotent(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
@@ -40,81 +40,47 @@ func TestIntegrationDeleteServiceWithoutRunningContainerHidesService(t *testing.
 	if deleteSnapshot := findExecutionSnapshotForTest(t, ctx, db, "svc-delete-idle-delete-g2"); deleteSnapshot != nil {
 		t.Fatalf("delete idle service created unexpected delete snapshot: %+v", deleteSnapshot)
 	}
-}
-
-func TestIntegrationDeleteIdleServiceIsIdempotent(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-
-	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
-		ID:          "svc-delete-idempotent",
-		Name:        "delete-idempotent",
-		DisplayName: "delete idempotent",
-		Host:        "delete-idempotent.apps.example.com",
-		Generation:  1,
-		Spec:        serviceSpec(),
+	if err := db.Store.DeleteService(ctx, cloudmodel.DeleteServiceInput{
+		ID:         "svc-delete-idle",
+		Generation: 2,
 	}); err != nil {
-		t.Fatalf("UpsertService returned error: %v", err)
-	}
-	input := cloudmodel.DeleteServiceInput{ID: "svc-delete-idempotent", Generation: 2}
-	if err := db.Store.DeleteService(ctx, input); err != nil {
-		t.Fatalf("DeleteService(initial) returned error: %v", err)
-	}
-	if err := db.Store.DeleteService(ctx, input); err != nil {
 		t.Fatalf("DeleteService(retry) returned error: %v", err)
 	}
 }
 
-func TestIntegrationPublicServiceCreatesIngressRouteBeforeBackendRuns(t *testing.T) {
+func TestIntegrationServiceIngressRouteSourcesRespectExposure(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenCloudPlaneTestDatabase(t)
 
 	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
-		ID:          "svc-ingress-before-backend",
-		Name:        "ingress-before-backend",
-		DisplayName: "ingress before backend",
-		Host:        "ingress-before-backend.apps.example.com",
+		ID:          "svc-public-route",
+		Name:        "public-route",
+		DisplayName: "public route",
+		Host:        "public-route.apps.example.com",
 		Generation:  1,
 		Spec:        serviceSpec(),
 	}); err != nil {
-		t.Fatalf("UpsertService returned error: %v", err)
+		t.Fatalf("UpsertService(public) returned error: %v", err)
 	}
-
-	sources, err := db.Store.ListIngressRouteSources(ctx)
-	if err != nil {
-		t.Fatalf("ListIngressRouteSources returned error: %v", err)
-	}
-	if len(sources) != 1 {
-		t.Fatalf("route sources = %+v, want one host without backend", sources)
-	}
-	if sources[0].Host != "ingress-before-backend.apps.example.com" || sources[0].HasBackend {
-		t.Fatalf("route source = %+v, want public host without backend", sources[0])
-	}
-}
-
-func TestIntegrationPrivateServiceDoesNotCreateIngressRoute(t *testing.T) {
-	ctx := context.Background()
-	db := testutil.OpenCloudPlaneTestDatabase(t)
-	spec := serviceSpec()
-	spec.Exposure = cloudmodel.ExposurePrivate
-
+	privateSpec := serviceSpec()
+	privateSpec.Exposure = cloudmodel.ExposurePrivate
 	if _, err := db.Store.UpsertService(ctx, cloudmodel.UpsertServiceInput{
 		ID:          "svc-private-route",
 		Name:        "private-route",
 		DisplayName: "private route",
 		Host:        "private-route.apps.example.com",
 		Generation:  1,
-		Spec:        spec,
+		Spec:        privateSpec,
 	}); err != nil {
-		t.Fatalf("UpsertService returned error: %v", err)
+		t.Fatalf("UpsertService(private) returned error: %v", err)
 	}
 
 	sources, err := db.Store.ListIngressRouteSources(ctx)
 	if err != nil {
 		t.Fatalf("ListIngressRouteSources returned error: %v", err)
 	}
-	if len(sources) != 0 {
-		t.Fatalf("route sources = %+v, want none for private service", sources)
+	if len(sources) != 1 || sources[0].Host != "public-route.apps.example.com" || sources[0].HasBackend {
+		t.Fatalf("route sources = %+v, want one public host without backend", sources)
 	}
 }
 
