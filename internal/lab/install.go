@@ -90,6 +90,12 @@ func (r *Runner) installControlPlane(ctx context.Context) error {
 	if err := r.scp(ctx, r.cfg.ControlPlane.SSH, install.Config, remote("mini-cloud-control-plane.yaml")); err != nil {
 		return err
 	}
+	if err := r.ssh(ctx, r.cfg.ControlPlane.SSH, host, []byte("rm -rf /tmp/mini-cloud-web\n")); err != nil {
+		return err
+	}
+	if err := r.scpRecursive(ctx, r.cfg.ControlPlane.SSH, r.cfg.Binaries.WebDist, remote("mini-cloud-web")); err != nil {
+		return err
+	}
 	script, err := os.ReadFile(install.RemoteScript)
 	if err != nil {
 		return err

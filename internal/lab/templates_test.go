@@ -29,6 +29,7 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 	for _, want := range []string{
 		"docker ps -a --format '{{.Names}}'",
 		"root * $INSTALL_ROOT/artifacts",
+		"cp -a /tmp/mini-cloud-web/. \"$INSTALL_ROOT/web/\"",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("rendered template does not contain %q", want)

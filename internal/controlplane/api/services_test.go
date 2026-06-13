@@ -68,6 +68,46 @@ func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 	}
 }
 
+func TestBuildServiceResourceKeepsEmptyWorkloadFields(t *testing.T) {
+	t.Parallel()
+
+	resource := buildServiceResource(model.Service{
+		Metadata: model.ServiceMetadata{
+			ID:          "svc_test",
+			Name:        "demo-api",
+			DisplayName: "Demo API",
+			Host:        "demo-api.apps.example.test",
+			Generation:  1,
+		},
+		Spec: model.ServiceSpec{
+			PlaneID:       "pln_test",
+			InstanceClass: model.InstanceClassSmall,
+			Exposure:      "public",
+			Image:         "nginx:1.27-alpine",
+			DefaultPort:   80,
+			ReadinessPath: "/",
+		},
+		Status: model.ServiceStatus{
+			DesiredState: model.DesiredStateActive,
+			Observed: model.ServiceObservedStatus{
+				Phase: model.PhasePending,
+			},
+			Run: model.RunStatus{Phase: model.RunPhasePending},
+		},
+	})
+
+	payload, err := json.Marshal(resource)
+	if err != nil {
+		t.Fatalf("marshal service resource returned error: %v", err)
+	}
+	body := string(payload)
+	for _, want := range []string{`"command":[]`, `"args":[]`, `"env":{}`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("service resource did not include %s: %s", want, body)
+		}
+	}
+}
+
 func TestUpdateServiceRequiresPlaneIDQuery(t *testing.T) {
 	ctx := context.Background()
 	db := testutil.OpenControlPlaneTestDatabase(t)

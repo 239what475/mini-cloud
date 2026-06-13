@@ -20,11 +20,11 @@ type serviceSpec struct {
 	InstanceClass string            `json:"instanceClass"`
 	Exposure      string            `json:"exposure"`
 	Image         string            `json:"image"`
-	Command       []string          `json:"command,omitempty"`
-	Args          []string          `json:"args,omitempty"`
+	Command       []string          `json:"command"`
+	Args          []string          `json:"args"`
 	DefaultPort   int               `json:"defaultPort"`
 	ReadinessPath string            `json:"readinessPath"`
-	Env           map[string]string `json:"env,omitempty"`
+	Env           map[string]string `json:"env"`
 }
 type serviceRunStatus struct {
 	Phase   string `json:"phase"`
@@ -268,11 +268,11 @@ func buildServiceResource(service model.Service) serviceResource {
 			InstanceClass: service.Spec.InstanceClass,
 			Exposure:      service.Spec.Exposure,
 			Image:         service.Spec.Image,
-			Command:       slices.Clone(service.Spec.Command),
-			Args:          slices.Clone(service.Spec.Args),
+			Command:       nonNilStringSlice(service.Spec.Command),
+			Args:          nonNilStringSlice(service.Spec.Args),
 			DefaultPort:   service.Spec.DefaultPort,
 			ReadinessPath: service.Spec.ReadinessPath,
-			Env:           service.Spec.Env,
+			Env:           nonNilStringMap(service.Spec.Env),
 		},
 		Status: serviceStatus{
 			Phase:              service.Status.Observed.Phase,
@@ -282,6 +282,20 @@ func buildServiceResource(service model.Service) serviceResource {
 			Run:                buildServiceRun(service.Status.Run),
 		},
 	}
+}
+
+func nonNilStringSlice(input []string) []string {
+	if input == nil {
+		return []string{}
+	}
+	return slices.Clone(input)
+}
+
+func nonNilStringMap(input map[string]string) map[string]string {
+	if input == nil {
+		return map[string]string{}
+	}
+	return input
 }
 
 func buildServiceRun(input model.RunStatus) serviceRunStatus {

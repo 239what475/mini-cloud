@@ -54,11 +54,11 @@ export function editFormFromService(
     instanceClass: service.spec.instanceClass,
     exposure: service.spec.exposure,
     image: service.spec.image,
-    commandText: service.spec.command.join("\n"),
-    argsText: service.spec.args.join("\n"),
+    commandText: (service.spec.command ?? []).join("\n"),
+    argsText: (service.spec.args ?? []).join("\n"),
     defaultPort: String(service.spec.defaultPort),
     readinessPath: service.spec.readinessPath,
-    envText: stringifyKeyValueMap(service.spec.env),
+    envText: stringifyKeyValueMap(service.spec.env ?? {}),
   };
 }
 

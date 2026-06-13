@@ -12,6 +12,7 @@ cleanup() {
   rm -f \
     /tmp/mini-cloud-control-plane \
     /tmp/mini-cloud-control-plane.yaml
+  rm -rf /tmp/mini-cloud-web
 }
 trap cleanup EXIT
 
@@ -86,6 +87,12 @@ install_binaries() {
   install -m 0755 /tmp/mini-cloud-control-plane "$INSTALL_ROOT/bin/control-plane"
 }
 
+install_web() {
+  rm -rf "$INSTALL_ROOT/web"
+  install -d -m 0755 "$INSTALL_ROOT/web"
+  cp -a /tmp/mini-cloud-web/. "$INSTALL_ROOT/web/"
+}
+
 install_configs() {
   install -d -m 0755 "$CONTROL_PLANE_CONFIG_DIR"
   install -m 0600 /tmp/mini-cloud-control-plane.yaml "$CONTROL_PLANE_CONFIG_DIR/control-plane.yaml"
@@ -133,6 +140,7 @@ ensure_postgres
 wait_for_postgres
 ensure_database
 install_binaries
+install_web
 install_configs
 write_systemd_unit
 systemctl daemon-reload

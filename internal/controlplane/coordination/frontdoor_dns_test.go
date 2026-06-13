@@ -8,6 +8,8 @@ import (
 	controlplanestore "mini-cloud/internal/controlplane/store"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 	"mini-cloud/internal/testutil"
+
+	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 )
 
 func TestSyncFrontDoorDNSEnsuresVerificationAndCNAME(t *testing.T) {
@@ -120,6 +122,15 @@ func TestSyncFrontDoorDNSSkipsDeletedService(t *testing.T) {
 	}
 	if len(records) != 0 {
 		t.Fatalf("stored DNS records = %+v, want none for deleting service", records)
+	}
+}
+
+func TestDNSPodRecordAlreadyExistsIsIdempotent(t *testing.T) {
+	t.Parallel()
+
+	err := sdkerrors.NewTencentCloudSDKError("InvalidParameter.DomainRecordExist", "record exists", "req-test")
+	if !isDNSPodRecordAlreadyExists(err) {
+		t.Fatalf("expected DNSPod record-exists error to be idempotent")
 	}
 }
 

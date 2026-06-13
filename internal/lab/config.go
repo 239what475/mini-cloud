@@ -59,6 +59,7 @@ type BinaryConfig struct {
 	ControlPlane string `yaml:"controlPlane"`
 	CloudPlane   string `yaml:"cloudPlane"`
 	NodeAgent    string `yaml:"nodeAgent"`
+	WebDist      string `yaml:"webDist"`
 }
 
 type TokenConfig struct {
@@ -109,6 +110,7 @@ func (c *Config) applyDefaults() {
 	c.Binaries.ControlPlane = defaultString(c.Binaries.ControlPlane, "dist/release/linux-amd64/control-plane")
 	c.Binaries.CloudPlane = defaultString(c.Binaries.CloudPlane, "dist/release/linux-amd64/cloud-plane")
 	c.Binaries.NodeAgent = defaultString(c.Binaries.NodeAgent, "dist/release/linux-amd64/node-agent")
+	c.Binaries.WebDist = defaultString(c.Binaries.WebDist, "web/dist")
 
 	c.Provider.TencentCredentialFile = defaultString(c.Provider.TencentCredentialFile, "~/.tccli/default.credential")
 	c.Provider.TencentCredentialFile = expandHome(c.Provider.TencentCredentialFile)
@@ -236,6 +238,9 @@ func (c Config) validateInstall() error {
 	if err := requireFile(c.Binaries.NodeAgent); err != nil {
 		return err
 	}
+	if err := requireDir(c.Binaries.WebDist); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -253,6 +258,20 @@ func requireFile(path string) error {
 			return fmt.Errorf("%s does not exist; run make build-release first or update deploy/lab/lab.yaml", path)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	return nil
+}
+
+func requireDir(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%s does not exist; run npm --prefix web run build first or update deploy/lab/lab.yaml", path)
+		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", path)
 	}
 	return nil
 }

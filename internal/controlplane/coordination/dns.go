@@ -2,6 +2,7 @@ package coordination
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"mini-cloud/internal/controlplane/config"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
+	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
 	tcprofile "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/profile"
 	dnspod "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/dnspod/v20210323"
 )
@@ -141,6 +143,9 @@ func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recor
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	_, err := c.client.CreateRecordWithContext(ctx, req)
+	if isDNSPodRecordAlreadyExists(err) {
+		return nil
+	}
 	return err
 }
 
@@ -187,4 +192,15 @@ func cleanDNSRecordValue(recordType string, value string) string {
 		return cleanDNSDomain(value)
 	}
 	return value
+}
+
+func isDNSPodRecordAlreadyExists(err error) bool {
+	if err == nil {
+		return false
+	}
+	var sdkErr *sdkerrors.TencentCloudSDKError
+	if errors.As(err, &sdkErr) {
+		return strings.EqualFold(strings.TrimSpace(sdkErr.GetCode()), "InvalidParameter.DomainRecordExist")
+	}
+	return false
 }

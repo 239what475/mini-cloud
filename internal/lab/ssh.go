@@ -34,6 +34,11 @@ func (r *Runner) scp(ctx context.Context, sshConfig SSHConfig, local string, rem
 	return runInteractive(ctx, "scp", args...)
 }
 
+func (r *Runner) scpRecursive(ctx context.Context, sshConfig SSHConfig, local string, remote string) error {
+	args := append(sshArgs(sshConfig), "-r", local, remote)
+	return runInteractive(ctx, "scp", args...)
+}
+
 func (r *Runner) ssh(ctx context.Context, sshConfig SSHConfig, host string, script []byte) error {
 	args := append(sshArgs(sshConfig), host)
 	args = append(args, "if [ \"$(id -u)\" = 0 ]; then bash -s; else sudo -n bash -s; fi")
