@@ -12,7 +12,10 @@ export const queryKeys = {
   inventory: ["control-inventory"] as const,
   planes: ["control-planes"] as const,
   services: ["services"] as const,
-  service: (serviceID: string) => ["service", serviceID] as const,
+  service: (serviceID: string, planeID?: string) =>
+    planeID
+      ? (["service", serviceID, planeID] as const)
+      : (["service", serviceID] as const),
 };
 
 export function getHealthz(): Promise<HealthzResponse> {
@@ -42,9 +45,10 @@ export function listServices(token: string): Promise<ServiceListResponse> {
 export function getService(
   token: string,
   serviceID: string,
+  planeID: string,
 ): Promise<ServiceResource> {
   return fetchJSON<ServiceResource>(
-    `/api/v1/services/${serviceID}`,
+    `/api/v1/services/${serviceID}?planeID=${encodeURIComponent(planeID)}`,
     undefined,
     token,
   );
@@ -67,10 +71,11 @@ export function createService(
 export function updateService(
   token: string,
   serviceID: string,
+  planeID: string,
   payload: unknown,
 ): Promise<ServiceResource> {
   return fetchJSON<ServiceResource>(
-    `/api/v1/services/${serviceID}`,
+    `/api/v1/services/${serviceID}?planeID=${encodeURIComponent(planeID)}`,
     {
       method: "PUT",
       body: JSON.stringify(payload),
@@ -82,9 +87,10 @@ export function updateService(
 export function deleteService(
   token: string,
   serviceID: string,
+  planeID: string,
 ): Promise<ServiceResource> {
   return fetchJSON<ServiceResource>(
-    `/api/v1/services/${serviceID}`,
+    `/api/v1/services/${serviceID}?planeID=${encodeURIComponent(planeID)}`,
     { method: "DELETE" },
     token,
   );

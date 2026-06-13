@@ -86,11 +86,20 @@ function App() {
   const services = servicesQuery.data?.items ?? [];
   const selectedOrFirstServiceID =
     selectedServiceID || services[0]?.metadata.id || "";
+  const selectedServiceSummary =
+    services.find(
+      (service) => service.metadata.id === selectedOrFirstServiceID,
+    ) ?? null;
+  const selectedPlaneID = selectedServiceSummary?.spec.planeID ?? "";
 
   const serviceDetailQuery = useQuery({
-    queryKey: queryKeys.service(selectedOrFirstServiceID),
-    queryFn: () => getService(adminToken, selectedOrFirstServiceID),
-    enabled: selectedOrFirstServiceID !== "" && hasAdminToken,
+    queryKey: queryKeys.service(selectedOrFirstServiceID, selectedPlaneID),
+    queryFn: () =>
+      getService(adminToken, selectedOrFirstServiceID, selectedPlaneID),
+    enabled:
+      selectedOrFirstServiceID !== "" &&
+      selectedPlaneID !== "" &&
+      hasAdminToken,
     refetchInterval: 10_000,
   });
 
@@ -150,15 +159,20 @@ function App() {
   });
 
   const updateService = useMutation({
-    mutationFn: (input: { serviceID: string; form: ServiceEditFormState }) =>
+    mutationFn: (input: {
+      serviceID: string;
+      planeID: string;
+      form: ServiceEditFormState;
+    }) =>
       updateServiceRequest(
         adminToken,
         input.serviceID,
+        input.planeID,
         toUpdateServicePayload(input.form),
       ),
     onSuccess: async (response) => {
       queryClient.setQueryData<ServiceResource>(
-        queryKeys.service(response.metadata.id),
+        queryKeys.service(response.metadata.id, response.spec.planeID),
         response,
       );
       setEditForm(editFormFromService(response));
@@ -169,11 +183,11 @@ function App() {
   });
 
   const deleteService = useMutation({
-    mutationFn: (serviceID: string) =>
-      deleteServiceRequest(adminToken, serviceID),
+    mutationFn: (input: { serviceID: string; planeID: string }) =>
+      deleteServiceRequest(adminToken, input.serviceID, input.planeID),
     onSuccess: async (response) => {
       queryClient.setQueryData<ServiceResource>(
-        queryKeys.service(response.metadata.id),
+        queryKeys.service(response.metadata.id, response.spec.planeID),
         response,
       );
       await invalidateServiceArea(queryClient, response.metadata.id);
@@ -234,6 +248,7 @@ function App() {
           }
           updateService.mutate({
             serviceID: currentService.metadata.id,
+            planeID: currentService.spec.planeID,
             form: editForm,
           });
         }}
@@ -241,7 +256,10 @@ function App() {
           if (!currentService) {
             return;
           }
-          deleteService.mutate(currentService.metadata.id);
+          deleteService.mutate({
+            serviceID: currentService.metadata.id,
+            planeID: currentService.spec.planeID,
+          });
         }}
       />
     </Shell>
