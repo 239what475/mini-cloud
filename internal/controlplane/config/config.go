@@ -121,11 +121,10 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.DNS.DNSPod.Domain) == "" {
 		return fmt.Errorf("dns.dnspod.domain is required")
 	}
-	if strings.TrimSpace(c.DNS.DNSPod.SecretID) == "" {
-		return fmt.Errorf("dns.dnspod.secretId is required")
-	}
-	if strings.TrimSpace(c.DNS.DNSPod.SecretKey) == "" {
-		return fmt.Errorf("dns.dnspod.secretKey is required")
+	hasSecretID := strings.TrimSpace(c.DNS.DNSPod.SecretID) != ""
+	hasSecretKey := strings.TrimSpace(c.DNS.DNSPod.SecretKey) != ""
+	if hasSecretID != hasSecretKey {
+		return fmt.Errorf("dns.dnspod.secretId and secretKey must be configured together")
 	}
 	if len(c.Planes) == 0 {
 		return fmt.Errorf("planes is required")

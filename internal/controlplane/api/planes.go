@@ -81,6 +81,18 @@ func (h planeHandler) inventory(c *gin.Context) {
 	c.JSON(http.StatusOK, buildInventoryView(views))
 }
 
+func (h planeHandler) checkDNS(c *gin.Context) {
+	if err := h.syncer.CheckDNS(c.Request.Context()); err != nil {
+		h.logger.Warn("check DNS failed", "error", err)
+		c.JSON(http.StatusBadGateway, map[string]any{
+			"status": "failed",
+			"error":  err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, map[string]any{"status": "ok"})
+}
+
 func (h planeHandler) getPlane(c *gin.Context) {
 	planeID := c.Param("planeID")
 	if planeID == "" {

@@ -33,7 +33,7 @@ func NewMux(opts Options, logger *slog.Logger) (http.Handler, error) {
 	gin.SetMode(gin.ReleaseMode)
 	gin.EnableJsonDecoderDisallowUnknownFields()
 	router := gin.New()
-	router.Use(ginRecoverPanics(logger), ginRequestLogger(logger))
+	router.Use(ginRecoverPanics(logger), ginRequestContext(), ginRequestLogger(logger))
 
 	adminAuth := newBearerAuth(opts.AdminToken)
 
@@ -65,6 +65,7 @@ func NewMux(opts Options, logger *slog.Logger) (http.Handler, error) {
 	planeHandler := newPlaneHandler(logger, opts.PlaneSyncer)
 
 	control := api.Group("/control")
+	control.GET("/dns/check", planeHandler.checkDNS)
 	control.GET("/inventory", planeHandler.inventory)
 	control.GET("/planes", planeHandler.listPlanes)
 	control.GET("/planes/:planeID", planeHandler.getPlane)

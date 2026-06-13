@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/config"
+	"mini-cloud/internal/transport"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
@@ -25,6 +26,7 @@ type dnsClient interface {
 	EnsureRecord(context.Context, managedDNSRecord) error
 	DeleteRecord(context.Context, managedDNSRecord) error
 	DeleteServiceRecords(context.Context, string, string, string) error
+	Check(context.Context) error
 }
 
 type managedDNSRecord struct {
@@ -44,15 +46,43 @@ type dnsPodAPI interface {
 }
 
 type dnsPodClient struct {
-	client dnsPodAPI
-	domain string
+	client           dnsPodAPI
+	staticCredential tccommon.CredentialIface
+	domain           string
 }
 
 func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	if strings.TrimSpace(cfg.Domain) == "" {
 		return nil, fmt.Errorf("dns.dnspod.domain is required")
 	}
-	credential := tccommon.NewTokenCredential(cfg.SecretID, cfg.SecretKey, cfg.Token)
+	credential, err := staticDNSPodCredential(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &dnsPodClient{staticCredential: credential, domain: cleanDNSDomain(cfg.Domain)}, nil
+}
+
+func staticDNSPodCredential(cfg config.DNSPodConfig) (tccommon.CredentialIface, error) {
+	secretID := strings.TrimSpace(cfg.SecretID)
+	secretKey := strings.TrimSpace(cfg.SecretKey)
+	token := strings.TrimSpace(cfg.Token)
+	if secretID == "" && secretKey == "" {
+		return nil, nil
+	}
+	if secretID == "" || secretKey == "" {
+		return nil, fmt.Errorf("dns.dnspod.secretId and secretKey must be configured together")
+	}
+	return tccommon.NewTokenCredential(secretID, secretKey, token), nil
+}
+
+func (c *dnsPodClient) api(ctx context.Context) (dnsPodAPI, error) {
+	if c.client != nil {
+		return c.client, nil
+	}
+	credential, err := c.credential(ctx)
+	if err != nil {
+		return nil, err
+	}
 	profile := tcprofile.NewClientProfile()
 	profile.HttpProfile.Endpoint = "dnspod.tencentcloudapi.com"
 	profile.HttpProfile.ReqTimeout = int(dnsPodRequestTimeout / time.Second)
@@ -60,7 +90,21 @@ func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create DNSPod client: %w", err)
 	}
-	return &dnsPodClient{client: client, domain: cleanDNSDomain(cfg.Domain)}, nil
+	return client, nil
+}
+
+func (c *dnsPodClient) credential(ctx context.Context) (tccommon.CredentialIface, error) {
+	if c.staticCredential != nil {
+		return c.staticCredential, nil
+	}
+	if credential, ok := transport.TencentCredentialFromContext(ctx); ok {
+		return tccommon.NewTokenCredential(credential.SecretID, credential.SecretKey, credential.SessionToken), nil
+	}
+	credential, err := tccommon.DefaultProviderChain().GetCredential()
+	if err != nil {
+		return nil, fmt.Errorf("load DNSPod credential from Tencent default provider chain: %w", err)
+	}
+	return credential, nil
 }
 
 func (c *dnsPodClient) EnsureRecord(ctx context.Context, record managedDNSRecord) error {
@@ -156,6 +200,11 @@ func (c *dnsPodClient) DeleteServiceRecords(ctx context.Context, planeID string,
 	return nil
 }
 
+func (c *dnsPodClient) Check(ctx context.Context) error {
+	_, err := c.recordsForDomain(ctx)
+	return err
+}
+
 type dnsRecord struct {
 	id         uint64
 	subdomain  string
@@ -185,6 +234,10 @@ func (c *dnsPodClient) ensureAgainstExistingRecords(ctx context.Context, subdoma
 }
 
 func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]dnsRecord, error) {
+	api, err := c.api(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := uint64(100)
 	errorOnEmpty := "no"
 	req := dnspod.NewDescribeRecordListRequest()
@@ -194,7 +247,7 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 	req.Limit = &limit
 	req.ErrorOnEmpty = &errorOnEmpty
 
-	resp, err := c.client.DescribeRecordListWithContext(ctx, req)
+	resp, err := api.DescribeRecordListWithContext(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -216,6 +269,10 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 }
 
 func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error) {
+	api, err := c.api(ctx)
+	if err != nil {
+		return nil, err
+	}
 	limit := uint64(3000)
 	errorOnEmpty := "no"
 	req := dnspod.NewDescribeRecordListRequest()
@@ -223,7 +280,7 @@ func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error
 	req.Limit = &limit
 	req.ErrorOnEmpty = &errorOnEmpty
 
-	resp, err := c.client.DescribeRecordListWithContext(ctx, req)
+	resp, err := api.DescribeRecordListWithContext(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -251,6 +308,10 @@ func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error
 }
 
 func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string, remark string) error {
+	api, err := c.api(ctx)
+	if err != nil {
+		return err
+	}
 	line := "默认"
 	req := dnspod.NewCreateRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
@@ -260,11 +321,15 @@ func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recor
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	req.Remark = tccommon.StringPtr(remark)
-	_, err := c.client.CreateRecordWithContext(ctx, req)
+	_, err = api.CreateRecordWithContext(ctx, req)
 	return err
 }
 
 func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string, remark string) error {
+	api, err := c.api(ctx)
+	if err != nil {
+		return err
+	}
 	line := "默认"
 	req := dnspod.NewModifyRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
@@ -275,15 +340,19 @@ func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdom
 	req.Value = tccommon.StringPtr(value)
 	req.TTL = tccommon.Uint64Ptr(dnsRecordTTL)
 	req.Remark = tccommon.StringPtr(remark)
-	_, err := c.client.ModifyRecordWithContext(ctx, req)
+	_, err = api.ModifyRecordWithContext(ctx, req)
 	return err
 }
 
 func (c *dnsPodClient) deleteRecord(ctx context.Context, recordID uint64) error {
+	api, err := c.api(ctx)
+	if err != nil {
+		return err
+	}
 	req := dnspod.NewDeleteRecordRequest()
 	req.Domain = tccommon.StringPtr(c.domain)
 	req.RecordId = tccommon.Uint64Ptr(recordID)
-	_, err := c.client.DeleteRecordWithContext(ctx, req)
+	_, err = api.DeleteRecordWithContext(ctx, req)
 	return err
 }
 

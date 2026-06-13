@@ -94,6 +94,13 @@ func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout 
 	return nil
 }
 
+func (s *PlaneSyncer) CheckDNS(ctx context.Context) error {
+	if s.dns == nil {
+		return nil
+	}
+	return s.dns.Check(ctx)
+}
+
 func (s *PlaneSyncer) ListPlaneSnapshotViews(ctx context.Context, perPlaneTimeout time.Duration) ([]PlaneSnapshotView, error) {
 	planes, err := s.planes.ListPlanes(ctx)
 	if err != nil {

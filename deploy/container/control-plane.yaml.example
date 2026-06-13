@@ -1,0 +1,22 @@
+server:
+  httpAddr: "0.0.0.0:9000"
+
+ui:
+  dir: "/opt/mini-cloud/web"
+
+auth:
+  adminToken: "replace-with-admin-token"
+  southboundToken: "replace-with-southbound-token"
+
+dns:
+  serviceBaseDomain: "apps.whatcloud.cn"
+  dnspod:
+    domain: "whatcloud.cn"
+
+planes:
+  - id: "pln_tencent"
+    name: "mini-cloud-tencent-lab"
+    displayName: "mini-cloud-tencent-lab"
+    provider: "tencent"
+    region: "ap-guangzhou"
+    grpcEndpoint: "replace-with-cloud-plane-grpc-endpoint:18081"

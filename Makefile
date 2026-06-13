@@ -1,6 +1,6 @@
 # mini-cloud 的 Makefile 只放“本地工程动作”：
 # - 代码格式、静态检查、单元测试
-# - 二进制构建、release 构建
+# - 二进制构建、release 构建、control-plane 镜像构建
 # - proto 生成、清理构建产物
 #
 # 会启动数据库、服务进程或 runtime 容器的流程不放在这里。
@@ -38,8 +38,12 @@ TARGET_GOARCH ?= amd64
 # release 产物按目标平台分目录，避免不同平台二进制互相覆盖。
 RELEASE_DIR ?= $(ROOT_DIR)/dist/release/$(TARGET_GOOS)-$(TARGET_GOARCH)
 
+CONTROL_PLANE_IMAGE ?= mini-cloud/control-plane:local
+CONTROL_PLANE_CONFIG ?= deploy/container/control-plane.yaml.example
+CONTROL_PLANE_IMAGE_PLATFORM ?= linux/amd64
+
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
-.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build build-release proto clean
+.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build build-release image-control-plane proto clean
 
 # 打印当前保留的工程入口。
 # scripts/ 下的环境编排测试不在这里列为 make target。
@@ -51,11 +55,14 @@ help:
 	  '  make test           Run root Go tests.' \
 	  '  make build          Build local development binaries.' \
 	  '  make build-release  Build linux/amd64 release binaries by default.' \
+	  '  make image-control-plane Build the control-plane container image.' \
 	  '  make proto          Generate protobuf code with buf.' \
 	  '  make clean          Remove local build output.' \
 	  '' \
 	  'Variables:' \
-	  '  BINARY_DIR=dist/bin TARGET_GOOS=linux TARGET_GOARCH=amd64 RELEASE_DIR=dist/release/linux-amd64'
+	  '  BINARY_DIR=dist/bin TARGET_GOOS=linux TARGET_GOARCH=amd64 RELEASE_DIR=dist/release/linux-amd64' \
+	  '  CONTROL_PLANE_IMAGE=mini-cloud/control-plane:local CONTROL_PLANE_CONFIG=deploy/container/control-plane.yaml.example' \
+	  '  CONTROL_PLANE_IMAGE_PLATFORM=linux/amd64'
 
 # 本地日常质量门禁。
 # 这里保持线性、直接：能用工具原生命令完成的检查，就直接调用工具。
@@ -186,6 +193,19 @@ build-release:
 	cd "$(RELEASE_DIR)"
 	sha256sum control-plane cloud-plane node-agent >SHA256SUMS
 	echo "[build-release] done"
+
+image-control-plane: TARGET_GOOS := linux
+image-control-plane: TARGET_GOARCH := amd64
+image-control-plane: build-release web-build
+	@echo "[image] control-plane -> $(CONTROL_PLANE_IMAGE)"
+	test -f "$(CONTROL_PLANE_CONFIG)"
+	docker build \
+	  --platform "$(CONTROL_PLANE_IMAGE_PLATFORM)" \
+	  --provenance=false \
+	  -f deploy/container/control-plane.Dockerfile \
+	  --build-arg CONTROL_PLANE_CONFIG="$(CONTROL_PLANE_CONFIG)" \
+	  -t "$(CONTROL_PLANE_IMAGE)" \
+	  .
 
 # 生成 proto 代码。
 # 这里只调用 buf generate，不在 Makefile 里手写 protoc 参数。

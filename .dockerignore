@@ -1,0 +1,9 @@
+.git
+.terraform
+deploy/terraform/lab/.terraform
+deploy/terraform/lab/terraform.tfstate*
+dist/bin
+web/node_modules
+web/test-results
+web/playwright-report
+tmp

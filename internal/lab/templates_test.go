@@ -82,6 +82,34 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 	}
 }
 
+func TestControlPlaneConfigTemplateCanUseDefaultDNSPodCredentialChain(t *testing.T) {
+	rendered, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
+		HTTPAddr:          "127.0.0.1:18080",
+		InstallRoot:       "/opt/mini-cloud",
+		AdminToken:        "admin",
+		SouthboundToken:   "southbound",
+		ServiceBaseDomain: "apps.whatcloud.cn",
+		DNSPodDomain:      "whatcloud.cn",
+		Planes: []controlPlanePlaneTemplateData{
+			{
+				ID:           "pln_test",
+				Name:         "test-plane",
+				DisplayName:  "Test Plane",
+				Provider:     "tencent",
+				Region:       "ap-guangzhou",
+				GRPCEndpoint: "10.0.0.1:18081",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(rendered)
+	if strings.Contains(text, "secretId:") || strings.Contains(text, "secretKey:") || strings.Contains(text, "token:") {
+		t.Fatalf("control-plane config should not render static DNSPod credentials when omitted:\n%s", text)
+	}
+}
+
 func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 	control, err := renderTemplate("remote-control-plane-uninstall.sh.tmpl", struct {
 		InstallRoot string

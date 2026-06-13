@@ -108,6 +108,61 @@ planes:
 	}
 }
 
+func TestLoadAllowsDNSPodDefaultCredentialChain(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "control-plane.yaml")
+	if err := os.WriteFile(path, []byte(`
+auth:
+  adminToken: admin-secret
+  southboundToken: southbound-secret
+dns:
+  serviceBaseDomain: apps.example.test
+  dnspod:
+    domain: example.test
+planes:
+  - id: pln_test
+    name: test-plane
+    provider: aliyun
+    region: cn-beijing
+    grpcEndpoint: 127.0.0.1:18081
+`), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.DNS.DNSPod.SecretID != "" || cfg.DNS.DNSPod.SecretKey != "" {
+		t.Fatalf("unexpected DNSPod static credentials: %+v", cfg.DNS.DNSPod)
+	}
+}
+
+func TestLoadRejectsPartialDNSPodStaticCredential(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "control-plane.yaml")
+	if err := os.WriteFile(path, []byte(`
+auth:
+  adminToken: admin-secret
+  southboundToken: southbound-secret
+dns:
+  serviceBaseDomain: apps.example.test
+  dnspod:
+    domain: example.test
+    secretId: sid
+planes:
+  - id: pln_test
+    name: test-plane
+    provider: aliyun
+    region: cn-beijing
+    grpcEndpoint: 127.0.0.1:18081
+`), 0600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatalf("Load returned nil error, want partial credential validation error")
+	}
+}
+
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`

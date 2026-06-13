@@ -13,13 +13,9 @@ import (
 
 func ginRequestLogger(logger *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		requestID := transport.EnsureRequestID(c.GetHeader(transport.RequestIDHeader))
-		ctx := transport.ContextWithRequestID(c.Request.Context(), requestID)
-		c.Request = c.Request.WithContext(ctx)
-		c.Writer.Header().Set(transport.RequestIDHeader, requestID)
-
 		start := time.Now()
 		c.Next()
+		requestID := transport.RequestIDFromContext(c.Request.Context())
 		logger.With("request_id", requestID).Info("http request",
 			"method", c.Request.Method,
 			"path", c.Request.URL.Path,
@@ -28,6 +24,19 @@ func ginRequestLogger(logger *slog.Logger) gin.HandlerFunc {
 			"status_code", c.Writer.Status(),
 			"duration_ms", time.Since(start).Milliseconds(),
 		)
+	}
+}
+
+func ginRequestContext() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		requestID := transport.EnsureRequestID(c.GetHeader(transport.RequestIDHeader))
+		ctx := transport.ContextWithRequestID(c.Request.Context(), requestID)
+		if credential, ok := transport.TencentCredentialFromHeaders(c.Request.Header); ok {
+			ctx = transport.ContextWithTencentCredential(ctx, credential)
+		}
+		c.Request = c.Request.WithContext(ctx)
+		c.Writer.Header().Set(transport.RequestIDHeader, requestID)
+		c.Next()
 	}
 }
 
