@@ -134,6 +134,10 @@ a {
   box-shadow: 0 18px 40px rgba(66, 47, 27, 0.08);
 }
 
+.stacked-panel {
+  margin-top: 24px;
+}
+
 .panel__header {
   display: flex;
   justify-content: space-between;
@@ -220,6 +224,10 @@ a {
   border: 1px solid rgba(88, 69, 44, 0.18);
   background: #fffdf7;
   color: #1b1813;
+}
+
+.form-field--wide {
+  grid-column: 1 / -1;
 }
 
 .project-form button {
