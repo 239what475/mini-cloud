@@ -37,10 +37,7 @@ type DNSConfig struct {
 }
 
 type DNSPodConfig struct {
-	Domain    string `yaml:"domain"`
-	SecretID  string `yaml:"secretId"`
-	SecretKey string `yaml:"secretKey"`
-	Token     string `yaml:"token"`
+	Domain string `yaml:"domain"`
 }
 
 type PlaneConfig struct {
@@ -91,9 +88,6 @@ func (c *Config) normalize() {
 	c.Auth.SouthboundToken = strings.TrimSpace(c.Auth.SouthboundToken)
 	c.DNS.ServiceBaseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.ServiceBaseDomain)), ".")
 	c.DNS.DNSPod.Domain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.DNSPod.Domain)), ".")
-	c.DNS.DNSPod.SecretID = strings.TrimSpace(c.DNS.DNSPod.SecretID)
-	c.DNS.DNSPod.SecretKey = strings.TrimSpace(c.DNS.DNSPod.SecretKey)
-	c.DNS.DNSPod.Token = strings.TrimSpace(c.DNS.DNSPod.Token)
 	for i := range c.Planes {
 		plane := &c.Planes[i]
 		plane.ID = strings.TrimSpace(plane.ID)
@@ -120,11 +114,6 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.DNS.DNSPod.Domain) == "" {
 		return fmt.Errorf("dns.dnspod.domain is required")
-	}
-	hasSecretID := strings.TrimSpace(c.DNS.DNSPod.SecretID) != ""
-	hasSecretKey := strings.TrimSpace(c.DNS.DNSPod.SecretKey) != ""
-	if hasSecretID != hasSecretKey {
-		return fmt.Errorf("dns.dnspod.secretId and secretKey must be configured together")
 	}
 	if len(c.Planes) == 0 {
 		return fmt.Errorf("planes is required")

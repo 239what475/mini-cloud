@@ -31,9 +31,6 @@ func ginRequestContext() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := transport.EnsureRequestID(c.GetHeader(transport.RequestIDHeader))
 		ctx := transport.ContextWithRequestID(c.Request.Context(), requestID)
-		if credential, ok := transport.TencentCredentialFromHeaders(c.Request.Header); ok {
-			ctx = transport.ContextWithTencentCredential(ctx, credential)
-		}
 		c.Request = c.Request.WithContext(ctx)
 		c.Writer.Header().Set(transport.RequestIDHeader, requestID)
 		c.Next()

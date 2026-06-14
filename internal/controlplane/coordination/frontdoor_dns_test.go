@@ -5,9 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	controlplaneconfig "mini-cloud/internal/controlplane/config"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
-	"mini-cloud/internal/transport"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
@@ -96,45 +94,6 @@ func TestDNSPodRecordAlreadyExistsIsIdempotent(t *testing.T) {
 	err := sdkerrors.NewTencentCloudSDKError("InvalidParameter.DomainRecordExist", "record exists", "req-test")
 	if !isDNSPodRecordAlreadyExists(err) {
 		t.Fatalf("expected DNSPod record-exists error to be idempotent")
-	}
-}
-
-func TestDNSPodCredentialRejectsPartialStaticCredential(t *testing.T) {
-	t.Parallel()
-
-	if _, err := staticDNSPodCredential(controlplaneconfig.DNSPodConfig{SecretID: "sid"}); err == nil {
-		t.Fatalf("staticDNSPodCredential returned nil error, want partial credential validation error")
-	}
-}
-
-func TestDNSPodCredentialUsesStaticCredentialWhenConfigured(t *testing.T) {
-	t.Parallel()
-
-	credential, err := staticDNSPodCredential(controlplaneconfig.DNSPodConfig{SecretID: "sid", SecretKey: "skey", Token: "token"})
-	if err != nil {
-		t.Fatalf("staticDNSPodCredential returned error: %v", err)
-	}
-	if credential == nil {
-		t.Fatalf("staticDNSPodCredential returned nil credential")
-	}
-}
-
-func TestDNSPodClientUsesTencentCredentialFromContext(t *testing.T) {
-	t.Parallel()
-
-	ctx := transport.ContextWithTencentCredential(context.Background(), transport.TencentCredential{
-		SecretID:     "sid",
-		SecretKey:    "skey",
-		SessionToken: "session-token",
-	})
-	client := &dnsPodClient{domain: "example.com"}
-	credential, err := client.credential(ctx)
-	if err != nil {
-		t.Fatalf("credential returned error: %v", err)
-	}
-	secretID, secretKey, token := credential.GetCredential()
-	if secretID != "sid" || secretKey != "skey" || token != "session-token" {
-		t.Fatalf("credential = %q/%q/%q, want SCF request credential", secretID, secretKey, token)
 	}
 }
 

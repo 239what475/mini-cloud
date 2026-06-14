@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/config"
-	"mini-cloud/internal/transport"
 
 	tccommon "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common"
 	sdkerrors "github.com/tencentcloud/tencentcloud-sdk-go/tencentcloud/common/errors"
@@ -46,40 +45,22 @@ type dnsPodAPI interface {
 }
 
 type dnsPodClient struct {
-	client           dnsPodAPI
-	staticCredential tccommon.CredentialIface
-	domain           string
+	client dnsPodAPI
+	domain string
 }
 
 func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	if strings.TrimSpace(cfg.Domain) == "" {
 		return nil, fmt.Errorf("dns.dnspod.domain is required")
 	}
-	credential, err := staticDNSPodCredential(cfg)
-	if err != nil {
-		return nil, err
-	}
-	return &dnsPodClient{staticCredential: credential, domain: cleanDNSDomain(cfg.Domain)}, nil
+	return &dnsPodClient{domain: cleanDNSDomain(cfg.Domain)}, nil
 }
 
-func staticDNSPodCredential(cfg config.DNSPodConfig) (tccommon.CredentialIface, error) {
-	secretID := strings.TrimSpace(cfg.SecretID)
-	secretKey := strings.TrimSpace(cfg.SecretKey)
-	token := strings.TrimSpace(cfg.Token)
-	if secretID == "" && secretKey == "" {
-		return nil, nil
-	}
-	if secretID == "" || secretKey == "" {
-		return nil, fmt.Errorf("dns.dnspod.secretId and secretKey must be configured together")
-	}
-	return tccommon.NewTokenCredential(secretID, secretKey, token), nil
-}
-
-func (c *dnsPodClient) api(ctx context.Context) (dnsPodAPI, error) {
+func (c *dnsPodClient) api() (dnsPodAPI, error) {
 	if c.client != nil {
 		return c.client, nil
 	}
-	credential, err := c.credential(ctx)
+	credential, err := c.credential()
 	if err != nil {
 		return nil, err
 	}
@@ -93,13 +74,7 @@ func (c *dnsPodClient) api(ctx context.Context) (dnsPodAPI, error) {
 	return client, nil
 }
 
-func (c *dnsPodClient) credential(ctx context.Context) (tccommon.CredentialIface, error) {
-	if c.staticCredential != nil {
-		return c.staticCredential, nil
-	}
-	if credential, ok := transport.TencentCredentialFromContext(ctx); ok {
-		return tccommon.NewTokenCredential(credential.SecretID, credential.SecretKey, credential.SessionToken), nil
-	}
+func (c *dnsPodClient) credential() (tccommon.CredentialIface, error) {
 	credential, err := tccommon.DefaultProviderChain().GetCredential()
 	if err != nil {
 		return nil, fmt.Errorf("load DNSPod credential from Tencent default provider chain: %w", err)
@@ -234,7 +209,7 @@ func (c *dnsPodClient) ensureAgainstExistingRecords(ctx context.Context, subdoma
 }
 
 func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]dnsRecord, error) {
-	api, err := c.api(ctx)
+	api, err := c.api()
 	if err != nil {
 		return nil, err
 	}
@@ -269,7 +244,7 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 }
 
 func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error) {
-	api, err := c.api(ctx)
+	api, err := c.api()
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +283,7 @@ func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error
 }
 
 func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string, remark string) error {
-	api, err := c.api(ctx)
+	api, err := c.api()
 	if err != nil {
 		return err
 	}
@@ -326,7 +301,7 @@ func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recor
 }
 
 func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string, remark string) error {
-	api, err := c.api(ctx)
+	api, err := c.api()
 	if err != nil {
 		return err
 	}
@@ -345,7 +320,7 @@ func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdom
 }
 
 func (c *dnsPodClient) deleteRecord(ctx context.Context, recordID uint64) error {
-	api, err := c.api(ctx)
+	api, err := c.api()
 	if err != nil {
 		return err
 	}

@@ -22,7 +22,6 @@ type controlPlaneTemplateData struct {
 	SouthboundToken   string
 	ServiceBaseDomain string
 	DNSPodDomain      string
-	DNSPodCredential  tencentCredential
 	Planes            []controlPlanePlaneTemplateData
 }
 
@@ -179,13 +178,6 @@ func (r *Runner) installCloudPlane(ctx context.Context, plan cloudPlaneInstallPl
 }
 
 func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (installFiles, error) {
-	dnspodCredential, err := readTencentCredentialFile(r.cfg.Provider.TencentCredentialFile)
-	if err != nil {
-		return installFiles{}, err
-	}
-	if strings.TrimSpace(dnspodCredential.SecretID) == "" || strings.TrimSpace(dnspodCredential.SecretKey) == "" {
-		return installFiles{}, fmt.Errorf("provider.tencentCredentialFile must contain secretId and secretKey")
-	}
 	planes := make([]controlPlanePlaneTemplateData, 0, len(plans))
 	for _, plan := range plans {
 		provider := plan.Output.ProviderName()
@@ -212,7 +204,6 @@ func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan) (
 		SouthboundToken:   r.cfg.Tokens.ControlPlaneSouthbound,
 		ServiceBaseDomain: strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
 		DNSPodDomain:      rootDomain(r.cfg.Install.IngressBaseDomain),
-		DNSPodCredential:  dnspodCredential,
 		Planes:            planes,
 	})
 	if err != nil {

@@ -12,13 +12,6 @@ dns:
   serviceBaseDomain: {{printf "%q" .ServiceBaseDomain}}
   dnspod:
     domain: {{printf "%q" .DNSPodDomain}}
-{{- if .DNSPodCredential.SecretID}}
-    secretId: {{printf "%q" .DNSPodCredential.SecretID}}
-    secretKey: {{printf "%q" .DNSPodCredential.SecretKey}}
-{{- if .DNSPodCredential.Token}}
-    token: {{printf "%q" .DNSPodCredential.Token}}
-{{- end}}
-{{- end}}
 
 planes:
 {{- range .Planes}}

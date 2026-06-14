@@ -37,11 +37,6 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		SouthboundToken:   "southbound",
 		ServiceBaseDomain: "apps.whatcloud.cn",
 		DNSPodDomain:      "whatcloud.cn",
-		DNSPodCredential: tencentCredential{
-			SecretID:  "sid",
-			SecretKey: "skey",
-			Token:     "stok",
-		},
 		Planes: []controlPlanePlaneTemplateData{
 			{
 				ID:           "pln_test",
@@ -61,9 +56,6 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		"  dnspod:",
 		"  serviceBaseDomain: \"apps.whatcloud.cn\"",
 		"    domain: \"whatcloud.cn\"",
-		"    secretId: \"sid\"",
-		"    secretKey: \"skey\"",
-		"    token: \"stok\"",
 		"planes:",
 		"  - id: \"pln_test\"",
 		"    grpcEndpoint: \"10.0.0.1:18081\"",
@@ -72,33 +64,8 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 			t.Fatalf("control-plane config does not contain %q:\n%s", want, text)
 		}
 	}
-}
-
-func TestControlPlaneConfigTemplateCanUseDefaultDNSPodCredentialChain(t *testing.T) {
-	rendered, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
-		HTTPAddr:          "127.0.0.1:18080",
-		InstallRoot:       "/opt/mini-cloud",
-		AdminToken:        "admin",
-		SouthboundToken:   "southbound",
-		ServiceBaseDomain: "apps.whatcloud.cn",
-		DNSPodDomain:      "whatcloud.cn",
-		Planes: []controlPlanePlaneTemplateData{
-			{
-				ID:           "pln_test",
-				Name:         "test-plane",
-				DisplayName:  "Test Plane",
-				Provider:     "tencent",
-				Region:       "ap-guangzhou",
-				GRPCEndpoint: "10.0.0.1:18081",
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(rendered)
 	if strings.Contains(text, "secretId:") || strings.Contains(text, "secretKey:") || strings.Contains(text, "token:") {
-		t.Fatalf("control-plane config should not render static DNSPod credentials when omitted:\n%s", text)
+		t.Fatalf("control-plane config should not render static DNSPod credentials:\n%s", text)
 	}
 }
 

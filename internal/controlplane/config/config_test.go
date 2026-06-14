@@ -20,9 +20,6 @@ dns:
   serviceBaseDomain: apps.whatcloud.cn
   dnspod:
     domain: whatcloud.cn
-    secretId: sid
-    secretKey: skey
-    token: stok
 planes:
   - id: pln_test
     name: test-plane
@@ -56,7 +53,7 @@ planes:
 	if cfg.DNS.ServiceBaseDomain != "apps.whatcloud.cn" {
 		t.Fatalf("dns.serviceBaseDomain = %q", cfg.DNS.ServiceBaseDomain)
 	}
-	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" || cfg.DNS.DNSPod.SecretID != "sid" || cfg.DNS.DNSPod.SecretKey != "skey" || cfg.DNS.DNSPod.Token != "stok" {
+	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" {
 		t.Fatalf("unexpected DNSPod config: %+v", cfg.DNS.DNSPod)
 	}
 	if len(cfg.Planes) != 1 || cfg.Planes[0].ID != "pln_test" || cfg.Planes[0].Provider != "aliyun" {
@@ -108,7 +105,7 @@ planes:
 	}
 }
 
-func TestLoadAllowsDNSPodDefaultCredentialChain(t *testing.T) {
+func TestLoadReadsDNSPodDomainOnly(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
 auth:
@@ -132,12 +129,12 @@ planes:
 	if err != nil {
 		t.Fatalf("Load returned error: %v", err)
 	}
-	if cfg.DNS.DNSPod.SecretID != "" || cfg.DNS.DNSPod.SecretKey != "" {
-		t.Fatalf("unexpected DNSPod static credentials: %+v", cfg.DNS.DNSPod)
+	if cfg.DNS.DNSPod.Domain != "example.test" {
+		t.Fatalf("dns.dnspod.domain = %q", cfg.DNS.DNSPod.Domain)
 	}
 }
 
-func TestLoadRejectsPartialDNSPodStaticCredential(t *testing.T) {
+func TestLoadRejectsDNSPodStaticCredential(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
 auth:
@@ -147,7 +144,7 @@ dns:
   serviceBaseDomain: apps.example.test
   dnspod:
     domain: example.test
-    secretId: sid
+    legacyField: value
 planes:
   - id: pln_test
     name: test-plane
@@ -159,7 +156,7 @@ planes:
 	}
 
 	if _, err := Load(path); err == nil {
-		t.Fatalf("Load returned nil error, want partial credential validation error")
+		t.Fatalf("Load returned nil error, want unknown field error")
 	}
 }
 
@@ -173,8 +170,6 @@ dns:
   serviceBaseDomain: apps.example.test
   dnspod:
     domain: example.test
-    secretId: sid
-    secretKey: skey
 planes:
   - id: pln_test
     name: test-plane
