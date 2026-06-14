@@ -16,6 +16,10 @@ ui:
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+  southboundTLS:
+    caCert: test-ca
+    cert: test-cert
+    key: test-key
 dns:
   serviceBaseDomain: apps.whatcloud.cn
   dnspod:
@@ -88,6 +92,10 @@ func TestLoadRequiresDNSPodConfig(t *testing.T) {
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+  southboundTLS:
+    caCert: test-ca
+    cert: test-cert
+    key: test-key
 dns:
   serviceBaseDomain: apps.example.test
 planes:
@@ -111,6 +119,10 @@ func TestLoadReadsDNSPodDomainOnly(t *testing.T) {
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+  southboundTLS:
+    caCert: test-ca
+    cert: test-cert
+    key: test-key
 dns:
   serviceBaseDomain: apps.example.test
   dnspod:
@@ -140,6 +152,10 @@ func TestLoadRejectsDNSPodStaticCredential(t *testing.T) {
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+  southboundTLS:
+    caCert: test-ca
+    cert: test-cert
+    key: test-key
 dns:
   serviceBaseDomain: apps.example.test
   dnspod:
@@ -166,6 +182,10 @@ func TestLoadRejectsUnknownFields(t *testing.T) {
 auth:
   adminToken: admin-secret
   southboundToken: southbound-secret
+  southboundTLS:
+    caCert: test-ca
+    cert: test-cert
+    key: test-key
 dns:
   serviceBaseDomain: apps.example.test
   dnspod:

@@ -125,8 +125,8 @@ func TestUpdateServiceRequiresPlaneIDQuery(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	planeSyncer := coordination.NewPlaneSyncer(logger, catalog, "southbound-token", nil)
-	services := coordination.NewServiceOperations(logger, catalog, "southbound-token", "apps.example.test", planeSyncer)
+	planeSyncer := coordination.NewPlaneSyncer(logger, catalog, "southbound-token", coordination.PlaneClientTLS{}, nil)
+	services := coordination.NewServiceOperations(logger, catalog, "southbound-token", coordination.PlaneClientTLS{}, "apps.example.test", planeSyncer)
 	handler, err := NewMux(Options{
 		AdminToken:        "admin-token",
 		SouthboundToken:   "southbound-token",

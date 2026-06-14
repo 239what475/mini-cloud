@@ -7,6 +7,13 @@ ui:
 auth:
   adminToken: {{printf "%q" .AdminToken}}
   southboundToken: {{printf "%q" .SouthboundToken}}
+  southboundTLS:
+    caCert: |
+{{indent 6 .SouthboundTLS.CACert}}
+    cert: |
+{{indent 6 .SouthboundTLS.Cert}}
+    key: |
+{{indent 6 .SouthboundTLS.Key}}
 
 dns:
   serviceBaseDomain: {{printf "%q" .ServiceBaseDomain}}

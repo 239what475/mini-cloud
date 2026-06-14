@@ -35,6 +35,7 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		InstallRoot:       "/opt/mini-cloud",
 		AdminToken:        "admin",
 		SouthboundToken:   "southbound",
+		SouthboundTLS:     testTLSData(),
 		ServiceBaseDomain: "apps.whatcloud.cn",
 		DNSPodDomain:      "whatcloud.cn",
 		Planes: []controlPlanePlaneTemplateData{
@@ -54,6 +55,8 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 	text := string(rendered)
 	for _, want := range []string{
 		"  dnspod:",
+		"  southboundTLS:",
+		"      -----BEGIN CERTIFICATE-----",
 		"  serviceBaseDomain: \"apps.whatcloud.cn\"",
 		"    domain: \"whatcloud.cn\"",
 		"planes:",
@@ -92,6 +95,7 @@ func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	rendered, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:           "0.0.0.0:18081",
+		TLS:                      testTLSData(),
 		PlaneName:                "mini-cloud-ops",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
 		SouthboundToken:          "southbound",
@@ -128,6 +132,8 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	text := string(rendered)
 	for _, want := range []string{
 		"  tencent:",
+		"tls:",
+		"    -----BEGIN CERTIFICATE-----",
 		"    imageId: \"img-test\"",
 		"      - \"key-test\"",
 		"    vpcId: \"vpc-test\"",
@@ -161,6 +167,7 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 	rendered, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:           "0.0.0.0:18081",
+		TLS:                      testTLSData(),
 		PlaneName:                "mini-cloud-ops",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
 		SouthboundToken:          "southbound",
@@ -184,6 +191,14 @@ func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 	}
 	if strings.Contains(string(rendered), "dnsPod") || strings.Contains(string(rendered), "frontDoor:") {
 		t.Fatalf("cloud-plane config should not contain DNSPod frontdoor settings:\n%s", rendered)
+	}
+}
+
+func testTLSData() tlsTemplateData {
+	return tlsTemplateData{
+		CACert: "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n",
+		Cert:   "-----BEGIN CERTIFICATE-----\ncert\n-----END CERTIFICATE-----\n",
+		Key:    "-----BEGIN RSA PRIVATE KEY-----\nkey\n-----END RSA PRIVATE KEY-----\n",
 	}
 }
 

@@ -1,6 +1,14 @@
 server:
   listenGRPCAddr: {{printf "%q" .ListenGRPCAddr}}
 
+tls:
+  caCert: |
+{{indent 4 .TLS.CACert}}
+  cert: |
+{{indent 4 .TLS.Cert}}
+  key: |
+{{indent 4 .TLS.Key}}
+
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 

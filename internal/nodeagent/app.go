@@ -23,6 +23,7 @@ func Build(logger *slog.Logger, cfg agentconfig.Config) (App, error) {
 	client := agentclient.New(agentclient.Config{
 		ServerURL: cfg.Server.URL,
 		Token:     cfg.Auth.Token,
+		TLSCA:     cfg.Server.TLSCA,
 	})
 	containerRuntime, err := runtime.NewDockerEngine(logger)
 	if err != nil {

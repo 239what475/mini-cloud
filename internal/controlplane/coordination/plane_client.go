@@ -2,7 +2,6 @@ package coordination
 
 import (
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"strings"
@@ -27,8 +26,14 @@ type planeClient struct {
 	serviceRPC  cloudplanev1.CloudPlaneServiceClient
 }
 
-func newPlaneClient(grpcEndpoint string, bearerToken string) (*planeClient, error) {
-	target, transportCredentials, err := resolveTarget(grpcEndpoint)
+type PlaneClientTLS struct {
+	CACert string
+	Cert   string
+	Key    string
+}
+
+func newPlaneClient(grpcEndpoint string, bearerToken string, tlsConfig PlaneClientTLS) (*planeClient, error) {
+	target, transportCredentials, err := resolveTarget(grpcEndpoint, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +86,7 @@ func (c *planeClient) DeleteService(ctx context.Context, input *cloudplanev1.Del
 	return nil
 }
 
-func resolveTarget(grpcEndpoint string) (string, credentials.TransportCredentials, error) {
+func resolveTarget(grpcEndpoint string, tlsConfig PlaneClientTLS) (string, credentials.TransportCredentials, error) {
 	trimmedGRPCEndpoint := strings.TrimSpace(grpcEndpoint)
 	if trimmedGRPCEndpoint == "" {
 		return "", nil, fmt.Errorf("grpcEndpoint is required")
@@ -104,7 +109,15 @@ func resolveTarget(grpcEndpoint string) (string, credentials.TransportCredential
 		if target == "" || strings.Contains(target, "/") {
 			return "", nil, fmt.Errorf("grpcEndpoint must include host:port")
 		}
-		return target, credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12}), nil
+		tlsCfg, err := transport.ClientTLSConfig(transport.TLSMaterial{
+			CACert: tlsConfig.CACert,
+			Cert:   tlsConfig.Cert,
+			Key:    tlsConfig.Key,
+		}, target)
+		if err != nil {
+			return "", nil, err
+		}
+		return target, credentials.NewTLS(tlsCfg), nil
 	default:
 		return trimmedGRPCEndpoint, insecure.NewCredentials(), nil
 	}

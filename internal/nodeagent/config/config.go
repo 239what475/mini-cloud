@@ -37,7 +37,8 @@ const (
 )
 
 type ServerConfig struct {
-	URL string `yaml:"url"`
+	URL   string `yaml:"url"`
+	TLSCA string `yaml:"tlsCA"`
 }
 
 type AuthConfig struct {
@@ -119,6 +120,10 @@ func build(cfg Config) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	tlsCA := strings.TrimSpace(cfg.Server.TLSCA)
+	if strings.HasPrefix(strings.ToLower(serverURL), "grpcs://") && tlsCA == "" {
+		return Config{}, fmt.Errorf("server.tlsCA is required when server.url uses grpcs")
+	}
 	token := strings.TrimSpace(cfg.Auth.Token)
 	if token == "" {
 		return Config{}, fmt.Errorf("auth.token is required")
@@ -158,6 +163,7 @@ func build(cfg Config) (Config, error) {
 	cfg.Observability.WorkloadOTLPEndpoint = strings.TrimSpace(cfg.Observability.WorkloadOTLPEndpoint)
 
 	cfg.Server.URL = serverURL
+	cfg.Server.TLSCA = tlsCA
 	cfg.Auth.Token = token
 	cfg.ResolvedCapacity = resolvedCapacity
 	return cfg, nil
@@ -226,8 +232,8 @@ func validateServerURL(value string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("parse server.url: %w", err)
 	}
-	if parsed.Scheme != "http" {
-		return "", fmt.Errorf("server.url must be host:port or use http gRPC URI")
+	if parsed.Scheme != "http" && parsed.Scheme != "grpcs" {
+		return "", fmt.Errorf("server.url must be host:port, http gRPC URI, or grpcs URI")
 	}
 	if parsed.Host == "" {
 		return "", fmt.Errorf("server.url must include host")

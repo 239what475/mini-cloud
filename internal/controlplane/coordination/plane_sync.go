@@ -24,6 +24,7 @@ type PlaneSyncer struct {
 	logger          *slog.Logger
 	planes          *PlaneCatalog
 	southboundToken string
+	southboundTLS   PlaneClientTLS
 	dns             dnsClient
 	now             func() time.Time
 }
@@ -41,7 +42,7 @@ type PlaneSnapshotView struct {
 	Snapshot *cloudplanev1.PlaneSnapshot
 }
 
-func NewPlaneSyncer(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, dns dnsClient) *PlaneSyncer {
+func NewPlaneSyncer(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, southboundTLS PlaneClientTLS, dns dnsClient) *PlaneSyncer {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -49,6 +50,7 @@ func NewPlaneSyncer(logger *slog.Logger, planes *PlaneCatalog, southboundToken s
 		logger:          logger,
 		planes:          planes,
 		southboundToken: strings.TrimSpace(southboundToken),
+		southboundTLS:   southboundTLS,
 		dns:             dns,
 		now: func() time.Time {
 			return time.Now().UTC()
@@ -139,7 +141,7 @@ func (s *PlaneSyncer) syncedPlane(plane model.PlaneDetail, snapshot *cloudplanev
 
 func (s *PlaneSyncer) loadSnapshot(ctx context.Context, planeDetail model.PlaneDetail) (*cloudplanev1.PlaneSnapshot, error) {
 	grpcEndpoint := strings.TrimRight(strings.TrimSpace(planeDetail.GRPCEndpoint), "/")
-	client, err := newPlaneClient(grpcEndpoint, s.southboundToken)
+	client, err := newPlaneClient(grpcEndpoint, s.southboundToken, s.southboundTLS)
 	if err != nil {
 		return nil, err
 	}

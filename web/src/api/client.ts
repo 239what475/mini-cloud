@@ -1,16 +1,15 @@
 export async function fetchJSON<T>(
   input: RequestInfo,
   init?: RequestInit,
-  token?: string,
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   const response = await fetch(input, {
     ...init,
+    credentials: "same-origin",
     headers: {
       ...headers,
       ...(init?.headers ?? {}),

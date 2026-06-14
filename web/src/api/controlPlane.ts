@@ -22,54 +22,46 @@ export function getHealthz(): Promise<HealthzResponse> {
   return fetchJSON<HealthzResponse>("/api/healthz");
 }
 
-export function getInventory(token: string): Promise<InventoryView> {
-  return fetchJSON<InventoryView>(
-    "/api/v1/control/inventory",
-    undefined,
-    token,
-  );
+export function login(token: string): Promise<{ status: string }> {
+  return fetchJSON<{ status: string }>("/api/v1/login", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
 }
 
-export function listPlanes(token: string): Promise<PlaneListResponse> {
-  return fetchJSON<PlaneListResponse>(
-    "/api/v1/control/planes",
-    undefined,
-    token,
-  );
+export function logout(): Promise<{ status: string }> {
+  return fetchJSON<{ status: string }>("/api/v1/logout", { method: "POST" });
 }
 
-export function listServices(token: string): Promise<ServiceListResponse> {
-  return fetchJSON<ServiceListResponse>("/api/v1/services", undefined, token);
+export function getInventory(): Promise<InventoryView> {
+  return fetchJSON<InventoryView>("/api/v1/control/inventory");
+}
+
+export function listPlanes(): Promise<PlaneListResponse> {
+  return fetchJSON<PlaneListResponse>("/api/v1/control/planes");
+}
+
+export function listServices(): Promise<ServiceListResponse> {
+  return fetchJSON<ServiceListResponse>("/api/v1/services");
 }
 
 export function getService(
-  token: string,
   serviceID: string,
   planeID: string,
 ): Promise<ServiceResource> {
   return fetchJSON<ServiceResource>(
     `/api/v1/services/${serviceID}?planeID=${encodeURIComponent(planeID)}`,
-    undefined,
-    token,
   );
 }
 
-export function createService(
-  token: string,
-  payload: unknown,
-): Promise<ServiceResource> {
-  return fetchJSON<ServiceResource>(
-    "/api/v1/services",
-    {
-      method: "POST",
-      body: JSON.stringify(payload),
-    },
-    token,
-  );
+export function createService(payload: unknown): Promise<ServiceResource> {
+  return fetchJSON<ServiceResource>("/api/v1/services", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function updateService(
-  token: string,
   serviceID: string,
   planeID: string,
   payload: unknown,
@@ -80,18 +72,15 @@ export function updateService(
       method: "PUT",
       body: JSON.stringify(payload),
     },
-    token,
   );
 }
 
 export function deleteService(
-  token: string,
   serviceID: string,
   planeID: string,
 ): Promise<ServiceResource> {
   return fetchJSON<ServiceResource>(
     `/api/v1/services/${serviceID}?planeID=${encodeURIComponent(planeID)}`,
     { method: "DELETE" },
-    token,
   );
 }

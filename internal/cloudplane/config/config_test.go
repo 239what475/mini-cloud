@@ -90,6 +90,7 @@ func TestValidateCloudPlaneConfig(t *testing.T) {
 func validConfig() Config {
 	return Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
+		TLS:          TLSConfig{CACert: "ca", Cert: "cert", Key: "key"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
 		Plane:        PlaneConfig{Name: "mini-cloud-ops", GRPCEndpoint: "10.0.0.10:18081"},
 		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
@@ -114,6 +115,10 @@ func validCloudPlaneYAML() string {
 	return `
 server:
   listenGRPCAddr: 0.0.0.0:18081
+tls:
+  caCert: ca
+  cert: cert
+  key: key
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:

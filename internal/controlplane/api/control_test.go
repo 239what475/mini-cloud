@@ -55,8 +55,8 @@ func newTestControlHandler(t *testing.T) http.Handler {
 		t.Fatalf("NewPlaneCatalog returned error: %v", err)
 	}
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	syncer := coordination.NewPlaneSyncer(logger, catalog, "southbound-token", nil)
-	services := coordination.NewServiceOperations(logger, catalog, "southbound-token", "apps.example.test", syncer)
+	syncer := coordination.NewPlaneSyncer(logger, catalog, "southbound-token", coordination.PlaneClientTLS{}, nil)
+	services := coordination.NewServiceOperations(logger, catalog, "southbound-token", coordination.PlaneClientTLS{}, "apps.example.test", syncer)
 	handler, err := NewMux(Options{
 		AdminToken:        "admin-token",
 		ServiceOperations: services,

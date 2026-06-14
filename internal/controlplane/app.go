@@ -35,8 +35,13 @@ func Build(logger *slog.Logger, cfg config.Config) (App, error) {
 	if err != nil {
 		return App{}, err
 	}
-	planeSyncer := coordination.NewPlaneSyncer(logger, planes, cfg.Auth.SouthboundToken, dns)
-	serviceOperations := coordination.NewServiceOperations(logger, planes, cfg.Auth.SouthboundToken, cfg.DNS.ServiceBaseDomain, planeSyncer)
+	southboundTLS := coordination.PlaneClientTLS{
+		CACert: cfg.Auth.SouthboundTLS.CACert,
+		Cert:   cfg.Auth.SouthboundTLS.Cert,
+		Key:    cfg.Auth.SouthboundTLS.Key,
+	}
+	planeSyncer := coordination.NewPlaneSyncer(logger, planes, cfg.Auth.SouthboundToken, southboundTLS, dns)
+	serviceOperations := coordination.NewServiceOperations(logger, planes, cfg.Auth.SouthboundToken, southboundTLS, cfg.DNS.ServiceBaseDomain, planeSyncer)
 
 	handler, err := api.NewMux(api.Options{
 		AdminToken:        cfg.Auth.AdminToken,

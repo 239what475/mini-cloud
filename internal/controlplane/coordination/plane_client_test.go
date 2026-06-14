@@ -103,7 +103,7 @@ func TestClientUsesGRPCSouthbound(t *testing.T) {
 	defer server.Close()
 	defer grpcServer.Stop()
 
-	client, err := newPlaneClient(strings.TrimPrefix(server.URL, "http://"), "test-token")
+	client, err := newPlaneClient(strings.TrimPrefix(server.URL, "http://"), "test-token", PlaneClientTLS{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}
@@ -153,7 +153,7 @@ func TestClientMapsNotFound(t *testing.T) {
 	defer server.Close()
 	defer grpcServer.Stop()
 
-	client, err := newPlaneClient(strings.TrimPrefix(server.URL, "http://"), "test-token")
+	client, err := newPlaneClient(strings.TrimPrefix(server.URL, "http://"), "test-token", PlaneClientTLS{})
 	if err != nil {
 		t.Fatalf("New returned error: %v", err)
 	}

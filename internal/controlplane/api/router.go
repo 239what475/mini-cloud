@@ -35,7 +35,7 @@ func NewMux(opts Options, logger *slog.Logger) (http.Handler, error) {
 	router := gin.New()
 	router.Use(ginRecoverPanics(logger), ginRequestContext(), ginRequestLogger(logger))
 
-	adminAuth := newBearerAuth(opts.AdminToken)
+	adminAuth := newAdminAuth(opts.AdminToken)
 
 	serveRootJSONOrIndex(logger, opts.UIDir, router)
 
@@ -46,6 +46,10 @@ func NewMux(opts Options, logger *slog.Logger) (http.Handler, error) {
 			"time":    time.Now().UTC().Format(time.RFC3339),
 		})
 	})
+
+	auth := router.Group("/api/v1")
+	auth.POST("/login", adminAuth.login)
+	auth.POST("/logout", adminAuth.logout)
 
 	admin := router.Group("/")
 	admin.Use(adminAuth.requireToken())

@@ -235,6 +235,7 @@ func (p *providerDriver) lookupInstanceTypeCapacity(ctx context.Context) (instan
 func (p *providerDriver) buildNodeUserData(instanceName string, capacity instanceTypeCapacity) (string, error) {
 	return bootstrap.RenderBase64(bootstrap.Config{
 		AgentBinaryURL:              p.config.CloudPlane.NodeAgent.BinaryURL,
+		CACert:                      p.config.CloudPlane.TLS.CACert,
 		Token:                       p.config.CloudPlane.NodeAgent.Token,
 		ConnectEndpoint:             p.config.CloudPlane.NodeAgent.ConnectEndpoint,
 		DockerRegistryMirrors:       p.config.CloudPlane.NodeProvisioning.RegistryMirrors,

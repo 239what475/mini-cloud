@@ -25,6 +25,19 @@ func TestLoadNodeAgentConfig(t *testing.T) {
 	}
 }
 
+func TestLoadNodeAgentConfigAllowsGRPCSWithCA(t *testing.T) {
+	t.Parallel()
+
+	yaml := strings.Replace(validNodeAgentYAML(), "url: http://127.0.0.1:18081", "url: grpcs://127.0.0.1:18081\n  tlsCA: test-ca", 1)
+	cfg, err := Load(writeNodeAgentConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.Server.URL != "grpcs://127.0.0.1:18081" || cfg.Server.TLSCA != "test-ca" {
+		t.Fatalf("server config = %+v", cfg.Server)
+	}
+}
+
 func TestLoadNodeAgentConfigRejectsUnknownFields(t *testing.T) {
 	t.Parallel()
 
@@ -60,6 +73,10 @@ func TestLoadNodeAgentConfigValidation(t *testing.T) {
 		{
 			name: "invalid server url",
 			yaml: strings.Replace(validNodeAgentYAML(), "http://127.0.0.1:18081", "https://127.0.0.1:18081", 1),
+		},
+		{
+			name: "grpcs without ca",
+			yaml: strings.Replace(validNodeAgentYAML(), "http://127.0.0.1:18081", "grpcs://127.0.0.1:18081", 1),
 		},
 		{
 			name: "internal runtime block",

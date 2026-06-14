@@ -27,8 +27,19 @@ type UIConfig struct {
 }
 
 type AuthConfig struct {
-	AdminToken      string `yaml:"adminToken"`
-	SouthboundToken string `yaml:"southboundToken"`
+	AdminToken      string    `yaml:"adminToken"`
+	SouthboundToken string    `yaml:"southboundToken"`
+	SouthboundTLS   TLSConfig `yaml:"southboundTLS"`
+}
+
+type TLSConfig struct {
+	CACert string `yaml:"caCert"`
+	Cert   string `yaml:"cert"`
+	Key    string `yaml:"key"`
+}
+
+func (c TLSConfig) Material() (string, string, string) {
+	return c.CACert, c.Cert, c.Key
 }
 
 type DNSConfig struct {
@@ -86,6 +97,9 @@ func (c *Config) normalize() {
 	}
 	c.Auth.AdminToken = strings.TrimSpace(c.Auth.AdminToken)
 	c.Auth.SouthboundToken = strings.TrimSpace(c.Auth.SouthboundToken)
+	c.Auth.SouthboundTLS.CACert = strings.TrimSpace(c.Auth.SouthboundTLS.CACert)
+	c.Auth.SouthboundTLS.Cert = strings.TrimSpace(c.Auth.SouthboundTLS.Cert)
+	c.Auth.SouthboundTLS.Key = strings.TrimSpace(c.Auth.SouthboundTLS.Key)
 	c.DNS.ServiceBaseDomain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.ServiceBaseDomain)), ".")
 	c.DNS.DNSPod.Domain = strings.Trim(strings.ToLower(strings.TrimSpace(c.DNS.DNSPod.Domain)), ".")
 	for i := range c.Planes {
@@ -108,6 +122,15 @@ func (c Config) Validate() error {
 	}
 	if strings.TrimSpace(c.Auth.SouthboundToken) == "" {
 		return fmt.Errorf("auth.southboundToken is required")
+	}
+	if strings.TrimSpace(c.Auth.SouthboundTLS.CACert) == "" {
+		return fmt.Errorf("auth.southboundTLS.caCert is required")
+	}
+	if strings.TrimSpace(c.Auth.SouthboundTLS.Cert) == "" {
+		return fmt.Errorf("auth.southboundTLS.cert is required")
+	}
+	if strings.TrimSpace(c.Auth.SouthboundTLS.Key) == "" {
+		return fmt.Errorf("auth.southboundTLS.key is required")
 	}
 	if strings.TrimSpace(c.DNS.ServiceBaseDomain) == "" {
 		return fmt.Errorf("dns.serviceBaseDomain is required")

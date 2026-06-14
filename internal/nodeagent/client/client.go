@@ -14,6 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	grpcstatus "google.golang.org/grpc/status"
@@ -22,6 +23,7 @@ import (
 type Client struct {
 	target string
 	token  string
+	tlsCA  string
 	dialer func(context.Context, string) (net.Conn, error)
 
 	mu   sync.Mutex
@@ -31,6 +33,7 @@ type Client struct {
 type Config struct {
 	ServerURL string
 	Token     string
+	TLSCA     string
 	Dialer    func(context.Context, string) (net.Conn, error)
 }
 
@@ -61,6 +64,7 @@ func New(cfg Config) *Client {
 	return &Client{
 		target: normalizeTarget(cfg.ServerURL),
 		token:  strings.TrimSpace(cfg.Token),
+		tlsCA:  strings.TrimSpace(cfg.TLSCA),
 		dialer: cfg.Dialer,
 	}
 }
@@ -164,7 +168,11 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 		return nodeagentv1.NewNodeAgentServiceClient(c.conn), nil
 	}
 
-	dialOptions := []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}
+	transportCredentials, err := c.transportCredentials()
+	if err != nil {
+		return nil, err
+	}
+	dialOptions := []grpc.DialOption{grpc.WithTransportCredentials(transportCredentials)}
 	if c.dialer != nil {
 		dialOptions = append(dialOptions, grpc.WithContextDialer(c.dialer))
 	}
@@ -179,6 +187,18 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 	}
 	c.conn = conn
 	return nodeagentv1.NewNodeAgentServiceClient(conn), nil
+}
+
+func (c *Client) transportCredentials() (credentials.TransportCredentials, error) {
+	if !strings.HasPrefix(strings.ToLower(c.target), "grpcs://") {
+		return insecure.NewCredentials(), nil
+	}
+	target := strings.TrimSpace(c.target[len("grpcs://"):])
+	tlsConfig, err := transport.ClientTLSConfig(transport.TLSMaterial{CACert: c.tlsCA}, target)
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewTLS(tlsConfig), nil
 }
 
 func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Context {
@@ -214,6 +234,9 @@ func normalizeTarget(serverURL string) string {
 	parsed, err := url.Parse(trimmed)
 	if err != nil || parsed.Host == "" {
 		return strings.TrimPrefix(trimmed, "http://")
+	}
+	if parsed.Scheme == "grpcs" {
+		return "grpcs://" + parsed.Host
 	}
 	return parsed.Host
 }

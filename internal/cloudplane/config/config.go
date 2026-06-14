@@ -21,6 +21,7 @@ const (
 type Config struct {
 	Path             string                 `yaml:"-"`
 	Server           ServerConfig           `yaml:"server"`
+	TLS              TLSConfig              `yaml:"tls"`
 	Database         DatabaseConfig         `yaml:"database"`
 	Plane            PlaneConfig            `yaml:"plane"`
 	ControlPlane     ControlPlaneConfig     `yaml:"controlPlane"`
@@ -33,6 +34,12 @@ type Config struct {
 
 type ServerConfig struct {
 	ListenGRPCAddr string `yaml:"listenGRPCAddr"`
+}
+
+type TLSConfig struct {
+	CACert string `yaml:"caCert"`
+	Cert   string `yaml:"cert"`
+	Key    string `yaml:"key"`
 }
 
 type DatabaseConfig struct {
@@ -131,6 +138,10 @@ func Load(path string) (Config, error) {
 }
 
 func (c *Config) normalize() {
+	c.Server.ListenGRPCAddr = strings.TrimSpace(c.Server.ListenGRPCAddr)
+	c.TLS.CACert = strings.TrimSpace(c.TLS.CACert)
+	c.TLS.Cert = strings.TrimSpace(c.TLS.Cert)
+	c.TLS.Key = strings.TrimSpace(c.TLS.Key)
 	c.Plane.Name = strings.TrimSpace(c.Plane.Name)
 	c.Plane.GRPCEndpoint = strings.TrimSpace(c.Plane.GRPCEndpoint)
 	c.ControlPlane.BearerToken = strings.TrimSpace(c.ControlPlane.BearerToken)
@@ -166,6 +177,15 @@ func (c *Config) normalize() {
 func (c Config) Validate() error {
 	if strings.TrimSpace(c.Server.ListenGRPCAddr) == "" {
 		return fmt.Errorf("server.listenGRPCAddr is required")
+	}
+	if strings.TrimSpace(c.TLS.CACert) == "" {
+		return fmt.Errorf("tls.caCert is required")
+	}
+	if strings.TrimSpace(c.TLS.Cert) == "" {
+		return fmt.Errorf("tls.cert is required")
+	}
+	if strings.TrimSpace(c.TLS.Key) == "" {
+		return fmt.Errorf("tls.key is required")
 	}
 	if strings.TrimSpace(c.Database.URL) == "" {
 		return fmt.Errorf("database.url is required")

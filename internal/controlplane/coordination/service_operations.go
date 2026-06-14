@@ -50,10 +50,11 @@ type ServiceOperations struct {
 	planes            *PlaneCatalog
 	serviceBaseDomain string
 	southboundToken   string
+	southboundTLS     PlaneClientTLS
 	planeSyncer       *PlaneSyncer
 }
 
-func NewServiceOperations(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, serviceBaseDomain string, planeSyncer *PlaneSyncer) *ServiceOperations {
+func NewServiceOperations(logger *slog.Logger, planes *PlaneCatalog, southboundToken string, southboundTLS PlaneClientTLS, serviceBaseDomain string, planeSyncer *PlaneSyncer) *ServiceOperations {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -62,6 +63,7 @@ func NewServiceOperations(logger *slog.Logger, planes *PlaneCatalog, southboundT
 		planes:            planes,
 		serviceBaseDomain: strings.Trim(strings.ToLower(strings.TrimSpace(serviceBaseDomain)), "."),
 		southboundToken:   strings.TrimSpace(southboundToken),
+		southboundTLS:     southboundTLS,
 		planeSyncer:       planeSyncer,
 	}
 }
@@ -271,7 +273,7 @@ func (c *ServiceOperations) planeClient(ctx context.Context, planeID string) (*p
 	if err != nil {
 		return nil, err
 	}
-	return newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
+	return newPlaneClient(plane.GRPCEndpoint, c.southboundToken, c.southboundTLS)
 }
 
 func (c *ServiceOperations) readyPlane(ctx context.Context, planeID string) (model.PlaneDetail, error) {
@@ -318,7 +320,7 @@ func (c *ServiceOperations) loadPlaneSnapshotView(ctx context.Context, planeID s
 	if err != nil {
 		return PlaneSnapshotView{}, err
 	}
-	client, err := newPlaneClient(plane.GRPCEndpoint, c.southboundToken)
+	client, err := newPlaneClient(plane.GRPCEndpoint, c.southboundToken, c.southboundTLS)
 	if err != nil {
 		return PlaneSnapshotView{}, err
 	}

@@ -25,7 +25,7 @@ func TestCreateDispatchesServiceToSpecPlane(t *testing.T) {
 	planeServer := startServiceOperationsPlane(t)
 	catalog, planeItem := mustCreateCatalog(t, "plane-create-dispatch", planeServer.endpoint)
 
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", nil)
 
 	service, err := operations.Create(ctx, createInput(planeItem.ID, "web", "Web", "nginx:1.27-alpine"))
 	if err != nil {
@@ -58,8 +58,8 @@ func TestCreateSyncsPlaneAfterDispatchToAdvanceFrontDoorDNS(t *testing.T) {
 	planeServer.frontDoorFromDispatch = true
 	catalog, planeItem := mustCreateCatalog(t, "plane-create-frontdoor", planeServer.endpoint)
 	dns := &fakeDNSClient{}
-	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", dns)
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", syncer)
+	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, dns)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", syncer)
 
 	if _, err := operations.Create(ctx, createInput(planeItem.ID, "frontdoor-web", "Frontdoor Web", "nginx:1.27-alpine")); err != nil {
 		t.Fatalf("Create returned error: %v", err)
@@ -77,7 +77,7 @@ func TestUpdateDispatchesServiceToSpecPlane(t *testing.T) {
 	planeServer := startServiceOperationsPlane(t)
 	catalog, planeItem := mustCreateCatalog(t, "plane-update", planeServer.endpoint)
 
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", nil)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "api", "API", "nginx:1.27-alpine"))
 	if err != nil {
@@ -107,7 +107,7 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	planeServer := startServiceOperationsPlane(t)
 	catalog, planeItem := mustCreateCatalog(t, "plane-delete", planeServer.endpoint)
 
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", nil)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", nil)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "gone", "Gone", "nginx:1.27-alpine"))
 	if err != nil {
@@ -137,8 +137,8 @@ func TestDeleteCleansServiceDNSByOwnershipRemark(t *testing.T) {
 	planeServer.frontDoorFromDispatch = true
 	catalog, planeItem := mustCreateCatalog(t, "plane-delete-frontdoor", planeServer.endpoint)
 	dns := &fakeDNSClient{}
-	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", dns)
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", syncer)
+	syncer := NewPlaneSyncer(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, dns)
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", syncer)
 
 	created, err := operations.Create(ctx, createInput(planeItem.ID, "frontdoor-delete", "Frontdoor Delete", "nginx:1.27-alpine"))
 	if err != nil {
@@ -160,7 +160,7 @@ func TestListUsesLiveCloudPlaneSnapshots(t *testing.T) {
 	planeServer := startServiceOperationsPlane(t)
 	catalog, planeItem := mustCreateCatalog(t, "plane-list-sync", planeServer.endpoint)
 
-	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", "apps.example.test", NewPlaneSyncer(testLogger(), catalog, "southbound-token", nil))
+	operations := NewServiceOperations(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, "apps.example.test", NewPlaneSyncer(testLogger(), catalog, "southbound-token", PlaneClientTLS{}, nil))
 	service, err := operations.Create(ctx, createInput(planeItem.ID, "listed", "Listed", "nginx:1.27-alpine"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)

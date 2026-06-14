@@ -7,6 +7,7 @@ import (
 	"mini-cloud/internal/transport"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -21,6 +22,9 @@ func newAuthenticator(southboundToken string) authenticator {
 func (a authenticator) authorize(ctx context.Context) error {
 	if a.southboundToken == "" {
 		return status.Error(codes.Unavailable, "plane southbound token is not configured")
+	}
+	if p, ok := peer.FromContext(ctx); ok && p.AuthInfo != nil && !transport.HasVerifiedClientCertificate(p) {
+		return status.Error(codes.Unauthenticated, "client certificate required")
 	}
 	secret, ok := transport.BearerFromIncomingContext(ctx)
 	if !ok {

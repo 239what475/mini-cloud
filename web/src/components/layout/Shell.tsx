@@ -2,11 +2,21 @@ import type { ReactNode } from "react";
 
 type Props = {
   adminToken: string;
+  hasSession: boolean;
   children: ReactNode;
   onAdminTokenChange: (value: string) => void;
+  onLogin: () => void;
+  onLogout: () => void;
 };
 
-export function Shell({ adminToken, children, onAdminTokenChange }: Props) {
+export function Shell({
+  adminToken,
+  hasSession,
+  children,
+  onAdminTokenChange,
+  onLogin,
+  onLogout,
+}: Props) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -27,6 +37,19 @@ export function Shell({ adminToken, children, onAdminTokenChange }: Props) {
               placeholder="Bearer token"
             />
           </label>
+          <div className="button-row">
+            <button className="inline-button" type="button" onClick={onLogin}>
+              登录
+            </button>
+            <button
+              className="inline-button"
+              type="button"
+              onClick={onLogout}
+              disabled={!hasSession && adminToken.trim() === ""}
+            >
+              退出
+            </button>
+          </div>
         </div>
       </aside>
 

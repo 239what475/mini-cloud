@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	AgentBinaryURL              string
+	CACert                      string
 	Token                       string
 	ConnectEndpoint             string
 	DockerRegistryMirrors       []string
@@ -35,6 +36,7 @@ type Config struct {
 type templateData struct {
 	InstallRoot                 string
 	AgentBinaryURL              string
+	CACertBase64                string
 	DockerDaemonJSONBase64      string
 	DockerNoProxy               string
 	WorkloadEgressProxyEndpoint string
@@ -72,6 +74,7 @@ func RenderBase64(cfg Config) (string, error) {
 	data := templateData{
 		InstallRoot:                 shellQuote("/opt/mini-cloud"),
 		AgentBinaryURL:              shellQuote(cfg.AgentBinaryURL),
+		CACertBase64:                shellQuote(base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(cfg.CACert)))),
 		DockerDaemonJSONBase64:      shellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
 		DockerNoProxy:               shellQuote(strings.Join(cleanNoProxyItems(cfg.NoProxyItems), ",")),
 		WorkloadEgressProxyEndpoint: shellQuote(workloadEgressProxyEndpoint),
