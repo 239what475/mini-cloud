@@ -197,10 +197,6 @@ func (r *Runner) ensureSCFCustomDomain(ctx context.Context) error {
 
 func (r *Runner) ensureSCFCustomDomainBinding(ctx context.Context) error {
 	cfg := r.cfg.ControlPlane.SCF
-	exists, err := r.scfCustomDomainExists(ctx, cfg.PublicDomain)
-	if err != nil {
-		return err
-	}
 	input := map[string]any{
 		"Domain":   cfg.PublicDomain,
 		"Protocol": "HTTP",
@@ -215,15 +211,40 @@ func (r *Runner) ensureSCFCustomDomainBinding(ctx context.Context) error {
 		return err
 	}
 	defer removeFiles([]string{path})
-	action := "CreateCustomDomain"
-	if exists {
-		action = "UpdateCustomDomain"
+
+	deadline := time.Now().Add(10 * time.Minute)
+	for {
+		exists, err := r.scfCustomDomainExists(ctx, cfg.PublicDomain)
+		if err != nil {
+			return err
+		}
+		action := "CreateCustomDomain"
+		if exists {
+			action = "UpdateCustomDomain"
+		}
+		_, err = runOutput(ctx, "tccli", "scf", action, "--region", cfg.Region, "--cli-input-json", "file://"+path)
+		if err == nil || commandOutputContains(err, "already") || commandOutputContains(err, "exist") {
+			return nil
+		}
+		if !scfCustomDomainCNAMEPending(err) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for SCF to accept CNAME for %s: %w", cfg.PublicDomain, err)
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(5 * time.Second):
+		}
 	}
-	err = runInteractive(ctx, "tccli", "scf", action, "--region", cfg.Region, "--cli-input-json", "file://"+path)
-	if err != nil && !commandOutputContains(err, "already") && !commandOutputContains(err, "exist") {
-		return err
-	}
-	return nil
+}
+
+func scfCustomDomainCNAMEPending(err error) bool {
+	return commandOutputContains(err, "FailedOperation.CNAME") ||
+		commandOutputContains(err, "CNAME记录") ||
+		commandOutputContains(err, "CNAME record") ||
+		commandOutputContains(err, "must add CNAME")
 }
 
 func scfCustomDomainEndpoint(cfg SCFControlPlane, path string) map[string]any {

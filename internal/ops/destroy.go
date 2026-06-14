@@ -128,7 +128,7 @@ func (r *Runner) uninstallControlPlane(ctx context.Context) error {
 		return nil
 	}
 	if strings.TrimSpace(cfg.PublicDomain) != "" {
-		err := runInteractive(ctx, "tccli", "scf", "DeleteCustomDomain",
+		_, err := runOutput(ctx, "tccli", "scf", "DeleteCustomDomain",
 			"--region", cfg.Region,
 			"--Domain", cfg.PublicDomain,
 		)
@@ -139,7 +139,7 @@ func (r *Runner) uninstallControlPlane(ctx context.Context) error {
 			return err
 		}
 	}
-	err := runInteractive(ctx, "tccli", "scf", "DeleteFunction",
+	_, err := runOutput(ctx, "tccli", "scf", "DeleteFunction",
 		"--region", cfg.Region,
 		"--Namespace", cfg.Namespace,
 		"--FunctionName", cfg.FunctionName,

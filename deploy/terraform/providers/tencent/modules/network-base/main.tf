@@ -57,6 +57,38 @@ locals {
     [
       {
         action       = "ACCEPT"
+        cidr_block   = "183.60.82.98/32"
+        protocol     = "UDP"
+        port         = "53"
+        policy_index = 8
+        description  = "node to tencent vpc dns"
+      },
+      {
+        action       = "ACCEPT"
+        cidr_block   = "183.60.82.98/32"
+        protocol     = "TCP"
+        port         = "53"
+        policy_index = 9
+        description  = "node to tencent vpc dns"
+      },
+      {
+        action       = "ACCEPT"
+        cidr_block   = "183.60.83.19/32"
+        protocol     = "UDP"
+        port         = "53"
+        policy_index = 10
+        description  = "node to tencent vpc dns"
+      },
+      {
+        action       = "ACCEPT"
+        cidr_block   = "183.60.83.19/32"
+        protocol     = "TCP"
+        port         = "53"
+        policy_index = 11
+        description  = "node to tencent vpc dns"
+      },
+      {
+        action       = "ACCEPT"
         cidr_block   = "169.254.0.0/16"
         protocol     = "TCP"
         port         = "80"

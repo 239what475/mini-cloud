@@ -88,6 +88,18 @@ func TestSCFCustomDomainEndpoint(t *testing.T) {
 	}
 }
 
+func TestSCFCustomDomainCNAMEPending(t *testing.T) {
+	t.Parallel()
+
+	err := errors.New("[TencentCloudSDKException] code:FailedOperation.CNAME message:域名必须先添加CNAME记录")
+	if !scfCustomDomainCNAMEPending(err) {
+		t.Fatal("expected CNAME validation error to be retryable")
+	}
+	if scfCustomDomainCNAMEPending(errors.New("AuthFailure: not authorized")) {
+		t.Fatal("authorization errors must not be retryable")
+	}
+}
+
 func TestCommandOutputIndicatesMissingResourceDoesNotHideAuthorizationErrors(t *testing.T) {
 	t.Parallel()
 
