@@ -194,6 +194,28 @@ func TestClientCloseAllowsRedial(t *testing.T) {
 	}
 }
 
+func TestClientDialTargetStripsGRPCScheme(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{name: "plain", url: "10.0.0.10:18081", want: "10.0.0.10:18081"},
+		{name: "grpc", url: "grpc://10.0.0.10:18081", want: "10.0.0.10:18081"},
+		{name: "grpcs", url: "grpcs://10.0.0.10:18081", want: "10.0.0.10:18081"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := New(Config{ServerURL: tt.url})
+			if got := client.dialTarget(); got != tt.want {
+				t.Fatalf("dialTarget() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNodeCallsUseToken(t *testing.T) {
 	t.Parallel()
 

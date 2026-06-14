@@ -177,7 +177,7 @@ func (c *Client) grpcClient() (nodeagentv1.NodeAgentServiceClient, error) {
 		dialOptions = append(dialOptions, grpc.WithContextDialer(c.dialer))
 	}
 
-	target := c.target
+	target := c.dialTarget()
 	if c.dialer != nil && !strings.Contains(target, "://") {
 		target = "passthrough:///" + target
 	}
@@ -199,6 +199,19 @@ func (c *Client) transportCredentials() (credentials.TransportCredentials, error
 		return nil, err
 	}
 	return credentials.NewTLS(tlsConfig), nil
+}
+
+func (c *Client) dialTarget() string {
+	target := strings.TrimSpace(c.target)
+	lower := strings.ToLower(target)
+	switch {
+	case strings.HasPrefix(lower, "grpcs://"):
+		return strings.TrimSpace(target[len("grpcs://"):])
+	case strings.HasPrefix(lower, "grpc://"):
+		return strings.TrimSpace(target[len("grpc://"):])
+	default:
+		return target
+	}
 }
 
 func withOutgoingMetadata(ctx context.Context, bearerToken string) context.Context {
