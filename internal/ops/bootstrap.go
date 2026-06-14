@@ -1,13 +1,13 @@
-package lab
+package ops
 
 import (
 	"context"
 	"fmt"
 )
 
-func (r *Runner) Bootstrap(ctx context.Context) error {
+func (r *Runner) prepareInfrastructure(ctx context.Context) error {
 	for _, plane := range r.cfg.Planes {
-		fmt.Printf("[mini-cloud lab] bootstrap plane %s (%s)\n", plane.Name, plane.Provider)
+		fmt.Printf("[mini-cloud ops] prepare infrastructure for plane %s (%s)\n", plane.Name, plane.Provider)
 		if err := r.terraform(ctx, plane, "init"); err != nil {
 			return err
 		}
@@ -36,4 +36,21 @@ func (r *Runner) Bootstrap(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (r *Runner) Deploy(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	fmt.Println("[mini-cloud ops] build release binaries and web assets")
+	if err := runInteractive(ctx, "make", "build-release", "web-build"); err != nil {
+		return err
+	}
+	if err := r.cfg.validateArtifacts(); err != nil {
+		return err
+	}
+	if err := r.prepareInfrastructure(ctx); err != nil {
+		return err
+	}
+	return r.install(ctx)
 }

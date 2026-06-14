@@ -112,7 +112,7 @@ variable "existing_ccn_id" {
 
 variable "environment" {
   type    = string
-  default = "lab"
+  default = "ops"
 }
 
 variable "owner" {

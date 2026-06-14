@@ -17,7 +17,7 @@ func TestLoadCloudPlaneConfig(t *testing.T) {
 	if cfg.Path != path {
 		t.Fatalf("Path = %q, want %q", cfg.Path, path)
 	}
-	if cfg.Plane.Name != "mini-cloud-lab" || cfg.Infrastructure.Provider != "aliyun" {
+	if cfg.Plane.Name != "mini-cloud-ops" || cfg.Infrastructure.Provider != "aliyun" {
 		t.Fatalf("config = %+v", cfg)
 	}
 }
@@ -91,7 +91,7 @@ func validConfig() Config {
 	return Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},
 		Database:     DatabaseConfig{URL: "postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable"},
-		Plane:        PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		Plane:        PlaneConfig{Name: "mini-cloud-ops", GRPCEndpoint: "10.0.0.10:18081"},
 		ControlPlane: ControlPlaneConfig{BearerToken: "southbound-token"},
 		NodeAgent: NodeAgentConfig{
 			ConnectEndpoint: "10.0.0.10:18081",
@@ -117,7 +117,7 @@ server:
 database:
   url: postgres://mini_cloud:mini_cloud@127.0.0.1:5432/mini_cloud_cloud_plane?sslmode=disable
 plane:
-  name: mini-cloud-lab
+  name: mini-cloud-ops
   grpcEndpoint: 10.0.0.10:18081
 controlPlane:
   bearerToken: southbound-token

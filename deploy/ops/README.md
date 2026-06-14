@@ -1,6 +1,6 @@
-# mini-cloud lab deployment
+# mini-cloud ops deployment
 
-`deploy/lab` 是真实云 lab 的本地编排入口。当前 lab 以 multi backend 和 serverless control-plane 为目标：
+`deploy/ops` 是 mini-cloud 的真实云部署入口。当前部署工具以 multi backend 和 serverless control-plane 为目标：
 
 - control-plane 打包成容器并部署到腾讯云 SCF HTTP 函数
 - 每个 cloud-plane 对应一个 `planes[]` 配置
@@ -10,19 +10,19 @@
 
 ## Config
 
-准备 lab 配置：
+准备 ops 配置：
 
 ```bash
-cp deploy/lab/lab.yaml.example deploy/lab/lab.yaml
+cp deploy/ops/config.yaml.example deploy/ops/config.yaml
 ```
 
-`deploy/lab/lab.yaml` 不提交。token 写在这个本地配置文件里。
+`deploy/ops/config.yaml` 不提交。token 写在这个本地配置文件里。
 
 每个 plane 单独准备 Terraform var file，例如：
 
 ```bash
-cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/tencent.tfvars
-cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfvars
+cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/tencent.tfvars
+cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/aliyun.tfvars
 ```
 
 `planes[].region`、`provider_name`、`platform_name`、入口机、VPC、地域和规格等字段必须按 plane 分别填写。不要让两个 plane 共用同一个 Terraform workspace。
@@ -39,27 +39,26 @@ cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfv
 }
 ```
 
-## Bootstrap
+## Check
 
 ```bash
-go run ./cmd/labctl bootstrap --config deploy/lab/lab.yaml
+go run ./cmd/minictl check --config deploy/ops/config.yaml
 ```
 
-`bootstrap` 会对每个 plane 执行：
+`check` 会检查配置、本机工具、腾讯云凭据文件、Terraform var file 和 plane SSH 连通性，不修改云资源。
+
+## Deploy
+
+```bash
+go run ./cmd/minictl deploy --config deploy/ops/config.yaml
+```
+
+`deploy` 会构建项目、准备基础设施并安装 control-plane/cloud-plane：
 
 - `terraform init`
 - 选择或创建 `planes[].terraform.workspace`
 - `terraform apply`
 - 腾讯云 Lighthouse 模式下补齐 CCN 和防火墙规则
-
-## Install
-
-```bash
-go run ./cmd/labctl install --config deploy/lab/lab.yaml
-```
-
-`install` 会先部署 SCF control-plane，然后逐个在 plane 入口机安装 cloud-plane：
-
 - control-plane 配置渲染成本地快照
 - control-plane 二进制、Web UI 和配置快照打进容器镜像
 - 镜像推送到 `controlPlane.scf.image`
@@ -76,7 +75,7 @@ go run ./cmd/labctl install --config deploy/lab/lab.yaml
 ## Destroy
 
 ```bash
-go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
+go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 ```
 
 `destroy` 会逐个 plane 回收：

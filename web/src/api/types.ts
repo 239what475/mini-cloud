@@ -79,12 +79,22 @@ export type ServiceRunStatus = {
   message?: string;
 };
 
+export type ServiceFrontDoorStatus = {
+  cname?: string;
+  verification?: {
+    host: string;
+    recordType: string;
+    value: string;
+  };
+};
+
 export type ServiceStatus = {
   phase: string;
   message?: string;
   observedGeneration: number;
   lastObservedAt?: string;
   run: ServiceRunStatus;
+  frontDoor: ServiceFrontDoorStatus;
 };
 
 export type ServiceMetadata = {

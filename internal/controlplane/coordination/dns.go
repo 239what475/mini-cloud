@@ -49,6 +49,24 @@ type dnsPodClient struct {
 	domain string
 }
 
+type TencentCredential struct {
+	SecretID     string
+	SecretKey    string
+	SessionToken string
+}
+
+type tencentCredentialContextKey struct{}
+
+func ContextWithTencentCredential(ctx context.Context, credential TencentCredential) context.Context {
+	credential.SecretID = strings.TrimSpace(credential.SecretID)
+	credential.SecretKey = strings.TrimSpace(credential.SecretKey)
+	credential.SessionToken = strings.TrimSpace(credential.SessionToken)
+	if credential.SecretID == "" || credential.SecretKey == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, tencentCredentialContextKey{}, credential)
+}
+
 func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	if strings.TrimSpace(cfg.Domain) == "" {
 		return nil, fmt.Errorf("dns.dnspod.domain is required")
@@ -57,10 +75,14 @@ func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 }
 
 func (c *dnsPodClient) api() (dnsPodAPI, error) {
+	return c.apiForContext(context.Background())
+}
+
+func (c *dnsPodClient) apiForContext(ctx context.Context) (dnsPodAPI, error) {
 	if c.client != nil {
 		return c.client, nil
 	}
-	credential, err := c.credential()
+	credential, err := c.credential(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -74,10 +96,15 @@ func (c *dnsPodClient) api() (dnsPodAPI, error) {
 	return client, nil
 }
 
-func (c *dnsPodClient) credential() (tccommon.CredentialIface, error) {
+func (c *dnsPodClient) credential(ctx context.Context) (tccommon.CredentialIface, error) {
+	if credential, ok := ctx.Value(tencentCredentialContextKey{}).(TencentCredential); ok {
+		if credential.SecretID != "" && credential.SecretKey != "" {
+			return tccommon.NewTokenCredential(credential.SecretID, credential.SecretKey, credential.SessionToken), nil
+		}
+	}
 	credential, err := tccommon.DefaultProviderChain().GetCredential()
 	if err != nil {
-		return nil, fmt.Errorf("load DNSPod credential from Tencent default provider chain: %w", err)
+		return nil, fmt.Errorf("load DNSPod credential from SCF request headers or Tencent default provider chain: %w", err)
 	}
 	return credential, nil
 }
@@ -209,7 +236,7 @@ func (c *dnsPodClient) ensureAgainstExistingRecords(ctx context.Context, subdoma
 }
 
 func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]dnsRecord, error) {
-	api, err := c.api()
+	api, err := c.apiForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -244,7 +271,7 @@ func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string
 }
 
 func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error) {
-	api, err := c.api()
+	api, err := c.apiForContext(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -283,7 +310,7 @@ func (c *dnsPodClient) recordsForDomain(ctx context.Context) ([]dnsRecord, error
 }
 
 func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recordType string, value string, remark string) error {
-	api, err := c.api()
+	api, err := c.apiForContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -301,7 +328,7 @@ func (c *dnsPodClient) createRecord(ctx context.Context, subdomain string, recor
 }
 
 func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdomain string, recordType string, value string, remark string) error {
-	api, err := c.api()
+	api, err := c.apiForContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -320,7 +347,7 @@ func (c *dnsPodClient) modifyRecord(ctx context.Context, recordID uint64, subdom
 }
 
 func (c *dnsPodClient) deleteRecord(ctx context.Context, recordID uint64) error {
-	api, err := c.api()
+	api, err := c.apiForContext(ctx)
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"strings"
@@ -92,7 +92,7 @@ func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 	rendered, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:           "0.0.0.0:18081",
-		PlaneName:                "mini-cloud-lab",
+		PlaneName:                "mini-cloud-ops",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
 		SouthboundToken:          "southbound",
 		NodeAgentConnectEndpoint: "10.0.0.1:18081",
@@ -161,7 +161,7 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 	rendered, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
 		ListenGRPCAddr:           "0.0.0.0:18081",
-		PlaneName:                "mini-cloud-lab",
+		PlaneName:                "mini-cloud-ops",
 		PlaneGRPCEndpoint:        "10.0.0.1:18081",
 		SouthboundToken:          "southbound",
 		NodeAgentConnectEndpoint: "10.0.0.1:18081",

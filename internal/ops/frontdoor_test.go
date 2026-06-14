@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"errors"
@@ -36,13 +36,13 @@ func TestDNSPodSubdomain(t *testing.T) {
 	}
 }
 
-func TestLabDomainIsUnder(t *testing.T) {
+func TestDomainIsUnder(t *testing.T) {
 	t.Parallel()
 
-	if !labDomainIsUnder("demo.apps.whatcloud.cn", "apps.whatcloud.cn") {
+	if !domainIsUnder("demo.apps.whatcloud.cn", "apps.whatcloud.cn") {
 		t.Fatal("expected service host to be under base domain")
 	}
-	if labDomainIsUnder("tx-origin.whatcloud.cn", "apps.whatcloud.cn") {
+	if domainIsUnder("tx-origin.whatcloud.cn", "apps.whatcloud.cn") {
 		t.Fatal("origin host must not be treated as a managed service host")
 	}
 }

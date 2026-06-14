@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 )
 
 func TestLoadConfigAcceptsMultiPlaneExample(t *testing.T) {
-	cfg, err := LoadConfig(filepath.Join("..", "..", "deploy", "lab", "lab.yaml.example"))
+	cfg, err := LoadConfig(filepath.Join("..", "..", "deploy", "ops", "config.yaml.example"))
 	if err != nil {
 		t.Fatalf("LoadConfig example returned error: %v", err)
 	}
@@ -24,7 +24,7 @@ func TestLoadConfigAcceptsMultiPlaneExample(t *testing.T) {
 }
 
 func TestLoadConfigRejectsTwoPlanesOnSameHost(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "lab.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte(`
 controlPlane:
   scf:
@@ -58,7 +58,7 @@ planes:
 }
 
 func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "lab.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte(`
 controlPlane:
   scf:
@@ -84,7 +84,7 @@ planes:
 	}
 }
 
-func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
+func TestValidateDeployRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
 		ControlPlane: ControlPlane{SCF: SCFControlPlane{Image: "ccr.ccs.tencentyun.com/mini-cloud/control-plane"}},
 		Install: InstallConfig{
@@ -96,13 +96,13 @@ func TestValidateInstallRequiresIngressBaseDomain(t *testing.T) {
 			NodeAgent:              "node-agent",
 		},
 	}
-	if err := cfg.validateInstall(); err == nil || !strings.Contains(err.Error(), "install.ingressBaseDomain") {
-		t.Fatalf("validateInstall error = %v, want ingressBaseDomain error", err)
+	if err := cfg.validateDeploy(); err == nil || !strings.Contains(err.Error(), "install.ingressBaseDomain") {
+		t.Fatalf("validateDeploy error = %v, want ingressBaseDomain error", err)
 	}
 }
 
 func TestLoadConfigRequiresControlPlanePublicDomain(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "lab.yaml")
+	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := []byte(`
 controlPlane:
   scf:

@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"context"
@@ -74,8 +74,11 @@ type cloudPlaneInstallPlan struct {
 	Install      installFiles
 }
 
-func (r *Runner) Install(ctx context.Context) error {
-	if err := r.cfg.validateInstall(); err != nil {
+func (r *Runner) install(ctx context.Context) error {
+	if err := r.cfg.validateDeploy(); err != nil {
+		return err
+	}
+	if err := r.cfg.validateArtifacts(); err != nil {
 		return err
 	}
 	plans, err := r.prepareCloudPlaneInstallPlans(ctx)
@@ -382,7 +385,7 @@ func (r *Runner) copyControlPlaneConfigForDocker(configPath string) (string, err
 	if err != nil {
 		return "", err
 	}
-	dir := filepath.Join("dist", "lab")
+	dir := filepath.Join("dist", "ops")
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return "", err
 	}

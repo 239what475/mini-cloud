@@ -69,7 +69,7 @@ node-agent 是 worker 节点上的执行器。
 - service name 自动生成三级域名。
 - Caddy + provider CDN + DNSPod 的入口链路。
 - 简单 readiness、service 状态、节点状态、事件和基础 metrics。
-- 真实云 lab 的 bootstrap、install、destroy。
+- 真实云 ops 的 check、deploy、destroy 和 e2e。
 
 当前不做：
 
@@ -87,15 +87,15 @@ node-agent 是 worker 节点上的执行器。
   - `control-plane`
   - `cloud-plane`
   - `node-agent`
-  - `labctl`
+  - `minictl`
 - `internal/controlplane/`
   - control-plane API、配置、store、service/DNS/plane 协调逻辑。
 - `internal/cloudplane/`
   - cloud-plane gRPC、运行态控制器、provider driver、store、frontdoor、Caddy。
 - `internal/nodeagent/`
   - worker 节点注册、heartbeat、workload 执行和失败诊断。
-- `internal/lab/`
-  - 真实云 lab 的 bootstrap/install/destroy 编排。
+- `internal/ops/`
+  - 真实云部署、检查、回收和 e2e 编排。
 - `proto/`
   - gRPC 协议定义。
 - `web/`
@@ -104,8 +104,8 @@ node-agent 是 worker 节点上的执行器。
   - 本地开发和集成测试依赖。
 - `deploy/terraform/`
   - 真实云 bootstrap 底座。
-- `deploy/lab/`
-  - 真实云 lab 配置和说明。
+- `deploy/ops/`
+  - 真实云 ops 配置和说明。
 
 ## 开发验证
 
@@ -141,25 +141,24 @@ make proto
 ./scripts/test-integration.sh
 ```
 
-## 真实云 lab
+## 真实云部署
 
 准备配置：
 
 ```bash
-cp deploy/lab/lab.yaml.example deploy/lab/lab.yaml
-cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/tencent.tfvars
-cp deploy/terraform/lab/terraform.tfvars.example deploy/terraform/lab/aliyun.tfvars
+cp deploy/ops/config.yaml.example deploy/ops/config.yaml
+cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/tencent.tfvars
+cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/aliyun.tfvars
 ```
 
 完整流程：
 
 ```bash
-go run ./cmd/labctl bootstrap --config deploy/lab/lab.yaml
-make build-release
-go run ./cmd/labctl install --config deploy/lab/lab.yaml
-go run ./cmd/labctl destroy --config deploy/lab/lab.yaml
+go run ./cmd/minictl check --config deploy/ops/config.yaml
+go run ./cmd/minictl deploy --config deploy/ops/config.yaml
+go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 ```
 
-`deploy/lab/lab.yaml`、Terraform var file、token 和云账号密钥只保存在本地，不提交。control-plane 部署到腾讯云 SCF HTTP 函数；示例里的 `myserver-tencent`、`myserver2` 只是 cloud-plane 入口机占位名，每个 cloud-plane 入口机必须是独立 host。
+`deploy/ops/config.yaml`、Terraform var file、token 和云账号密钥只保存在本地，不提交。control-plane 部署到腾讯云 SCF HTTP 函数；示例里的 `myserver-tencent`、`myserver2` 只是 cloud-plane 入口机占位名，每个 cloud-plane 入口机必须是独立 host。
 
-更多 lab 细节见 [deploy/lab/README.md](/home/what/myproject/mini-cloud/deploy/lab/README.md)。
+更多 ops 细节见 [deploy/ops/README.md](/home/what/myproject/mini-cloud/deploy/ops/README.md)。

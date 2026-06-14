@@ -83,6 +83,9 @@ export function ServicesPanel({
               <p>
                 {service.metadata.host} :{service.spec.defaultPort}
               </p>
+              <p>
+                entry {service.status.frontDoor.cname ? "ready" : "pending"}
+              </p>
             </div>
             <div className="app-card__section">
               <p className="app-card__section-title">status</p>

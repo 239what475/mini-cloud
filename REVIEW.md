@@ -199,7 +199,7 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 - control-plane API 关键路径测试。
 - cloud-plane provider/frontdoor 行为测试。
 - node-agent workload 执行测试。
-- lab e2e 手工流程记录。
+- ops e2e 手工流程记录。
 
 应该删除或避免：
 
@@ -225,7 +225,7 @@ Aliyun + Tencent 是项目亮点，应该保留，但抽象要克制：
 文档只写当前真实设计，不写已经删除的历史方案。
 
 - 当前不保留历史 `docs/` 目录，历史设计交给 git。
-- README、REVIEW 和 deploy/lab 示例要能指导真实 e2e。
+- README、REVIEW 和 deploy/ops 示例要能指导真实 e2e。
 - 不保留“暂时兼容”“旧模式仍可用”这类内容。
 - 示例配置不能包含真实 token、真实账号密钥。
 

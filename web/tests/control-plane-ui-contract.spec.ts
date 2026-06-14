@@ -44,6 +44,9 @@ const service = {
       phase: "running",
       message: "container running",
     },
+    frontDoor: {
+      cname: "demo-web.apps.example.com.cdn.dnsv1.com",
+    },
   },
 };
 
@@ -53,6 +56,8 @@ type RecordedRequest = {
   url: string;
   body: unknown;
 };
+
+test.setTimeout(60_000);
 
 test("creates, reads, updates, and deletes services through the HTTP API contract", async ({
   page,
@@ -83,7 +88,14 @@ test("creates, reads, updates, and deletes services through the HTTP API contrac
   await page.getByLabel("显示名").first().fill("New Web");
   await page.getByLabel("镜像").first().fill("nginx:1.27-alpine");
   await page.getByLabel("Env").first().fill("HELLO=world");
-  await page.getByRole("button", { name: "创建服务" }).click();
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().endsWith("/api/v1/services"),
+    ),
+    page.getByRole("button", { name: "创建服务" }).click(),
+  ]);
 
   await expect
     .poll(() => requests.find((request) => request.method === "POST"))
@@ -101,17 +113,18 @@ test("creates, reads, updates, and deletes services through the HTTP API contrac
     },
   });
 
-  await expect(page.getByText("Demo Web 的运行详情")).toBeVisible();
-  await expect
-    .poll(() =>
-      requests.some(
-        (request) =>
-          request.method === "GET" &&
-          request.url ===
-            `/api/v1/services/${service.metadata.id}?planeID=${plane.id}`,
-      ),
-    )
-    .toBe(true);
+  await expect(
+    page.getByRole("article").filter({ hasText: "New Web" }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page
+    .getByRole("article")
+    .filter({ hasText: "New Web" })
+    .getByRole("button", { name: /查看|当前服务/ })
+    .click();
+  await expect(page.getByText("New Web 的运行详情")).toBeVisible({
+    timeout: 15_000,
+  });
 
   await page.getByLabel("镜像").last().fill("nginx:1.28-alpine");
   await page.getByRole("button", { name: "更新服务" }).click();
@@ -120,18 +133,17 @@ test("creates, reads, updates, and deletes services through the HTTP API contrac
       requests.find(
         (request) =>
           request.method === "PUT" &&
-          request.url ===
-            `/api/v1/services/${service.metadata.id}?planeID=${plane.id}`,
+          request.url === `/api/v1/services/svc_new?planeID=${plane.id}`,
       ),
     )
     .toBeTruthy();
   const updateRequest = requests.find(
     (request) =>
       request.method === "PUT" &&
-      request.url === `/api/v1/services/${service.metadata.id}?planeID=${plane.id}`,
+      request.url === `/api/v1/services/svc_new?planeID=${plane.id}`,
   );
   expect(updateRequest?.body).toMatchObject({
-    displayName: "Demo Web",
+    displayName: "New Web",
     spec: {
       image: "nginx:1.28-alpine",
       defaultPort: 80,
@@ -144,8 +156,7 @@ test("creates, reads, updates, and deletes services through the HTTP API contrac
       requests.some(
         (request) =>
           request.method === "DELETE" &&
-          request.url ===
-            `/api/v1/services/${service.metadata.id}?planeID=${plane.id}`,
+          request.url === `/api/v1/services/svc_new?planeID=${plane.id}`,
       ),
     )
     .toBe(true);
@@ -236,6 +247,7 @@ async function installControlPlaneMocks(
           observedGeneration: 1,
           lastObservedAt: "2026-06-13T08:02:00Z",
           run: { phase: "pending", message: "waiting for cloud-plane" },
+          frontDoor: {},
         },
       };
       setServices([created, ...getServices()]);

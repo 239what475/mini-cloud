@@ -30,12 +30,24 @@ type serviceRunStatus struct {
 	Message string `json:"message,omitempty"`
 }
 
+type serviceFrontDoorStatus struct {
+	CNAME        string                     `json:"cname,omitempty"`
+	Verification *serviceFrontDoorDNSRecord `json:"verification,omitempty"`
+}
+
+type serviceFrontDoorDNSRecord struct {
+	Host       string `json:"host"`
+	RecordType string `json:"recordType"`
+	Value      string `json:"value"`
+}
+
 type serviceStatus struct {
-	Phase              string           `json:"phase"`
-	Message            string           `json:"message,omitempty"`
-	ObservedGeneration int64            `json:"observedGeneration"`
-	LastObservedAt     *time.Time       `json:"lastObservedAt,omitempty"`
-	Run                serviceRunStatus `json:"run"`
+	Phase              string                 `json:"phase"`
+	Message            string                 `json:"message,omitempty"`
+	ObservedGeneration int64                  `json:"observedGeneration"`
+	LastObservedAt     *time.Time             `json:"lastObservedAt,omitempty"`
+	Run                serviceRunStatus       `json:"run"`
+	FrontDoor          serviceFrontDoorStatus `json:"frontDoor"`
 }
 
 type serviceMetadata struct {
@@ -268,6 +280,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			ObservedGeneration: service.Status.Observed.ObservedGeneration,
 			LastObservedAt:     service.Status.Observed.LastObservedAt,
 			Run:                buildServiceRun(service.Status.Run),
+			FrontDoor:          buildServiceFrontDoor(service.Status.FrontDoor),
 		},
 	}
 }
@@ -291,6 +304,18 @@ func buildServiceRun(input model.RunStatus) serviceRunStatus {
 		Phase:   input.Phase,
 		Message: input.Message,
 	}
+}
+
+func buildServiceFrontDoor(input model.FrontDoorStatus) serviceFrontDoorStatus {
+	out := serviceFrontDoorStatus{CNAME: input.CNAME}
+	if input.Verification != nil {
+		out.Verification = &serviceFrontDoorDNSRecord{
+			Host:       input.Verification.Host,
+			RecordType: input.Verification.RecordType,
+			Value:      input.Verification.Value,
+		}
+	}
+	return out
 }
 
 func (r serviceCreateRequest) toCreateInput() (coordination.CreateServiceInput, error) {

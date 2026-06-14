@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"mini-cloud/internal/lab"
+	"mini-cloud/internal/ops"
 )
 
 func main() {
@@ -22,7 +22,7 @@ func run(ctx context.Context, args []string) error {
 	}
 
 	command := args[0]
-	cfgPath := "deploy/lab/lab.yaml"
+	cfgPath := "deploy/ops/config.yaml"
 	for i := 1; i < len(args); i++ {
 		switch args[i] {
 		case "--config", "-config":
@@ -39,17 +39,17 @@ func run(ctx context.Context, args []string) error {
 		}
 	}
 
-	cfg, err := lab.LoadConfig(cfgPath)
+	cfg, err := ops.LoadConfig(cfgPath)
 	if err != nil {
 		return err
 	}
-	runner := lab.NewRunner(cfg)
+	runner := ops.NewRunner(cfg)
 
 	switch command {
-	case "bootstrap":
-		return runner.Bootstrap(ctx)
-	case "install":
-		return runner.Install(ctx)
+	case "check":
+		return runner.Check(ctx)
+	case "deploy":
+		return runner.Deploy(ctx)
 	case "e2e":
 		return runner.E2E(ctx)
 	case "destroy":
@@ -60,13 +60,13 @@ func run(ctx context.Context, args []string) error {
 }
 
 func printUsage() {
-	fmt.Println(`mini-cloud labctl
+	fmt.Println(`mini-cloud minictl
 
 Usage:
-  labctl bootstrap [--config deploy/lab/lab.yaml]
-  labctl install   [--config deploy/lab/lab.yaml]
-  labctl e2e       [--config deploy/lab/lab.yaml]
-  labctl destroy   [--config deploy/lab/lab.yaml]
+  minictl check   [--config deploy/ops/config.yaml]
+  minictl deploy  [--config deploy/ops/config.yaml]
+  minictl e2e     [--config deploy/ops/config.yaml]
+  minictl destroy [--config deploy/ops/config.yaml]
 
-The lab config contains one control-plane and one or more cloud-plane entries.`)
+The ops config contains one control-plane and one or more cloud-plane entries.`)
 }

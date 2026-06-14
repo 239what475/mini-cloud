@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"context"
@@ -56,7 +56,7 @@ func (r *Runner) upsertSCFFunction(ctx context.Context, image string) error {
 	if err := r.ensureSCFCustomDomain(ctx); err != nil {
 		return err
 	}
-	fmt.Printf("[mini-cloud lab] control-plane SCF %s/%s is ready with image %s\n", cfg.Namespace, cfg.FunctionName, image)
+	fmt.Printf("[mini-cloud ops] control-plane SCF %s/%s is ready with image %s\n", cfg.Namespace, cfg.FunctionName, image)
 	return nil
 }
 
@@ -185,7 +185,7 @@ func (r *Runner) ensureSCFCustomDomain(ctx context.Context) error {
 	if err := r.ensureDNSPodCNAMERecord(ctx, cfg.PublicDomain, target, "mini-cloud control-plane"); err != nil {
 		return err
 	}
-	fmt.Printf("[mini-cloud lab] wait for control-plane CNAME %s -> %s\n", cfg.PublicDomain, target)
+	fmt.Printf("[mini-cloud ops] wait for control-plane CNAME %s -> %s\n", cfg.PublicDomain, target)
 	if err := r.waitForDNSPodCNAMERecord(ctx, cfg.PublicDomain, target); err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
 		if err == nil {
 			_ = resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("[mini-cloud lab] control-plane URL: %s\n", publicURL)
+				fmt.Printf("[mini-cloud ops] control-plane URL: %s\n", publicURL)
 				return nil
 			}
 		}
@@ -356,13 +356,13 @@ func scfCustomDomainCNAMETarget(url string) string {
 	host := strings.TrimPrefix(strings.TrimPrefix(strings.TrimRight(strings.TrimSpace(url), "/"), "https://"), "http://")
 	parts := strings.SplitN(host, "-", 2)
 	if len(parts) != 2 {
-		return cleanLabDomain(host)
+		return cleanDomain(host)
 	}
 	suffix := parts[1]
 	if dot := strings.Index(suffix, "."); dot >= 0 {
-		return cleanLabDomain(parts[0] + suffix[dot:])
+		return cleanDomain(parts[0] + suffix[dot:])
 	}
-	return cleanLabDomain(host)
+	return cleanDomain(host)
 }
 
 func writeJSONTempFile(pattern string, value any) (string, error) {

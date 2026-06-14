@@ -71,6 +71,11 @@ export function ServiceDetailPanel({
               <p>{status?.run.message ?? "-"}</p>
             </div>
             <div className="status-card">
+              <span className="status-card__label">Entry</span>
+              <strong>{status?.frontDoor.cname ? "ready" : "pending"}</strong>
+              <p>{status?.frontDoor.cname || "waiting for CDN CNAME"}</p>
+            </div>
+            <div className="status-card">
               <span className="status-card__label">Image</span>
               <strong>{service.spec.image}</strong>
               <p>
@@ -123,6 +128,16 @@ export function ServiceDetailPanel({
               </div>
             </div>
           </div>
+
+          {status?.frontDoor.verification ? (
+            <div className="app-card__section">
+              <p className="app-card__section-title">entry verification</p>
+              <p>
+                {status.frontDoor.verification.recordType}{" "}
+                {status.frontDoor.verification.host}
+              </p>
+            </div>
+          ) : null}
         </>
       ) : (
         <div className="callout">

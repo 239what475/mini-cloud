@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"bytes"
@@ -90,18 +90,18 @@ type Observability struct {
 func LoadConfig(path string) (Config, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return Config{}, fmt.Errorf("lab config path is required")
+		return Config{}, fmt.Errorf("ops config path is required")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, fmt.Errorf("read lab config %q: %w", path, err)
+		return Config{}, fmt.Errorf("read ops config %q: %w", path, err)
 	}
 
 	var cfg Config
 	decoder := yaml.NewDecoder(bytes.NewReader(data))
 	decoder.KnownFields(true)
 	if err := decoder.Decode(&cfg); err != nil {
-		return Config{}, fmt.Errorf("parse lab config %q: %w", path, err)
+		return Config{}, fmt.Errorf("parse ops config %q: %w", path, err)
 	}
 	cfg.Path = path
 	cfg.applyDefaults()
@@ -119,7 +119,7 @@ func (c *Config) applyDefaults() {
 	c.ControlPlane.SCF.FunctionName = defaultString(c.ControlPlane.SCF.FunctionName, "mini-cloud-control-plane")
 	c.ControlPlane.SCF.Role = defaultString(c.ControlPlane.SCF.Role, "mini-cloud")
 	c.ControlPlane.SCF.Description = defaultString(c.ControlPlane.SCF.Description, "mini-cloud control-plane")
-	c.ControlPlane.SCF.PublicDomain = cleanLabDomain(c.ControlPlane.SCF.PublicDomain)
+	c.ControlPlane.SCF.PublicDomain = cleanDomain(c.ControlPlane.SCF.PublicDomain)
 	if c.ControlPlane.SCF.MemoryMB == 0 {
 		c.ControlPlane.SCF.MemoryMB = 512
 	}
@@ -149,7 +149,7 @@ func (c *Config) applyDefaults() {
 		plane.Region = strings.TrimSpace(plane.Region)
 		plane.RegistryMirror = strings.TrimSpace(plane.RegistryMirror)
 		plane.SSH.applyDefaults(c.SSH)
-		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/lab")
+		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/ops")
 		plane.Terraform.Workspace = defaultString(plane.Terraform.Workspace, plane.Name)
 		plane.Terraform.VarFile = absolutePath(expandHome(plane.Terraform.VarFile))
 	}
@@ -251,7 +251,7 @@ func (c Config) validateBase() error {
 	return nil
 }
 
-func (c Config) validateInstall() error {
+func (c Config) validateDeploy() error {
 	if strings.TrimSpace(c.Install.IngressBaseDomain) == "" {
 		return fmt.Errorf("install.ingressBaseDomain is required")
 	}
@@ -264,6 +264,10 @@ func (c Config) validateInstall() error {
 	if strings.TrimSpace(c.Tokens.NodeAgent) == "" {
 		return fmt.Errorf("tokens.nodeAgent is required")
 	}
+	return nil
+}
+
+func (c Config) validateArtifacts() error {
 	if err := requireFile(c.Binaries.ControlPlane); err != nil {
 		return err
 	}
@@ -290,7 +294,7 @@ func defaultString(value string, fallback string) string {
 func requireFile(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s does not exist; run make build-release first or update deploy/lab/lab.yaml", path)
+			return fmt.Errorf("%s does not exist; run make build-release first or update deploy/ops/config.yaml", path)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
 	}
@@ -301,7 +305,7 @@ func requireDir(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s does not exist; run npm --prefix web run build first or update deploy/lab/lab.yaml", path)
+			return fmt.Errorf("%s does not exist; run npm --prefix web run build first or update deploy/ops/config.yaml", path)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
 	}

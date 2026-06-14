@@ -67,6 +67,7 @@ type ServiceStatus struct {
 	DesiredState string
 	Observed     ServiceObservedStatus
 	Run          RunStatus
+	FrontDoor    FrontDoorStatus
 }
 
 type ServiceObservedStatus struct {
@@ -86,6 +87,17 @@ const (
 type RunStatus struct {
 	Phase   string
 	Message string
+}
+
+type FrontDoorStatus struct {
+	CNAME        string
+	Verification *FrontDoorDNSRecord
+}
+
+type FrontDoorDNSRecord struct {
+	Host       string
+	RecordType string
+	Value      string
 }
 
 func PendingRunStatus(message string) RunStatus {

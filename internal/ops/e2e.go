@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"context"
@@ -10,29 +10,19 @@ import (
 )
 
 func (r *Runner) E2E(ctx context.Context) (runErr error) {
-	fmt.Println("[mini-cloud lab] build release binaries and web assets")
-	if err := runInteractive(ctx, "make", "build-release", "web-build"); err != nil {
-		return err
-	}
-
 	needsDestroy := false
 	defer func() {
 		if !needsDestroy {
 			return
 		}
-		fmt.Println("[mini-cloud lab] destroy lab resources")
+		fmt.Println("[mini-cloud ops] destroy ops resources")
 		if err := r.Destroy(context.WithoutCancel(ctx)); err != nil {
-			runErr = errors.Join(runErr, fmt.Errorf("destroy lab: %w", err))
+			runErr = errors.Join(runErr, fmt.Errorf("destroy ops resources: %w", err))
 		}
 	}()
 
-	fmt.Println("[mini-cloud lab] bootstrap lab resources")
 	needsDestroy = true
-	if err := r.Bootstrap(ctx); err != nil {
-		return err
-	}
-	fmt.Println("[mini-cloud lab] install control-plane and cloud-planes")
-	if err := r.Install(ctx); err != nil {
+	if err := r.Deploy(ctx); err != nil {
 		return err
 	}
 
@@ -52,7 +42,7 @@ func (r *Runner) runWebE2E(ctx context.Context, controlPlaneURL string) error {
 		planeIDs = append(planeIDs, planeID(plane.Name))
 	}
 
-	cmd := exec.CommandContext(ctx, "npm", "--prefix", "web", "run", "test:lab-e2e")
+	cmd := exec.CommandContext(ctx, "npm", "--prefix", "web", "run", "test:ops-e2e")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -63,7 +53,7 @@ func (r *Runner) runWebE2E(ctx context.Context, controlPlaneURL string) error {
 		"MINI_CLOUD_E2E_BASE_DOMAIN="+strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
 	)
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("web lab e2e: %w", err)
+		return fmt.Errorf("web ops e2e: %w", err)
 	}
 	return nil
 }

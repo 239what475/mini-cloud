@@ -411,6 +411,7 @@ func serviceFromSnapshotItem(planeID string, item *cloudplanev1.PlaneService) mo
 			DesiredState: item.GetDesiredState(),
 			Observed:     model.PendingServiceStatus(item.GetGeneration(), "waiting for service run status"),
 			Run:          model.PendingRunStatus("waiting for service run status"),
+			FrontDoor:    serviceFrontDoorFromSnapshotItem(item),
 		},
 		UpdatedAt: updatedAt,
 	}
@@ -418,6 +419,24 @@ func serviceFromSnapshotItem(planeID string, item *cloudplanev1.PlaneService) mo
 		service.Status.DesiredState = model.DesiredStateActive
 	}
 	return service
+}
+
+func serviceFrontDoorFromSnapshotItem(item *cloudplanev1.PlaneService) model.FrontDoorStatus {
+	frontDoor := model.FrontDoorStatus{CNAME: strings.TrimSpace(item.GetFrontdoorCname())}
+	verifyHost := strings.TrimSpace(item.GetFrontdoorVerifySubdomain())
+	verifyValue := strings.TrimSpace(item.GetFrontdoorVerifyValue())
+	if verifyHost != "" && verifyValue != "" {
+		recordType := strings.TrimSpace(item.GetFrontdoorVerifyType())
+		if recordType == "" {
+			recordType = "TXT"
+		}
+		frontDoor.Verification = &model.FrontDoorDNSRecord{
+			Host:       verifyHost,
+			RecordType: recordType,
+			Value:      verifyValue,
+		}
+	}
+	return frontDoor
 }
 
 func acceptedServiceStatus(generation int64, message string) model.ServiceObservedStatus {

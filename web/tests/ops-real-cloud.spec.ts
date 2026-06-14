@@ -54,6 +54,7 @@ test("deploys and removes services through the real control-plane UI", async ({
       await expect(card).toContainText("ready / running", {
         timeout: 12 * 60 * 1000,
       });
+      await waitForPublicEntry(page, serviceName, planeID);
 
       await expectHTTP200(host);
     }
@@ -142,6 +143,42 @@ async function deleteService(
       },
     )
     .toBe(0);
+}
+
+async function waitForPublicEntry(
+  page: import("@playwright/test").Page,
+  serviceName: string,
+  planeID: string,
+) {
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get("/api/v1/services", {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        if (!response.ok()) {
+          return "";
+        }
+        const payload = (await response.json()) as {
+          items?: Array<{
+            metadata?: { name?: string };
+            spec?: { planeID?: string };
+            status?: { frontDoor?: { cname?: string } };
+          }>;
+        };
+        const service = payload.items?.find(
+          (item) =>
+            item.metadata?.name === serviceName &&
+            item.spec?.planeID === planeID,
+        );
+        return service?.status?.frontDoor?.cname ?? "";
+      },
+      {
+        timeout: 12 * 60 * 1000,
+        intervals: [10_000, 15_000, 20_000],
+      },
+    )
+    .not.toBe("");
 }
 
 async function expectHTTP200(host: string) {

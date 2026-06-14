@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"errors"

@@ -1,7 +1,7 @@
 provider_name = "aliyun"
 platform_mode = "existing_ecs"
-platform_name = "mini-cloud-aliyun-lab"
-environment   = "lab"
+platform_name = "mini-cloud-aliyun-ops"
+environment   = "ops"
 owner         = "operator"
 
 control_plane_cidrs = [

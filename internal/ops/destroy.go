@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type aliyunInstancesResponse struct {
 
 func (r *Runner) Destroy(ctx context.Context) error {
 	for _, plane := range r.cfg.Planes {
-		fmt.Printf("[mini-cloud lab] destroy plane %s (%s)\n", plane.Name, plane.Provider)
+		fmt.Printf("[mini-cloud ops] destroy plane %s (%s)\n", plane.Name, plane.Provider)
 		if err := r.terraform(ctx, plane, "init"); err != nil {
 			return err
 		}

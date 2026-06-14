@@ -1,4 +1,4 @@
-package lab
+package ops
 
 import (
 	"context"
@@ -35,7 +35,7 @@ type dnspodRecord struct {
 	Remark   string `json:"Remark"`
 }
 
-const labDNSRecordTTL = "600"
+const dnsRecordTTL = "600"
 
 func (r *Runner) deleteServiceFrontDoors(ctx context.Context, out TerraformOutput) error {
 	return r.deleteServiceFrontDoorsForProvider(ctx, out.ProviderName(), out.RegionID())
@@ -46,7 +46,7 @@ func (r *Runner) deleteServiceFrontDoorsWithoutTerraform(ctx context.Context, pl
 }
 
 func (r *Runner) deleteServiceFrontDoorsForProvider(ctx context.Context, provider string, regionID string) error {
-	baseDomain := cleanLabDomain(r.cfg.Install.IngressBaseDomain)
+	baseDomain := cleanDomain(r.cfg.Install.IngressBaseDomain)
 	if baseDomain == "" {
 		return nil
 	}
@@ -84,8 +84,8 @@ func (r *Runner) deleteAliyunCDNDomains(ctx context.Context, baseDomain string) 
 		return err
 	}
 	for _, item := range response.Domains.PageData {
-		host := cleanLabDomain(item.DomainName)
-		if !labDomainIsUnder(host, baseDomain) {
+		host := cleanDomain(item.DomainName)
+		if !domainIsUnder(host, baseDomain) {
 			continue
 		}
 		if err := r.deleteAliyunCDNDomain(ctx, host); err != nil {
@@ -151,7 +151,7 @@ func (r *Runner) aliyunCDNDomainStatus(ctx context.Context, host string) (string
 		return "", false, err
 	}
 	for _, item := range response.Domains.PageData {
-		if cleanLabDomain(item.DomainName) == host {
+		if cleanDomain(item.DomainName) == host {
 			return strings.TrimSpace(item.DomainStatus), true, nil
 		}
 	}
@@ -165,8 +165,8 @@ func (r *Runner) deleteTencentCDNDomains(ctx context.Context, regionID string, b
 		return err
 	}
 	for _, item := range response.Domains {
-		host := cleanLabDomain(item.Domain)
-		if !labDomainIsUnder(host, baseDomain) {
+		host := cleanDomain(item.Domain)
+		if !domainIsUnder(host, baseDomain) {
 			continue
 		}
 		if _, err := runOutput(ctx, "tccli", "cdn", "StopCdnDomain", "--region", regionID, "--Domain", host); err != nil && !commandOutputIndicatesMissingResource(err) {
@@ -180,7 +180,7 @@ func (r *Runner) deleteTencentCDNDomains(ctx context.Context, regionID string, b
 }
 
 func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string, provider string) error {
-	dnsRoot := cleanLabDomain(rootDomain(baseDomain))
+	dnsRoot := cleanDomain(rootDomain(baseDomain))
 	if dnsRoot == "" {
 		return nil
 	}
@@ -199,7 +199,7 @@ func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string
 			continue
 		}
 		host := dnsPodRecordHost(item.Name, dnsRoot)
-		if !labDomainIsUnder(host, baseDomain) {
+		if !domainIsUnder(host, baseDomain) {
 			continue
 		}
 		if !providerOwnsCNAME(provider, item.Value) {
@@ -217,7 +217,7 @@ func (r *Runner) deleteDNSPodCNAMERecords(ctx context.Context, baseDomain string
 }
 
 func providerOwnsCNAME(provider string, value string) bool {
-	value = cleanLabDomain(value)
+	value = cleanDomain(value)
 	switch provider {
 	case "aliyun":
 		return strings.HasSuffix(value, ".w.kunlunaq.com")
@@ -229,9 +229,9 @@ func providerOwnsCNAME(provider string, value string) bool {
 }
 
 func (r *Runner) ensureDNSPodCNAMERecord(ctx context.Context, host string, target string, remark string) error {
-	dnsRoot := cleanLabDomain(rootDomain(host))
+	dnsRoot := cleanDomain(rootDomain(host))
 	subdomain := dnsPodSubdomain(host, dnsRoot)
-	target = cleanLabDomain(target)
+	target = cleanDomain(target)
 	remark = strings.TrimSpace(remark)
 	if dnsRoot == "" || subdomain == "" || target == "" || remark == "" {
 		return fmt.Errorf("invalid DNSPod CNAME %q -> %q", host, target)
@@ -245,7 +245,7 @@ func (r *Runner) ensureDNSPodCNAMERecord(ctx context.Context, host string, targe
 		if strings.TrimSpace(record.Remark) != remark {
 			return fmt.Errorf("DNS record %s already exists and is not owned by %s", host, remark)
 		}
-		if cleanLabDomain(record.Value) == target {
+		if cleanDomain(record.Value) == target {
 			return nil
 		}
 		_, err := runOutput(ctx, "tccli", "dnspod", "ModifyRecord",
@@ -256,7 +256,7 @@ func (r *Runner) ensureDNSPodCNAMERecord(ctx context.Context, host string, targe
 			"--RecordType", "CNAME",
 			"--RecordLine", "默认",
 			"--Value", target,
-			"--TTL", labDNSRecordTTL,
+			"--TTL", dnsRecordTTL,
 			"--Remark", remark,
 		)
 		return err
@@ -269,14 +269,14 @@ func (r *Runner) ensureDNSPodCNAMERecord(ctx context.Context, host string, targe
 		"--RecordType", "CNAME",
 		"--RecordLine", "默认",
 		"--Value", target,
-		"--TTL", labDNSRecordTTL,
+		"--TTL", dnsRecordTTL,
 		"--Remark", remark,
 	)
 	return err
 }
 
 func (r *Runner) deleteDNSPodRecordByRemark(ctx context.Context, host string, recordType string, remark string) error {
-	dnsRoot := cleanLabDomain(rootDomain(host))
+	dnsRoot := cleanDomain(rootDomain(host))
 	subdomain := dnsPodSubdomain(host, dnsRoot)
 	recordType = strings.ToUpper(strings.TrimSpace(recordType))
 	remark = strings.TrimSpace(remark)
@@ -302,16 +302,16 @@ func (r *Runner) deleteDNSPodRecordByRemark(ctx context.Context, host string, re
 }
 
 func (r *Runner) waitForDNSPodCNAMERecord(ctx context.Context, host string, target string) error {
-	dnsRoot := cleanLabDomain(rootDomain(host))
+	dnsRoot := cleanDomain(rootDomain(host))
 	subdomain := dnsPodSubdomain(host, dnsRoot)
-	target = cleanLabDomain(target)
+	target = cleanDomain(target)
 	deadline := time.Now().Add(10 * time.Minute)
 	for {
 		record, found, err := r.dnspodRecord(ctx, dnsRoot, subdomain, "CNAME")
 		if err != nil {
 			return err
 		}
-		if found && cleanLabDomain(record.Value) == target && cnameResolvesTo(ctx, host, target) {
+		if found && cleanDomain(record.Value) == target && cnameResolvesTo(ctx, host, target) {
 			return nil
 		}
 		if time.Now().After(deadline) {
@@ -326,8 +326,8 @@ func (r *Runner) waitForDNSPodCNAMERecord(ctx context.Context, host string, targ
 }
 
 func cnameResolvesTo(ctx context.Context, host string, target string) bool {
-	cname, err := net.DefaultResolver.LookupCNAME(ctx, cleanLabDomain(host))
-	return err == nil && cleanLabDomain(cname) == cleanLabDomain(target)
+	cname, err := net.DefaultResolver.LookupCNAME(ctx, cleanDomain(host))
+	return err == nil && cleanDomain(cname) == cleanDomain(target)
 }
 
 func (r *Runner) dnspodRecord(ctx context.Context, dnsRoot string, subdomain string, recordType string) (dnspodRecord, bool, error) {
@@ -350,7 +350,7 @@ func (r *Runner) dnspodRecord(ctx context.Context, dnsRoot string, subdomain str
 }
 
 func (r *Runner) deleteAliyunVerifyTXTRecord(ctx context.Context, baseDomain string) error {
-	dnsRoot := cleanLabDomain(rootDomain(baseDomain))
+	dnsRoot := cleanDomain(rootDomain(baseDomain))
 	if dnsRoot == "" {
 		return nil
 	}
@@ -383,7 +383,7 @@ func (r *Runner) deleteAliyunVerifyTXTRecord(ctx context.Context, baseDomain str
 }
 
 func (r *Runner) deleteTencentVerifyTXTRecord(ctx context.Context, baseDomain string) error {
-	dnsRoot := cleanLabDomain(rootDomain(baseDomain))
+	dnsRoot := cleanDomain(rootDomain(baseDomain))
 	if dnsRoot == "" {
 		return nil
 	}
@@ -417,29 +417,29 @@ func (r *Runner) deleteTencentVerifyTXTRecord(ctx context.Context, baseDomain st
 
 func dnsPodRecordHost(name string, root string) string {
 	name = strings.Trim(strings.TrimSpace(name), ".")
-	root = cleanLabDomain(root)
+	root = cleanDomain(root)
 	if name == "" || name == "@" {
 		return root
 	}
-	return cleanLabDomain(name + "." + root)
+	return cleanDomain(name + "." + root)
 }
 
 func dnsPodSubdomain(host string, root string) string {
-	host = cleanLabDomain(host)
-	root = cleanLabDomain(root)
+	host = cleanDomain(host)
+	root = cleanDomain(root)
 	if host == root {
 		return "@"
 	}
 	return strings.TrimSuffix(host, "."+root)
 }
 
-func cleanLabDomain(value string) string {
+func cleanDomain(value string) string {
 	return strings.Trim(strings.ToLower(strings.TrimSpace(value)), ".")
 }
 
-func labDomainIsUnder(child string, parent string) bool {
-	child = cleanLabDomain(child)
-	parent = cleanLabDomain(parent)
+func domainIsUnder(child string, parent string) bool {
+	child = cleanDomain(child)
+	parent = cleanDomain(parent)
 	return child == parent || strings.HasSuffix(child, "."+parent)
 }
 

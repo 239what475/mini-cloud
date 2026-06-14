@@ -12,25 +12,25 @@ controlPlane:
     initSec: 30
 
 planes:
-  - name: mini-cloud-tencent-lab
+  - name: mini-cloud-tencent-ops
     provider: tencent
     region: ap-guangzhou
     ssh:
       host: myserver-tencent
     terraform:
-      dir: deploy/terraform/lab
+      dir: deploy/terraform/ops
       workspace: tencent
-      varFile: deploy/terraform/lab/tencent.tfvars
+      varFile: deploy/terraform/ops/tencent.tfvars
 
-  - name: mini-cloud-aliyun-lab
+  - name: mini-cloud-aliyun-ops
     provider: aliyun
     region: cn-beijing
     ssh:
       host: myserver2
     terraform:
-      dir: deploy/terraform/lab
+      dir: deploy/terraform/ops
       workspace: aliyun
-      varFile: deploy/terraform/lab/aliyun.tfvars
+      varFile: deploy/terraform/ops/aliyun.tfvars
 
 install:
   root: /opt/mini-cloud

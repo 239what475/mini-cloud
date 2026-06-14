@@ -20,7 +20,7 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	}
 
 	got := injectTelemetryEnv(base, item, telemetryEnvOptions{
-		PlatformName:         "mini-cloud-lab",
+		PlatformName:         "mini-cloud-ops",
 		WorkloadOTLPEndpoint: "http://otel-collector:4318",
 	})
 
@@ -39,7 +39,7 @@ func TestInjectTelemetryEnvSetsDefaults(t *testing.T) {
 	for _, want := range []string{
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.execution_id=exec_demo",
-		"mini_cloud.platform_name=mini-cloud-lab",
+		"mini_cloud.platform_name=mini-cloud-ops",
 	} {
 		if !strings.Contains(got["OTEL_RESOURCE_ATTRIBUTES"], want) {
 			t.Fatalf("OTEL_RESOURCE_ATTRIBUTES = %q, want substring %q", got["OTEL_RESOURCE_ATTRIBUTES"], want)
@@ -62,7 +62,7 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		ExecutionId: "exec_demo",
 		ServiceName: "ignored-by-test",
 	}, telemetryEnvOptions{
-		PlatformName:         "mini-cloud-lab",
+		PlatformName:         "mini-cloud-ops",
 		WorkloadOTLPEndpoint: "http://platform-collector:4318",
 	})
 
@@ -73,7 +73,7 @@ func TestInjectTelemetryEnvKeepsUserProvidedIdentityFields(t *testing.T) {
 		"service.version=1.2.3",
 		"mini_cloud.service_id=svc_demo",
 		"mini_cloud.execution_id=exec_demo",
-		"mini_cloud.platform_name=mini-cloud-lab",
+		"mini_cloud.platform_name=mini-cloud-ops",
 	} {
 		if !strings.Contains(got["OTEL_RESOURCE_ATTRIBUTES"], want) {
 			t.Fatalf("OTEL_RESOURCE_ATTRIBUTES = %q, want substring %q", got["OTEL_RESOURCE_ATTRIBUTES"], want)

@@ -96,7 +96,7 @@ func (c *aliyunCDNClient) EnsureDomain(ctx context.Context, host string) (string
 	if strings.TrimSpace(domain.CNAME) == "" {
 		return "", nil
 	}
-	if err := c.setOriginHost(ctx, host); err != nil {
+	if err := c.setDomainConfig(ctx, host); err != nil {
 		if isAliyunPending(err) {
 			return "", nil
 		}
@@ -190,14 +190,23 @@ func (c *aliyunCDNClient) addDomain(ctx context.Context, host string) error {
 	return err
 }
 
-func (c *aliyunCDNClient) setOriginHost(ctx context.Context, host string) error {
-	functions, err := json.Marshal([]map[string]any{{
-		"functionName": "set_req_host_header",
-		"functionArgs": []map[string]string{{
-			"argName":  "domain_name",
-			"argValue": host,
+func (c *aliyunCDNClient) setDomainConfig(ctx context.Context, host string) error {
+	functions, err := json.Marshal([]map[string]any{
+		{
+			"functionName": "set_req_host_header",
+			"functionArgs": []map[string]string{{
+				"argName":  "domain_name",
+				"argValue": host,
+			}},
+		},
+		{
+			"functionName": "ipv6",
+			"functionArgs": []map[string]string{{
+				"argName":  "switch",
+				"argValue": "off",
+			}},
 		}},
-	}})
+	)
 	if err != nil {
 		return err
 	}

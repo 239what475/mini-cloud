@@ -11,7 +11,7 @@ import (
 
 func testDriverConfig(provider cloudplaneconfig.TencentNodeConfig) cloudplaneconfig.Config {
 	return cloudplaneconfig.Config{
-		Plane:        cloudplaneconfig.PlaneConfig{Name: "mini-cloud-lab", GRPCEndpoint: "10.0.0.10:18081"},
+		Plane:        cloudplaneconfig.PlaneConfig{Name: "mini-cloud-ops", GRPCEndpoint: "10.0.0.10:18081"},
 		ControlPlane: cloudplaneconfig.ControlPlaneConfig{BearerToken: "southbound-token"},
 		Infrastructure: cloudplaneconfig.InfrastructureConfig{
 			Provider: Name,
