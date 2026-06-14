@@ -194,6 +194,18 @@ func TestCloudPlaneConfigTemplateDoesNotRenderDNSPodCredentials(t *testing.T) {
 	}
 }
 
+func TestPlaneGRPCEndpointUsesTLSForBareTerraformEndpoint(t *testing.T) {
+	runner := NewRunner(Config{})
+	endpoint := runner.planeGRPCEndpoint(TerraformOutput{
+		Platform: terraformValue[PlatformOutput]{
+			Value: PlatformOutput{GRPCEndpoint: "203.0.113.10:18081"},
+		},
+	}, "", "")
+	if endpoint != "grpcs://203.0.113.10:18081" {
+		t.Fatalf("endpoint = %q, want grpcs endpoint", endpoint)
+	}
+}
+
 func testTLSData() tlsTemplateData {
 	return tlsTemplateData{
 		CACert: "-----BEGIN CERTIFICATE-----\nca\n-----END CERTIFICATE-----\n",

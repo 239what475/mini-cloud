@@ -385,15 +385,13 @@ func validateConnectEndpoint(value string) error {
 	if host, port, err := net.SplitHostPort(trimmed); err == nil && strings.TrimSpace(host) != "" && strings.TrimSpace(port) != "" {
 		return nil
 	}
-	parsed, err := url.Parse(trimmed)
-	if err != nil {
-		return fmt.Errorf("parse nodeAgent.connectEndpoint: %w", err)
+	lower := strings.ToLower(trimmed)
+	if strings.HasPrefix(lower, "grpc://") || strings.HasPrefix(lower, "grpcs://") {
+		target := strings.TrimSpace(trimmed[strings.Index(trimmed, "://")+3:])
+		host, port, err := net.SplitHostPort(target)
+		if err == nil && strings.TrimSpace(host) != "" && strings.TrimSpace(port) != "" {
+			return nil
+		}
 	}
-	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("nodeAgent.connectEndpoint must be host:port or an http/https target")
-	}
-	if parsed.Host == "" {
-		return fmt.Errorf("nodeAgent.connectEndpoint must include host")
-	}
-	return nil
+	return fmt.Errorf("nodeAgent.connectEndpoint must be host:port, grpc://host:port, or grpcs://host:port")
 }

@@ -87,6 +87,27 @@ func TestValidateCloudPlaneConfig(t *testing.T) {
 	}
 }
 
+func TestValidateConnectEndpointAcceptsGRPCTargets(t *testing.T) {
+	t.Parallel()
+
+	for _, endpoint := range []string{
+		"10.0.0.10:18081",
+		"grpc://10.0.0.10:18081",
+		"grpcs://10.0.0.10:18081",
+	} {
+		endpoint := endpoint
+		t.Run(endpoint, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := validConfig()
+			cfg.NodeAgent.ConnectEndpoint = endpoint
+			if err := cfg.Validate(); err != nil {
+				t.Fatalf("Validate error = %v", err)
+			}
+		})
+	}
+}
+
 func validConfig() Config {
 	return Config{
 		Server:       ServerConfig{ListenGRPCAddr: "0.0.0.0:18081"},

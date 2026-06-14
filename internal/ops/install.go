@@ -341,7 +341,10 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 
 func (r *Runner) planeGRPCEndpoint(out TerraformOutput, cloudPlaneHost string, privateEndpoint string) string {
 	if endpoint := strings.TrimSpace(out.Platform.Value.GRPCEndpoint); endpoint != "" {
-		return endpoint
+		if strings.Contains(endpoint, "://") {
+			return endpoint
+		}
+		return "grpcs://" + endpoint
 	}
 	if publicIP := strings.TrimSpace(out.Platform.Value.PublicIP); publicIP != "" && out.Network.Value.CloudPlaneGRPCPort != 0 {
 		return fmt.Sprintf("grpcs://%s:%d", publicIP, out.Network.Value.CloudPlaneGRPCPort)

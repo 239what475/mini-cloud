@@ -25,7 +25,7 @@ test("deploys and removes services through the real control-plane UI", async ({
   const createdServices: Array<{ name: string; host: string }> = [];
 
   await openControlPlane(page);
-  await page.getByLabel("Admin token").fill(adminToken);
+  await loginControlPlane(page);
 
   for (const planeID of planeIDs) {
     await expect(
@@ -83,6 +83,20 @@ async function openControlPlane(page: import("@playwright/test").Page) {
   throw lastError instanceof Error
     ? lastError
     : new Error("timed out opening control-plane UI");
+}
+
+async function loginControlPlane(page: import("@playwright/test").Page) {
+  await page.getByLabel("Admin token").fill(adminToken);
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        response.url().includes("/api/v1/login") &&
+        response.ok(),
+      { timeout: 30_000 },
+    ),
+    page.getByRole("button", { name: "登录" }).click(),
+  ]);
 }
 
 async function createService(
