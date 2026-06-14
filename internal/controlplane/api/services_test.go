@@ -46,7 +46,6 @@ func TestBuildServiceResourceIncludesEnv(t *testing.T) {
 			},
 		},
 		Status: model.ServiceStatus{
-			DesiredState: model.DesiredStateActive,
 			Observed: model.ServiceObservedStatus{
 				Phase: model.PhasePending,
 			},
@@ -87,7 +86,6 @@ func TestBuildServiceResourceKeepsEmptyWorkloadFields(t *testing.T) {
 			ReadinessPath: "/",
 		},
 		Status: model.ServiceStatus{
-			DesiredState: model.DesiredStateActive,
 			Observed: model.ServiceObservedStatus{
 				Phase: model.PhasePending,
 			},
@@ -242,7 +240,7 @@ func (p *serviceAPIPlane) UpsertService(_ context.Context, req *cloudplanev1.Ups
 		DisplayName:   req.GetDisplayName(),
 		Host:          req.GetHost(),
 		Generation:    req.GetServiceGeneration(),
-		DesiredState:  model.DesiredStateActive,
+		DesiredState:  "active",
 		InstanceClass: req.GetInstanceClass(),
 		Exposure:      req.GetExposure(),
 		Image:         req.GetImage(),

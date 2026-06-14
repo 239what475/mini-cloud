@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/model"
 
 	"github.com/gin-gonic/gin"
 )
@@ -25,15 +24,13 @@ func newPlaneHandler(logger *slog.Logger, syncer *coordination.PlaneSyncer) plan
 }
 
 type planeResource struct {
-	ID                  string                 `json:"id"`
-	Name                string                 `json:"name"`
-	DisplayName         string                 `json:"displayName"`
-	Provider            string                 `json:"provider"`
-	Region              string                 `json:"region"`
-	GRPCEndpoint        string                 `json:"grpcEndpoint"`
-	CreatedAt           time.Time              `json:"createdAt"`
-	Status              planeStatusResource    `json:"status"`
-	LatestNodeInventory *nodeInventoryResource `json:"latestNodeInventory,omitempty"`
+	ID           string              `json:"id"`
+	Name         string              `json:"name"`
+	DisplayName  string              `json:"displayName"`
+	Provider     string              `json:"provider"`
+	Region       string              `json:"region"`
+	GRPCEndpoint string              `json:"grpcEndpoint"`
+	Status       planeStatusResource `json:"status"`
 }
 
 type planeStatusResource struct {
@@ -42,19 +39,6 @@ type planeStatusResource struct {
 	Message         string     `json:"message"`
 	LastHeartbeatAt *time.Time `json:"lastHeartbeatAt,omitempty"`
 	LastSyncAt      *time.Time `json:"lastSyncAt,omitempty"`
-	UpdatedAt       time.Time  `json:"updatedAt"`
-}
-
-type nodeInventoryResource struct {
-	PlaneID           string    `json:"planeID"`
-	ObservedAt        time.Time `json:"observedAt"`
-	NodesTotal        int       `json:"nodesTotal"`
-	NodesReady        int       `json:"nodesReady"`
-	CPUMilliCapacity  int       `json:"cpuMilliCapacity"`
-	CPUMilliAllocated int       `json:"cpuMilliAllocated"`
-	MemoryMiCapacity  int       `json:"memoryMiCapacity"`
-	MemoryMiAllocated int       `json:"memoryMiAllocated"`
-	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func (h planeHandler) listPlanes(c *gin.Context) {
@@ -116,57 +100,21 @@ func (h planeHandler) getPlane(c *gin.Context) {
 	c.JSON(http.StatusOK, buildPlaneResourceFromSnapshotView(view))
 }
 
-func buildPlaneResource(item model.PlaneDetail) planeResource {
-	out := planeResource{
-		ID:           item.ID,
-		Name:         item.Name,
-		DisplayName:  item.DisplayName,
-		Provider:     item.Provider,
-		Region:       item.Region,
-		GRPCEndpoint: item.GRPCEndpoint,
-		CreatedAt:    item.CreatedAt,
-		Status: planeStatusResource{
-			PlaneID:         item.Status.PlaneID,
-			Status:          item.Status.Status,
-			Message:         item.Status.Message,
-			LastHeartbeatAt: item.Status.LastHeartbeatAt,
-			LastSyncAt:      item.Status.LastSyncAt,
-			UpdatedAt:       item.Status.UpdatedAt,
-		},
-	}
-	if item.LatestNodeInventory != nil {
-		inventory := item.LatestNodeInventory
-		out.LatestNodeInventory = &nodeInventoryResource{
-			PlaneID:           inventory.PlaneID,
-			ObservedAt:        inventory.ObservedAt,
-			NodesTotal:        inventory.NodesTotal,
-			NodesReady:        inventory.NodesReady,
-			CPUMilliCapacity:  inventory.CPUMilliCapacity,
-			CPUMilliAllocated: inventory.CPUMilliAllocated,
-			MemoryMiCapacity:  inventory.MemoryMiCapacity,
-			MemoryMiAllocated: inventory.MemoryMiAllocated,
-			UpdatedAt:         inventory.UpdatedAt,
-		}
-	}
-	return out
-}
-
 func buildPlaneResourceFromSnapshotView(item coordination.PlaneSnapshotView) planeResource {
-	out := buildPlaneResource(item.Plane)
-	if item.Snapshot == nil {
-		return out
-	}
-	inventory := nodeInventoryFromSnapshot(item.Plane.ID, item.Snapshot)
-	out.LatestNodeInventory = &nodeInventoryResource{
-		PlaneID:           inventory.PlaneID,
-		ObservedAt:        inventory.ObservedAt,
-		NodesTotal:        inventory.NodesTotal,
-		NodesReady:        inventory.NodesReady,
-		CPUMilliCapacity:  inventory.CPUMilliCapacity,
-		CPUMilliAllocated: inventory.CPUMilliAllocated,
-		MemoryMiCapacity:  inventory.MemoryMiCapacity,
-		MemoryMiAllocated: inventory.MemoryMiAllocated,
-		UpdatedAt:         inventory.UpdatedAt,
+	out := planeResource{
+		ID:           item.Plane.ID,
+		Name:         item.Plane.Name,
+		DisplayName:  item.Plane.DisplayName,
+		Provider:     item.Plane.Provider,
+		Region:       item.Plane.Region,
+		GRPCEndpoint: item.Plane.GRPCEndpoint,
+		Status: planeStatusResource{
+			PlaneID:         item.Plane.Status.PlaneID,
+			Status:          item.Plane.Status.Status,
+			Message:         item.Plane.Status.Message,
+			LastHeartbeatAt: item.Plane.Status.LastHeartbeatAt,
+			LastSyncAt:      item.Plane.Status.LastSyncAt,
+		},
 	}
 	return out
 }

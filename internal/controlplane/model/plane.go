@@ -16,7 +16,6 @@ type Plane struct {
 	Provider     string
 	Region       string
 	GRPCEndpoint string
-	CreatedAt    time.Time
 }
 
 type PlaneStatus struct {
@@ -25,7 +24,6 @@ type PlaneStatus struct {
 	Message         string
 	LastHeartbeatAt *time.Time
 	LastSyncAt      *time.Time
-	UpdatedAt       time.Time
 }
 
 type NodeInventorySnapshot struct {
@@ -37,33 +35,11 @@ type NodeInventorySnapshot struct {
 	CPUMilliAllocated int
 	MemoryMiCapacity  int
 	MemoryMiAllocated int
-	UpdatedAt         time.Time
-}
-
-type PlaneNode struct {
-	PlaneID           string
-	NodeID            string
-	Name              string
-	Provider          string
-	Region            string
-	InstanceID        string
-	InstanceType      string
-	Status            string
-	Schedulable       bool
-	Elastic           bool
-	CPUMilliCapacity  int
-	CPUMilliAllocated int
-	MemoryMiCapacity  int
-	MemoryMiAllocated int
-	LastHeartbeatAt   *time.Time
-	ObservedAt        time.Time
-	UpdatedAt         time.Time
 }
 
 type PlaneDetail struct {
 	Plane
-	Status              PlaneStatus
-	LatestNodeInventory *NodeInventorySnapshot
+	Status PlaneStatus
 }
 
 func IsPlaneStatus(status string) bool {

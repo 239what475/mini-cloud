@@ -88,15 +88,14 @@ func (c *ServiceOperations) Create(ctx context.Context, input CreateServiceInput
 		},
 		Spec: input.Spec,
 		Status: model.ServiceStatus{
-			DesiredState: model.DesiredStateActive,
-			Observed:     acceptedServiceStatus(1, "service accepted by cloud-plane"),
-			Run:          model.RunStatus{Phase: model.RunPhaseDispatching, Message: "service accepted by cloud-plane; waiting for node-agent execution result"},
+			Observed: acceptedServiceStatus(1, "service accepted by cloud-plane"),
+			Run:      model.RunStatus{Phase: model.RunPhaseDispatching, Message: "service accepted by cloud-plane; waiting for node-agent execution result"},
 		},
 	}
 	if err := c.sendServiceSpecToPlane(ctx, planeID, service); err != nil {
 		return model.Service{}, err
 	}
-	c.bestEffortSyncPlane(ctx, service.Metadata.ID, planeID)
+	c.bestEffortRefreshServiceDNS(ctx, service.Metadata.ID, planeID)
 	return service, nil
 }
 
@@ -156,7 +155,7 @@ func (c *ServiceOperations) Update(ctx context.Context, input UpdateServiceInput
 	if err := c.sendServiceSpecToPlane(ctx, input.PlaneID, next); err != nil {
 		return model.Service{}, err
 	}
-	c.bestEffortSyncPlane(ctx, next.Metadata.ID, input.PlaneID)
+	c.bestEffortRefreshServiceDNS(ctx, next.Metadata.ID, input.PlaneID)
 	return next, nil
 }
 
@@ -177,7 +176,6 @@ func (c *ServiceOperations) Delete(ctx context.Context, input DeleteServiceInput
 	if err := c.deleteRemoteService(ctx, planeID, serviceID, deleteGeneration); err != nil {
 		if errors.Is(err, errPlaneObjectNotFound) {
 			c.cleanupServiceDNS(ctx, planeID, serviceID)
-			current.Status.DesiredState = model.DesiredStateDeleted
 			current.Status.Observed = model.DeletingServiceStatus(deleteGeneration, "service already absent from cloud-plane")
 			current.Status.Run = model.PendingRunStatus("service already absent from cloud-plane")
 			return current, nil
@@ -185,11 +183,10 @@ func (c *ServiceOperations) Delete(ctx context.Context, input DeleteServiceInput
 		return model.Service{}, err
 	}
 	current.Metadata.Generation = deleteGeneration
-	current.Status.DesiredState = model.DesiredStateDeleted
 	current.Status.Observed = model.DeletingServiceStatus(deleteGeneration, "service deletion requested")
 	current.Status.Run = model.PendingRunStatus("waiting for cloud-plane cleanup")
 	c.cleanupServiceDNS(ctx, planeID, serviceID)
-	c.bestEffortSyncPlane(ctx, serviceID, planeID)
+	c.bestEffortRefreshServiceDNS(ctx, serviceID, planeID)
 	return current, nil
 }
 
@@ -211,7 +208,7 @@ func serviceHost(name string, baseDomain string) string {
 	return name + "." + baseDomain
 }
 
-func (c *ServiceOperations) bestEffortSyncPlane(ctx context.Context, serviceID string, planeID string) {
+func (c *ServiceOperations) bestEffortRefreshServiceDNS(ctx context.Context, serviceID string, planeID string) {
 	if c.planeSyncer == nil {
 		return
 	}
@@ -219,8 +216,13 @@ func (c *ServiceOperations) bestEffortSyncPlane(ctx context.Context, serviceID s
 	if planeID == "" {
 		return
 	}
-	if err := c.planeSyncer.SyncPlane(ctx, planeID); err != nil {
-		c.logger.Warn("sync service plane failed", "service_id", serviceID, "plane_id", planeID, "error", err)
+	view, err := c.planeSyncer.GetPlaneSnapshotView(ctx, planeID)
+	if err != nil {
+		c.logger.Warn("refresh service DNS failed", "service_id", serviceID, "plane_id", planeID, "error", err)
+		return
+	}
+	if view.Snapshot == nil {
+		c.logger.Warn("refresh service DNS failed", "service_id", serviceID, "plane_id", planeID, "error", view.Plane.Status.Message)
 	}
 }
 
@@ -387,8 +389,7 @@ func servicesFromSnapshot(planeID string, snapshot *cloudplanev1.PlaneSnapshot) 
 }
 
 func serviceFromSnapshotItem(planeID string, item *cloudplanev1.PlaneService) model.Service {
-	updatedAt := protoTime(item.GetUpdatedAt())
-	service := model.Service{
+	return model.Service{
 		Metadata: model.ServiceMetadata{
 			ID:          item.GetServiceId(),
 			Name:        item.GetName(),
@@ -408,17 +409,11 @@ func serviceFromSnapshotItem(planeID string, item *cloudplanev1.PlaneService) mo
 			Env:           cloneEnv(item.GetEnv()),
 		},
 		Status: model.ServiceStatus{
-			DesiredState: item.GetDesiredState(),
-			Observed:     model.PendingServiceStatus(item.GetGeneration(), "waiting for service run status"),
-			Run:          model.PendingRunStatus("waiting for service run status"),
-			FrontDoor:    serviceFrontDoorFromSnapshotItem(item),
+			Observed:  model.PendingServiceStatus(item.GetGeneration(), "waiting for service run status"),
+			Run:       model.PendingRunStatus("waiting for service run status"),
+			FrontDoor: serviceFrontDoorFromSnapshotItem(item),
 		},
-		UpdatedAt: updatedAt,
 	}
-	if service.Status.DesiredState == "" {
-		service.Status.DesiredState = model.DesiredStateActive
-	}
-	return service
 }
 
 func serviceFrontDoorFromSnapshotItem(item *cloudplanev1.PlaneService) model.FrontDoorStatus {

@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/model"
@@ -28,7 +27,6 @@ func NewPlaneCatalog(configured []config.PlaneConfig) (*PlaneCatalog, error) {
 	if len(configured) == 0 {
 		return nil, fmt.Errorf("%w: planes is required", ErrInvalidInput)
 	}
-	now := time.Now().UTC()
 	catalog := &PlaneCatalog{
 		planes: make([]model.PlaneDetail, 0, len(configured)),
 		byID:   make(map[string]model.PlaneDetail, len(configured)),
@@ -42,13 +40,11 @@ func NewPlaneCatalog(configured []config.PlaneConfig) (*PlaneCatalog, error) {
 				Provider:     strings.ToLower(strings.TrimSpace(item.Provider)),
 				Region:       strings.TrimSpace(item.Region),
 				GRPCEndpoint: strings.TrimSpace(item.GRPCEndpoint),
-				CreatedAt:    now,
 			},
 			Status: model.PlaneStatus{
-				PlaneID:   strings.TrimSpace(item.ID),
-				Status:    model.StatusSyncing,
-				Message:   "configured; waiting for cloud-plane snapshot",
-				UpdatedAt: now,
+				PlaneID: strings.TrimSpace(item.ID),
+				Status:  model.StatusSyncing,
+				Message: "configured; waiting for cloud-plane snapshot",
 			},
 		}
 		if plane.DisplayName == "" {

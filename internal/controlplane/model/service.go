@@ -14,9 +14,6 @@ const (
 )
 
 const (
-	DesiredStateActive  = "active"
-	DesiredStateDeleted = "deleted"
-
 	PhasePending     = "pending"
 	PhaseProgressing = "progressing"
 	PhaseReady       = "ready"
@@ -25,11 +22,9 @@ const (
 )
 
 type Service struct {
-	Metadata  ServiceMetadata
-	Spec      ServiceSpec
-	Status    ServiceStatus
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Metadata ServiceMetadata
+	Spec     ServiceSpec
+	Status   ServiceStatus
 }
 
 type ServiceMetadata struct {
@@ -64,10 +59,9 @@ type WorkloadSpec struct {
 }
 
 type ServiceStatus struct {
-	DesiredState string
-	Observed     ServiceObservedStatus
-	Run          RunStatus
-	FrontDoor    FrontDoorStatus
+	Observed  ServiceObservedStatus
+	Run       RunStatus
+	FrontDoor FrontDoorStatus
 }
 
 type ServiceObservedStatus struct {

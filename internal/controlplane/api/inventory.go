@@ -162,7 +162,6 @@ func nodeInventoryFromSnapshot(planeID string, snapshot *cloudplanev1.PlaneSnaps
 	out := model.NodeInventorySnapshot{
 		PlaneID:    planeID,
 		ObservedAt: time.Now().UTC(),
-		UpdatedAt:  time.Now().UTC(),
 	}
 	if observedAt := nodeInventory.GetObservedAt(); observedAt != nil {
 		out.ObservedAt = observedAt.AsTime().UTC()

@@ -118,7 +118,7 @@ func TestDeleteDispatchesServiceDeleteToCloudPlane(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Delete returned error: %v", err)
 	}
-	if deleting.Status.DesiredState != model.DesiredStateDeleted || deleting.Status.Observed.Phase != model.PhaseDeleting {
+	if deleting.Status.Observed.Phase != model.PhaseDeleting {
 		t.Fatalf("service status after delete = %+v, want deleting", deleting.Status)
 	}
 	deleteRequests := planeServer.deleteRequests()
@@ -190,7 +190,7 @@ func TestListUsesLiveCloudPlaneSnapshots(t *testing.T) {
 				DisplayName:   service.Metadata.DisplayName,
 				Host:          service.Metadata.Host,
 				Generation:    service.Metadata.Generation,
-				DesiredState:  model.DesiredStateActive,
+				DesiredState:  "active",
 				InstanceClass: model.InstanceClassSmall,
 				Exposure:      model.ExposurePublic,
 				Image:         "nginx:1.27-alpine",
@@ -334,7 +334,7 @@ func snapshotFromUpsert(req *cloudplanev1.UpsertServiceRequest, includeFrontDoor
 		DisplayName:   req.GetDisplayName(),
 		Host:          req.GetHost(),
 		Generation:    req.GetServiceGeneration(),
-		DesiredState:  model.DesiredStateActive,
+		DesiredState:  "active",
 		InstanceClass: req.GetInstanceClass(),
 		Exposure:      req.GetExposure(),
 		Image:         req.GetImage(),

@@ -56,41 +56,6 @@ func NewPlaneSyncer(logger *slog.Logger, planes *PlaneCatalog, southboundToken s
 	}
 }
 
-func (s *PlaneSyncer) SyncPlane(ctx context.Context, planeID string) error {
-	view, err := s.GetPlaneSnapshotView(ctx, planeID)
-	if err != nil {
-		return err
-	}
-	if view.Snapshot == nil {
-		return fmt.Errorf("%s", view.Plane.Status.Message)
-	}
-	return nil
-}
-
-func (s *PlaneSyncer) SyncRegisteredPlanes(ctx context.Context, perPlaneTimeout time.Duration) error {
-	planes, err := s.planes.ListPlanes(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, plane := range planes {
-		planeCtx := ctx
-		cancel := func() {}
-		if perPlaneTimeout > 0 {
-			planeCtx, cancel = context.WithTimeout(ctx, perPlaneTimeout)
-		}
-		err := s.SyncPlane(planeCtx, plane.ID)
-		cancel()
-		if err != nil {
-			s.logger.Warn("plane sync failed", "plane_id", plane.ID, "error", err)
-		}
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-	}
-	return nil
-}
-
 func (s *PlaneSyncer) CheckDNS(ctx context.Context) error {
 	if s.dns == nil {
 		return nil
@@ -154,7 +119,6 @@ func (s *PlaneSyncer) offlinePlane(plane model.PlaneDetail, err error) model.Pla
 		Status:     model.StatusOffline,
 		Message:    fmt.Sprintf("load plane snapshot failed: %v", err),
 		LastSyncAt: &now,
-		UpdatedAt:  now,
 	}
 	return plane
 }
@@ -169,7 +133,6 @@ func (s *PlaneSyncer) syncedPlane(plane model.PlaneDetail, snapshot *cloudplanev
 		Message:         message,
 		LastHeartbeatAt: &checkedAt,
 		LastSyncAt:      &syncedAt,
-		UpdatedAt:       syncedAt,
 	}
 	return plane
 }
