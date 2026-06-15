@@ -76,6 +76,7 @@ test("creates, reads, updates, and deletes services through the HTTP API contrac
 
   await page.goto("/");
   await page.getByLabel("Admin token").fill(adminToken);
+  await page.getByRole("button", { name: "登录" }).click();
 
   await expect(
     page.getByRole("article").filter({ hasText: "Test Plane" }),
@@ -177,6 +178,10 @@ async function installControlPlaneMocks(
         time: "2026-06-13T08:00:00Z",
       },
     });
+  });
+
+  await page.route("**/api/v1/login", async (route) => {
+    await route.fulfill({ status: 200, json: { ok: true } });
   });
 
   await page.route("**/api/v1/control/planes", async (route) => {

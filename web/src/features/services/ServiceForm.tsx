@@ -122,7 +122,7 @@ export function ServiceWorkloadFields({
           onChange={(event) => onChange({ defaultPort: event.target.value })}
         />
       </label>
-      <label>
+      <label className="form-field--half">
         <span>健康检查路径</span>
         <input
           value={form.readinessPath}
@@ -130,7 +130,7 @@ export function ServiceWorkloadFields({
           placeholder="/healthz"
         />
       </label>
-      <label>
+      <label className="form-field--half">
         <span>Command</span>
         <textarea
           rows={3}
@@ -138,7 +138,7 @@ export function ServiceWorkloadFields({
           onChange={(event) => onChange({ commandText: event.target.value })}
         />
       </label>
-      <label>
+      <label className="form-field--half">
         <span>Args</span>
         <textarea
           rows={3}

@@ -20,12 +20,15 @@ export function Shell({
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <h1 className="brand">mini-cloud</h1>
+        <div className="brand-block">
+          <h1 className="brand">mini-cloud</h1>
+          <p>Control Plane</p>
+        </div>
         <nav className="nav">
           <a href="#overview">概览</a>
-          <a href="#planes">cloud planes</a>
-          <a href="#services">services</a>
-          <a href="#detail">detail</a>
+          <a href="#planes">运行面</a>
+          <a href="#services">服务</a>
+          <a href="#detail">详情</a>
         </nav>
         <div className="auth-panel">
           <label>
@@ -54,13 +57,22 @@ export function Shell({
       </aside>
 
       <main className="content">
-        <section className="hero">
-          <p className="eyebrow">control-plane</p>
-          <h1>CaaS 运维门户</h1>
-          <p>
-            通过 control-plane 创建 service、选择 cloud-plane、维护全局入口；
-            运行态由目标 cloud-plane 自治闭环。
-          </p>
+        <section className="page-header">
+          <div>
+            <p className="eyebrow">control-plane</p>
+            <h1>CaaS 运维门户</h1>
+            <p>
+              创建 service、选择 cloud-plane、维护全局入口；运行态由目标
+              cloud-plane 自治闭环。
+            </p>
+          </div>
+          <div
+            className={`session-badge ${
+              hasSession ? "session-badge--active" : ""
+            }`}
+          >
+            {hasSession ? "已登录" : "未登录"}
+          </div>
         </section>
         {children}
       </main>
