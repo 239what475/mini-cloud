@@ -45,6 +45,12 @@ type DeleteServiceInput struct {
 	ServiceID string
 }
 
+func IsServiceInputError(err error) bool {
+	return errors.Is(err, errServiceSpec) ||
+		errors.Is(err, errPlaneIDRequired) ||
+		errors.Is(err, errServiceIDMissing)
+}
+
 type ServiceOperations struct {
 	logger            *slog.Logger
 	planes            *PlaneCatalog

@@ -25,6 +25,18 @@ type serviceSpec struct {
 	ReadinessPath string            `json:"readinessPath"`
 	Env           map[string]string `json:"env"`
 }
+
+type serviceWorkloadSpec struct {
+	InstanceClass string            `json:"instanceClass"`
+	Exposure      string            `json:"exposure"`
+	Image         string            `json:"image"`
+	Command       []string          `json:"command"`
+	Args          []string          `json:"args"`
+	DefaultPort   int               `json:"defaultPort"`
+	ReadinessPath string            `json:"readinessPath"`
+	Env           map[string]string `json:"env"`
+}
+
 type serviceRunStatus struct {
 	Phase   string `json:"phase"`
 	Message string `json:"message,omitempty"`
@@ -64,37 +76,15 @@ type serviceResource struct {
 	Status   serviceStatus   `json:"status"`
 }
 
-type serviceSpecInput struct {
-	PlaneID       string            `json:"planeID"`
-	InstanceClass string            `json:"instanceClass"`
-	Exposure      string            `json:"exposure"`
-	Image         string            `json:"image"`
-	Command       []string          `json:"command"`
-	Args          []string          `json:"args"`
-	DefaultPort   int               `json:"defaultPort"`
-	ReadinessPath string            `json:"readinessPath"`
-	Env           map[string]string `json:"env"`
-}
-
-type serviceWorkloadSpecInput struct {
-	InstanceClass string            `json:"instanceClass"`
-	Exposure      string            `json:"exposure"`
-	Image         string            `json:"image"`
-	Command       []string          `json:"command"`
-	Args          []string          `json:"args"`
-	DefaultPort   int               `json:"defaultPort"`
-	ReadinessPath string            `json:"readinessPath"`
-	Env           map[string]string `json:"env"`
-}
 type serviceCreateRequest struct {
-	Name        string            `json:"name"`
-	DisplayName string            `json:"displayName"`
-	Spec        *serviceSpecInput `json:"spec"`
+	Name        string       `json:"name"`
+	DisplayName string       `json:"displayName"`
+	Spec        *serviceSpec `json:"spec"`
 }
 
 type serviceUpdateRequest struct {
-	DisplayName string                    `json:"displayName"`
-	Spec        *serviceWorkloadSpecInput `json:"spec"`
+	DisplayName string               `json:"displayName"`
+	Spec        *serviceWorkloadSpec `json:"spec"`
 }
 
 var errServiceSpecRequired = errors.New("spec is required")
@@ -140,7 +130,7 @@ func (h serviceHandler) createService(c *gin.Context) {
 	service, err := h.services.Create(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case isServiceRequestError(err):
+		case coordination.IsServiceInputError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, coordination.ErrPlaneNotFound):
@@ -207,7 +197,7 @@ func (h serviceHandler) updateService(c *gin.Context) {
 	service, err := h.services.Update(c.Request.Context(), input)
 	if err != nil {
 		switch {
-		case isServiceRequestError(err):
+		case coordination.IsServiceInputError(err):
 			c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 			return
 		case errors.Is(err, coordination.ErrServiceNotFound):
@@ -263,17 +253,7 @@ func buildServiceResource(service model.Service) serviceResource {
 			Host:        service.Metadata.Host,
 			Generation:  service.Metadata.Generation,
 		},
-		Spec: serviceSpec{
-			PlaneID:       service.Spec.PlaneID,
-			InstanceClass: service.Spec.InstanceClass,
-			Exposure:      service.Spec.Exposure,
-			Image:         service.Spec.Image,
-			Command:       nonNilStringSlice(service.Spec.Command),
-			Args:          nonNilStringSlice(service.Spec.Args),
-			DefaultPort:   service.Spec.DefaultPort,
-			ReadinessPath: service.Spec.ReadinessPath,
-			Env:           nonNilStringMap(service.Spec.Env),
-		},
+		Spec: serviceSpecFromModel(service.Spec),
 		Status: serviceStatus{
 			Phase:              service.Status.Observed.Phase,
 			Message:            service.Status.Observed.Message,
@@ -283,20 +263,6 @@ func buildServiceResource(service model.Service) serviceResource {
 			FrontDoor:          buildServiceFrontDoor(service.Status.FrontDoor),
 		},
 	}
-}
-
-func nonNilStringSlice(input []string) []string {
-	if input == nil {
-		return []string{}
-	}
-	return slices.Clone(input)
-}
-
-func nonNilStringMap(input map[string]string) map[string]string {
-	if input == nil {
-		return map[string]string{}
-	}
-	return input
 }
 
 func buildServiceRun(input model.RunStatus) serviceRunStatus {
@@ -314,6 +280,30 @@ func buildServiceFrontDoor(input model.FrontDoorStatus) serviceFrontDoorStatus {
 			RecordType: input.Verification.RecordType,
 			Value:      input.Verification.Value,
 		}
+	}
+	return out
+}
+
+func serviceSpecFromModel(spec model.ServiceSpec) serviceSpec {
+	out := serviceSpec{
+		PlaneID:       spec.PlaneID,
+		InstanceClass: spec.InstanceClass,
+		Exposure:      spec.Exposure,
+		Image:         spec.Image,
+		Command:       slices.Clone(spec.Command),
+		Args:          slices.Clone(spec.Args),
+		DefaultPort:   spec.DefaultPort,
+		ReadinessPath: spec.ReadinessPath,
+		Env:           spec.Env,
+	}
+	if out.Command == nil {
+		out.Command = []string{}
+	}
+	if out.Args == nil {
+		out.Args = []string{}
+	}
+	if out.Env == nil {
+		out.Env = map[string]string{}
 	}
 	return out
 }
@@ -341,17 +331,7 @@ func (r serviceUpdateRequest) toUpdateInput(planeID string, serviceID string) (c
 	}, nil
 }
 
-func isServiceRequestError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, "invalid service spec") ||
-		strings.Contains(message, "planeID is required") ||
-		strings.Contains(message, "serviceID is required")
-}
-
-func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
+func (s serviceSpec) toServiceSpec() model.ServiceSpec {
 	return model.ServiceSpec{
 		PlaneID:       strings.TrimSpace(s.PlaneID),
 		InstanceClass: strings.TrimSpace(s.InstanceClass),
@@ -365,7 +345,7 @@ func (s serviceSpecInput) toServiceSpec() model.ServiceSpec {
 	}
 }
 
-func (s serviceWorkloadSpecInput) toWorkloadSpec() model.WorkloadSpec {
+func (s serviceWorkloadSpec) toWorkloadSpec() model.WorkloadSpec {
 	return model.WorkloadSpec{
 		InstanceClass: strings.TrimSpace(s.InstanceClass),
 		Exposure:      strings.TrimSpace(s.Exposure),

@@ -316,27 +316,15 @@ type serviceSpecJSON struct {
 }
 
 func serviceSpecRecord(spec cloudmodel.ServiceSpec) (serviceSpecJSON, error) {
-	command := spec.Command
-	if command == nil {
-		command = []string{}
-	}
-	commandJSON, err := json.Marshal(command)
+	commandJSON, err := marshalStringSlice(spec.Command)
 	if err != nil {
 		return serviceSpecJSON{}, fmt.Errorf("marshal service command: %w", err)
 	}
-	args := spec.Args
-	if args == nil {
-		args = []string{}
-	}
-	argsJSON, err := json.Marshal(args)
+	argsJSON, err := marshalStringSlice(spec.Args)
 	if err != nil {
 		return serviceSpecJSON{}, fmt.Errorf("marshal service args: %w", err)
 	}
-	env := spec.Env
-	if env == nil {
-		env = map[string]string{}
-	}
-	envJSON, err := json.Marshal(env)
+	envJSON, err := marshalStringMap(spec.Env)
 	if err != nil {
 		return serviceSpecJSON{}, fmt.Errorf("marshal service env: %w", err)
 	}
