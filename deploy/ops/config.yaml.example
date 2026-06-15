@@ -41,7 +41,6 @@ binaries:
   controlPlane: dist/release/linux-amd64/control-plane
   cloudPlane: dist/release/linux-amd64/cloud-plane
   nodeAgent: dist/release/linux-amd64/node-agent
-  webDist: web/dist
 
 tokens:
   controlPlaneAdmin: ""
@@ -50,6 +49,3 @@ tokens:
 
 provider:
   tencentCredentialFile: ~/.tccli/default.credential
-
-observability:
-  workloadOTLPEndpoint: ""

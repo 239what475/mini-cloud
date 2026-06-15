@@ -47,7 +47,6 @@ module "network_base" {
   subnet_name                = var.subnet_name
   subnet_cidr_block          = var.subnet_cidr_block
   security_group_name_prefix = var.security_group_name_prefix
-  admin_cidrs                = var.admin_cidrs
   control_plane_cidrs        = var.control_plane_cidrs
   ingress_cidrs              = var.ingress_cidrs
   cloud_plane_grpc_port      = var.cloud_plane_grpc_port

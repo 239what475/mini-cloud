@@ -56,11 +56,6 @@ variable "security_group_name_prefix" {
   default = ""
 }
 
-variable "admin_cidrs" {
-  type    = list(string)
-  default = []
-}
-
 variable "control_plane_cidrs" {
   type = list(string)
 }
