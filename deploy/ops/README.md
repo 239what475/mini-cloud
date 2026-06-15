@@ -153,26 +153,14 @@ go run ./cmd/minictl update --config deploy/ops/config.yaml
 `update` 是日常发布路径，不执行 Terraform apply，也不重装入口机基础服务：
 
 - 构建 control-plane 容器镜像并更新 SCF。
-- 上传新的 cloud-plane 二进制和配置。
-- 上传新的 node-agent artifact，供后续新 worker 下载。
-- 重启 cloud-plane systemd 服务。
-
-`update` 不会重启 Docker、Caddy、Tinyproxy，也不会碰 Postgres 数据。已有 worker node 上正在运行的 node-agent 不会被热更新；新建 worker 会使用新的 node-agent artifact。
-
-也可以只更新其中一侧：
-
-```bash
-go run ./cmd/minictl update-control-plane --config deploy/ops/config.yaml
-go run ./cmd/minictl update-cloud-plane --config deploy/ops/config.yaml
-```
-
-`update-control-plane` 只重新打包 control-plane 镜像并更新 SCF，适合只修改 Web UI 或 control-plane 代码。`update-cloud-plane` 只上传 cloud-plane/node-agent artifact 并重启 cloud-plane systemd，适合修改 cloud-plane 或 node-agent。
+- 不修改 cloud-plane 和 node-agent。
+- 不重启 Docker、Caddy、Tinyproxy，也不会碰 Postgres 数据。
 
 如果只修改了前端页面，通常执行：
 
 ```bash
 go run ./cmd/minictl build --config deploy/ops/config.yaml
-go run ./cmd/minictl update-control-plane --config deploy/ops/config.yaml
+go run ./cmd/minictl update --config deploy/ops/config.yaml
 ```
 
 这会重新构建 Web UI/release 二进制、重新打包 control-plane 镜像并更新 SCF，不会重启 cloud-plane。

@@ -102,43 +102,11 @@ func (r *Runner) install(ctx context.Context) error {
 }
 
 func (r *Runner) update(ctx context.Context) error {
-	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateArtifacts)
-	if err != nil {
-		return err
-	}
-	if err := r.updateControlPlane(ctx, plans, certs.ControlPlane); err != nil {
-		return err
-	}
-	return r.updateCloudPlanes(ctx, plans, certs)
-}
-
-func (r *Runner) updateControlPlaneOnly(ctx context.Context) error {
 	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateControlPlaneArtifacts)
 	if err != nil {
 		return err
 	}
 	return r.updateControlPlane(ctx, plans, certs.ControlPlane)
-}
-
-func (r *Runner) updateCloudPlanesOnly(ctx context.Context) error {
-	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateCloudPlaneArtifacts)
-	if err != nil {
-		return err
-	}
-	return r.updateCloudPlanes(ctx, plans, certs)
-}
-
-func (r *Runner) updateCloudPlanes(ctx context.Context, plans []cloudPlaneInstallPlan, certs certificateBundle) error {
-	for _, plan := range plans {
-		cloudTLS, ok := certs.CloudPlanes[plan.Plane.Name]
-		if !ok {
-			return fmt.Errorf("missing cloud-plane certificate for %s", plan.Plane.Name)
-		}
-		if err := r.updateCloudPlane(ctx, plan, cloudTLS); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (r *Runner) prepareRelease(ctx context.Context, validateArtifacts func() error) ([]cloudPlaneInstallPlan, certificateBundle, error) {
@@ -218,14 +186,6 @@ func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) 
 
 func (r *Runner) installCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
 	install, err := r.renderCloudPlaneFiles(plan.Plane, plan.Output, plan.PrivateIP, tlsData, "remote-cloud-plane-install.sh.tmpl")
-	if err != nil {
-		return err
-	}
-	return r.runCloudPlaneScript(ctx, plan, install)
-}
-
-func (r *Runner) updateCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
-	install, err := r.renderCloudPlaneFiles(plan.Plane, plan.Output, plan.PrivateIP, tlsData, "remote-cloud-plane-update.sh.tmpl")
 	if err != nil {
 		return err
 	}

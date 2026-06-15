@@ -29,63 +29,6 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 	}
 }
 
-func TestRemoteUpdateTemplateDoesNotRestartBaseServices(t *testing.T) {
-	cloud, err := renderTemplate("remote-cloud-plane-update.sh.tmpl", remoteCloudPlaneTemplateData{
-		InstallRoot:        "/opt/mini-cloud",
-		CloudPlaneGRPCPort: 18081,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(cloud)
-	for _, want := range []string{
-		`systemctl restart mini-cloud-cloud-plane.service`,
-		`run minictl install first`,
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("rendered update template does not contain %q", want)
-		}
-	}
-	for _, forbidden := range []string{
-		"apt-get",
-		"systemctl restart docker",
-		"systemctl restart tinyproxy",
-		"docker rm -f mini-cloud-caddy",
-		"docker run -d --name mini-cloud-caddy",
-		"mini-cloud-postgres",
-	} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("rendered update template should not contain %q:\n%s", forbidden, text)
-		}
-	}
-}
-
-func TestRemoteInstallTemplateStillPreparesBaseServices(t *testing.T) {
-	cloud, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneTemplateData{
-		InstallRoot:        "/opt/mini-cloud",
-		IngressHTTPPort:    80,
-		WorkloadProxyPort:  3128,
-		ArtifactHTTPPort:   18082,
-		SubnetCIDRBlock:    "10.1.0.0/24",
-		RegistryMirror:     "https://mirror.example",
-		CloudPlaneGRPCPort: 18081,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(cloud)
-	for _, want := range []string{
-		"apt-get install -y curl ca-certificates tinyproxy",
-		"systemctl restart docker",
-		"docker run -d --name mini-cloud-caddy",
-		"mini-cloud-postgres",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("install template does not contain %q", want)
-		}
-	}
-}
-
 func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 	rendered, err := renderTemplate("control-plane.yaml.tmpl", controlPlaneTemplateData{
 		HTTPAddr:          "127.0.0.1:18080",

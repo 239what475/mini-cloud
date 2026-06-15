@@ -56,10 +56,6 @@ func run(ctx context.Context, args []string) error {
 		return runner.Install(ctx)
 	case "update":
 		return runner.Update(ctx)
-	case "update-control-plane":
-		return runner.UpdateControlPlane(ctx)
-	case "update-cloud-plane":
-		return runner.UpdateCloudPlane(ctx)
 	case "deploy":
 		return runner.Deploy(ctx)
 	case "e2e":
@@ -80,8 +76,6 @@ Usage:
   minictl bootstrap            [--config deploy/ops/config.yaml]
   minictl install              [--config deploy/ops/config.yaml]
   minictl update               [--config deploy/ops/config.yaml]
-  minictl update-control-plane [--config deploy/ops/config.yaml]
-  minictl update-cloud-plane   [--config deploy/ops/config.yaml]
   minictl deploy               [--config deploy/ops/config.yaml]
   minictl e2e                  [--config deploy/ops/config.yaml]
   minictl destroy              [--config deploy/ops/config.yaml]
