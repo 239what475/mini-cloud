@@ -22,96 +22,6 @@ locals {
       description = "node host ports from platform private cidr"
     }
   ]
-
-  node_egress_to_platform_cidr_rules = flatten([
-    for cidr in var.platform_private_cidrs : [
-      {
-        action       = "ACCEPT"
-        cidr_block   = cidr
-        protocol     = "TCP"
-        port         = tostring(var.cloud_plane_grpc_port)
-        policy_index = 20 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "node to cloud-plane grpc on platform private cidr"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = cidr
-        protocol     = "TCP"
-        port         = tostring(var.egress_proxy_port)
-        policy_index = 21 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "node to egress proxy on platform private cidr"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = cidr
-        protocol     = "TCP"
-        port         = tostring(var.artifact_http_port)
-        policy_index = 22 + index(var.platform_private_cidrs, cidr) * 3
-        description  = "node to node-agent artifact server on platform private cidr"
-      }
-    ]
-  ])
-
-  node_egress_rules = concat(
-    local.node_egress_to_platform_cidr_rules,
-    [
-      {
-        action       = "ACCEPT"
-        cidr_block   = "183.60.82.98/32"
-        protocol     = "UDP"
-        port         = "53"
-        policy_index = 8
-        description  = "node to tencent vpc dns"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = "183.60.82.98/32"
-        protocol     = "TCP"
-        port         = "53"
-        policy_index = 9
-        description  = "node to tencent vpc dns"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = "183.60.83.19/32"
-        protocol     = "UDP"
-        port         = "53"
-        policy_index = 10
-        description  = "node to tencent vpc dns"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = "183.60.83.19/32"
-        protocol     = "TCP"
-        port         = "53"
-        policy_index = 11
-        description  = "node to tencent vpc dns"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = "169.254.0.0/16"
-        protocol     = "TCP"
-        port         = "80"
-        policy_index = 12
-        description  = "node to cloud metadata and internal mirrors"
-      },
-      {
-        action       = "ACCEPT"
-        cidr_block   = "169.254.0.0/16"
-        protocol     = "TCP"
-        port         = "443"
-        policy_index = 13
-        description  = "node to internal mirrors and object storage"
-      },
-      {
-        action       = "DROP"
-        cidr_block   = "0.0.0.0/0"
-        protocol     = "ALL"
-        port         = "ALL"
-        policy_index = 100
-        description  = "deny node direct internet egress outside platform proxy"
-      }
-  ])
 }
 
 check "node_host_port_range" {
@@ -162,17 +72,12 @@ resource "tencentcloud_security_group_rule_set" "node" {
     }
   }
 
-  dynamic "egress" {
-    for_each = local.node_egress_rules
-
-    content {
-      action             = egress.value.action
-      cidr_block         = try(egress.value.cidr_block, null)
-      source_security_id = try(egress.value.source_security_id, null)
-      protocol           = egress.value.protocol
-      port               = egress.value.port
-      description        = egress.value.description
-    }
+  egress {
+    action      = "ACCEPT"
+    cidr_block  = "0.0.0.0/0"
+    protocol    = "ALL"
+    port        = "ALL"
+    description = "node default egress"
   }
 }
 
