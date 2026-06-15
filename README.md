@@ -20,7 +20,7 @@
 - **自动 worker 生命周期**：cloud-plane 根据 service 状态创建和回收 worker node。
 - **真实公网入口**：service 流量经过 DNSPod CNAME、云厂商 CDN、cloud-plane Caddy 和 worker host port。
 - **无状态 control-plane**：control-plane 负责 Web/API、plane registry、DNS 记录和 snapshot 聚合；cloud-plane 持有 runtime truth。
-- **真实 E2E**：Playwright 通过 Web UI 操作真实 Tencent/Aliyun 资源，验证后自动回收。
+- **真实端到端验证**：Playwright 通过 Web 控制台操作真实 Tencent/Aliyun 资源，验证后自动回收。
 
 ## 架构
 
@@ -30,7 +30,7 @@
                                  v
                     +--------------------------+
                     | control-plane on SCF     |
-                    | - Web UI / API           |
+                    | - Web 控制台 / API       |
                     | - plane registry         |
                     | - DNSPod CNAME owner     |
                     | - stateless snapshots    |
@@ -86,7 +86,7 @@ user
 - service name 自动生成域名。
 - Caddy + provider CDN + DNSPod 入口链路。
 - 基础 service、node、event、metric 可见性。
-- 真实云 deploy、update、e2e 和 destroy。
+- 真实云部署、更新、端到端验证和回收。
 
 当前不做：
 
@@ -102,11 +102,11 @@ user
 ```bash
 make check      # 本地质量门禁
 make build      # 构建本机二进制
-make release    # 构建 linux/amd64 二进制和 Web UI
+make release    # 构建 linux/amd64 二进制和 Web 控制台
 make image      # 构建 control-plane 容器镜像
 make deploy     # 部署真实云环境
 make update     # 只更新 serverless control-plane
-make e2e        # 运行真实 Web UI E2E 并回收
+make e2e        # 运行真实 Web 控制台端到端验证并回收
 make destroy    # 回收真实云环境
 ```
 
@@ -133,10 +133,10 @@ make e2e
 
 `make e2e` 会完成一次完整真实云闭环：
 
-1. 构建 Go 二进制和 Web UI。
+1. 构建 Go 二进制和 Web 控制台。
 2. 部署 serverless control-plane。
 3. 并行 bootstrap/install Tencent 和 Aliyun 两个 cloud-plane。
-4. 通过真实 Web UI 登录并创建两个 `nginx:alpine` service。
+4. 通过真实 Web 控制台登录并创建两个 `nginx:alpine` service。
 5. 等待 service ready、CDN/DNS 入口可访问。
 6. 删除 service。
 7. 更新 control-plane 并做 Web smoke。
@@ -148,13 +148,13 @@ make e2e
 make deploy
 ```
 
-部署完成后，终端会输出 control-plane URL。打开这个 URL，使用 `deploy/ops/config.yaml` 中的 `tokens.controlPlaneAdmin` 登录，然后在 Web UI 中创建 service。service 的公网域名格式是：
+部署完成后，终端会输出 control-plane URL。打开这个 URL，使用 `deploy/ops/config.yaml` 中的 `tokens.controlPlaneAdmin` 登录，然后在 Web 控制台中创建 service。service 的公网域名格式是：
 
 ```text
 <service-name>.<install.ingressBaseDomain>
 ```
 
-只更新 Web UI 或 control-plane 逻辑时使用：
+只更新 Web 控制台或 control-plane 逻辑时使用：
 
 ```bash
 make update
@@ -174,7 +174,7 @@ internal/
   controlplane/    Web/API、配置、模型和 cloud-plane client
   cloudplane/      gRPC API、runtime controller、provider driver、store、ingress
   nodeagent/       worker 注册、heartbeat、workload 执行
-  ops/             真实云 deploy/update/e2e/destroy 编排
+  ops/             真实云部署、更新、端到端验证和回收编排
   transport/       TLS、bearer token、request ID 公共传输层工具
 proto/             gRPC 协议定义
 web/               React 控制台
@@ -182,7 +182,7 @@ deploy/
   container/       control-plane 容器构建文件
   terraform/       真实云 bootstrap 资源
   ops/             本地 ops 配置示例和状态目录
-doc/               架构、运维和 E2E 文档
+doc/               架构、运维和端到端验证文档
 ```
 
 ## 文档

@@ -7,7 +7,7 @@
 部署架构：
 
 - control-plane 打包成容器并部署到腾讯云 SCF HTTP 函数。
-- control-plane Web UI、二进制和配置快照都内置在镜像中。
+- control-plane Web 控制台、二进制和配置快照都内置在镜像中。
 - 每个 cloud-plane 对应一个 `planes[]` 配置和一个 Terraform workspace。
 - 每个 cloud-plane 使用独立入口机，入口机不运行 workload。
 - service 必须显式指定 `planeID`。
@@ -38,7 +38,7 @@ cp deploy/ops/config.yaml.example deploy/ops/config.yaml
 
 `deploy/ops/config.yaml` 不提交。这里保存 token、SCF 配置、TCR 镜像地址、入口域名、二进制路径、Web dist 路径、cloud-plane 列表和腾讯云凭据文件路径。
 
-`deploy/ops/state/` 也不提交。这里保存本地部署状态，例如 control-plane 和 cloud-plane 之间的私有 TLS CA/证书。`deploy` 和 `update` 会复用已有证书，不会因为只更新 Web UI 就隐式轮换 TLS 信任链。
+`deploy/ops/state/` 也不提交。这里保存本地部署状态，例如 control-plane 和 cloud-plane 之间的私有 TLS CA/证书。`deploy` 和 `update` 会复用已有证书，不会因为只更新 Web 控制台就隐式轮换 TLS 信任链。
 
 每个 plane 单独准备 Terraform var file：
 
@@ -69,7 +69,7 @@ cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/ali
 
 阿里云 cloud-plane 使用入口机实例角色访问阿里云 API。
 
-## Control-plane 镜像
+## 控制面镜像
 
 control-plane 以腾讯云 SCF WebServer 容器镜像部署。镜像是一个部署快照，包含：
 
@@ -116,7 +116,7 @@ Terraform 不负责：
 
 这些运行态资源由 cloud-plane/control-plane 在 service 生命周期内管理。`destroy` 会额外做实验兜底清理，确保真实云测试后不留资源。
 
-## Deploy
+## 部署
 
 ```bash
 make deploy
@@ -125,7 +125,7 @@ make deploy
 `deploy` 是组合命令，会先检查本机工具、ops 配置、Terraform var file、云凭据文件和 SSH 连通性，然后按顺序执行 `release`、`bootstrap`、`install`。
 `bootstrap` 和 `install` 是 `deploy` 内部阶段，不作为独立用户命令暴露。
 
-## Release
+## 本地构建
 
 ```bash
 make release
@@ -133,7 +133,7 @@ make release
 
 `release` 只做本地构建，不修改云资源：
 
-- 构建 release 二进制和 Web UI。
+- 构建 release 二进制和 Web 控制台。
 
 内部 bootstrap 阶段只准备云基础设施：
 
@@ -150,7 +150,7 @@ make release
 
 入口机不运行 `node-agent`，也不承接 workload。动态创建出来的 worker node 会从对应 cloud-plane 入口机的内网 artifact server 下载并启动 `node-agent`。
 
-## Update
+## 更新
 
 ```bash
 make update
@@ -169,7 +169,7 @@ make release
 make update
 ```
 
-这会重新构建 Web UI/release 二进制、重新打包 control-plane 镜像并更新 SCF，不会重启 cloud-plane。
+这会重新构建 Web 控制台和 release 二进制、重新打包 control-plane 镜像并更新 SCF，不会重启 cloud-plane。
 
 ## 网络
 
@@ -183,13 +183,13 @@ make update
 
 worker node 不分配公网 IP。Tinyproxy 是 workload 的受控公网出口，不是 control-plane/cloud-plane/node-agent 控制链路的依赖。
 
-## E2E
+## 端到端验证
 
 ```bash
 make e2e
 ```
 
-`e2e` 会在真实云环境中运行 Web UI 流程：
+`e2e` 会在真实云环境中运行 Web 控制台流程：
 
 - 打开 control-plane Web。
 - 登录。
@@ -199,10 +199,10 @@ make e2e
 - 删除 service。
 - 验证 runtime node、CDN 和 DNS 记录被清理。
 - 执行一次 control-plane `update`。
-- 再运行一轮 Web UI/API smoke，验证更新后的 control-plane 仍能登录、读取 plane 和 services。
+- 再运行一轮 Web 控制台/API smoke，验证更新后的 control-plane 仍能登录、读取 plane 和 services。
 - 最后执行 `destroy` 回收实验环境。
 
-## Destroy
+## 回收
 
 ```bash
 make destroy
@@ -223,6 +223,6 @@ make destroy
 
 - `deploy/ops/config.yaml`、`*.tfvars`、token、云账号密钥不能提交。
 - 腾讯云 Lighthouse 的 CCN attachment 会尝试自动同意；如果权限或云侧状态异常，可能需要到控制台确认。
-- DNS/CDN 生效有延迟，e2e 会等待，但控制台显示可能继续延迟。
+- DNS/CDN 生效有延迟，端到端验证会等待，但控制台显示可能继续延迟。
 - 如果 `deploy` 中断，先运行 `destroy` 做兜底回收，再重新执行 `deploy`。
 - 如果只想做静态检查，用 `check`，不要直接运行 `deploy`。

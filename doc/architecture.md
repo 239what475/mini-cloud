@@ -1,24 +1,24 @@
-# mini-cloud design notes
+# mini-cloud 架构说明
 
 `mini-cloud` 的设计目标是做一个专注运维体验的 CaaS 原型，而不是做一个小型 Kubernetes。这份文档记录当前的核心架构取舍和设计决策，方便理解项目边界。
 
-## Architecture At A Glance
+## 架构概览
 
 `mini-cloud` 由一个无状态 control-plane、多个自治 cloud-plane 和按需创建的 worker node 组成。control-plane 只负责门户、请求下发、DNS 和全局视图；cloud-plane 才是运行态真相来源。
 
 ```text
-operator / browser
+运维人员 / 浏览器
     |
     v
 +-----------------------------+
 | control-plane               |
-| - Web UI / HTTP API         |
-| - static plane registry     |
-| - DNSPod CNAME management   |
-| - cloud-plane snapshot view |
+| - Web 控制台 / HTTP API     |
+| - 静态 plane 注册表         |
+| - DNSPod CNAME 管理         |
+| - cloud-plane snapshot 视图 |
 +--------------+--------------+
                |
-               | gRPC + private CA TLS
+               | gRPC + 私有 CA TLS
                |
       +--------+---------+
       |                  |
@@ -28,7 +28,7 @@ operator / browser
 | cloud-plane |    | cloud-plane |
 +------+------+    +------+------+
        |                  |
-       | intranet gRPC    | intranet gRPC
+       | 内网 gRPC        | 内网 gRPC
        v                  v
 +-------------+    +-------------+
 | worker node |    | worker node |
@@ -36,7 +36,7 @@ operator / browser
 | Docker app  |    | Docker app  |
 +-------------+    +-------------+
 
-public request
+公网请求
     -> DNSPod CNAME
     -> provider CDN
     -> cloud-plane Caddy
@@ -44,40 +44,40 @@ public request
     -> container port
 ```
 
-## Ownership
+## 资源归属
 
-| Resource / state | Owner | Reason |
+| 资源 / 状态 | 归属 | 原因 |
 |------------------|-------|--------|
-| Web UI and user API | control-plane | Global entry point for operators. |
-| Plane list and cloud-plane endpoints | control-plane config | The demo uses explicit plane selection, not discovery. |
-| Service desired state | cloud-plane | Service runtime must survive control-plane restart or absence. |
-| Worker node lifecycle | cloud-plane | Nodes are local resources inside one cloud provider. |
-| Container execution | node-agent | Node-local Docker operations stay on the worker. |
-| Provider CDN domain | cloud-plane | CDN origin points to the cloud-plane entry host. |
-| DNSPod CNAME records | control-plane | DNS is the only global resource shared by all planes. |
-| Caddy routes | cloud-plane | Host routing is local to one cloud-plane entry host. |
-| Terraform bootstrap resources | minictl / Terraform | Bootstrap is an operator action, not runtime reconciliation. |
+| Web 控制台和用户 API | control-plane | 运维人员访问平台的全局入口。 |
+| plane 列表和 cloud-plane 访问地址 | control-plane 配置 | demo 使用显式 plane 选择，不做自动发现。 |
+| service 期望状态 | cloud-plane | service 运行态必须能在 control-plane 重启或不可用时继续存在。 |
+| worker node 生命周期 | cloud-plane | node 是单个云厂商内部的本地资源。 |
+| 容器执行 | node-agent | node 本机的 Docker 操作留在 worker 上完成。 |
+| 云厂商 CDN 域名 | cloud-plane | CDN origin 指向本 cloud-plane 的入口机。 |
+| DNSPod CNAME 记录 | control-plane | DNS 是所有 plane 共享的唯一全局资源。 |
+| Caddy 路由 | cloud-plane | Host 路由属于单个 cloud-plane 入口机。 |
+| Terraform bootstrap 资源 | minictl / Terraform | bootstrap 是运维动作，不是运行态 reconcile。 |
 
-The important boundary is simple: control-plane coordinates, cloud-plane runs, node-agent executes.
+最重要的边界很简单：control-plane 负责协调，cloud-plane 负责运行，node-agent 负责执行。
 
-## Core Principle
+## 核心原则
 
 只保留能支撑这个闭环的能力：
 
 ```text
-user creates one service
-  -> chooses one cloud-plane
-  -> cloud-plane creates one worker node if needed
-  -> node-agent runs one container
-  -> platform exposes one generated domain
-  -> user can observe status
-  -> user deletes service
-  -> platform cleans up resources
+用户创建一个 service
+  -> 选择一个 cloud-plane
+  -> cloud-plane 按需创建一个 worker node
+  -> node-agent 启动一个容器
+  -> 平台暴露一个自动生成的域名
+  -> 用户观察运行状态
+  -> 用户删除 service
+  -> 平台清理资源
 ```
 
 不服务这个闭环的能力默认不做。
 
-## Why Not Kubernetes
+## 为什么不是 Kubernetes
 
 Kubernetes 解决的是通用容器编排问题，包含复杂调度、多副本、service discovery、deployment rollout、RBAC、CRD、operator 等完整生态。
 
@@ -86,11 +86,11 @@ Kubernetes 解决的是通用容器编排问题，包含复杂调度、多副本
 - 展示 CaaS 平台的控制面/运行面分工。
 - 展示多云 backend 接入。
 - 展示自动创建 worker node 的运维能力。
-- 展示真实公网入口和 e2e 回收闭环。
+- 展示真实公网入口和端到端回收闭环。
 
 所以这个项目刻意避免长成半个 Kubernetes。
 
-## Why Single Container Service
+## 为什么只支持单容器 service
 
 当前 service 是单容器模型：
 
@@ -115,7 +115,7 @@ Kubernetes 解决的是通用容器编排问题，包含复杂调度、多副本
 
 这些能力会显著扩大系统边界，不适合当前阶段。
 
-## Why No Replicas
+## 为什么不做 replicas
 
 不做 replicas 是一个明确取舍。
 
@@ -130,7 +130,7 @@ Kubernetes 解决的是通用容器编排问题，包含复杂调度、多副本
 
 这些会把项目推向通用编排器。当前 demo 更重视“一个 service 在指定 cloud-plane 上被可靠部署、访问和回收”。
 
-## Why Service Must Specify Cloud-plane
+## 为什么 service 必须指定 cloud-plane
 
 service 必须显式指定 `planeID`。
 
@@ -142,7 +142,7 @@ service 必须显式指定 `planeID`。
 
 因此 control-plane 不做自动选择 cloud-plane。
 
-## Why Stateless Control-plane
+## 为什么 control-plane 无状态
 
 control-plane 是门户和全局 DNS owner，不保存 service runtime truth。
 
@@ -164,7 +164,7 @@ control-plane 是门户和全局 DNS owner，不保存 service runtime truth。
 
 这样 control-plane 可以更接近 serverless 形态：平时不需要承载运行态稳定性，更新时也不影响 cloud-plane 上已经运行的 workload。
 
-## Why Cloud-plane Owns Runtime Truth
+## 为什么 cloud-plane 持有运行态真相
 
 每个 cloud-plane 是本云内的自治运行面。
 
@@ -179,7 +179,7 @@ control-plane 是门户和全局 DNS owner，不保存 service runtime truth。
 
 这样即使 control-plane 临时不可用，cloud-plane 仍然能维持本 plane 的运行状态和内部 reconcile。
 
-## Why DNS Belongs To Control-plane
+## 为什么 DNS 属于 control-plane
 
 DNS 是跨 cloud-plane 的唯一全局入口资源。
 
@@ -193,11 +193,11 @@ control-plane 管 DNS 的原因：
 最终分工是：
 
 ```text
-cloud-plane manages provider CDN
-control-plane manages DNSPod CNAME
+cloud-plane 管理云厂商 CDN
+control-plane 管理 DNSPod CNAME
 ```
 
-## Why CDN/Caddy Both Exist
+## 为什么 CDN 和 Caddy 都存在
 
 Caddy 负责 cloud-plane 内部路由：
 
@@ -213,7 +213,7 @@ public domain -> provider CDN -> cloud-plane origin
 
 这样同一个 cloud-plane 上多个 service 可以共享入口机 80 端口，通过 Host 区分不同 service。
 
-## Why Worker Nodes Have No Public IP
+## 为什么 worker node 没有公网 IP
 
 worker node 默认不分配公网 IP。
 
@@ -226,7 +226,7 @@ worker node 默认不分配公网 IP。
 
 Tinyproxy 是 workload 的受控公网出口，不是 control-plane/cloud-plane/node-agent 控制链路的依赖。
 
-## Why Aliyun And Tencent Drivers Stay Separate
+## 为什么 Aliyun 和 Tencent driver 保持分开
 
 Aliyun 和 Tencent 两套 driver 有重复代码，但当前刻意不强行抽象成复杂 framework。
 
@@ -239,7 +239,7 @@ Aliyun 和 Tencent 两套 driver 有重复代码，但当前刻意不强行抽�
 
 公共抽象只保留在必要边界，例如 node provider interface 和 frontdoor 行为。
 
-## Why Terraform Only Does Bootstrap
+## 为什么 Terraform 只做 bootstrap
 
 Terraform 负责基础资源：
 
@@ -258,26 +258,26 @@ Terraform 不负责运行态资源：
 
 运行态资源由 control-plane/cloud-plane 根据 service 生命周期管理。`destroy` 可以做实验兜底回收，但不会改变这个归属边界。
 
-## Why Real E2E Matters
+## 为什么真实端到端验证很重要
 
-这个项目最核心的可信度来自真实云 e2e。
+这个项目最核心的可信度来自真实云端到端验证。
 
-单元测试只能证明局部逻辑，真实 e2e 证明：
+单元测试只能证明局部逻辑，真实端到端验证证明：
 
 - Terraform bootstrap 可运行。
 - SCF control-plane 可访问。
 - cloud-plane 可以安装和启动。
 - control-plane 能通过 TLS 调 cloud-plane。
-- Web UI 能真实创建 service。
+- Web 控制台能真实创建 service。
 - cloud-plane 能创建 worker node。
 - node-agent 能注册并启动容器。
 - CDN/DNS/Caddy 能把公网流量打到容器。
 - update 不破坏 control-plane 可用性。
 - destroy 可以回收资源。
 
-真实云 e2e 是这个项目可信度的核心来源——它直接证明了系统在多云环境下的完整工作闭环。
+真实云端到端验证是这个项目可信度的核心来源，它直接证明了系统在多云环境下的完整工作闭环。
 
-## Current Non-goals
+## 当前非目标
 
 当前不做：
 
