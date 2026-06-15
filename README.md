@@ -153,12 +153,15 @@ go run ./cmd/minictl check --config deploy/ops/config.yaml
 go run ./cmd/minictl build --config deploy/ops/config.yaml
 go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
 go run ./cmd/minictl install --config deploy/ops/config.yaml
+go run ./cmd/minictl update --config deploy/ops/config.yaml
+go run ./cmd/minictl update-control-plane --config deploy/ops/config.yaml
+go run ./cmd/minictl update-cloud-plane --config deploy/ops/config.yaml
 go run ./cmd/minictl deploy --config deploy/ops/config.yaml
 go run ./cmd/minictl e2e --config deploy/ops/config.yaml
 go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 ```
 
-`deploy` 是组合命令，等价于 `build + bootstrap + install`。如果只改了 Web UI，通常只需要重新执行 `build` 和 `install`，不需要重新 bootstrap 云基础设施。
+`deploy` 是组合命令，等价于 `build + bootstrap + install`。如果只改了 Web UI，通常执行 `build + update-control-plane`；如果改了 cloud-plane/node-agent，执行 `build + update-cloud-plane`。两者都不需要重新 bootstrap 云基础设施。
 
 `deploy/ops/config.yaml`、`deploy/ops/state/`、Terraform var file、token 和云账号密钥只保存在本地，不提交。
 

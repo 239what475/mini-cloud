@@ -67,6 +67,27 @@ func (r *Runner) Install(ctx context.Context) error {
 	return r.install(ctx)
 }
 
+func (r *Runner) Update(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.update(ctx)
+}
+
+func (r *Runner) UpdateControlPlane(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.updateControlPlaneOnly(ctx)
+}
+
+func (r *Runner) UpdateCloudPlane(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.updateCloudPlanesOnly(ctx)
+}
+
 func (r *Runner) Deploy(ctx context.Context) error {
 	if err := r.check(ctx); err != nil {
 		return err

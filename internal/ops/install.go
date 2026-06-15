@@ -63,7 +63,7 @@ type cloudPlaneTemplateData struct {
 	OTLPEndpoint             string
 }
 
-type remoteCloudPlaneInstallTemplateData struct {
+type remoteCloudPlaneTemplateData struct {
 	InstallRoot        string
 	IngressHTTPPort    int
 	WorkloadProxyPort  int
@@ -82,21 +82,11 @@ type cloudPlaneInstallPlan struct {
 }
 
 func (r *Runner) install(ctx context.Context) error {
-	if err := r.cfg.validateDeploy(); err != nil {
-		return err
-	}
-	if err := r.cfg.validateArtifacts(); err != nil {
-		return err
-	}
-	plans, err := r.prepareCloudPlaneInstallPlans(ctx)
+	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateArtifacts)
 	if err != nil {
 		return err
 	}
-	certs, err := r.loadCertificateBundle(plans)
-	if err != nil {
-		return err
-	}
-	if err := r.installControlPlane(ctx, plans, certs.ControlPlane); err != nil {
+	if err := r.updateControlPlane(ctx, plans, certs.ControlPlane); err != nil {
 		return err
 	}
 	for _, plan := range plans {
@@ -111,7 +101,65 @@ func (r *Runner) install(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runner) installControlPlane(ctx context.Context, plans []cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
+func (r *Runner) update(ctx context.Context) error {
+	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateArtifacts)
+	if err != nil {
+		return err
+	}
+	if err := r.updateControlPlane(ctx, plans, certs.ControlPlane); err != nil {
+		return err
+	}
+	return r.updateCloudPlanes(ctx, plans, certs)
+}
+
+func (r *Runner) updateControlPlaneOnly(ctx context.Context) error {
+	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateControlPlaneArtifacts)
+	if err != nil {
+		return err
+	}
+	return r.updateControlPlane(ctx, plans, certs.ControlPlane)
+}
+
+func (r *Runner) updateCloudPlanesOnly(ctx context.Context) error {
+	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateCloudPlaneArtifacts)
+	if err != nil {
+		return err
+	}
+	return r.updateCloudPlanes(ctx, plans, certs)
+}
+
+func (r *Runner) updateCloudPlanes(ctx context.Context, plans []cloudPlaneInstallPlan, certs certificateBundle) error {
+	for _, plan := range plans {
+		cloudTLS, ok := certs.CloudPlanes[plan.Plane.Name]
+		if !ok {
+			return fmt.Errorf("missing cloud-plane certificate for %s", plan.Plane.Name)
+		}
+		if err := r.updateCloudPlane(ctx, plan, cloudTLS); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r *Runner) prepareRelease(ctx context.Context, validateArtifacts func() error) ([]cloudPlaneInstallPlan, certificateBundle, error) {
+	if err := r.cfg.validateDeploy(); err != nil {
+		return nil, certificateBundle{}, err
+	}
+	if err := validateArtifacts(); err != nil {
+		return nil, certificateBundle{}, err
+	}
+	plans, err := r.prepareCloudPlaneInstallPlans(ctx)
+	if err != nil {
+		return nil, certificateBundle{}, err
+	}
+	certs, err := r.loadCertificateBundle(plans)
+	if err != nil {
+		return nil, certificateBundle{}, err
+	}
+	return plans, certs, nil
+}
+
+func (r *Runner) updateControlPlane(ctx context.Context, plans []cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
 	install, err := r.renderControlPlaneInstallFiles(plans, tlsData)
 	if err != nil {
 		return err
@@ -169,10 +217,22 @@ func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) 
 }
 
 func (r *Runner) installCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
-	install, err := r.renderCloudPlaneInstallFiles(plan.Plane, plan.Output, plan.PrivateIP, tlsData)
+	install, err := r.renderCloudPlaneFiles(plan.Plane, plan.Output, plan.PrivateIP, tlsData, "remote-cloud-plane-install.sh.tmpl")
 	if err != nil {
 		return err
 	}
+	return r.runCloudPlaneScript(ctx, plan, install)
+}
+
+func (r *Runner) updateCloudPlane(ctx context.Context, plan cloudPlaneInstallPlan, tlsData tlsTemplateData) error {
+	install, err := r.renderCloudPlaneFiles(plan.Plane, plan.Output, plan.PrivateIP, tlsData, "remote-cloud-plane-update.sh.tmpl")
+	if err != nil {
+		return err
+	}
+	return r.runCloudPlaneScript(ctx, plan, install)
+}
+
+func (r *Runner) runCloudPlaneScript(ctx context.Context, plan cloudPlaneInstallPlan, install installFiles) error {
 	defer removeFiles([]string{install.Config, install.RemoteScript})
 	if err := r.uploadFile(ctx, plan.Plane.SSH, plan.Host, r.cfg.Binaries.CloudPlane, "/tmp/mini-cloud-cloud-plane", 0755); err != nil {
 		return err
@@ -230,7 +290,7 @@ func (r *Runner) renderControlPlaneInstallFiles(plans []cloudPlaneInstallPlan, t
 	return installFiles{Config: configPath}, nil
 }
 
-func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, platformPrivateIP string, tlsData tlsTemplateData) (installFiles, error) {
+func (r *Runner) renderCloudPlaneFiles(plane Plane, out TerraformOutput, platformPrivateIP string, tlsData tlsTemplateData, scriptTemplate string) (installFiles, error) {
 	provider := out.ProviderName()
 	if provider == "" {
 		return installFiles{}, fmt.Errorf("terraform provider output is empty")
@@ -313,7 +373,7 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 	if err != nil {
 		return installFiles{}, err
 	}
-	remoteScript, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneInstallTemplateData{
+	remoteScript, err := renderTemplate(scriptTemplate, remoteCloudPlaneTemplateData{
 		InstallRoot:        r.cfg.Install.Root,
 		IngressHTTPPort:    ingressPort,
 		WorkloadProxyPort:  workloadProxyPort,

@@ -268,16 +268,27 @@ func (c Config) validateDeploy() error {
 }
 
 func (c Config) validateArtifacts() error {
+	if err := c.validateControlPlaneArtifacts(); err != nil {
+		return err
+	}
+	return c.validateCloudPlaneArtifacts()
+}
+
+func (c Config) validateControlPlaneArtifacts() error {
 	if err := requireFile(c.Binaries.ControlPlane); err != nil {
 		return err
 	}
+	if err := requireDir(c.Binaries.WebDist); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c Config) validateCloudPlaneArtifacts() error {
 	if err := requireFile(c.Binaries.CloudPlane); err != nil {
 		return err
 	}
 	if err := requireFile(c.Binaries.NodeAgent); err != nil {
-		return err
-	}
-	if err := requireDir(c.Binaries.WebDist); err != nil {
 		return err
 	}
 	return nil

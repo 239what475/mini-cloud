@@ -134,24 +134,48 @@ go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
 go run ./cmd/minictl install --config deploy/ops/config.yaml
 ```
 
-`install` 安装或更新 control-plane/cloud-plane，不执行 Terraform apply：
+`install` 首次安装或修复 control-plane/cloud-plane，不执行 Terraform apply：
 
 - 构建 control-plane 容器镜像并推送到 `controlPlane.scf.image`。
 - 读取或创建本地私有 CA/TLS 证书。
 - 渲染 control-plane 配置快照，并随镜像部署到 SCF。
-- 在每台 cloud-plane 入口机安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 和 node-agent artifact。
+- 在每台 cloud-plane 入口机安装或修复 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 和 node-agent artifact。
 - 启动 cloud-plane systemd 服务。
 
 入口机不运行 `node-agent`，也不承接 workload。动态创建出来的 worker node 会从对应 cloud-plane 入口机的内网 artifact server 下载并启动 `node-agent`。
+
+## Update
+
+```bash
+go run ./cmd/minictl update --config deploy/ops/config.yaml
+```
+
+`update` 是日常发布路径，不执行 Terraform apply，也不重装入口机基础服务：
+
+- 构建 control-plane 容器镜像并更新 SCF。
+- 上传新的 cloud-plane 二进制和配置。
+- 上传新的 node-agent artifact，供后续新 worker 下载。
+- 重启 cloud-plane systemd 服务。
+
+`update` 不会重启 Docker、Caddy、Tinyproxy，也不会碰 Postgres 数据。已有 worker node 上正在运行的 node-agent 不会被热更新；新建 worker 会使用新的 node-agent artifact。
+
+也可以只更新其中一侧：
+
+```bash
+go run ./cmd/minictl update-control-plane --config deploy/ops/config.yaml
+go run ./cmd/minictl update-cloud-plane --config deploy/ops/config.yaml
+```
+
+`update-control-plane` 只重新打包 control-plane 镜像并更新 SCF，适合只修改 Web UI 或 control-plane 代码。`update-cloud-plane` 只上传 cloud-plane/node-agent artifact 并重启 cloud-plane systemd，适合修改 cloud-plane 或 node-agent。
 
 如果只修改了前端页面，通常执行：
 
 ```bash
 go run ./cmd/minictl build --config deploy/ops/config.yaml
-go run ./cmd/minictl install --config deploy/ops/config.yaml
+go run ./cmd/minictl update-control-plane --config deploy/ops/config.yaml
 ```
 
-这会重新构建 Web UI、重新打包 control-plane 镜像并更新 SCF，同时不会重新执行 Terraform apply。
+这会重新构建 Web UI/release 二进制、重新打包 control-plane 镜像并更新 SCF，不会重启 cloud-plane。
 
 ## 网络
 
