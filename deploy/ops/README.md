@@ -103,18 +103,53 @@ go run ./cmd/minictl check --config deploy/ops/config.yaml
 go run ./cmd/minictl deploy --config deploy/ops/config.yaml
 ```
 
-`deploy` 会执行：
+`deploy` 是组合命令，按顺序执行 `build`、`bootstrap`、`install`。
+
+## Build
+
+```bash
+go run ./cmd/minictl build --config deploy/ops/config.yaml
+```
+
+`build` 只做本地构建，不修改云资源：
 
 - 构建 release 二进制和 Web UI。
-- 构建 control-plane 容器镜像并推送到 `controlPlane.scf.image`。
+
+## Bootstrap
+
+```bash
+go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
+```
+
+`bootstrap` 只准备云基础设施：
+
 - 为每个 plane 执行 `terraform init`、workspace select/new、`terraform apply`。
 - 腾讯云 Lighthouse 模式下补齐 CCN 和防火墙规则。
+
+## Install
+
+```bash
+go run ./cmd/minictl install --config deploy/ops/config.yaml
+```
+
+`install` 安装或更新 control-plane/cloud-plane，不执行 Terraform apply：
+
+- 构建 control-plane 容器镜像并推送到 `controlPlane.scf.image`。
 - 为 control-plane 和 cloud-plane 生成私有 CA/TLS 证书。
 - 渲染 control-plane 配置快照，并随镜像部署到 SCF。
 - 在每台 cloud-plane 入口机安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 和 node-agent artifact。
 - 启动 cloud-plane systemd 服务。
 
 入口机不运行 `node-agent`，也不承接 workload。动态创建出来的 worker node 会从对应 cloud-plane 入口机的内网 artifact server 下载并启动 `node-agent`。
+
+如果只修改了前端页面，通常执行：
+
+```bash
+go run ./cmd/minictl build --config deploy/ops/config.yaml
+go run ./cmd/minictl install --config deploy/ops/config.yaml
+```
+
+这会重新构建 Web UI、重新打包 control-plane 镜像并更新 SCF，同时不会重新执行 Terraform apply。
 
 ## 网络
 

@@ -5,9 +5,31 @@ import (
 	"fmt"
 )
 
-func (r *Runner) prepareInfrastructure(ctx context.Context) error {
+func (r *Runner) Build(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.build(ctx)
+}
+
+func (r *Runner) build(ctx context.Context) error {
+	fmt.Println("[mini-cloud ops] build release binaries and web assets")
+	if err := runInteractive(ctx, "make", "build-release", "web-build"); err != nil {
+		return err
+	}
+	return r.cfg.validateArtifacts()
+}
+
+func (r *Runner) Bootstrap(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.bootstrap(ctx)
+}
+
+func (r *Runner) bootstrap(ctx context.Context) error {
 	for _, plane := range r.cfg.Planes {
-		fmt.Printf("[mini-cloud ops] prepare infrastructure for plane %s (%s)\n", plane.Name, plane.Provider)
+		fmt.Printf("[mini-cloud ops] bootstrap infrastructure for plane %s (%s)\n", plane.Name, plane.Provider)
 		if err := r.terraform(ctx, plane, "init"); err != nil {
 			return err
 		}
@@ -38,18 +60,21 @@ func (r *Runner) prepareInfrastructure(ctx context.Context) error {
 	return nil
 }
 
+func (r *Runner) Install(ctx context.Context) error {
+	if err := r.check(ctx); err != nil {
+		return err
+	}
+	return r.install(ctx)
+}
+
 func (r *Runner) Deploy(ctx context.Context) error {
 	if err := r.check(ctx); err != nil {
 		return err
 	}
-	fmt.Println("[mini-cloud ops] build release binaries and web assets")
-	if err := runInteractive(ctx, "make", "build-release", "web-build"); err != nil {
+	if err := r.build(ctx); err != nil {
 		return err
 	}
-	if err := r.cfg.validateArtifacts(); err != nil {
-		return err
-	}
-	if err := r.prepareInfrastructure(ctx); err != nil {
+	if err := r.bootstrap(ctx); err != nil {
 		return err
 	}
 	return r.install(ctx)

@@ -11,9 +11,3 @@
 - 继续清理不必要的抽象、兼容逻辑和历史残留。
 - 统一 control-plane、cloud-plane、node-agent 的配置、启动、日志、错误处理风格。
 - 保持单容器 service 模型，不引入 Docker Compose runtime、多副本、复杂 release、灰度等编排能力。
-
-## 跨云传输安全
-
-- 补齐 control-plane 与 cloud-plane 跨云通信的 TLS 保护。
-- 优先考虑 HTTPS + bearer token，必要时再评估 mTLS。
-- node-agent 主要运行在 cloud-plane 同云内网中，传输安全后续单独评估。
