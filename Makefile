@@ -2,10 +2,6 @@
 # - 代码格式、静态检查、单元测试
 # - 二进制构建、release 构建、control-plane 镜像构建
 # - proto 生成、清理构建产物
-#
-# 会启动数据库、服务进程或 runtime 容器的流程不放在这里。
-# 那类流程属于环境编排测试，入口放在 scripts/ 下，例如：
-# - ./scripts/test-integration.sh
 
 # 使用 bash 是因为 check 目标里会用到 [[ ... ]]、pipefail 等 bash 行为。
 SHELL := /bin/bash
@@ -45,8 +41,6 @@ CONTROL_PLANE_IMAGE_PLATFORM ?= linux/amd64
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
 .PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build build-release image-control-plane proto clean
 
-# 打印当前保留的工程入口。
-# scripts/ 下的环境编排测试不在这里列为 make target。
 help:
 	@printf '%s\n' \
 	  'mini-cloud make targets' \
@@ -83,9 +77,8 @@ check:
 	$(MAKE) --no-print-directory vet
 
 	# 只做语法检查，不执行脚本。
-	# deploy/ 和 scripts/ 都可能包含 shell 入口。
-	echo "[check] bash -n deploy/*.sh scripts/*.sh"
-	find ./deploy ./scripts -type f -name '*.sh' -exec bash -n {} +
+	echo "[check] bash -n deploy/*.sh"
+	find ./deploy -type f -name '*.sh' -exec bash -n {} +
 
 	# 更严格的 Go 静态检查和 lint。
 	$(MAKE) --no-print-directory staticcheck
@@ -142,7 +135,7 @@ buf-lint:
 shellcheck:
 	@if command -v shellcheck >/dev/null 2>&1; then
 	  echo "[check] shellcheck"
-	  find ./deploy ./scripts -type f -name '*.sh' -exec shellcheck {} +
+	  find ./deploy -type f -name '*.sh' -exec shellcheck {} +
 	else
 	  echo "[check] skip shellcheck: shellcheck is not installed"
 	fi
