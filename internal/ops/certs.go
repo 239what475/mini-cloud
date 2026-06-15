@@ -29,39 +29,9 @@ type certificateState struct {
 }
 
 func (r *Runner) loadCertificateBundle(plans []cloudPlaneInstallPlan) (certificateBundle, error) {
-	path := r.certificateStatePath()
-	state, err := readCertificateState(path)
+	state, caCert, caKey, changed, err := r.loadCertificateState()
 	if err != nil {
 		return certificateBundle{}, err
-	}
-	changed := false
-	if state.CA.Cert == "" || state.CA.Key == "" {
-		caCert, caKey, err := newCertificateAuthority()
-		if err != nil {
-			return certificateBundle{}, err
-		}
-		state.CA = tlsTemplateData{
-			CACert: string(pemEncodeCertificate(caCert.Raw)),
-			Cert:   string(pemEncodeCertificate(caCert.Raw)),
-			Key:    string(pemEncodePrivateKey(caKey)),
-		}
-		changed = true
-	}
-	if state.CA.CACert == "" {
-		state.CA.CACert = state.CA.Cert
-		changed = true
-	}
-	caCert, caKey, err := parseCertificateAuthority(state.CA)
-	if err != nil {
-		return certificateBundle{}, err
-	}
-	if state.ControlPlane.Cert == "" || state.ControlPlane.Key == "" || state.ControlPlane.CACert != state.CA.Cert {
-		cert, err := issueControlPlaneCertificate(caCert, caKey, state.CA.Cert)
-		if err != nil {
-			return certificateBundle{}, err
-		}
-		state.ControlPlane = cert
-		changed = true
 	}
 	if state.CloudPlanes == nil {
 		state.CloudPlanes = map[string]tlsTemplateData{}
@@ -79,7 +49,7 @@ func (r *Runner) loadCertificateBundle(plans []cloudPlaneInstallPlan) (certifica
 		changed = true
 	}
 	if changed {
-		if err := writeCertificateState(path, state); err != nil {
+		if err := writeCertificateState(r.certificateStatePath(), state); err != nil {
 			return certificateBundle{}, err
 		}
 	}
@@ -88,6 +58,60 @@ func (r *Runner) loadCertificateBundle(plans []cloudPlaneInstallPlan) (certifica
 		ControlPlane: state.ControlPlane,
 		CloudPlanes:  state.CloudPlanes,
 	}, nil
+}
+
+func (r *Runner) loadControlPlaneCertificate() (tlsTemplateData, error) {
+	state, _, _, changed, err := r.loadCertificateState()
+	if err != nil {
+		return tlsTemplateData{}, err
+	}
+	if changed {
+		if err := writeCertificateState(r.certificateStatePath(), state); err != nil {
+			return tlsTemplateData{}, err
+		}
+	}
+	return state.ControlPlane, nil
+}
+
+func (r *Runner) loadCertificateState() (certificateState, *x509.Certificate, *rsa.PrivateKey, bool, error) {
+	path := r.certificateStatePath()
+	state, err := readCertificateState(path)
+	if err != nil {
+		return certificateState{}, nil, nil, false, err
+	}
+	changed := false
+	if state.CA.Cert == "" || state.CA.Key == "" {
+		caCert, caKey, err := newCertificateAuthority()
+		if err != nil {
+			return certificateState{}, nil, nil, false, err
+		}
+		state.CA = tlsTemplateData{
+			CACert: string(pemEncodeCertificate(caCert.Raw)),
+			Cert:   string(pemEncodeCertificate(caCert.Raw)),
+			Key:    string(pemEncodePrivateKey(caKey)),
+		}
+		changed = true
+	}
+	if state.CA.CACert == "" {
+		state.CA.CACert = state.CA.Cert
+		changed = true
+	}
+	caCert, caKey, err := parseCertificateAuthority(state.CA)
+	if err != nil {
+		return certificateState{}, nil, nil, false, err
+	}
+	if state.ControlPlane.Cert == "" || state.ControlPlane.Key == "" || state.ControlPlane.CACert != state.CA.Cert {
+		cert, err := issueControlPlaneCertificate(caCert, caKey, state.CA.Cert)
+		if err != nil {
+			return certificateState{}, nil, nil, false, err
+		}
+		state.ControlPlane = cert
+		changed = true
+	}
+	if state.CloudPlanes == nil {
+		state.CloudPlanes = map[string]tlsTemplateData{}
+	}
+	return state, caCert, caKey, changed, nil
 }
 
 func (r *Runner) certificateStatePath() string {

@@ -102,11 +102,11 @@ func (r *Runner) install(ctx context.Context) error {
 }
 
 func (r *Runner) update(ctx context.Context) error {
-	plans, certs, err := r.prepareRelease(ctx, r.cfg.validateControlPlaneArtifacts)
+	plans, cert, err := r.prepareControlPlaneRelease(ctx)
 	if err != nil {
 		return err
 	}
-	return r.updateControlPlane(ctx, plans, certs.ControlPlane)
+	return r.updateControlPlane(ctx, plans, cert)
 }
 
 func (r *Runner) prepareRelease(ctx context.Context, validateArtifacts func() error) ([]cloudPlaneInstallPlan, certificateBundle, error) {
@@ -125,6 +125,24 @@ func (r *Runner) prepareRelease(ctx context.Context, validateArtifacts func() er
 		return nil, certificateBundle{}, err
 	}
 	return plans, certs, nil
+}
+
+func (r *Runner) prepareControlPlaneRelease(ctx context.Context) ([]cloudPlaneInstallPlan, tlsTemplateData, error) {
+	if err := r.cfg.validateDeploy(); err != nil {
+		return nil, tlsTemplateData{}, err
+	}
+	if err := r.cfg.validateControlPlaneArtifacts(); err != nil {
+		return nil, tlsTemplateData{}, err
+	}
+	plans, err := r.prepareCloudPlaneInstallPlans(ctx)
+	if err != nil {
+		return nil, tlsTemplateData{}, err
+	}
+	cert, err := r.loadControlPlaneCertificate()
+	if err != nil {
+		return nil, tlsTemplateData{}, err
+	}
+	return plans, cert, nil
 }
 
 func (r *Runner) updateControlPlane(ctx context.Context, plans []cloudPlaneInstallPlan, tlsData tlsTemplateData) error {

@@ -41,14 +41,15 @@ cp deploy/ops/config.yaml.example deploy/ops/config.yaml
 每个 plane 单独准备 Terraform var file：
 
 ```bash
-cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/tencent.tfvars
-cp deploy/terraform/ops/terraform.tfvars.example deploy/terraform/ops/aliyun.tfvars
+cp deploy/terraform/ops/tencent/terraform.tfvars.example deploy/terraform/ops/tencent/terraform.tfvars
+cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/aliyun/terraform.tfvars
 ```
 
 要求：
 
 - 每个 `planes[]` 使用独立入口机。
 - 每个 `planes[]` 使用独立 Terraform workspace。
+- `planes[].terraform.dir` 指向对应云厂商的 Terraform root，例如 `deploy/terraform/ops/tencent` 或 `deploy/terraform/ops/aliyun`。
 - `planes[].ssh.host` 是本机可用的 SSH alias 或地址。
 - `install.ingressBaseDomain` 是 service 生成域名的根，例如 `apps.whatcloud.cn`。
 - `controlPlane.scf.publicDomain` 是 control-plane Web/API 域名，例如 `control.apps.whatcloud.cn`。
@@ -125,7 +126,7 @@ go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
 
 `bootstrap` 只准备云基础设施：
 
-- 为每个 plane 执行 `terraform init`、workspace select/new、`terraform apply`。
+- 为每个 plane 在对应云厂商 Terraform root 中执行 `terraform init`、workspace select/new、`terraform apply`。
 - 腾讯云 Lighthouse 模式下补齐 CCN 和防火墙规则。
 
 ## Install
@@ -192,6 +193,8 @@ go run ./cmd/minictl e2e --config deploy/ops/config.yaml
 - 访问 service 域名验证公开入口。
 - 删除 service。
 - 验证 runtime node、CDN 和 DNS 记录被清理。
+- 执行一次 control-plane `update`。
+- 再运行一轮 Web UI/API smoke，验证更新后的 control-plane 仍能登录、读取 plane 和 services。
 - 最后执行 `destroy` 回收实验环境。
 
 ## Destroy

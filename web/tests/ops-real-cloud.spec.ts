@@ -9,10 +9,11 @@ const baseDomain = requiredEnv("MINI_CLOUD_E2E_BASE_DOMAIN").replace(
   /^\.+|\.+$/g,
   "",
 );
+const e2eMode = process.env.MINI_CLOUD_E2E_MODE?.trim() || "full";
 
 test.setTimeout(25 * 60 * 1000);
 
-test("deploys and removes services through the real control-plane UI", async ({
+test("validates the real control-plane UI", async ({
   page,
 }) => {
   if (planeIDs.length === 0) {
@@ -27,6 +28,48 @@ test("deploys and removes services through the real control-plane UI", async ({
   await openControlPlane(page);
   await loginControlPlane(page);
 
+  await waitForPlanesReady(page);
+
+  if (e2eMode === "smoke") {
+    await expectServicesAPI(page);
+    return;
+  }
+  if (e2eMode !== "full") {
+    throw new Error(`unsupported MINI_CLOUD_E2E_MODE ${e2eMode}`);
+  }
+
+  try {
+    for (const [index, planeID] of planeIDs.entries()) {
+      const serviceName = serviceNames[index];
+      const host = `${serviceName}.${baseDomain}`;
+      console.log(`[ops-e2e] create service ${serviceName} on ${planeID}`);
+      await createService(page, {
+        name: serviceName,
+        planeID,
+      });
+
+      const card = page.getByRole("article").filter({ hasText: serviceName });
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      createdServices.push({ name: serviceName, host });
+      console.log(`[ops-e2e] wait service ${serviceName} ready`);
+      await expect(card).toContainText("ready / running", {
+        timeout: 12 * 60 * 1000,
+      });
+      console.log(`[ops-e2e] wait service ${serviceName} frontdoor`);
+      await waitForPublicEntry(page, serviceName, planeID);
+
+      console.log(`[ops-e2e] wait public HTTP 200 for ${host}`);
+      await expectHTTP200(host);
+    }
+  } finally {
+    for (const service of createdServices.reverse()) {
+      console.log(`[ops-e2e] delete service ${service.name}`);
+      await deleteService(page, service.name);
+    }
+  }
+});
+
+async function waitForPlanesReady(page: import("@playwright/test").Page) {
   for (const planeID of planeIDs) {
     await expect(
       page.getByLabel("Cloud plane").locator(`option[value="${planeID}"]`),
@@ -38,32 +81,21 @@ test("deploys and removes services through the real control-plane UI", async ({
       timeout: 90_000,
     },
   );
+}
 
-  try {
-    for (const [index, planeID] of planeIDs.entries()) {
-      const serviceName = serviceNames[index];
-      const host = `${serviceName}.${baseDomain}`;
-      await createService(page, {
-        name: serviceName,
-        planeID,
-      });
-
-      const card = page.getByRole("article").filter({ hasText: serviceName });
-      await expect(card).toBeVisible({ timeout: 30_000 });
-      createdServices.push({ name: serviceName, host });
-      await expect(card).toContainText("ready / running", {
-        timeout: 12 * 60 * 1000,
-      });
-      await waitForPublicEntry(page, serviceName, planeID);
-
-      await expectHTTP200(host);
-    }
-  } finally {
-    for (const service of createdServices.reverse()) {
-      await deleteService(page, service.name);
-    }
-  }
-});
+async function expectServicesAPI(page: import("@playwright/test").Page) {
+  await expect
+    .poll(
+      async () => {
+        const response = await page.request.get("/api/v1/services", {
+          headers: { Authorization: `Bearer ${adminToken}` },
+        });
+        return response.status();
+      },
+      { timeout: 90_000, intervals: [5_000, 10_000] },
+    )
+    .toBe(200);
+}
 
 async function openControlPlane(page: import("@playwright/test").Page) {
   const deadline = Date.now() + 5 * 60 * 1000;

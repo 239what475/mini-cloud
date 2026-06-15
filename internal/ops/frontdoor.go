@@ -326,7 +326,9 @@ func (r *Runner) waitForDNSPodCNAMERecord(ctx context.Context, host string, targ
 }
 
 func cnameResolvesTo(ctx context.Context, host string, target string) bool {
-	cname, err := net.DefaultResolver.LookupCNAME(ctx, cleanDomain(host))
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	cname, err := net.DefaultResolver.LookupCNAME(reqCtx, cleanDomain(host))
 	return err == nil && cleanDomain(cname) == cleanDomain(target)
 }
 

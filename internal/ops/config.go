@@ -149,7 +149,7 @@ func (c *Config) applyDefaults() {
 		plane.Region = strings.TrimSpace(plane.Region)
 		plane.RegistryMirror = strings.TrimSpace(plane.RegistryMirror)
 		plane.SSH.applyDefaults(c.SSH)
-		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, "deploy/terraform/ops")
+		plane.Terraform.Dir = defaultString(plane.Terraform.Dir, filepath.Join("deploy", "terraform", "ops", plane.Provider))
 		plane.Terraform.Workspace = defaultString(plane.Terraform.Workspace, plane.Name)
 		plane.Terraform.VarFile = absolutePath(expandHome(plane.Terraform.VarFile))
 	}

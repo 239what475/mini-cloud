@@ -335,24 +335,24 @@ func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
 	deadline := time.Now().Add(5 * time.Minute)
 	publicURL := r.controlPlanePublicURL(ctx)
 	healthURL := publicURL + "/api/healthz"
+	var lastStatus int
+	var lastErr error
 	for {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+		status, err := getHTTPStatus(ctx, healthURL, 20*time.Second)
 		if err != nil {
-			return err
+			lastErr = err
+		} else {
+			lastStatus = status
 		}
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			_ = resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				fmt.Printf("[mini-cloud ops] control-plane URL: %s\n", publicURL)
-				return nil
-			}
+		if status == http.StatusOK {
+			fmt.Printf("[mini-cloud ops] control-plane URL: %s\n", publicURL)
+			return nil
 		}
 		if time.Now().After(deadline) {
-			if err != nil {
-				return fmt.Errorf("timed out waiting for control-plane healthz: %w", err)
+			if lastErr != nil {
+				return fmt.Errorf("timed out waiting for control-plane healthz: %w", lastErr)
 			}
-			return fmt.Errorf("timed out waiting for control-plane healthz; last status: %d", resp.StatusCode)
+			return fmt.Errorf("timed out waiting for control-plane healthz; last status: %d", lastStatus)
 		}
 		select {
 		case <-ctx.Done():

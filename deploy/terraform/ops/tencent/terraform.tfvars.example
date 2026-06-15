@@ -1,0 +1,29 @@
+platform_name = "mini-cloud-tencent-ops"
+environment   = "ops"
+owner         = "operator"
+
+control_plane_cidrs = [
+  "0.0.0.0/0"
+]
+
+ingress_cidrs = [
+  "0.0.0.0/0"
+]
+
+ssh_public_key_path = "~/.ssh/id_ed25519.pub"
+
+vpc_cidr_block    = "10.88.0.0/16"
+subnet_cidr_block = "10.88.1.0/24"
+
+existing_lighthouse_instance_id = "lhins-xxxxxxxx"
+existing_lighthouse_public_ip   = "203.0.113.10"
+existing_lighthouse_private_ip  = "10.1.0.6"
+existing_lighthouse_ssh_host    = "myserver-tencent"
+existing_ccn_id                 = "ccn-xxxxxxxx"
+
+tencent = {
+  region_id     = "ap-guangzhou"
+  zone_id       = "ap-guangzhou-6"
+  instance_type = "S6.MEDIUM2"
+  image_id      = "img-xxxxxxxx"
+}

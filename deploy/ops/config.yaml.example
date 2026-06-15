@@ -18,9 +18,9 @@ planes:
     ssh:
       host: myserver-tencent
     terraform:
-      dir: deploy/terraform/ops
+      dir: deploy/terraform/ops/tencent
       workspace: tencent
-      varFile: deploy/terraform/ops/tencent.tfvars
+      varFile: deploy/terraform/ops/tencent/terraform.tfvars
 
   - name: mini-cloud-aliyun-ops
     provider: aliyun
@@ -28,9 +28,9 @@ planes:
     ssh:
       host: myserver2
     terraform:
-      dir: deploy/terraform/ops
+      dir: deploy/terraform/ops/aliyun
       workspace: aliyun
-      varFile: deploy/terraform/ops/aliyun.tfvars
+      varFile: deploy/terraform/ops/aliyun/terraform.tfvars
 
 install:
   root: /opt/mini-cloud

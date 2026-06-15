@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 func (r *Runner) E2E(ctx context.Context) (runErr error) {
@@ -22,6 +24,7 @@ func (r *Runner) E2E(ctx context.Context) (runErr error) {
 	}()
 
 	needsDestroy = true
+	fmt.Println("[mini-cloud ops] e2e deploy")
 	if err := r.Deploy(ctx); err != nil {
 		return err
 	}
@@ -30,13 +33,29 @@ func (r *Runner) E2E(ctx context.Context) (runErr error) {
 	if url == "" {
 		return fmt.Errorf("control-plane URL is missing")
 	}
-	if err := r.runWebE2E(ctx, url); err != nil {
+	fmt.Println("[mini-cloud ops] e2e run full web flow")
+	if err := r.runWebE2E(ctx, url, "full"); err != nil {
+		return err
+	}
+	fmt.Println("[mini-cloud ops] e2e update control-plane")
+	if err := r.Update(ctx); err != nil {
+		return err
+	}
+	url = r.controlPlanePublicURL(ctx)
+	if url == "" {
+		return fmt.Errorf("control-plane URL is missing after update")
+	}
+	if err := waitForHTTPStatus(ctx, url+"/api/healthz", http.StatusOK, 5*time.Minute); err != nil {
+		return fmt.Errorf("control-plane update healthz: %w", err)
+	}
+	fmt.Println("[mini-cloud ops] e2e run post-update web smoke")
+	if err := r.runWebE2E(ctx, url, "smoke"); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *Runner) runWebE2E(ctx context.Context, controlPlaneURL string) error {
+func (r *Runner) runWebE2E(ctx context.Context, controlPlaneURL string, mode string) error {
 	planeIDs := make([]string, 0, len(r.cfg.Planes))
 	for _, plane := range r.cfg.Planes {
 		planeIDs = append(planeIDs, planeID(plane.Name))
@@ -51,6 +70,7 @@ func (r *Runner) runWebE2E(ctx context.Context, controlPlaneURL string) error {
 		"MINI_CLOUD_ADMIN_TOKEN="+r.cfg.Tokens.ControlPlaneAdmin,
 		"MINI_CLOUD_E2E_PLANES="+strings.Join(planeIDs, ","),
 		"MINI_CLOUD_E2E_BASE_DOMAIN="+strings.Trim(r.cfg.Install.IngressBaseDomain, "."),
+		"MINI_CLOUD_E2E_MODE="+mode,
 	)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("web ops e2e: %w", err)
