@@ -5,37 +5,6 @@ import (
 	"testing"
 )
 
-func TestDNSPodRecordHost(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		root string
-		want string
-	}{
-		{name: "demo.apps", root: "example.com", want: "demo.apps.example.com"},
-		{name: "@", root: "example.com", want: "example.com"},
-		{name: "", root: "example.com", want: "example.com"},
-	}
-
-	for _, tt := range tests {
-		if got := dnsPodRecordHost(tt.name, tt.root); got != tt.want {
-			t.Fatalf("dnsPodRecordHost(%q, %q) = %q, want %q", tt.name, tt.root, got, tt.want)
-		}
-	}
-}
-
-func TestDNSPodSubdomain(t *testing.T) {
-	t.Parallel()
-
-	if got := dnsPodSubdomain("control.apps.example.com", "example.com"); got != "control.apps" {
-		t.Fatalf("dnsPodSubdomain = %q, want control.apps", got)
-	}
-	if got := dnsPodSubdomain("example.com", "example.com"); got != "@" {
-		t.Fatalf("dnsPodSubdomain root = %q, want @", got)
-	}
-}
-
 func TestDomainIsUnder(t *testing.T) {
 	t.Parallel()
 
