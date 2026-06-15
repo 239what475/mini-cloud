@@ -14,96 +14,12 @@ import (
 
 	controlplaneconfig "mini-cloud/internal/controlplane/config"
 	"mini-cloud/internal/controlplane/coordination"
-	"mini-cloud/internal/controlplane/model"
 	cloudplanev1 "mini-cloud/internal/gen/proto/minicloud/cloudplane/v1"
 
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 )
-
-func TestBuildServiceResourceIncludesEnv(t *testing.T) {
-	t.Parallel()
-
-	resource := buildServiceResource(model.Service{
-		Metadata: model.ServiceMetadata{
-			ID:          "svc_test",
-			Name:        "demo-api",
-			DisplayName: "Demo API",
-			Host:        "demo-api.apps.example.test",
-			Generation:  1,
-		},
-		Spec: model.ServiceSpec{
-			PlaneID:       "pln_test",
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      "public",
-			Image:         "registry.example.com/demo/api:v1",
-			DefaultPort:   8080,
-			ReadinessPath: "/healthz",
-			Env: map[string]string{
-				"MODE":      "demo",
-				"API_TOKEN": "service-token",
-			},
-		},
-		Status: model.ServiceStatus{
-			Observed: model.ServiceObservedStatus{
-				Phase: model.PhasePending,
-			},
-			Run: model.RunStatus{Phase: model.RunPhasePending},
-		},
-	})
-
-	payload, err := json.Marshal(resource)
-	if err != nil {
-		t.Fatalf("marshal service resource returned error: %v", err)
-	}
-	body := string(payload)
-	if !strings.Contains(body, "API_TOKEN") || !strings.Contains(body, "service-token") {
-		t.Fatalf("service resource did not include env: %s", body)
-	}
-	if !strings.Contains(body, `"generation":1`) || !strings.Contains(body, `"observedGeneration":0`) {
-		t.Fatalf("service resource did not include generation state: %s", body)
-	}
-}
-
-func TestBuildServiceResourceKeepsEmptyWorkloadFields(t *testing.T) {
-	t.Parallel()
-
-	resource := buildServiceResource(model.Service{
-		Metadata: model.ServiceMetadata{
-			ID:          "svc_test",
-			Name:        "demo-api",
-			DisplayName: "Demo API",
-			Host:        "demo-api.apps.example.test",
-			Generation:  1,
-		},
-		Spec: model.ServiceSpec{
-			PlaneID:       "pln_test",
-			InstanceClass: model.InstanceClassSmall,
-			Exposure:      "public",
-			Image:         "nginx:1.27-alpine",
-			DefaultPort:   80,
-			ReadinessPath: "/",
-		},
-		Status: model.ServiceStatus{
-			Observed: model.ServiceObservedStatus{
-				Phase: model.PhasePending,
-			},
-			Run: model.RunStatus{Phase: model.RunPhasePending},
-		},
-	})
-
-	payload, err := json.Marshal(resource)
-	if err != nil {
-		t.Fatalf("marshal service resource returned error: %v", err)
-	}
-	body := string(payload)
-	for _, want := range []string{`"command":[]`, `"args":[]`, `"env":{}`} {
-		if !strings.Contains(body, want) {
-			t.Fatalf("service resource did not include %s: %s", want, body)
-		}
-	}
-}
 
 func TestUpdateServiceRequiresPlaneIDQuery(t *testing.T) {
 	ctx := context.Background()

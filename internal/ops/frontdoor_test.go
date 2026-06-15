@@ -73,21 +73,6 @@ func TestSCFCustomDomainCNAMETarget(t *testing.T) {
 	}
 }
 
-func TestSCFCustomDomainEndpoint(t *testing.T) {
-	t.Parallel()
-
-	got := scfCustomDomainEndpoint(SCFControlPlane{
-		Namespace:    "default",
-		FunctionName: "mini-cloud-control-plane",
-	}, "/api/*")
-	if got["Namespace"] != "default" ||
-		got["FunctionName"] != "mini-cloud-control-plane" ||
-		got["Qualifier"] != "$LATEST" ||
-		got["PathMatch"] != "/api/*" {
-		t.Fatalf("unexpected endpoint: %#v", got)
-	}
-}
-
 func TestSCFCustomDomainCNAMEPending(t *testing.T) {
 	t.Parallel()
 

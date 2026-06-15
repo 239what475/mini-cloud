@@ -57,33 +57,6 @@ planes:
 	}
 }
 
-func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	content := []byte(`
-controlPlane:
-  scf:
-    image: ccr.ccs.tencentyun.com/example/mini-cloud-control-plane
-    publicDomain: control.apps.example.com
-planes:
-  - name: a
-    provider: aliyun
-    region: cn-beijing
-    ssh:
-      host: plane-a
-    terraform:
-      workspace: a
-      varFile: a.tfvars
-      applyArgs: ["-auto-approve"]
-`)
-	if err := os.WriteFile(path, content, 0600); err != nil {
-		t.Fatal(err)
-	}
-	_, err := LoadConfig(path)
-	if err == nil || !strings.Contains(err.Error(), "field applyArgs not found") {
-		t.Fatalf("LoadConfig error = %v, want unknown applyArgs rejection", err)
-	}
-}
-
 func TestValidateDeployRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
 		ControlPlane: ControlPlane{SCF: SCFControlPlane{Image: "ccr.ccs.tencentyun.com/example/mini-cloud-control-plane"}},

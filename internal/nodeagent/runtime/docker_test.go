@@ -18,6 +18,8 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 			"Z_KEY": "z",
 			"A_KEY": "a",
 		},
+		Command: []string{"python"},
+		Args:    []string{"service.py", "--port", "8080"},
 	}, 31080)
 	if err != nil {
 		t.Fatalf("buildContainerCreateConfig returned error: %v", err)
@@ -28,6 +30,9 @@ func TestBuildContainerCreateConfigBuildsPublishedPortAndAutoRemove(t *testing.T
 	}
 	if len(config.Env) != 2 || config.Env[0] != "A_KEY=a" || config.Env[1] != "Z_KEY=z" {
 		t.Fatalf("unexpected env ordering: %+v", config.Env)
+	}
+	if len(config.Cmd) != 4 || config.Cmd[0] != "python" || config.Cmd[1] != "service.py" || config.Cmd[2] != "--port" || config.Cmd[3] != "8080" {
+		t.Fatalf("unexpected container command: %+v", config.Cmd)
 	}
 	if config.Labels[dockerLabelManagedBy] != "node-agent" ||
 		config.Labels[dockerLabelNodeID] != "node-a" ||
@@ -65,24 +70,5 @@ func TestSelectAvailableHostPortRejectsInvalidRange(t *testing.T) {
 
 	if _, err := selectAvailableHostPort("127.0.0.1", 30010, 30000); err == nil {
 		t.Fatal("selectAvailableHostPort returned nil error for invalid range")
-	}
-}
-
-func TestResolveContainerCommandKeepsCurrentCliSemantics(t *testing.T) {
-	t.Parallel()
-
-	got := resolveContainerCommand(RunInput{
-		Command: []string{"python"},
-		Args:    []string{"service.py", "--port", "8080"},
-	})
-
-	want := []string{"python", "service.py", "--port", "8080"}
-	if len(got) != len(want) {
-		t.Fatalf("resolveContainerCommand length = %d, want %d", len(got), len(want))
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("resolveContainerCommand[%d] = %q, want %q", i, got[i], want[i])
-		}
 	}
 }

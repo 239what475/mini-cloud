@@ -7,7 +7,7 @@ import (
 	"google.golang.org/grpc/metadata"
 )
 
-func TestParse(t *testing.T) {
+func TestParseBearer(t *testing.T) {
 	t.Parallel()
 
 	secret, ok := ParseBearer("bearer test-token")
@@ -22,7 +22,7 @@ func TestParse(t *testing.T) {
 	}
 }
 
-func TestIncoming(t *testing.T) {
+func TestBearerFromIncomingContext(t *testing.T) {
 	t.Parallel()
 
 	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(BearerMetadataKey, BearerHeader("test-token")))
@@ -32,7 +32,7 @@ func TestIncoming(t *testing.T) {
 	}
 }
 
-func TestMatches(t *testing.T) {
+func TestBearerMatches(t *testing.T) {
 	t.Parallel()
 
 	if !BearerMatches(" test-token ", "test-token") {

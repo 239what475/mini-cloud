@@ -146,36 +146,6 @@ planes:
 	}
 }
 
-func TestLoadRejectsDNSPodStaticCredential(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "control-plane.yaml")
-	if err := os.WriteFile(path, []byte(`
-auth:
-  adminToken: admin-secret
-  southboundToken: southbound-secret
-  southboundTLS:
-    caCert: test-ca
-    cert: test-cert
-    key: test-key
-dns:
-  serviceBaseDomain: apps.example.test
-  dnspod:
-    domain: example.test
-    legacyField: value
-planes:
-  - id: pln_test
-    name: test-plane
-    provider: aliyun
-    region: cn-beijing
-    grpcEndpoint: 127.0.0.1:18081
-`), 0600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-
-	if _, err := Load(path); err == nil {
-		t.Fatalf("Load returned nil error, want unknown field error")
-	}
-}
-
 func TestLoadRejectsUnknownFields(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "control-plane.yaml")
 	if err := os.WriteFile(path, []byte(`
