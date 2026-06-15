@@ -92,7 +92,7 @@ func (r *Runner) install(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	certs, err := buildCertificateBundle(plans)
+	certs, err := r.loadCertificateBundle(plans)
 	if err != nil {
 		return err
 	}

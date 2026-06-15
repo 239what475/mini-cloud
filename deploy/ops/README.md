@@ -36,6 +36,8 @@ cp deploy/ops/config.yaml.example deploy/ops/config.yaml
 
 `deploy/ops/config.yaml` 不提交。这里保存 token、SCF 配置、TCR 镜像地址、入口域名、二进制路径、Web dist 路径、cloud-plane 列表和腾讯云凭据文件路径。
 
+`deploy/ops/state/` 也不提交。这里保存本地部署状态，例如 control-plane 和 cloud-plane 之间的私有 TLS CA/证书。`install` 会复用已有证书，不会因为只更新 Web UI 就隐式轮换 TLS 信任链。
+
 每个 plane 单独准备 Terraform var file：
 
 ```bash
@@ -135,7 +137,7 @@ go run ./cmd/minictl install --config deploy/ops/config.yaml
 `install` 安装或更新 control-plane/cloud-plane，不执行 Terraform apply：
 
 - 构建 control-plane 容器镜像并推送到 `controlPlane.scf.image`。
-- 为 control-plane 和 cloud-plane 生成私有 CA/TLS 证书。
+- 读取或创建本地私有 CA/TLS 证书。
 - 渲染 control-plane 配置快照，并随镜像部署到 SCF。
 - 在每台 cloud-plane 入口机安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 和 node-agent artifact。
 - 启动 cloud-plane systemd 服务。

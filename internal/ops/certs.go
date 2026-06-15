@@ -5,10 +5,13 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"math/big"
 	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -19,41 +22,130 @@ type certificateBundle struct {
 	CloudPlanes  map[string]tlsTemplateData
 }
 
-func buildCertificateBundle(plans []cloudPlaneInstallPlan) (certificateBundle, error) {
-	caCert, caKey, err := newCertificateAuthority()
+type certificateState struct {
+	CA           tlsTemplateData            `json:"ca"`
+	ControlPlane tlsTemplateData            `json:"controlPlane"`
+	CloudPlanes  map[string]tlsTemplateData `json:"cloudPlanes"`
+}
+
+func (r *Runner) loadCertificateBundle(plans []cloudPlaneInstallPlan) (certificateBundle, error) {
+	path := r.certificateStatePath()
+	state, err := readCertificateState(path)
 	if err != nil {
 		return certificateBundle{}, err
 	}
-	controlCert, controlKey, err := newLeafCertificate(caCert, caKey, "mini-cloud-control-plane", nil, nil, true)
-	if err != nil {
-		return certificateBundle{}, err
-	}
-	out := certificateBundle{
-		CA: tlsTemplateData{
-			CACert: string(pemEncodeCertificate(caCert.Raw)),
-			Cert:   string(pemEncodeCertificate(caCert.Raw)),
-			Key:    string(pemEncodePrivateKey(caKey)),
-		},
-		ControlPlane: tlsTemplateData{
-			CACert: string(pemEncodeCertificate(caCert.Raw)),
-			Cert:   string(pemEncodeCertificate(controlCert.Raw)),
-			Key:    string(pemEncodePrivateKey(controlKey)),
-		},
-		CloudPlanes: make(map[string]tlsTemplateData, len(plans)),
-	}
-	for _, plan := range plans {
-		dnsNames, ipAddresses := certificateNames(plan)
-		cert, key, err := newLeafCertificate(caCert, caKey, "mini-cloud-cloud-plane-"+plan.Plane.Name, dnsNames, ipAddresses, false)
+	changed := false
+	if state.CA.Cert == "" || state.CA.Key == "" {
+		caCert, caKey, err := newCertificateAuthority()
 		if err != nil {
 			return certificateBundle{}, err
 		}
-		out.CloudPlanes[plan.Plane.Name] = tlsTemplateData{
+		state.CA = tlsTemplateData{
 			CACert: string(pemEncodeCertificate(caCert.Raw)),
-			Cert:   string(pemEncodeCertificate(cert.Raw)),
-			Key:    string(pemEncodePrivateKey(key)),
+			Cert:   string(pemEncodeCertificate(caCert.Raw)),
+			Key:    string(pemEncodePrivateKey(caKey)),
+		}
+		changed = true
+	}
+	if state.CA.CACert == "" {
+		state.CA.CACert = state.CA.Cert
+		changed = true
+	}
+	caCert, caKey, err := parseCertificateAuthority(state.CA)
+	if err != nil {
+		return certificateBundle{}, err
+	}
+	if state.ControlPlane.Cert == "" || state.ControlPlane.Key == "" || state.ControlPlane.CACert != state.CA.Cert {
+		cert, err := issueControlPlaneCertificate(caCert, caKey, state.CA.Cert)
+		if err != nil {
+			return certificateBundle{}, err
+		}
+		state.ControlPlane = cert
+		changed = true
+	}
+	if state.CloudPlanes == nil {
+		state.CloudPlanes = map[string]tlsTemplateData{}
+	}
+	for _, plan := range plans {
+		current := state.CloudPlanes[plan.Plane.Name]
+		if !cloudPlaneCertificateNeedsIssue(current, state.CA.Cert, plan) {
+			continue
+		}
+		cert, err := issueCloudPlaneCertificate(caCert, caKey, state.CA.Cert, plan)
+		if err != nil {
+			return certificateBundle{}, err
+		}
+		state.CloudPlanes[plan.Plane.Name] = cert
+		changed = true
+	}
+	if changed {
+		if err := writeCertificateState(path, state); err != nil {
+			return certificateBundle{}, err
 		}
 	}
-	return out, nil
+	return certificateBundle{
+		CA:           state.CA,
+		ControlPlane: state.ControlPlane,
+		CloudPlanes:  state.CloudPlanes,
+	}, nil
+}
+
+func (r *Runner) certificateStatePath() string {
+	dir := filepath.Dir(r.cfg.Path)
+	if dir == "." || dir == "" {
+		dir = "deploy/ops"
+	}
+	return filepath.Join(dir, "state", "tls.json")
+}
+
+func readCertificateState(path string) (certificateState, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return certificateState{}, nil
+		}
+		return certificateState{}, fmt.Errorf("read TLS state %q: %w", path, err)
+	}
+	var state certificateState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return certificateState{}, fmt.Errorf("parse TLS state %q: %w", path, err)
+	}
+	return state, nil
+}
+
+func writeCertificateState(path string, state certificateState) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return fmt.Errorf("create TLS state directory: %w", err)
+	}
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode TLS state: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("write TLS state %q: %w", path, err)
+	}
+	return nil
+}
+
+func parseCertificateAuthority(material tlsTemplateData) (*x509.Certificate, *rsa.PrivateKey, error) {
+	certBlock, _ := pem.Decode([]byte(material.Cert))
+	if certBlock == nil || certBlock.Type != "CERTIFICATE" {
+		return nil, nil, fmt.Errorf("TLS state CA certificate is invalid")
+	}
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse TLS state CA certificate: %w", err)
+	}
+	keyBlock, _ := pem.Decode([]byte(material.Key))
+	if keyBlock == nil || keyBlock.Type != "RSA PRIVATE KEY" {
+		return nil, nil, fmt.Errorf("TLS state CA private key is invalid")
+	}
+	key, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse TLS state CA private key: %w", err)
+	}
+	return cert, key, nil
 }
 
 func newCertificateAuthority() (*x509.Certificate, *rsa.PrivateKey, error) {
@@ -111,6 +203,57 @@ func newLeafCertificate(caCert *x509.Certificate, caKey *rsa.PrivateKey, commonN
 		return nil, nil, fmt.Errorf("parse certificate %s: %w", commonName, err)
 	}
 	return cert, key, nil
+}
+
+func issueControlPlaneCertificate(caCert *x509.Certificate, caKey *rsa.PrivateKey, caPEM string) (tlsTemplateData, error) {
+	cert, key, err := newLeafCertificate(caCert, caKey, "mini-cloud-control-plane", nil, nil, true)
+	if err != nil {
+		return tlsTemplateData{}, err
+	}
+	return tlsTemplateData{
+		CACert: caPEM,
+		Cert:   string(pemEncodeCertificate(cert.Raw)),
+		Key:    string(pemEncodePrivateKey(key)),
+	}, nil
+}
+
+func issueCloudPlaneCertificate(caCert *x509.Certificate, caKey *rsa.PrivateKey, caPEM string, plan cloudPlaneInstallPlan) (tlsTemplateData, error) {
+	dnsNames, ipAddresses := certificateNames(plan)
+	cert, key, err := newLeafCertificate(caCert, caKey, "mini-cloud-cloud-plane-"+plan.Plane.Name, dnsNames, ipAddresses, false)
+	if err != nil {
+		return tlsTemplateData{}, err
+	}
+	return tlsTemplateData{
+		CACert: caPEM,
+		Cert:   string(pemEncodeCertificate(cert.Raw)),
+		Key:    string(pemEncodePrivateKey(key)),
+	}, nil
+}
+
+func cloudPlaneCertificateNeedsIssue(material tlsTemplateData, caPEM string, plan cloudPlaneInstallPlan) bool {
+	if material.Cert == "" || material.Key == "" || material.CACert != caPEM {
+		return true
+	}
+	block, _ := pem.Decode([]byte(material.Cert))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return true
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return true
+	}
+	dnsNames, ipAddresses := certificateNames(plan)
+	for _, name := range dnsNames {
+		if err := cert.VerifyHostname(name); err != nil {
+			return true
+		}
+	}
+	for _, ip := range ipAddresses {
+		if err := cert.VerifyHostname(ip.String()); err != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func certificateNames(plan cloudPlaneInstallPlan) ([]string, []net.IP) {
