@@ -1,25 +1,16 @@
 # mini-cloud
 
-`mini-cloud` 是一个面向运维体验的 CaaS demo。它不尝试复刻 Kubernetes，而是聚焦一个清晰场景：
+`mini-cloud` 是一个面向运维体验的 CaaS（Container as a Service）原型。它不尝试复刻 Kubernetes，而是聚焦一个清晰场景：
 
-> 把一个单容器 service 部署到指定云平面，平台自动准备 worker node、入口流量、状态展示和实验环境回收。
+> 用户通过 Web UI 部署一个单容器 service 到指定云厂商，平台自动准备 worker node、配置公网入口，并提供实验环境一键回收。
 
-这个项目的重点是把真实云上的控制面、运行面、节点执行器、云厂商 driver、DNS/CDN 入口和端到端测试串成一个闭环。
+项目把真实云上的控制面、运行面、节点执行器、云厂商 driver、DNS/CDN 入口和端到端测试串成一个闭环。
 
-## Docs
+## TL;DR
 
-- [`DEMO.md`](DEMO.md): 真实云 demo 流程和展示 checklist。
-- [`DESIGN.md`](DESIGN.md): 架构取舍和非目标说明。
-- [`deploy/ops/README.md`](deploy/ops/README.md): 真实云部署和回收细节。
-
-## Highlights
-
-- **多云运行面**：同一套 control-plane 可以管理 Tencent Cloud 和 Aliyun 两个 cloud-plane。
-- **显式运维模型**：创建 service 时必须指定 cloud-plane，不内置半个调度器。
-- **自动 worker 扩缩容**：cloud-plane 根据 service 运行态创建和回收 worker node。
-- **真实入口链路**：`<service-name>.<base-domain>` 通过 DNSPod CNAME 指向对应云厂商 CDN，再回源到 cloud-plane Caddy。
-- **Stateless control-plane**：control-plane 作为门户和 DNS owner，不保存 service runtime truth；运行态事实来自各 cloud-plane snapshot。
-- **真实云 e2e**：`minictl e2e` 会在 Tencent + Aliyun 上创建 service、验证公网 200、测试 control-plane update，并最终 destroy 回收资源。
+- **多云运行面**：同一套 control-plane 同时管理腾讯云和阿里云两个 cloud-plane。
+- **自动化运维**：创建 service → 自动创建 worker node → 自动部署容器 → 自动配置 DNS/CDN/Caddy 入口。
+- **完整运维 CLI**：`minictl` 提供 `check`、`deploy`、`update`、`destroy` 等命令，覆盖真实云环境从部署到回收的完整生命周期。
 
 ## Architecture
 
@@ -66,20 +57,37 @@ user
   -> container
 ```
 
+## Tech Stack
+
+| 层次 | 选型 |
+|------|------|
+| 语言 | Go 1.26 + TypeScript (React) |
+| RPC 框架 | gRPC + Protobuf（buf 管理） |
+| 传输安全 | control-plane -> cloud-plane 使用私有 CA TLS、client certificate 和 bearer token；node-agent -> cloud-plane 使用服务端 TLS 校验和 token |
+| 数据库 | PostgreSQL（cloud-plane 持久化 service 状态、work item、execution 历史） |
+| 容器运行时 | Docker API（worker 上拉取并启动业务容器） |
+| 反向代理 | Caddy（cloud-plane 入口机 Host 路由） |
+| CDN | 腾讯云 CDN / 阿里云 CDN |
+| DNS | DNSPod API（腾讯云） |
+| IaC | Terraform（多云 provider、多 workspace） |
+| 前端 | React + TanStack Query + Vite |
+| E2E 测试 | Playwright（浏览器驱动，操作真实 Web UI） |
+| 部署形态 | 腾讯云 SCF（Serverless 控制面） + Tencent Lighthouse / Aliyun ECS 入口机 + 动态 worker node |
+
 ## Components
 
 ### control-plane
 
-control-plane 是用户入口、全局 DNS owner 和多 cloud-plane 聚合门户。当前真实云部署形态是腾讯云 SCF HTTP 函数，Web UI、二进制和配置快照都打包进容器镜像。
+control-plane 是用户入口、全局 DNS owner 和多 cloud-plane 聚合门户。运行在腾讯云 SCF HTTP 函数上，Web UI、二进制和配置快照打包进单个容器镜像。
 
 负责：
 
-- 提供 Web/API。
-- 持有 plane 列表、登录 token、DNSPod 配置和简单事件日志。
-- 创建 service 时生成 `<service-name>.<serviceBaseDomain>`。
-- 调用用户指定的 cloud-plane 下发 service spec。
-- 根据 cloud-plane 返回的 CDN verification/CNAME 信息维护 DNSPod 记录。
-- 按请求读取各 cloud-plane snapshot，用于展示 service、node、execution 和 frontdoor 状态。
+- 提供 Web / API。
+- 持有 plane 列表、登录 token、DNSPod 配置和事件日志。
+- 创建 service 时生成 `<service-name>.<baseDomain>`。
+- 将 service spec 下发到用户指定的 cloud-plane。
+- 根据 cloud-plane 返回的 CDN verification / CNAME 信息维护 DNSPod 记录。
+- 按需读取各 cloud-plane snapshot，展示 service、node、execution 和 frontdoor 状态。
 
 不负责：
 
@@ -99,7 +107,7 @@ cloud-plane 是某个云内的自治运行面，部署在该云的入口机上�
 - 自动创建和回收 worker node。
 - 管理 node-agent work item 和 execution 状态。
 - 维护本云 Caddy route 和 CDN domain。
-- 向 control-plane 返回 DNS 所需的 verification/CNAME 信息。
+- 向 control-plane 返回 DNS 所需的 verification / CNAME 信息。
 
 不负责：
 
@@ -118,19 +126,19 @@ node-agent 是 worker node 上的执行器。
 - 上报 heartbeat 和节点容量。
 - 拉取 work item。
 - 启动、停止、清理单容器 workload。
-- 上报 execution 结果，并在启动失败时截取容器尾日志辅助诊断。
+- 上报 execution 结果，启动失败时截取容器尾日志辅助诊断。
 
 node-agent 不知道 control-plane，也不访问云厂商 API。
 
 ## Network Model
 
-- 用户访问 service：公网用户 -> DNSPod CNAME -> 云厂商 CDN -> cloud-plane Caddy -> worker node host port。
-- control-plane 到 cloud-plane：跨云 gRPC，使用私有 CA 生成的 TLS 证书保护。
-- node-agent 到 cloud-plane：同云内网 gRPC。
+- 用户访问 service：公网 → DNSPod CNAME → 云厂商 CDN → cloud-plane Caddy → worker node host port。
+- control-plane → cloud-plane：跨云 gRPC，私有 CA TLS、client certificate 和 bearer token。
+- node-agent → cloud-plane：同云内网 gRPC，服务端 TLS 校验和 token。
 - worker 下载 node-agent：从 cloud-plane 入口机内网 artifact server 下载。
-- workload 出公网：worker 上的业务容器和 Docker daemon 通过入口机上的 Tinyproxy，也就是 `workloadProxy`。
+- workload 出公网：业务容器和 Docker daemon 通过入口机 Tinyproxy（`workloadProxy`）。
 
-worker node 默认不分配公网 IP。Tinyproxy 不是控制链路依赖，而是 workload 的受控公网出口。
+worker node 默认不分配公网 IP。Tinyproxy 是 workload 的受控公网出口，不是控制链路的依赖。
 
 ## Product Scope
 
@@ -142,7 +150,7 @@ worker node 默认不分配公网 IP。Tinyproxy 不是控制链路依赖，而�
 - service name 自动生成三级域名。
 - Caddy + provider CDN + DNSPod 的入口链路。
 - 简单 readiness、service 状态、节点状态、事件和基础 metrics。
-- 真实云 ops 的 `check`、`deploy`、`update`、`e2e`、`destroy`。
+- 真实云 ops 的 `check`、`build`、`bootstrap`、`install`、`update`、`deploy`、`e2e`、`destroy`。
 
 当前不做：
 
@@ -156,16 +164,22 @@ worker node 默认不分配公网 IP。Tinyproxy 不是控制链路依赖，而�
 
 ## Repository Layout
 
-- `cmd/`: `control-plane`、`cloud-plane`、`node-agent`、`minictl` 入口。
-- `internal/controlplane/`: control-plane API、配置、模型和 cloud-plane 调用。
-- `internal/cloudplane/`: cloud-plane gRPC、运行态控制器、provider driver、store、frontdoor、Caddy。
-- `internal/nodeagent/`: worker 注册、heartbeat、workload 执行和失败诊断。
-- `internal/ops/`: 真实云检查、部署、回收和 e2e 编排。
-- `proto/`: gRPC 协议定义。
-- `web/`: React 控制台。
-- `deploy/container/`: control-plane 容器构建文件。
-- `deploy/terraform/`: 真实云 bootstrap 底座。
-- `deploy/ops/`: 真实云 ops 配置和说明。
+```
+cmd/               control-plane、cloud-plane、node-agent、minictl 入口
+internal/
+  controlplane/    control-plane API、配置、模型和 cloud-plane 调用
+  cloudplane/      cloud-plane gRPC、运行态控制器、provider driver、
+                   store、frontdoor、Caddy
+  nodeagent/       worker 注册、heartbeat、workload 执行和失败诊断
+  ops/             真实云检查、部署、回收和 e2e 编排
+  transport/       gRPC TLS、bearer token、request ID 等公共传输层
+proto/             gRPC 协议定义
+web/               React 控制台
+deploy/
+  container/       control-plane 容器构建文件
+  terraform/       真实云 bootstrap 底座（Tencent / Aliyun / 公共 module）
+  ops/             真实云 ops 配置和说明
+```
 
 ## Development
 
@@ -175,24 +189,24 @@ worker node 默认不分配公网 IP。Tinyproxy 不是控制链路依赖，而�
 make check
 ```
 
-常用分项：
+分项命令：
 
 ```bash
-go test ./...
-go vet ./...
-npm --prefix web run check
-buf lint
+go test ./...                     # 运行测试
+go vet ./...                      # Go 静态检查
+npm --prefix web run check        # 前端检查
+buf lint                          # Proto 检查
 ```
 
 构建发布产物：
 
 ```bash
-make build-release
-npm --prefix web run build
-make image-control-plane
+make build-release                # 构建 linux/amd64 二进制
+npm --prefix web run build        # 构建前端
+make image-control-plane          # 构建 control-plane 容器镜像
 ```
 
-生成 proto：
+生成 proto 代码：
 
 ```bash
 make proto
@@ -200,7 +214,9 @@ make proto
 
 ## Real Cloud Ops
 
-准备本地配置：
+真实云操作通过 `minictl` 命令行工具完成。
+
+### 前置准备
 
 ```bash
 cp deploy/ops/config.yaml.example deploy/ops/config.yaml
@@ -208,7 +224,9 @@ cp deploy/terraform/ops/tencent/terraform.tfvars.example deploy/terraform/ops/te
 cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/aliyun/terraform.tfvars
 ```
 
-常用命令：
+按要求填写各文件中的 token、云账号密钥、域名和 SSH 主机信息。
+
+### 命令一览
 
 ```bash
 go run ./cmd/minictl check --config deploy/ops/config.yaml
@@ -221,36 +239,41 @@ go run ./cmd/minictl e2e --config deploy/ops/config.yaml
 go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 ```
 
-命令语义：
+### 命令语义
 
-- `check`: 检查本机工具、配置、Terraform var file、腾讯云凭据文件和 SSH 连通性。
-- `build`: 构建 release 二进制和 Web UI，不修改云资源。
-- `bootstrap`: 用 Terraform 准备 worker node 所需的云基础设施。
-- `install`: 安装或修复 control-plane/cloud-plane，不执行 Terraform apply。
-- `update`: 只更新 control-plane/SCF，适合发布 Web UI 或 control-plane 变更。
-- `deploy`: 组合命令，等价于 `build + bootstrap + install`。
-- `e2e`: 在真实云中跑完整 Web 流程，最后自动 destroy。
-- `destroy`: 回收 cloud-plane、worker node、CDN/DNS 记录、Terraform bootstrap 资源和 SCF control-plane。
+| 命令 | 作用 | 修改云资源 |
+|------|------|-----------|
+| `check` | 检查本机工具、配置、Terraform var file、云凭据文件和 SSH 连通性 | 否 |
+| `build` | 构建 release 二进制和 Web UI | 否 |
+| `bootstrap` | 用 Terraform 准备 worker node 所需的云基础设施 | 是 |
+| `install` | 安装或修复 control-plane / cloud-plane | 是 |
+| `update` | 只更新 control-plane / SCF，不动 cloud-plane | 是 |
+| `deploy` | 组合命令，等价于 `build + bootstrap + install` | 是 |
+| `e2e` | 在真实云中跑完整 Web 流程，最后自动 destroy | 是 |
+| `destroy` | 回收 cloud-plane、worker node、CDN/DNS 记录、Terraform 资源和 SCF control-plane | 是 |
 
 `deploy/ops/config.yaml`、`deploy/ops/state/`、Terraform var file、token 和云账号密钥只保存在本地，不提交。
 
-更多真实云部署细节见 [`deploy/ops/README.md`](deploy/ops/README.md)。
+更多细节见 [`deploy/ops/README.md`](deploy/ops/README.md)。
 
-## E2E Coverage
+## Testing
 
-`minictl e2e` 当前覆盖：
+单元测试：
 
-- 构建 control-plane/cloud-plane/node-agent/Web UI。
-- 在 Tencent 和 Aliyun 两个 Terraform root 中 bootstrap 基础资源。
-- 部署 control-plane 到腾讯云 SCF。
-- 在两台 cloud-plane 入口机安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 和 node-agent artifact。
-- 通过真实 Web UI 登录。
-- 分别在 Tencent 和 Aliyun plane 创建 nginx service。
-- 等待 runtime node 创建、node-agent 注册、service readiness 通过。
-- 访问 `<service-name>.<ingressBaseDomain>` 验证公网 HTTP 200。
-- 删除 service 并验证清理。
-- 执行一次 control-plane `update`。
-- 更新后再次运行 Web/API smoke。
-- 最后执行 `destroy` 回收实验环境。
+```bash
+make check          # 质量门禁：gofmt、go test、go vet、staticcheck、golangci-lint、buf lint 等
+```
 
-最近一次真实云 e2e 已完整跑通：Tencent service 和 Aliyun service 均通过公网 HTTP 200，control-plane update 后 smoke 通过，最终 destroy 成功。
+端到端验证：
+
+```bash
+go run ./cmd/minictl e2e --config deploy/ops/config.yaml
+```
+
+`e2e` 在真实云环境中通过 Playwright 驱动 Web UI，完整验证 service 创建、公网访问、control-plane 更新和资源回收。具体覆盖范围见 [`DEMO.md`](DEMO.md)。
+
+## Docs
+
+- [`DESIGN.md`](DESIGN.md)：架构取舍和非目标说明。
+- [`DEMO.md`](DEMO.md)：完整端到端演示流程和手动操作 checklist。
+- [`deploy/ops/README.md`](deploy/ops/README.md)：真实云部署和回收细节。

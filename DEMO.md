@@ -1,20 +1,8 @@
-# mini-cloud demo flow
+# mini-cloud 部署和运行演示
 
-这份文档用于面试或项目展示。它描述 `mini-cloud` 当前真实云 demo 的完整链路，不包含 token、云账号密钥、真实资源 ID 等敏感信息。
+这份文档描述如何在真实云环境中部署 mini-cloud，以及部署完成后平台的行为。文档不包含 token、云账号密钥、真实资源 ID 等敏感信息。
 
-## Demo Goal
-
-用一条真实 e2e 流程证明：
-
-- control-plane 可以作为统一 Web/API 入口。
-- Tencent 和 Aliyun 两个 cloud-plane 可以同时接入。
-- service 显式部署到指定 cloud-plane。
-- cloud-plane 会自动创建 worker node 并启动 workload。
-- service 可以通过公网域名访问。
-- control-plane 可以独立 update。
-- 实验资源可以自动回收。
-
-## Topology
+## 部署拓扑
 
 ```text
 operator
@@ -42,64 +30,87 @@ public user
   -> nginx container
 ```
 
-## One Command Demo
+## 部署流程
+
+### 1. 前置检查
+
+```bash
+go run ./cmd/minictl check --config deploy/ops/config.yaml
+```
+
+检查本机工具链（Go、Node.js、Docker、Terraform、SSH）、配置完整性、云凭据和 SSH 连通性。不修改任何云资源。
+
+### 2. 部署
+
+```bash
+go run ./cmd/minictl deploy --config deploy/ops/config.yaml
+```
+
+`deploy` 按顺序执行三个阶段：
+
+- **build**：构建 control-plane、cloud-plane、node-agent 三个二进制和 Web UI 前端。
+- **bootstrap**：通过 Terraform 在每个 cloud-plane 对应的云账号中创建网络、安全组等基础资源。
+- **install**：构建 control-plane 容器镜像并推送到腾讯云 CCR，部署到 SCF 函数；在每台 cloud-plane 入口机上安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 服务，读取或生成本地私有 CA 和 TLS 证书。
+
+### 3. 使用 Web UI
+
+部署完成后，打开 control-plane 公网地址（例如 `http://control.apps.example.com`）：
+
+1. 使用 admin token 登录。
+2. 在 dashboard 确认 Tencent 和 Aliyun 两个 plane 均为 ready。
+3. 创建 service：填写 name、选择镜像（如 `nginx:alpine`）、指定 plane（Tencent 或 Aliyun）。
+4. 观察 service 状态变化，最终变成 `ready / running`。
+5. 浏览器访问 `<service-name>.<baseDomain>`，验证 nginx 欢迎页。
+6. 在另一个 plane 上再创建一个 service，确认两个 service 分别走对应云厂商的公网入口。
+7. 删除 service，观察状态变为 `deleted`，对应 worker node 被自动回收。
+
+### 4. 日常更新
+
+当只需要更新 control-plane（例如发布新的 Web UI 或 control-plane 逻辑）：
+
+```bash
+go run ./cmd/minictl update --config deploy/ops/config.yaml
+```
+
+`update` 只重新构建 control-plane 镜像并更新 SCF 函数，不触碰 cloud-plane 入口机、不重启已运行的 worker node、不影响现有 service。
+
+### 5. 实验回收
+
+```bash
+go run ./cmd/minictl destroy --config deploy/ops/config.yaml
+```
+
+`destroy` 按 plane 逐个回收：
+
+- cloud-plane 入口机上的服务进程和本地 artifact
+- 动态创建的 worker node
+- CDN service domain
+- DNSPod service CNAME
+- Terraform bootstrap 资源
+- SCF control-plane 函数
+
+## 一键验证
+
+上述整个流程可以通过一条命令自动完成：
 
 ```bash
 go run ./cmd/minictl e2e --config deploy/ops/config.yaml
 ```
 
-`e2e` 会自动执行：
+`e2e` 自动执行 build → bootstrap → install → Web UI 操作（通过 Playwright）→ update → smoke 验证 → destroy 全流程。适合验证代码变更后整个系统仍然闭环可用。
 
-1. `build`: 构建 control-plane、cloud-plane、node-agent 和 Web UI。
-2. `bootstrap`: 为每个 cloud-plane 准备 worker node 所需的云基础设施。
-3. `install`: 部署 control-plane，并安装每个 cloud-plane entry host。
-4. `full web flow`: 通过真实 Web UI 创建和删除 service。
-5. `update`: 只更新 control-plane/SCF。
-6. `smoke`: 更新后验证 Web/API 仍可用。
-7. `destroy`: 回收实验资源。
+## 部署后的关键行为
 
-## Expected Output Shape
+### Worker 自动生命周期
 
-输出中应该能看到这些关键阶段：
+创建 service 后，cloud-plane 自动创建 worker node、等待 node-agent 注册、下发 workload。删除 service 后，cloud-plane 自动回收对应 worker node。
+
+### 公网入口链路
+
+service 暴露走完整生产链路：
 
 ```text
-[mini-cloud ops] e2e deploy
-[mini-cloud ops] build release binaries and web assets
-[mini-cloud ops] bootstrap infrastructure for plane mini-cloud-tencent-ops (tencent)
-[mini-cloud ops] bootstrap infrastructure for plane mini-cloud-aliyun-ops (aliyun)
-[mini-cloud ops] control-plane URL: http://control.apps.example.com
-[mini-cloud ops] e2e run full web flow
-[ops-e2e] create service e2e-ui-tx-... on pln_mini_cloud_tencent_ops
-[ops-e2e] wait public HTTP 200 for e2e-ui-tx-....apps.example.com
-[ops-e2e] create service e2e-ui-ali-... on pln_mini_cloud_aliyun_ops
-[ops-e2e] wait public HTTP 200 for e2e-ui-ali-....apps.example.com
-[mini-cloud ops] e2e update control-plane
-[mini-cloud ops] e2e run post-update web smoke
-[mini-cloud ops] destroy ops resources
-```
-
-最后 Playwright 应该显示：
-
-```text
-1 passed
-```
-
-## What The Demo Proves
-
-### Multi-cloud backend
-
-同一个 control-plane 同时读取 Tencent 和 Aliyun 两个 cloud-plane snapshot，并且可以把 service 下发到指定 plane。
-
-### Automatic worker lifecycle
-
-创建 service 后，cloud-plane 会创建 worker node，等待 node-agent 注册，然后把 workload 下发给 node-agent。删除 service 后，cloud-plane 会回收对应 worker node。
-
-### Real ingress path
-
-service 暴露不是本地 mock。真实路径是：
-
-```text
-service name
+service-name.baseDomain
   -> DNSPod CNAME
   -> provider CDN domain
   -> cloud-plane Caddy
@@ -107,51 +118,12 @@ service name
   -> container port
 ```
 
-e2e 会对公网 service domain 发起 HTTP 请求并等待 `200`。
+### Control-plane 独立更新
 
-### Stateless control-plane update
+`update` 只更新 control-plane 容器镜像和 SCF 函数，不重装 cloud-plane、不重启入口机、不修改 worker node。更新后 smoke 验证确认 Web / API 仍可正常使用。
 
-`update` 只更新 control-plane 容器镜像和 SCF，不重装 cloud-plane，不重启 entry host，不修改 worker node。更新后 smoke 仍然能登录 Web UI、读取 planes 和 services。
+## 注意事项
 
-### Cleanup discipline
-
-`e2e` 最后会执行 `destroy`。它会回收：
-
-- cloud-plane entry host 上的 mini-cloud 服务和本地 artifact。
-- service 产生的 worker node。
-- service 产生的 CDN domain。
-- service 产生的 DNSPod CNAME。
-- Terraform bootstrap 资源。
-- SCF control-plane 和 control-plane CNAME。
-
-## Manual Demo Checklist
-
-如果不跑完整 e2e，可以按下面步骤手动展示：
-
-```bash
-go run ./cmd/minictl check --config deploy/ops/config.yaml
-go run ./cmd/minictl deploy --config deploy/ops/config.yaml
-```
-
-然后打开 control-plane Web：
-
-1. 使用 admin token 登录。
-2. 确认 Tencent 和 Aliyun plane 都是 ready。
-3. 创建一个 `nginx:alpine` service，plane 选择 Tencent。
-4. 等待 service 变成 `ready / running`。
-5. 访问生成的 service 域名。
-6. 再创建一个 service，plane 选择 Aliyun。
-7. 验证两个 service 分别走对应 cloud-plane。
-8. 删除 service。
-9. 执行回收：
-
-```bash
-go run ./cmd/minictl destroy --config deploy/ops/config.yaml
-```
-
-## Demo Notes
-
-- Tencent Lighthouse 接入 CVM VPC 的 CCN attachment 可能需要控制台手动同意。
-- DNS/CDN 生效有延迟，e2e 会等待，但云控制台展示可能更慢。
-- 真实云测试会产生云资源和费用，测试结束必须确认 `destroy` 成功。
-- `deploy/ops/config.yaml`、`deploy/ops/state/`、Terraform var file、token 和云账号密钥不能提交。
+- DNS / CDN 生效有延迟，e2e 内置等待重试逻辑，但云控制台显示可能更慢。
+- 真实云测试会产生云资源和费用，结束后务必确认 `destroy` 成功。
+- `deploy/ops/config.yaml`、`deploy/ops/state/`、Terraform var file、token 和云账号密钥不能提交到仓库。

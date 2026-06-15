@@ -1,6 +1,6 @@
 # mini-cloud design notes
 
-`mini-cloud` 的设计目标是做一个专注运维体验的 CaaS demo，而不是做一个小型 Kubernetes。这个文档记录当前核心取舍，方便阅读代码和面试讨论。
+`mini-cloud` 的设计目标是做一个专注运维体验的 CaaS 原型，而不是做一个小型 Kubernetes。这份文档记录当前的核心架构取舍和设计决策，方便理解项目边界。
 
 ## Core Principle
 
@@ -176,8 +176,8 @@ Aliyun 和 Tencent 两套 driver 有重复代码，但当前刻意不强行抽�
 
 - 云厂商 API 差异真实存在。
 - 过度抽象会隐藏关键细节，例如镜像、磁盘、网络、安全组、标签、CDN 验证方式。
-- 目前只有两个 backend，重复成本可接受。
-- 对简历项目来说，清楚展示两套真实 backend 比做一层过早抽象更有价值。
+- 当前只有两个 backend，重复成本可接受。
+- 清楚展示两套真实 backend 的差异比强行抽象成统一层更有价值。
 
 公共抽象只保留在必要边界，例如 node provider interface 和 frontdoor 行为。
 
@@ -217,7 +217,7 @@ Terraform 不负责运行态资源：
 - update 不破坏 control-plane 可用性。
 - destroy 可以回收资源。
 
-这是项目作为简历 demo 的主要说服力。
+真实云 e2e 是这个项目可信度的核心来源——它直接证明了系统在多云环境下的完整工作闭环。
 
 ## Current Non-goals
 

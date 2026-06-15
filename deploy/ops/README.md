@@ -1,8 +1,8 @@
 # mini-cloud ops
 
-`deploy/ops` 是 mini-cloud 的真实云部署入口。它负责检查本机和云账号权限、准备基础设施、安装 control-plane/cloud-plane、运行真实 Web e2e，并在实验结束后回收资源。
+`deploy/ops` 是 mini-cloud 的真实云部署入口。负责检查本机和云账号权限、准备基础设施、安装 control-plane / cloud-plane、运行真实 Web e2e，并在实验结束后回收资源。
 
-当前目标形态：
+部署架构：
 
 - control-plane 打包成容器并部署到腾讯云 SCF HTTP 函数。
 - control-plane Web UI、二进制和配置快照都内置在镜像中。
@@ -217,7 +217,7 @@ go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 ## 注意事项
 
 - `deploy/ops/config.yaml`、`*.tfvars`、token、云账号密钥不能提交。
-- CCN attachment 在腾讯云控制台可能需要手动同意。
+- 腾讯云 Lighthouse 的 CCN attachment 会尝试自动同意；如果权限或云侧状态异常，可能需要到控制台确认。
 - DNS/CDN 生效有延迟，e2e 会等待，但控制台显示可能继续延迟。
 - 如果 `deploy` 中断，先运行 `destroy` 做兜底回收，再重新执行 `deploy`。
 - 如果只想做静态检查，用 `check`，不要直接运行 `deploy`。
