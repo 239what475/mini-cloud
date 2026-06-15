@@ -67,6 +67,20 @@ user
   -> container
 ```
 
+## 界面预览
+
+Web 控制台展示 cloud-plane、worker node 容量和 service 运行状态：
+
+![Web 控制台总览](doc/assets/web-console-overview.png)
+
+创建 service 时显式选择 cloud-plane，平台自动处理 worker node、CDN、Caddy 和 DNS：
+
+![创建 service](doc/assets/web-console-create-service.png)
+
+service 详情页展示运行态、入口域名、镜像和更新入口：
+
+![service 运行详情](doc/assets/web-console-service-detail.png)
+
 ## 组件
 
 | 组件 | 职责 |
@@ -108,6 +122,7 @@ make deploy     # 部署真实云环境
 make update     # 只更新 serverless control-plane
 make e2e        # 运行真实 Web 控制台端到端验证并回收
 make destroy    # 回收真实云环境
+make screenshots # 重新生成 README Web 控制台截图
 ```
 
 真实云操作通过 Makefile 调用 `minictl`。日常使用不需要直接执行 `go run ./cmd/minictl`。

@@ -42,7 +42,7 @@ CONFIG ?= deploy/ops/config.yaml
 MINICTL := $(BINARY_DIR)/minictl
 
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
-.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build .release-binaries release image proto .preflight deploy update e2e destroy clean
+.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build .release-binaries release image proto screenshots .preflight deploy update e2e destroy clean
 
 help:
 	@printf '%s\n' \
@@ -57,6 +57,7 @@ help:
 	  '  make update         Update the serverless control-plane only.' \
 	  '  make e2e            Run the full real-cloud Web UI e2e flow.' \
 	  '  make destroy        Destroy real-cloud resources.' \
+	  '  make screenshots    Regenerate README Web console screenshots.' \
 	  '  make proto          Generate protobuf code with buf.' \
 	  '  make clean          Remove local build output.' \
 	  '' \
@@ -225,6 +226,11 @@ image: release
 proto:
 	@echo "[proto] buf generate"
 	buf generate
+
+screenshots:
+	@echo "[screenshots] README Web console screenshots"
+	cd "$(WEB_DIR)"
+	npx playwright test readme-screenshots.spec.ts
 
 .preflight: build
 	"$(MINICTL)" check --config "$(CONFIG)"
