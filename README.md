@@ -112,6 +112,60 @@ make destroy    # 回收真实云环境
 
 真实云操作通过 Makefile 调用 `minictl`。日常使用不需要直接执行 `go run ./cmd/minictl`。
 
+## 快速演示路径
+
+第一次真实部署前，先准备本地 ops 配置和 Terraform 变量文件：
+
+```bash
+cp deploy/ops/config.yaml.example deploy/ops/config.yaml
+cp deploy/terraform/ops/tencent/terraform.tfvars.example deploy/terraform/ops/tencent/terraform.tfvars
+cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/aliyun/terraform.tfvars
+```
+
+需要在配置里填好 cloud-plane 入口机、SSH alias、域名、token、TCR/SCF 配置，以及云厂商凭据文件路径。真实云配置不提交到仓库。
+
+推荐演示顺序：
+
+```bash
+make check
+make e2e
+```
+
+`make e2e` 会完成一次完整真实云闭环：
+
+1. 构建 Go 二进制和 Web UI。
+2. 部署 serverless control-plane。
+3. 并行 bootstrap/install Tencent 和 Aliyun 两个 cloud-plane。
+4. 通过真实 Web UI 登录并创建两个 `nginx:alpine` service。
+5. 等待 service ready、CDN/DNS 入口可访问。
+6. 删除 service。
+7. 更新 control-plane 并做 Web smoke。
+8. 自动执行 destroy 回收实验资源。
+
+如果只想部署后手动体验：
+
+```bash
+make deploy
+```
+
+部署完成后，终端会输出 control-plane URL。打开这个 URL，使用 `deploy/ops/config.yaml` 中的 `tokens.controlPlaneAdmin` 登录，然后在 Web UI 中创建 service。service 的公网域名格式是：
+
+```text
+<service-name>.<install.ingressBaseDomain>
+```
+
+只更新 Web UI 或 control-plane 逻辑时使用：
+
+```bash
+make update
+```
+
+实验结束后回收真实云资源：
+
+```bash
+make destroy
+```
+
 ## 仓库结构
 
 ```text
