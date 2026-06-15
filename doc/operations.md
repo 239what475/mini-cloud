@@ -1,6 +1,8 @@
-# mini-cloud ops
+# 运维操作
 
-`deploy/ops` 是 mini-cloud 的真实云部署入口。负责检查本机和云账号权限、准备基础设施、安装 control-plane / cloud-plane、运行真实 Web e2e，并在实验结束后回收资源。
+这份文档记录 `mini-cloud` 的真实云部署、更新、端到端验证和回收流程。
+
+所有真实云操作都通过 Makefile 入口执行。Makefile 会先构建本地 `minictl`，再调用对应 ops 流程。日常使用不需要直接运行 `go run ./cmd/minictl`。
 
 部署架构：
 
@@ -66,6 +68,34 @@ cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/ali
 ```
 
 阿里云 cloud-plane 使用入口机实例角色访问阿里云 API。
+
+## Control-plane 镜像
+
+control-plane 以腾讯云 SCF WebServer 容器镜像部署。镜像是一个部署快照，包含：
+
+- `control-plane` linux/amd64 二进制。
+- `web/dist` 静态文件。
+- `/etc/mini-cloud/control-plane.yaml` 配置快照。
+
+真实部署时，`make deploy` 会根据 `deploy/ops/config.yaml` 渲染 control-plane 配置到 `dist/ops/control-plane.yaml`，再作为 Docker build arg 打进镜像。
+
+本地构建镜像：
+
+```bash
+make image IMAGE=mini-cloud/control-plane:local
+```
+
+指定配置构建镜像：
+
+```bash
+make image \
+  IMAGE=ccr.ccs.tencentyun.com/example/mini-cloud-control-plane:20260614 \
+  IMAGE_CONFIG=dist/ops/control-plane.yaml
+```
+
+腾讯云 SCF WebServer 镜像函数要求进程监听 `0.0.0.0:9000`。Docker build 默认使用 `--provenance=false`，避免生成 SCF 不接受的 OCI manifest index。
+
+DNSPod 凭据不写入镜像配置；control-plane 通过绑定到 SCF 的运行角色获取临时凭据。
 
 ## Terraform 边界
 
