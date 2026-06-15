@@ -3,6 +3,7 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,39 +26,40 @@ type tcrImagesResponse struct {
 }
 
 func (r *Runner) Destroy(ctx context.Context) error {
-	for _, plane := range r.cfg.Planes {
-		fmt.Printf("[mini-cloud ops] destroy plane %s (%s)\n", plane.Name, plane.Provider)
-		if err := r.terraformInit(ctx, plane); err != nil {
+	planeErr := runPlaneTasks(ctx, r.cfg.Planes, r.destroyPlane)
+	controlErr := r.uninstallControlPlane(ctx)
+	return errors.Join(planeErr, controlErr)
+}
+
+func (r *Runner) destroyPlane(ctx context.Context, plane Plane) error {
+	fmt.Printf("[mini-cloud ops] destroy plane %s (%s)\n", plane.Name, plane.Provider)
+	if err := r.terraformInit(ctx, plane); err != nil {
+		return err
+	}
+	if err := r.selectTerraformWorkspace(ctx, plane); err != nil {
+		return err
+	}
+	out, hasOutput, err := r.tryTerraformOutput(ctx, plane)
+	if err != nil {
+		return err
+	}
+	if hasOutput {
+		if err := r.uninstallCloudPlane(ctx, plane, out); err != nil {
 			return err
 		}
-		if err := r.selectTerraformWorkspace(ctx, plane); err != nil {
-			return err
-		}
-		out, hasOutput, err := r.tryTerraformOutput(ctx, plane)
-		if err != nil {
-			return err
-		}
-		if hasOutput {
-			if err := r.uninstallCloudPlane(ctx, plane, out); err != nil {
-				return err
-			}
-		} else if strings.TrimSpace(plane.SSH.Host) != "" {
-			if err := r.uninstallCloudPlaneAtHost(ctx, plane.SSH, plane.SSH.Host); err != nil {
-				return err
-			}
-		}
-		if hasOutput {
-			if err := r.destroyPlaneCloudResources(ctx, plane, out); err != nil {
-				return err
-			}
-		} else if err := r.deleteServiceFrontDoorsWithoutTerraform(ctx, plane); err != nil {
-			return err
-		}
-		if err := r.terraform(ctx, plane, r.terraformDestroyArgs(plane)...); err != nil {
+	} else if strings.TrimSpace(plane.SSH.Host) != "" {
+		if err := r.uninstallCloudPlaneAtHost(ctx, plane.SSH, plane.SSH.Host); err != nil {
 			return err
 		}
 	}
-	return r.uninstallControlPlane(ctx)
+	if hasOutput {
+		if err := r.destroyPlaneCloudResources(ctx, plane, out); err != nil {
+			return err
+		}
+	} else if err := r.deleteServiceFrontDoorsWithoutTerraform(ctx, plane); err != nil {
+		return err
+	}
+	return r.terraform(ctx, plane, r.terraformDestroyArgs(plane)...)
 }
 
 func (r *Runner) destroyPlaneCloudResources(ctx context.Context, plane Plane, out TerraformOutput) error {

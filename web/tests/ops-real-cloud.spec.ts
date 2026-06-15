@@ -10,19 +10,25 @@ const baseDomain = requiredEnv("MINI_CLOUD_E2E_BASE_DOMAIN").replace(
   "",
 );
 const e2eMode = process.env.MINI_CLOUD_E2E_MODE?.trim() || "full";
+const controlPlaneURLs = (
+  process.env.MINI_CLOUD_CONTROL_PLANE_URLS?.trim() ||
+  requiredEnv("PLAYWRIGHT_BASE_URL")
+)
+  .split(",")
+  .map((value) => value.trim().replace(/\/+$/g, ""))
+  .filter(Boolean);
 
 test.setTimeout(25 * 60 * 1000);
 
-test("validates the real control-plane UI", async ({
-  page,
-}) => {
+test("validates the real control-plane UI", async ({ browser, page }) => {
   if (planeIDs.length === 0) {
     throw new Error("MINI_CLOUD_E2E_PLANES must contain at least one plane id");
   }
 
-  const serviceNames = planeIDs.map((planeID, index) =>
-    serviceNameForPlane(planeID, index),
-  );
+  const servicePlans = planeIDs.map((planeID, index) => {
+    const name = serviceNameForPlane(planeID, index);
+    return { planeID, name, host: `${name}.${baseDomain}` };
+  });
   const createdServices: Array<{ name: string; host: string }> = [];
 
   await openControlPlane(page);
@@ -38,36 +44,94 @@ test("validates the real control-plane UI", async ({
     throw new Error(`unsupported MINI_CLOUD_E2E_MODE ${e2eMode}`);
   }
 
-  try {
-    for (const [index, planeID] of planeIDs.entries()) {
-      const serviceName = serviceNames[index];
-      const host = `${serviceName}.${baseDomain}`;
-      console.log(`[ops-e2e] create service ${serviceName} on ${planeID}`);
-      await createService(page, {
-        name: serviceName,
-        planeID,
-      });
+  const serviceResults = await Promise.allSettled(
+    servicePlans.map(async (service) => {
+      const servicePage = await browser.newPage();
+      let stage = "open control-plane UI";
+      try {
+        await openControlPlane(servicePage);
+        stage = "login";
+        await loginControlPlane(servicePage);
+        console.log(
+          `[ops-e2e] create service ${service.name} on ${service.planeID}`,
+        );
+        stage = "create service";
+        await createService(servicePage, {
+          name: service.name,
+          planeID: service.planeID,
+        });
 
-      const card = page.getByRole("article").filter({ hasText: serviceName });
-      await expect(card).toBeVisible({ timeout: 30_000 });
-      createdServices.push({ name: serviceName, host });
-      console.log(`[ops-e2e] wait service ${serviceName} ready`);
-      await expect(card).toContainText("ready / running", {
-        timeout: 12 * 60 * 1000,
-      });
-      console.log(`[ops-e2e] wait service ${serviceName} frontdoor`);
-      await waitForPublicEntry(page, serviceName, planeID);
+        stage = "find service card";
+        const card = servicePage
+          .getByRole("article")
+          .filter({ hasText: service.name });
+        await expect(card).toBeVisible({ timeout: 30_000 });
+        createdServices.push({ name: service.name, host: service.host });
+        console.log(`[ops-e2e] wait service ${service.name} ready`);
+        stage = "wait service ready";
+        await expect(card).toContainText("ready / running", {
+          timeout: 12 * 60 * 1000,
+        });
+        console.log(`[ops-e2e] wait service ${service.name} frontdoor`);
+        stage = "wait frontdoor";
+        await waitForPublicEntry(servicePage, service.name, service.planeID);
 
-      console.log(`[ops-e2e] wait public HTTP 200 for ${host}`);
-      await expectHTTP200(host);
-    }
-  } finally {
-    for (const service of createdServices.reverse()) {
-      console.log(`[ops-e2e] delete service ${service.name}`);
-      await deleteService(page, service.name);
-    }
+        console.log(`[ops-e2e] wait public HTTP 200 for ${service.host}`);
+        stage = "wait public HTTP 200";
+        await expectHTTP200(service.host);
+      } catch (error) {
+        throw new Error(
+          `${service.name} on ${service.planeID} failed during ${stage}: ${errorMessage(error)}`,
+        );
+      } finally {
+        await servicePage.close();
+      }
+    }),
+  );
+
+  const serviceErrors = rejectedReasons(serviceResults);
+  const cleanupResults = await Promise.allSettled(
+    createdServices.map(async (service) => {
+      const servicePage = await browser.newPage();
+      try {
+        await openControlPlane(servicePage);
+        await loginControlPlane(servicePage);
+        console.log(`[ops-e2e] delete service ${service.name}`);
+        await deleteService(servicePage, service.name);
+      } finally {
+        await servicePage.close();
+      }
+    }),
+  );
+  const cleanupErrors = rejectedReasons(cleanupResults);
+  for (const error of cleanupErrors) {
+    console.error(`[ops-e2e] cleanup failed: ${errorMessage(error)}`);
+  }
+  if (serviceErrors.length > 0) {
+    throw new Error(
+      `service validation failed:\n${serviceErrors
+        .map((error) => `- ${errorMessage(error)}`)
+        .join("\n")}`,
+    );
+  }
+  if (cleanupErrors.length > 0) {
+    throw new Error(
+      `service cleanup failed:\n${cleanupErrors
+        .map((error) => `- ${errorMessage(error)}`)
+        .join("\n")}`,
+    );
   }
 });
+
+function rejectedReasons<T>(results: PromiseSettledResult<T>[]): unknown[] {
+  return results.flatMap((result) =>
+    result.status === "rejected" ? [result.reason] : [],
+  );
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 async function waitForPlanesReady(page: import("@playwright/test").Page) {
   for (const planeID of planeIDs) {
@@ -87,9 +151,12 @@ async function expectServicesAPI(page: import("@playwright/test").Page) {
   await expect
     .poll(
       async () => {
-        const response = await page.request.get("/api/v1/services", {
-          headers: { Authorization: `Bearer ${adminToken}` },
-        });
+        const response = await page.request.get(
+          apiURL(page, "/api/v1/services"),
+          {
+            headers: { Authorization: `Bearer ${adminToken}` },
+          },
+        );
         return response.status();
       },
       { timeout: 90_000, intervals: [5_000, 10_000] },
@@ -101,16 +168,18 @@ async function openControlPlane(page: import("@playwright/test").Page) {
   const deadline = Date.now() + 5 * 60 * 1000;
   let lastError: unknown;
   while (Date.now() < deadline) {
-    try {
-      await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 });
-      await expect(page.getByLabel("Admin token")).toBeVisible({
-        timeout: 10_000,
-      });
-      return;
-    } catch (error) {
-      lastError = error;
-      await page.waitForTimeout(10_000);
+    for (const url of controlPlaneURLs) {
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 10_000 });
+        await expect(page.getByLabel("Admin token")).toBeVisible({
+          timeout: 10_000,
+        });
+        return;
+      } catch (error) {
+        lastError = error;
+      }
     }
+    await page.waitForTimeout(5_000);
   }
   throw lastError instanceof Error
     ? lastError
@@ -199,9 +268,12 @@ async function waitForPublicEntry(
   await expect
     .poll(
       async () => {
-        const response = await page.request.get("/api/v1/services", {
-          headers: { Authorization: `Bearer ${adminToken}` },
-        });
+        const response = await page.request.get(
+          apiURL(page, "/api/v1/services"),
+          {
+            headers: { Authorization: `Bearer ${adminToken}` },
+          },
+        );
         if (!response.ok()) {
           return "";
         }
@@ -227,7 +299,16 @@ async function waitForPublicEntry(
     .not.toBe("");
 }
 
+function apiURL(page: import("@playwright/test").Page, path: string): string {
+  const currentURL = page.url();
+  if (!currentURL || currentURL === "about:blank") {
+    throw new Error("control-plane page is not open");
+  }
+  return new URL(path, currentURL).toString();
+}
+
 async function expectHTTP200(host: string) {
+  let lastResult = "no request attempted";
   await expect
     .poll(
       async () => {
@@ -236,12 +317,15 @@ async function expectHTTP200(host: string) {
             method: "GET",
             signal: AbortSignal.timeout(20_000),
           });
+          lastResult = `HTTP ${response.status}`;
           return response.status;
-        } catch {
+        } catch (error) {
+          lastResult = errorMessage(error);
           return 0;
         }
       },
       {
+        message: `wait for http://${host} to return 200; last result: ${lastResult}`,
         timeout: 12 * 60 * 1000,
         intervals: [10_000, 15_000, 20_000],
       },

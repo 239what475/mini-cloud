@@ -3,10 +3,12 @@ package ops
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -89,16 +91,29 @@ func (r *Runner) install(ctx context.Context) error {
 	if err := r.updateControlPlane(ctx, plans, certs.ControlPlane); err != nil {
 		return err
 	}
-	for _, plan := range plans {
-		cloudTLS, ok := certs.CloudPlanes[plan.Plane.Name]
-		if !ok {
-			return fmt.Errorf("missing cloud-plane certificate for %s", plan.Plane.Name)
-		}
-		if err := r.installCloudPlane(ctx, plan, cloudTLS); err != nil {
-			return err
-		}
+	return r.installCloudPlanes(ctx, plans, certs.CloudPlanes)
+}
+
+func (r *Runner) installCloudPlanes(ctx context.Context, plans []cloudPlaneInstallPlan, certs map[string]tlsTemplateData) error {
+	errs := make([]error, len(plans))
+	var wg sync.WaitGroup
+	for index, plan := range plans {
+		index, plan := index, plan
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			cloudTLS, ok := certs[plan.Plane.Name]
+			if !ok {
+				errs[index] = fmt.Errorf("missing cloud-plane certificate for %s", plan.Plane.Name)
+				return
+			}
+			if err := r.installCloudPlane(ctx, plan, cloudTLS); err != nil {
+				errs[index] = fmt.Errorf("plane %s: %w", plan.Plane.Name, err)
+			}
+		}()
 	}
-	return nil
+	wg.Wait()
+	return errors.Join(errs...)
 }
 
 func (r *Runner) update(ctx context.Context) error {
@@ -155,15 +170,24 @@ func (r *Runner) updateControlPlane(ctx context.Context, plans []cloudPlaneInsta
 }
 
 func (r *Runner) prepareCloudPlaneInstallPlans(ctx context.Context) ([]cloudPlaneInstallPlan, error) {
-	plans := make([]cloudPlaneInstallPlan, 0, len(r.cfg.Planes))
-	for _, plane := range r.cfg.Planes {
-		plan, err := r.prepareCloudPlaneInstallPlan(ctx, plane)
-		if err != nil {
-			return nil, err
-		}
-		plans = append(plans, plan)
+	plans := make([]cloudPlaneInstallPlan, len(r.cfg.Planes))
+	errs := make([]error, len(r.cfg.Planes))
+	var wg sync.WaitGroup
+	for index, plane := range r.cfg.Planes {
+		index, plane := index, plane
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			plan, err := r.prepareCloudPlaneInstallPlan(ctx, plane)
+			if err != nil {
+				errs[index] = fmt.Errorf("plane %s: %w", plane.Name, err)
+				return
+			}
+			plans[index] = plan
+		}()
 	}
-	return plans, nil
+	wg.Wait()
+	return plans, errors.Join(errs...)
 }
 
 func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) (cloudPlaneInstallPlan, error) {
