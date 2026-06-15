@@ -85,6 +85,7 @@ func TestRemoteUninstallTemplateRendersDockerFormats(t *testing.T) {
 		"docker ps -a --format '{{.Names}}'",
 		"docker volume ls --format '{{.Name}}'",
 		`rm -rf /etc/mini-cloud/cloud-plane`,
+		`"$INSTALL_ROOT"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("rendered template does not contain %q", want)

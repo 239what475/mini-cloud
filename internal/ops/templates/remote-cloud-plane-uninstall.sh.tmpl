@@ -17,6 +17,5 @@ if command -v docker >/dev/null 2>&1; then
 fi
 
 systemctl disable --now tinyproxy 2>/dev/null || true
-rm -rf /etc/mini-cloud/cloud-plane /etc/mini-cloud/ingress "$INSTALL_ROOT/artifacts" "$INSTALL_ROOT/bin/cloud-plane"
+rm -rf /etc/mini-cloud/cloud-plane /etc/mini-cloud/ingress "$INSTALL_ROOT"
 rmdir /etc/mini-cloud 2>/dev/null || true
-rmdir "$INSTALL_ROOT/bin" "$INSTALL_ROOT" 2>/dev/null || true

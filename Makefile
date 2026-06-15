@@ -42,7 +42,7 @@ CONFIG ?= deploy/ops/config.yaml
 MINICTL := $(BINARY_DIR)/minictl
 
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
-.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build .release-binaries release image proto .preflight bootstrap install deploy update e2e destroy clean
+.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build .release-binaries release image proto .preflight deploy update e2e destroy clean
 
 help:
 	@printf '%s\n' \
@@ -228,12 +228,6 @@ proto:
 
 .preflight: build
 	"$(MINICTL)" check --config "$(CONFIG)"
-
-bootstrap: build
-	"$(MINICTL)" bootstrap --config "$(CONFIG)"
-
-install: build
-	"$(MINICTL)" install --config "$(CONFIG)"
 
 deploy: .preflight
 	"$(MINICTL)" deploy --config "$(CONFIG)"

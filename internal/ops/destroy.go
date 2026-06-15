@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,6 +14,14 @@ type aliyunInstancesResponse struct {
 			InstanceID string `json:"InstanceId"`
 		} `json:"Instance"`
 	} `json:"Instances"`
+}
+
+type tcrImagesResponse struct {
+	Data struct {
+		TagInfo []struct {
+			TagName string `json:"TagName"`
+		} `json:"TagInfo"`
+	} `json:"Data"`
 }
 
 func (r *Runner) Destroy(ctx context.Context) error {
@@ -147,7 +156,77 @@ func (r *Runner) uninstallControlPlane(ctx context.Context) error {
 	if err != nil && !commandOutputIndicatesMissingResource(err) && !commandOutputContains(err, "notfound") && !commandOutputContains(err, "not found") {
 		return err
 	}
+	if err := r.deleteControlPlaneE2EImages(ctx); err != nil {
+		return err
+	}
 	return nil
+}
+
+func (r *Runner) deleteControlPlaneE2EImages(ctx context.Context) error {
+	repo, err := controlPlaneImageRepo(r.cfg.ControlPlane.SCF.Image)
+	if err != nil {
+		return err
+	}
+	if repo == "" {
+		return nil
+	}
+	var images tcrImagesResponse
+	data, err := runOutput(ctx, "tccli", "tcr", "DescribeImagePersonal",
+		"--region", r.cfg.ControlPlane.SCF.Region,
+		"--RepoName", repo,
+		"--Limit", "100",
+	)
+	if err != nil {
+		if commandOutputIndicatesMissingResource(err) || commandOutputContains(err, "notfound") || commandOutputContains(err, "not found") {
+			return nil
+		}
+		return err
+	}
+	if err := json.Unmarshal(data, &images); err != nil {
+		return fmt.Errorf("parse TCR image list: %w", err)
+	}
+	for _, image := range images.Data.TagInfo {
+		tag := strings.TrimSpace(image.TagName)
+		if !isControlPlaneE2ETag(tag) {
+			continue
+		}
+		_, err := runOutput(ctx, "tccli", "tcr", "DeleteImagePersonal",
+			"--region", r.cfg.ControlPlane.SCF.Region,
+			"--RepoName", repo,
+			"--Tag", tag,
+		)
+		if err != nil && !commandOutputIndicatesMissingResource(err) && !commandOutputContains(err, "notfound") && !commandOutputContains(err, "not found") {
+			return err
+		}
+	}
+	return nil
+}
+
+func controlPlaneImageRepo(image string) (string, error) {
+	value := strings.TrimSpace(image)
+	if value == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://") {
+		return "", fmt.Errorf("controlPlane.scf.image must be a container image reference, got %q", image)
+	}
+	slash := strings.Index(value, "/")
+	if slash < 0 || slash == len(value)-1 {
+		return "", fmt.Errorf("controlPlane.scf.image must include repository path, got %q", image)
+	}
+	repo := value[slash+1:]
+	if colon := strings.LastIndex(repo, ":"); colon >= 0 {
+		repo = repo[:colon]
+	}
+	repo = strings.Trim(repo, "/")
+	if repo == "" {
+		return "", fmt.Errorf("controlPlane.scf.image must include repository path, got %q", image)
+	}
+	return repo, nil
+}
+
+func isControlPlaneE2ETag(tag string) bool {
+	return strings.HasPrefix(strings.TrimSpace(tag), "e2e-")
 }
 
 func (r *Runner) deleteAliyunWorkerNodes(ctx context.Context, out TerraformOutput) error {

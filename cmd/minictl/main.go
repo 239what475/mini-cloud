@@ -48,12 +48,6 @@ func run(ctx context.Context, args []string) error {
 	switch command {
 	case "check":
 		return runner.Check(ctx)
-	case "build":
-		return runner.Build(ctx)
-	case "bootstrap":
-		return runner.Bootstrap(ctx)
-	case "install":
-		return runner.Install(ctx)
 	case "update":
 		return runner.Update(ctx)
 	case "deploy":
@@ -72,9 +66,6 @@ func printUsage() {
 
 Usage:
   minictl check                [--config deploy/ops/config.yaml]
-  minictl build                [--config deploy/ops/config.yaml]
-  minictl bootstrap            [--config deploy/ops/config.yaml]
-  minictl install              [--config deploy/ops/config.yaml]
   minictl update               [--config deploy/ops/config.yaml]
   minictl deploy               [--config deploy/ops/config.yaml]
   minictl e2e                  [--config deploy/ops/config.yaml]

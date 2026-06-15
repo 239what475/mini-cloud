@@ -36,7 +36,7 @@ cp deploy/ops/config.yaml.example deploy/ops/config.yaml
 
 `deploy/ops/config.yaml` 不提交。这里保存 token、SCF 配置、TCR 镜像地址、入口域名、二进制路径、Web dist 路径、cloud-plane 列表和腾讯云凭据文件路径。
 
-`deploy/ops/state/` 也不提交。这里保存本地部署状态，例如 control-plane 和 cloud-plane 之间的私有 TLS CA/证书。`install` 会复用已有证书，不会因为只更新 Web UI 就隐式轮换 TLS 信任链。
+`deploy/ops/state/` 也不提交。这里保存本地部署状态，例如 control-plane 和 cloud-plane 之间的私有 TLS CA/证书。`deploy` 和 `update` 会复用已有证书，不会因为只更新 Web UI 就隐式轮换 TLS 信任链。
 
 每个 plane 单独准备 Terraform var file：
 
@@ -93,6 +93,7 @@ make deploy
 ```
 
 `deploy` 是组合命令，会先检查本机工具、ops 配置、Terraform var file、云凭据文件和 SSH 连通性，然后按顺序执行 `release`、`bootstrap`、`install`。
+`bootstrap` 和 `install` 是 `deploy` 内部阶段，不作为独立用户命令暴露。
 
 ## Release
 
@@ -104,24 +105,12 @@ make release
 
 - 构建 release 二进制和 Web UI。
 
-## Bootstrap
-
-```bash
-make bootstrap
-```
-
-`bootstrap` 只准备云基础设施：
+内部 bootstrap 阶段只准备云基础设施：
 
 - 为每个 plane 在对应云厂商 Terraform root 中执行 `terraform init`、workspace select/new、`terraform apply`。
 - 腾讯云 Lighthouse 模式下补齐 CCN 和防火墙规则。
 
-## Install
-
-```bash
-make install
-```
-
-`install` 首次安装或修复 control-plane/cloud-plane，不执行 Terraform apply：
+内部 install 阶段安装或修复 control-plane/cloud-plane，不执行 Terraform apply：
 
 - 构建 control-plane 容器镜像并推送到 `controlPlane.scf.image`。
 - 读取或创建本地私有 CA/TLS 证书。

@@ -5,26 +5,12 @@ import (
 	"fmt"
 )
 
-func (r *Runner) Build(ctx context.Context) error {
-	if err := r.check(ctx); err != nil {
-		return err
-	}
-	return r.build(ctx)
-}
-
 func (r *Runner) build(ctx context.Context) error {
 	fmt.Println("[mini-cloud ops] build release binaries and web assets")
 	if err := runInteractive(ctx, "make", "release"); err != nil {
 		return err
 	}
 	return r.cfg.validateArtifacts()
-}
-
-func (r *Runner) Bootstrap(ctx context.Context) error {
-	if err := r.check(ctx); err != nil {
-		return err
-	}
-	return r.bootstrap(ctx)
 }
 
 func (r *Runner) bootstrap(ctx context.Context) error {
@@ -58,13 +44,6 @@ func (r *Runner) bootstrap(ctx context.Context) error {
 		}
 	}
 	return nil
-}
-
-func (r *Runner) Install(ctx context.Context) error {
-	if err := r.check(ctx); err != nil {
-		return err
-	}
-	return r.install(ctx)
 }
 
 func (r *Runner) Update(ctx context.Context) error {

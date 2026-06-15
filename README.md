@@ -150,7 +150,7 @@ worker node 默认不分配公网 IP。Tinyproxy 是 workload 的受控公网出
 - service name 自动生成三级域名。
 - Caddy + provider CDN + DNSPod 的入口链路。
 - 简单 readiness、service 状态、节点状态、事件和基础 metrics。
-- 真实云 ops 的 `check`、`build`、`bootstrap`、`install`、`update`、`deploy`、`e2e`、`destroy`。
+- 真实云 ops 的 `check`、`deploy`、`update`、`e2e`、`destroy`。
 
 当前不做：
 
@@ -230,10 +230,8 @@ cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/ali
 
 ```bash
 make release
-make bootstrap
-make install
-make update
 make deploy
+make update
 make e2e
 make destroy
 ```
@@ -243,10 +241,8 @@ make destroy
 | 命令 | 作用 | 修改云资源 |
 |------|------|-----------|
 | `release` | 构建 release 二进制和 Web UI | 否 |
-| `bootstrap` | 用 Terraform 准备 worker node 所需的云基础设施 | 是 |
-| `install` | 安装或修复 control-plane / cloud-plane | 是 |
 | `update` | 只更新 control-plane / SCF，不动 cloud-plane | 是 |
-| `deploy` | 组合命令，先做部署前检查，再执行 `release + bootstrap + install` | 是 |
+| `deploy` | 组合命令，先做部署前检查，再构建产物、准备基础设施并安装 control-plane/cloud-plane | 是 |
 | `e2e` | 在真实云中跑完整 Web 流程，最后自动 destroy | 是 |
 | `destroy` | 回收 cloud-plane、worker node、CDN/DNS 记录、Terraform 资源和 SCF control-plane | 是 |
 
