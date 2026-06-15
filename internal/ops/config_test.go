@@ -28,8 +28,8 @@ func TestLoadConfigRejectsTwoPlanesOnSameHost(t *testing.T) {
 	content := []byte(`
 controlPlane:
   scf:
-    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
-    publicDomain: control.apps.whatcloud.cn
+    image: ccr.ccs.tencentyun.com/example/mini-cloud-control-plane
+    publicDomain: control.apps.example.com
 planes:
   - name: a
     provider: aliyun
@@ -62,8 +62,8 @@ func TestLoadConfigRejectsTerraformArgs(t *testing.T) {
 	content := []byte(`
 controlPlane:
   scf:
-    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
-    publicDomain: control.apps.whatcloud.cn
+    image: ccr.ccs.tencentyun.com/example/mini-cloud-control-plane
+    publicDomain: control.apps.example.com
 planes:
   - name: a
     provider: aliyun
@@ -86,7 +86,7 @@ planes:
 
 func TestValidateDeployRequiresIngressBaseDomain(t *testing.T) {
 	cfg := Config{
-		ControlPlane: ControlPlane{SCF: SCFControlPlane{Image: "ccr.ccs.tencentyun.com/mini-cloud/control-plane"}},
+		ControlPlane: ControlPlane{SCF: SCFControlPlane{Image: "ccr.ccs.tencentyun.com/example/mini-cloud-control-plane"}},
 		Install: InstallConfig{
 			Root: "/opt/mini-cloud",
 		},
@@ -106,7 +106,7 @@ func TestLoadConfigRequiresControlPlanePublicDomain(t *testing.T) {
 	content := []byte(`
 controlPlane:
   scf:
-    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
+    image: ccr.ccs.tencentyun.com/example/mini-cloud-control-plane
 planes:
   - name: a
     provider: aliyun

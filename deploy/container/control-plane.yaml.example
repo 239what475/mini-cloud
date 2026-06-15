@@ -9,9 +9,9 @@ auth:
   southboundToken: "replace-with-southbound-token"
 
 dns:
-  serviceBaseDomain: "apps.whatcloud.cn"
+  serviceBaseDomain: "apps.example.com"
   dnspod:
-    domain: "whatcloud.cn"
+    domain: "example.com"
 
 planes:
   - id: "pln_tencent"

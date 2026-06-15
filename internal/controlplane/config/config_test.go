@@ -21,9 +21,9 @@ auth:
     cert: test-cert
     key: test-key
 dns:
-  serviceBaseDomain: apps.whatcloud.cn
+  serviceBaseDomain: apps.example.com
   dnspod:
-    domain: whatcloud.cn
+    domain: example.com
 planes:
   - id: pln_test
     name: test-plane
@@ -54,10 +54,10 @@ planes:
 	if cfg.Auth.SouthboundToken != "southbound-secret" {
 		t.Fatalf("auth.southboundToken = %q", cfg.Auth.SouthboundToken)
 	}
-	if cfg.DNS.ServiceBaseDomain != "apps.whatcloud.cn" {
+	if cfg.DNS.ServiceBaseDomain != "apps.example.com" {
 		t.Fatalf("dns.serviceBaseDomain = %q", cfg.DNS.ServiceBaseDomain)
 	}
-	if cfg.DNS.DNSPod.Domain != "whatcloud.cn" {
+	if cfg.DNS.DNSPod.Domain != "example.com" {
 		t.Fatalf("unexpected DNSPod config: %+v", cfg.DNS.DNSPod)
 	}
 	if len(cfg.Planes) != 1 || cfg.Planes[0].ID != "pln_test" || cfg.Planes[0].Provider != "aliyun" {

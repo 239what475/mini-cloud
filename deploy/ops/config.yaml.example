@@ -4,8 +4,8 @@ controlPlane:
     namespace: default
     functionName: mini-cloud-control-plane
     role: mini-cloud
-    image: ccr.ccs.tencentyun.com/mini-cloud/control-plane
-    publicDomain: control.apps.whatcloud.cn
+    image: ccr.ccs.tencentyun.com/example/mini-cloud-control-plane
+    publicDomain: control.apps.example.com
     description: mini-cloud control-plane
     memoryMB: 512
     timeoutSec: 30
@@ -16,7 +16,7 @@ planes:
     provider: tencent
     region: ap-guangzhou
     ssh:
-      host: myserver-tencent
+      host: replace-with-tencent-entry-ssh-host
     terraform:
       dir: deploy/terraform/ops/tencent
       workspace: tencent
@@ -26,7 +26,7 @@ planes:
     provider: aliyun
     region: cn-beijing
     ssh:
-      host: myserver2
+      host: replace-with-aliyun-entry-ssh-host
     terraform:
       dir: deploy/terraform/ops/aliyun
       workspace: aliyun
@@ -34,7 +34,7 @@ planes:
 
 install:
   root: /opt/mini-cloud
-  ingressBaseDomain: apps.whatcloud.cn
+  ingressBaseDomain: apps.example.com
   registryMirror: ""
 
 binaries:

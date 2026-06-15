@@ -15,21 +15,21 @@ func TestAliyunPrepareDomainReturnsOwnerVerifyTXT(t *testing.T) {
 
 	api := &fakeAliyunCDN{
 		verifyContent: map[string]interface{}{
-			"RootDomain": "whatcloud.cn",
+			"RootDomain": "example.com",
 			"verifyCode": "verify_test",
 			"verifyKey":  "verification",
 		},
 	}
 	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
 
-	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.example.com")
 	if err != nil {
 		t.Fatalf("PrepareDomain returned error: %v", err)
 	}
-	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" || verification.Type != "TXT" || verification.Value != "verify_test" {
+	if verification == nil || verification.Subdomain != "verification.example.com" || verification.Type != "TXT" || verification.Value != "verify_test" {
 		t.Fatalf("verification = %+v", verification)
 	}
-	if api.verifiedDomain != "demo.apps.whatcloud.cn" {
+	if api.verifiedDomain != "demo.apps.example.com" {
 		t.Fatalf("verified domain = %q", api.verifiedDomain)
 	}
 }
@@ -39,7 +39,7 @@ func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.
 
 	api := &fakeAliyunCDN{
 		verifyContent: map[string]interface{}{
-			"RootDomain": "whatcloud.cn",
+			"RootDomain": "example.com",
 			"verifyCode": "verify_test",
 			"verifyKey":  "verification",
 		},
@@ -47,11 +47,11 @@ func TestAliyunPrepareDomainReturnsPendingWhenOwnerVerificationWaits(t *testing.
 	}
 	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
 
-	verification, err := client.PrepareDomain(context.Background(), "demo.apps.whatcloud.cn")
+	verification, err := client.PrepareDomain(context.Background(), "demo.apps.example.com")
 	if !errors.Is(err, errDomainVerificationPending) {
 		t.Fatalf("PrepareDomain error = %v, want errDomainVerificationPending", err)
 	}
-	if verification == nil || verification.Subdomain != "verification.whatcloud.cn" {
+	if verification == nil || verification.Subdomain != "verification.example.com" {
 		t.Fatalf("verification = %+v", verification)
 	}
 }
@@ -62,21 +62,21 @@ func TestAliyunEnsureDomainReadsExistingCNAME(t *testing.T) {
 	api := &fakeAliyunCDN{
 		domainPageData: []interface{}{
 			map[string]interface{}{
-				"DomainName": "demo.apps.whatcloud.cn",
-				"Cname":      "demo.apps.whatcloud.cn.w.kunlunsl.com",
+				"DomainName": "demo.apps.example.com",
+				"Cname":      "demo.apps.example.com.w.kunlunsl.com",
 			},
 		},
 	}
 	client := &aliyunCDNClient{rawClient: api, origin: "203.0.113.10"}
 
-	cname, err := client.EnsureDomain(context.Background(), "demo.apps.whatcloud.cn")
+	cname, err := client.EnsureDomain(context.Background(), "demo.apps.example.com")
 	if err != nil {
 		t.Fatalf("EnsureDomain returned error: %v", err)
 	}
-	if cname != "demo.apps.whatcloud.cn.w.kunlunsl.com" {
+	if cname != "demo.apps.example.com.w.kunlunsl.com" {
 		t.Fatalf("cname = %q", cname)
 	}
-	if api.setOriginHost != "demo.apps.whatcloud.cn" {
+	if api.setOriginHost != "demo.apps.example.com" {
 		t.Fatalf("set origin host = %q", api.setOriginHost)
 	}
 }

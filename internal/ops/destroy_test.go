@@ -53,8 +53,8 @@ func TestControlPlaneImageRepo(t *testing.T) {
 		image string
 		want  string
 	}{
-		{image: "ccr.ccs.tencentyun.com/mini-cloud/control-plane", want: "mini-cloud/control-plane"},
-		{image: "ccr.ccs.tencentyun.com/mini-cloud/control-plane:e2e-20260615", want: "mini-cloud/control-plane"},
+		{image: "ccr.ccs.tencentyun.com/example/mini-cloud-control-plane", want: "example/mini-cloud-control-plane"},
+		{image: "ccr.ccs.tencentyun.com/example/mini-cloud-control-plane:e2e-20260615", want: "example/mini-cloud-control-plane"},
 	} {
 		got, err := controlPlaneImageRepo(tc.image)
 		if err != nil {

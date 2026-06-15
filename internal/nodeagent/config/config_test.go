@@ -120,7 +120,7 @@ capacity:
     memoryMi: 8192
 network:
   workloadProxy:
-    endpoint: http://10.1.0.6:3128
+    endpoint: http://10.0.0.10:3128
     noProxy:
       - 127.0.0.1
       - "  "

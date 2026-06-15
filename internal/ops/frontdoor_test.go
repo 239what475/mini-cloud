@@ -13,9 +13,9 @@ func TestDNSPodRecordHost(t *testing.T) {
 		root string
 		want string
 	}{
-		{name: "demo.apps", root: "whatcloud.cn", want: "demo.apps.whatcloud.cn"},
-		{name: "@", root: "whatcloud.cn", want: "whatcloud.cn"},
-		{name: "", root: "whatcloud.cn", want: "whatcloud.cn"},
+		{name: "demo.apps", root: "example.com", want: "demo.apps.example.com"},
+		{name: "@", root: "example.com", want: "example.com"},
+		{name: "", root: "example.com", want: "example.com"},
 	}
 
 	for _, tt := range tests {
@@ -28,10 +28,10 @@ func TestDNSPodRecordHost(t *testing.T) {
 func TestDNSPodSubdomain(t *testing.T) {
 	t.Parallel()
 
-	if got := dnsPodSubdomain("control.apps.whatcloud.cn", "whatcloud.cn"); got != "control.apps" {
+	if got := dnsPodSubdomain("control.apps.example.com", "example.com"); got != "control.apps" {
 		t.Fatalf("dnsPodSubdomain = %q, want control.apps", got)
 	}
-	if got := dnsPodSubdomain("whatcloud.cn", "whatcloud.cn"); got != "@" {
+	if got := dnsPodSubdomain("example.com", "example.com"); got != "@" {
 		t.Fatalf("dnsPodSubdomain root = %q, want @", got)
 	}
 }
@@ -39,10 +39,10 @@ func TestDNSPodSubdomain(t *testing.T) {
 func TestDomainIsUnder(t *testing.T) {
 	t.Parallel()
 
-	if !domainIsUnder("demo.apps.whatcloud.cn", "apps.whatcloud.cn") {
+	if !domainIsUnder("demo.apps.example.com", "apps.example.com") {
 		t.Fatal("expected service host to be under base domain")
 	}
-	if domainIsUnder("tx-origin.whatcloud.cn", "apps.whatcloud.cn") {
+	if domainIsUnder("origin.example.com", "apps.example.com") {
 		t.Fatal("origin host must not be treated as a managed service host")
 	}
 }

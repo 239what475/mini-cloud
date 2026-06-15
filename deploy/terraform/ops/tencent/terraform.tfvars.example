@@ -17,8 +17,8 @@ subnet_cidr_block = "10.88.1.0/24"
 
 existing_lighthouse_instance_id = "lhins-xxxxxxxx"
 existing_lighthouse_public_ip   = "203.0.113.10"
-existing_lighthouse_private_ip  = "10.1.0.6"
-existing_lighthouse_ssh_host    = "myserver-tencent"
+existing_lighthouse_private_ip  = "10.0.0.10"
+existing_lighthouse_ssh_host    = "replace-with-tencent-entry-ssh-host"
 existing_ccn_id                 = "ccn-xxxxxxxx"
 
 tencent = {

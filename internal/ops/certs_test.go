@@ -11,7 +11,7 @@ func TestLoadCertificateBundleReusesLocalState(t *testing.T) {
 	plans := []cloudPlaneInstallPlan{
 		{
 			Plane:     Plane{Name: "tencent"},
-			PrivateIP: "10.1.0.10",
+			PrivateIP: "10.0.0.10",
 		},
 	}
 
@@ -45,7 +45,7 @@ func TestLoadCertificateBundleReissuesCloudPlaneCertWhenEndpointChanges(t *testi
 	first, err := runner.loadCertificateBundle([]cloudPlaneInstallPlan{
 		{
 			Plane:     Plane{Name: "tencent"},
-			PrivateIP: "10.1.0.10",
+			PrivateIP: "10.0.0.10",
 		},
 	})
 	if err != nil {
@@ -54,7 +54,7 @@ func TestLoadCertificateBundleReissuesCloudPlaneCertWhenEndpointChanges(t *testi
 	second, err := runner.loadCertificateBundle([]cloudPlaneInstallPlan{
 		{
 			Plane:     Plane{Name: "tencent"},
-			PrivateIP: "10.1.0.11",
+			PrivateIP: "10.0.0.11",
 		},
 	})
 	if err != nil {

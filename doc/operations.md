@@ -53,8 +53,8 @@ cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/ali
 - 每个 `planes[]` 使用独立 Terraform workspace。
 - `planes[].terraform.dir` 指向对应云厂商的 Terraform root，例如 `deploy/terraform/ops/tencent` 或 `deploy/terraform/ops/aliyun`。
 - `planes[].ssh.host` 是本机可用的 SSH alias 或地址。
-- `install.ingressBaseDomain` 是 service 生成域名的根，例如 `apps.whatcloud.cn`。
-- `controlPlane.scf.publicDomain` 是 control-plane Web/API 域名，例如 `control.apps.whatcloud.cn`。
+- `install.ingressBaseDomain` 是 service 生成域名的根，例如 `apps.example.com`。
+- `controlPlane.scf.publicDomain` 是 control-plane Web/API 域名，例如 `control.apps.example.com`。
 - `tokens.controlPlaneAdmin`、`tokens.controlPlaneSouthbound`、`tokens.nodeAgent` 必须填写。
 
 腾讯云 cloud-plane 需要腾讯云 AK/SK，因为它要管理腾讯云 runtime node 和 CDN。凭据只从 `provider.tencentCredentialFile` 指向的本地 JSON 文件读取，不从环境变量读取：

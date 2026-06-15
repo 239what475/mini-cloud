@@ -11,7 +11,7 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 		IngressHTTPPort:    80,
 		WorkloadProxyPort:  3128,
 		ArtifactHTTPPort:   18082,
-		SubnetCIDRBlock:    "10.1.0.0/24",
+		SubnetCIDRBlock:    "10.0.0.0/24",
 		RegistryMirror:     "https://mirror.example",
 		CloudPlaneGRPCPort: 18081,
 	})
@@ -36,8 +36,8 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		AdminToken:        "admin",
 		SouthboundToken:   "southbound",
 		SouthboundTLS:     testTLSData(),
-		ServiceBaseDomain: "apps.whatcloud.cn",
-		DNSPodDomain:      "whatcloud.cn",
+		ServiceBaseDomain: "apps.example.com",
+		DNSPodDomain:      "example.com",
 		Planes: []controlPlanePlaneTemplateData{
 			{
 				ID:           "pln_test",
@@ -57,8 +57,8 @@ func TestControlPlaneConfigTemplateRendersDNSPod(t *testing.T) {
 		"  dnspod:",
 		"  southboundTLS:",
 		"      -----BEGIN CERTIFICATE-----",
-		"  serviceBaseDomain: \"apps.whatcloud.cn\"",
-		"    domain: \"whatcloud.cn\"",
+		"  serviceBaseDomain: \"apps.example.com\"",
+		"    domain: \"example.com\"",
 		"planes:",
 		"  - id: \"pln_test\"",
 		"    grpcEndpoint: \"10.0.0.1:18081\"",
