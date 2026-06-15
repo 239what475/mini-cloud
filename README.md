@@ -201,9 +201,9 @@ buf lint                          # Proto 检查
 构建发布产物：
 
 ```bash
-make build-release                # 构建 linux/amd64 二进制
-npm --prefix web run build        # 构建前端
-make image-control-plane          # 构建 control-plane 容器镜像
+make build          # 构建本机 Go 二进制
+make release        # 构建 linux/amd64 二进制和 Web UI
+make image          # 构建 control-plane 容器镜像
 ```
 
 生成 proto 代码：
@@ -214,7 +214,7 @@ make proto
 
 ## Real Cloud Ops
 
-真实云操作通过 `minictl` 命令行工具完成。
+真实云操作通过 Makefile 暴露。Makefile 会先构建本地 `minictl`，再执行对应动作；日常使用不需要直接 `go run ./cmd/minictl`。
 
 ### 前置准备
 
@@ -229,26 +229,24 @@ cp deploy/terraform/ops/aliyun/terraform.tfvars.example deploy/terraform/ops/ali
 ### 命令一览
 
 ```bash
-go run ./cmd/minictl check --config deploy/ops/config.yaml
-go run ./cmd/minictl build --config deploy/ops/config.yaml
-go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
-go run ./cmd/minictl install --config deploy/ops/config.yaml
-go run ./cmd/minictl update --config deploy/ops/config.yaml
-go run ./cmd/minictl deploy --config deploy/ops/config.yaml
-go run ./cmd/minictl e2e --config deploy/ops/config.yaml
-go run ./cmd/minictl destroy --config deploy/ops/config.yaml
+make release
+make bootstrap
+make install
+make update
+make deploy
+make e2e
+make destroy
 ```
 
 ### 命令语义
 
 | 命令 | 作用 | 修改云资源 |
 |------|------|-----------|
-| `check` | 检查本机工具、配置、Terraform var file、云凭据文件和 SSH 连通性 | 否 |
-| `build` | 构建 release 二进制和 Web UI | 否 |
+| `release` | 构建 release 二进制和 Web UI | 否 |
 | `bootstrap` | 用 Terraform 准备 worker node 所需的云基础设施 | 是 |
 | `install` | 安装或修复 control-plane / cloud-plane | 是 |
 | `update` | 只更新 control-plane / SCF，不动 cloud-plane | 是 |
-| `deploy` | 组合命令，等价于 `build + bootstrap + install` | 是 |
+| `deploy` | 组合命令，先做部署前检查，再执行 `release + bootstrap + install` | 是 |
 | `e2e` | 在真实云中跑完整 Web 流程，最后自动 destroy | 是 |
 | `destroy` | 回收 cloud-plane、worker node、CDN/DNS 记录、Terraform 资源和 SCF control-plane | 是 |
 
@@ -267,7 +265,7 @@ make check          # 质量门禁：gofmt、go test、go vet、staticcheck、go
 端到端验证：
 
 ```bash
-go run ./cmd/minictl e2e --config deploy/ops/config.yaml
+make e2e
 ```
 
 `e2e` 在真实云环境中通过 Playwright 驱动 Web UI，完整验证 service 创建、公网访问、control-plane 更新和资源回收。具体覆盖范围见 [`DEMO.md`](DEMO.md)。

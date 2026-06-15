@@ -14,7 +14,7 @@ func (r *Runner) Build(ctx context.Context) error {
 
 func (r *Runner) build(ctx context.Context) error {
 	fmt.Println("[mini-cloud ops] build release binaries and web assets")
-	if err := runInteractive(ctx, "make", "build-release", "web-build"); err != nil {
+	if err := runInteractive(ctx, "make", "release"); err != nil {
 		return err
 	}
 	return r.cfg.validateArtifacts()
@@ -75,9 +75,6 @@ func (r *Runner) Update(ctx context.Context) error {
 }
 
 func (r *Runner) Deploy(ctx context.Context) error {
-	if err := r.check(ctx); err != nil {
-		return err
-	}
 	if err := r.build(ctx); err != nil {
 		return err
 	}

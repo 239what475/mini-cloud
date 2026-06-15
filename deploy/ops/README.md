@@ -86,42 +86,28 @@ Terraform 不负责：
 
 这些运行态资源由 cloud-plane/control-plane 在 service 生命周期内管理。`destroy` 会额外做实验兜底清理，确保真实云测试后不留资源。
 
-## Check
-
-```bash
-go run ./cmd/minictl check --config deploy/ops/config.yaml
-```
-
-`check` 只检查，不修改云资源。它会检查：
-
-- 本机工具是否存在。
-- ops 配置是否完整。
-- Terraform var file 是否存在。
-- 腾讯云凭据文件是否可读。
-- 每个 plane 的 SSH 是否可连。
-
 ## Deploy
 
 ```bash
-go run ./cmd/minictl deploy --config deploy/ops/config.yaml
+make deploy
 ```
 
-`deploy` 是组合命令，按顺序执行 `build`、`bootstrap`、`install`。
+`deploy` 是组合命令，会先检查本机工具、ops 配置、Terraform var file、云凭据文件和 SSH 连通性，然后按顺序执行 `release`、`bootstrap`、`install`。
 
-## Build
+## Release
 
 ```bash
-go run ./cmd/minictl build --config deploy/ops/config.yaml
+make release
 ```
 
-`build` 只做本地构建，不修改云资源：
+`release` 只做本地构建，不修改云资源：
 
 - 构建 release 二进制和 Web UI。
 
 ## Bootstrap
 
 ```bash
-go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
+make bootstrap
 ```
 
 `bootstrap` 只准备云基础设施：
@@ -132,7 +118,7 @@ go run ./cmd/minictl bootstrap --config deploy/ops/config.yaml
 ## Install
 
 ```bash
-go run ./cmd/minictl install --config deploy/ops/config.yaml
+make install
 ```
 
 `install` 首次安装或修复 control-plane/cloud-plane，不执行 Terraform apply：
@@ -148,7 +134,7 @@ go run ./cmd/minictl install --config deploy/ops/config.yaml
 ## Update
 
 ```bash
-go run ./cmd/minictl update --config deploy/ops/config.yaml
+make update
 ```
 
 `update` 是日常发布路径，不执行 Terraform apply，也不重装入口机基础服务：
@@ -160,8 +146,8 @@ go run ./cmd/minictl update --config deploy/ops/config.yaml
 如果只修改了前端页面，通常执行：
 
 ```bash
-go run ./cmd/minictl build --config deploy/ops/config.yaml
-go run ./cmd/minictl update --config deploy/ops/config.yaml
+make release
+make update
 ```
 
 这会重新构建 Web UI/release 二进制、重新打包 control-plane 镜像并更新 SCF，不会重启 cloud-plane。
@@ -181,7 +167,7 @@ worker node 不分配公网 IP。Tinyproxy 是 workload 的受控公网出口，
 ## E2E
 
 ```bash
-go run ./cmd/minictl e2e --config deploy/ops/config.yaml
+make e2e
 ```
 
 `e2e` 会在真实云环境中运行 Web UI 流程：
@@ -200,7 +186,7 @@ go run ./cmd/minictl e2e --config deploy/ops/config.yaml
 ## Destroy
 
 ```bash
-go run ./cmd/minictl destroy --config deploy/ops/config.yaml
+make destroy
 ```
 
 `destroy` 会逐个 plane 回收：

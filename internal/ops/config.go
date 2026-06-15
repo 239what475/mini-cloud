@@ -305,7 +305,7 @@ func defaultString(value string, fallback string) string {
 func requireFile(path string) error {
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s does not exist; run make build-release first or update deploy/ops/config.yaml", path)
+			return fmt.Errorf("%s does not exist; run make release first or update deploy/ops/config.yaml", path)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
 	}
@@ -316,7 +316,7 @@ func requireDir(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s does not exist; run npm --prefix web run build first or update deploy/ops/config.yaml", path)
+			return fmt.Errorf("%s does not exist; run make release first or update deploy/ops/config.yaml", path)
 		}
 		return fmt.Errorf("stat %s: %w", path, err)
 	}

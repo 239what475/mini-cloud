@@ -1,6 +1,7 @@
-# mini-cloud 的 Makefile 只放“本地工程动作”：
+# mini-cloud 的 Makefile 是项目的统一入口：
 # - 代码格式、静态检查、单元测试
 # - 二进制构建、release 构建、control-plane 镜像构建
+# - 真实云部署、更新、e2e 和回收
 # - proto 生成、清理构建产物
 
 # 使用 bash 是因为 check 目标里会用到 [[ ... ]]、pipefail 等 bash 行为。
@@ -34,12 +35,14 @@ TARGET_GOARCH ?= amd64
 # release 产物按目标平台分目录，避免不同平台二进制互相覆盖。
 RELEASE_DIR ?= $(ROOT_DIR)/dist/release/$(TARGET_GOOS)-$(TARGET_GOARCH)
 
-CONTROL_PLANE_IMAGE ?= mini-cloud/control-plane:local
-CONTROL_PLANE_CONFIG ?= deploy/container/control-plane.yaml.example
-CONTROL_PLANE_IMAGE_PLATFORM ?= linux/amd64
+IMAGE ?= mini-cloud/control-plane:local
+IMAGE_CONFIG ?= deploy/container/control-plane.yaml.example
+IMAGE_PLATFORM ?= linux/amd64
+CONFIG ?= deploy/ops/config.yaml
+MINICTL := $(BINARY_DIR)/minictl
 
 # 声明这些名字不是文件名，避免同名文件影响 make 的执行判断。
-.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build build-release image-control-plane proto clean
+.PHONY: help check test vet staticcheck lint terraform-fmt buf-lint shellcheck web-check web-build build .release-binaries release image proto .preflight bootstrap install deploy update e2e destroy clean
 
 help:
 	@printf '%s\n' \
@@ -47,16 +50,20 @@ help:
 	  '' \
 	  '  make check          Run the full local quality gate.' \
 	  '  make test           Run root Go tests.' \
-	  '  make build          Build local development binaries.' \
-	  '  make build-release  Build linux/amd64 release binaries by default.' \
-	  '  make image-control-plane Build the control-plane container image.' \
+	  '  make build          Build all local Go binaries.' \
+	  '  make release        Build deployable linux/amd64 binaries and Web UI.' \
+	  '  make image          Build the control-plane container image.' \
+	  '  make deploy         Build, bootstrap, and install real-cloud resources.' \
+	  '  make update         Update the serverless control-plane only.' \
+	  '  make e2e            Run the full real-cloud Web UI e2e flow.' \
+	  '  make destroy        Destroy real-cloud resources.' \
 	  '  make proto          Generate protobuf code with buf.' \
 	  '  make clean          Remove local build output.' \
 	  '' \
 	  'Variables:' \
 	  '  BINARY_DIR=dist/bin TARGET_GOOS=linux TARGET_GOARCH=amd64 RELEASE_DIR=dist/release/linux-amd64' \
-	  '  CONTROL_PLANE_IMAGE=mini-cloud/control-plane:local CONTROL_PLANE_CONFIG=deploy/container/control-plane.yaml.example' \
-	  '  CONTROL_PLANE_IMAGE_PLATFORM=linux/amd64'
+	  '  IMAGE=mini-cloud/control-plane:local IMAGE_CONFIG=deploy/container/control-plane.yaml.example' \
+	  '  IMAGE_PLATFORM=linux/amd64 CONFIG=deploy/ops/config.yaml'
 
 # 本地日常质量门禁。
 # 这里保持线性、直接：能用工具原生命令完成的检查，就直接调用工具。
@@ -164,19 +171,20 @@ build:
 	go build -trimpath -o "$(BINARY_DIR)/control-plane" ./cmd/control-plane
 	go build -trimpath -o "$(BINARY_DIR)/cloud-plane" ./cmd/cloud-plane
 	go build -trimpath -o "$(BINARY_DIR)/node-agent" ./cmd/node-agent
+	go build -trimpath -o "$(MINICTL)" ./cmd/minictl
 
 # 构建发布用二进制。
 # 默认目标是 linux/amd64；调用方可以覆盖 TARGET_GOOS / TARGET_GOARCH。
 # 每次都会重新生成 SHA256SUMS，方便发布前校验产物。
-build-release:
-	@echo "[build-release] output: $(RELEASE_DIR)"
+.release-binaries:
+	@echo "[release] output: $(RELEASE_DIR)"
 	mkdir -p "$(RELEASE_DIR)"
 	rm -f "$(RELEASE_DIR)/SHA256SUMS"
 	build_bin() {
 	  local name="$$1"
 	  local pkg="$$2"
 	  local target="$(RELEASE_DIR)/$$name"
-	  echo "[build-release] building $$name -> $$target"
+	  echo "[release] building $$name -> $$target"
 	  CGO_ENABLED=0 GOOS="$(TARGET_GOOS)" GOARCH="$(TARGET_GOARCH)" \
 	    go build -trimpath -ldflags='-s -w' -o "$$target" "$$pkg"
 	}
@@ -185,19 +193,23 @@ build-release:
 	build_bin node-agent ./cmd/node-agent
 	cd "$(RELEASE_DIR)"
 	sha256sum control-plane cloud-plane node-agent >SHA256SUMS
-	echo "[build-release] done"
+	echo "[release] done"
 
-image-control-plane: TARGET_GOOS := linux
-image-control-plane: TARGET_GOARCH := amd64
-image-control-plane: build-release web-build
-	@echo "[image] control-plane -> $(CONTROL_PLANE_IMAGE)"
-	test -f "$(CONTROL_PLANE_CONFIG)"
+release: TARGET_GOOS := linux
+release: TARGET_GOARCH := amd64
+release: .release-binaries web-build
+
+image: TARGET_GOOS := linux
+image: TARGET_GOARCH := amd64
+image: release
+	@echo "[image] control-plane -> $(IMAGE)"
+	test -f "$(IMAGE_CONFIG)"
 	docker build \
-	  --platform "$(CONTROL_PLANE_IMAGE_PLATFORM)" \
+	  --platform "$(IMAGE_PLATFORM)" \
 	  --provenance=false \
 	  -f deploy/container/control-plane.Dockerfile \
-	  --build-arg CONTROL_PLANE_CONFIG="$(CONTROL_PLANE_CONFIG)" \
-	  -t "$(CONTROL_PLANE_IMAGE)" \
+	  --build-arg CONTROL_PLANE_CONFIG="$(IMAGE_CONFIG)" \
+	  -t "$(IMAGE)" \
 	  .
 
 # 生成 proto 代码。
@@ -205,6 +217,27 @@ image-control-plane: build-release web-build
 proto:
 	@echo "[proto] buf generate"
 	buf generate
+
+.preflight: build
+	"$(MINICTL)" check --config "$(CONFIG)"
+
+bootstrap: build
+	"$(MINICTL)" bootstrap --config "$(CONFIG)"
+
+install: build
+	"$(MINICTL)" install --config "$(CONFIG)"
+
+deploy: .preflight
+	"$(MINICTL)" deploy --config "$(CONFIG)"
+
+update: build
+	"$(MINICTL)" update --config "$(CONFIG)"
+
+e2e: .preflight
+	"$(MINICTL)" e2e --config "$(CONFIG)"
+
+destroy: build
+	"$(MINICTL)" destroy --config "$(CONFIG)"
 
 # 清理本地构建产物。
 # 只删除本项目的 dist 目录，不清理 Go cache 或其它全局缓存。

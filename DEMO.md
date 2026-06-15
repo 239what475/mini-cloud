@@ -32,27 +32,19 @@ public user
 
 ## 部署流程
 
-### 1. 前置检查
+### 1. 部署
 
 ```bash
-go run ./cmd/minictl check --config deploy/ops/config.yaml
+make deploy
 ```
 
-检查本机工具链（Go、Node.js、Docker、Terraform、SSH）、配置完整性、云凭据和 SSH 连通性。不修改任何云资源。
+`deploy` 会先检查本机工具链、配置完整性、云凭据和 SSH 连通性，然后按顺序执行三个阶段：
 
-### 2. 部署
-
-```bash
-go run ./cmd/minictl deploy --config deploy/ops/config.yaml
-```
-
-`deploy` 按顺序执行三个阶段：
-
-- **build**：构建 control-plane、cloud-plane、node-agent 三个二进制和 Web UI 前端。
+- **release**：构建 control-plane、cloud-plane、node-agent 三个 Linux 二进制和 Web UI 前端。
 - **bootstrap**：通过 Terraform 在每个 cloud-plane 对应的云账号中创建网络、安全组等基础资源。
 - **install**：构建 control-plane 容器镜像并推送到腾讯云 CCR，部署到 SCF 函数；在每台 cloud-plane 入口机上安装 Docker、Postgres、Caddy、Tinyproxy、cloud-plane 服务，读取或生成本地私有 CA 和 TLS 证书。
 
-### 3. 使用 Web UI
+### 2. 使用 Web UI
 
 部署完成后，打开 control-plane 公网地址（例如 `http://control.apps.example.com`）：
 
@@ -64,20 +56,20 @@ go run ./cmd/minictl deploy --config deploy/ops/config.yaml
 6. 在另一个 plane 上再创建一个 service，确认两个 service 分别走对应云厂商的公网入口。
 7. 删除 service，观察状态变为 `deleted`，对应 worker node 被自动回收。
 
-### 4. 日常更新
+### 3. 日常更新
 
 当只需要更新 control-plane（例如发布新的 Web UI 或 control-plane 逻辑）：
 
 ```bash
-go run ./cmd/minictl update --config deploy/ops/config.yaml
+make update
 ```
 
 `update` 只重新构建 control-plane 镜像并更新 SCF 函数，不触碰 cloud-plane 入口机、不重启已运行的 worker node、不影响现有 service。
 
-### 5. 实验回收
+### 4. 实验回收
 
 ```bash
-go run ./cmd/minictl destroy --config deploy/ops/config.yaml
+make destroy
 ```
 
 `destroy` 按 plane 逐个回收：
@@ -94,7 +86,7 @@ go run ./cmd/minictl destroy --config deploy/ops/config.yaml
 上述整个流程可以通过一条命令自动完成：
 
 ```bash
-go run ./cmd/minictl e2e --config deploy/ops/config.yaml
+make e2e
 ```
 
 `e2e` 自动执行 build → bootstrap → install → Web UI 操作（通过 Playwright）→ update → smoke 验证 → destroy 全流程。适合验证代码变更后整个系统仍然闭环可用。
