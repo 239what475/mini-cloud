@@ -91,7 +91,7 @@ func (a App) Run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	runCtx, cancel := context.WithCancel(ctx)
 	a.reconciler.Start(runCtx)

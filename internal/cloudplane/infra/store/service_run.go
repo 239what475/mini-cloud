@@ -268,7 +268,7 @@ func (s *Store) ListIngressRouteSources(ctx context.Context) ([]cloudmodel.Route
 	if err != nil {
 		return nil, fmt.Errorf("query ingress route sources: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.RouteSource, 0)
 	for rows.Next() {
@@ -303,7 +303,7 @@ func (s *Store) ListExecutionSnapshots(ctx context.Context) ([]cloudmodel.Execut
 	if err != nil {
 		return nil, fmt.Errorf("query service run snapshots: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.ExecutionSnapshot, 0)
 	for rows.Next() {
@@ -398,7 +398,7 @@ func (s *Store) ClaimServiceRun(ctx context.Context, nodeID string) (*cloudmodel
 		return nil, nil
 	}
 
-	work, cpuMilliRequest, memoryMiRequest, err := claimPendingDeleteRun(ctx, tx, nodeID)
+	work, err := claimPendingDeleteRun(ctx, tx, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -416,7 +416,7 @@ func (s *Store) ClaimServiceRun(ctx context.Context, nodeID string) (*cloudmodel
 	}
 	availableCPU := cpuMilliAllocatable - cpuMilliAllocated
 	availableMemory := memoryMiAllocatable - memoryMiAllocated
-	work, cpuMilliRequest, memoryMiRequest, err = claimPendingRun(ctx, tx, nodeID, availableCPU, availableMemory)
+	work, cpuMilliRequest, memoryMiRequest, err := claimPendingRun(ctx, tx, nodeID, availableCPU, availableMemory)
 	if err != nil {
 		return nil, err
 	}
@@ -443,8 +443,8 @@ func (s *Store) ClaimServiceRun(ctx context.Context, nodeID string) (*cloudmodel
 	return work, nil
 }
 
-func claimPendingDeleteRun(ctx context.Context, tx *sql.Tx, nodeID string) (*cloudmodel.WorkItem, int, int, error) {
-	return loadClaimableServiceRun(ctx, tx, `
+func claimPendingDeleteRun(ctx context.Context, tx *sql.Tx, nodeID string) (*cloudmodel.WorkItem, error) {
+	work, _, _, err := loadClaimableServiceRun(ctx, tx, `
 		WHERE r.status = $1
 		  AND s.desired_state = $2
 		  AND r.node_id = $3
@@ -453,6 +453,7 @@ func claimPendingDeleteRun(ctx context.Context, tx *sql.Tx, nodeID string) (*clo
 		LIMIT 1
 		FOR UPDATE OF r SKIP LOCKED
 	`, cloudmodel.StatusPending, cloudmodel.ServiceDesiredDeleted, nodeID)
+	return work, err
 }
 
 func claimPendingRun(ctx context.Context, tx *sql.Tx, nodeID string, availableCPU int, availableMemory int) (*cloudmodel.WorkItem, int, int, error) {

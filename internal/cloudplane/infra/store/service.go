@@ -202,7 +202,7 @@ func (s *Store) ListServices(ctx context.Context) ([]cloudmodel.Service, error) 
 	if err != nil {
 		return nil, fmt.Errorf("query services: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.Service, 0)
 	for rows.Next() {
@@ -229,7 +229,7 @@ func (s *Store) ListServiceFrontDoors(ctx context.Context) ([]cloudmodel.Service
 	if err != nil {
 		return nil, fmt.Errorf("query service frontdoors: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.Service, 0)
 	for rows.Next() {

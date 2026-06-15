@@ -18,7 +18,7 @@ type aliyunInstancesResponse struct {
 func (r *Runner) Destroy(ctx context.Context) error {
 	for _, plane := range r.cfg.Planes {
 		fmt.Printf("[mini-cloud ops] destroy plane %s (%s)\n", plane.Name, plane.Provider)
-		if err := r.terraform(ctx, plane, "init"); err != nil {
+		if err := r.terraformInit(ctx, plane); err != nil {
 			return err
 		}
 		if err := r.selectTerraformWorkspace(ctx, plane); err != nil {

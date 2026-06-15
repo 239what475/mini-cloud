@@ -23,7 +23,7 @@ const (
 
 	RuntimeHostPortMin       = 30000
 	RuntimeHostPortMax       = 60999
-	RuntimeStartTimeout      = 2 * time.Minute
+	RuntimeStartTimeout      = 10 * time.Minute
 	RuntimeStopTimeout       = 30 * time.Second
 	RuntimeLogsTimeout       = 10 * time.Second
 	ReadinessAttempts        = 10

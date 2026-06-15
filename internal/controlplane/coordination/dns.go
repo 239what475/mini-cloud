@@ -74,10 +74,6 @@ func newDNSPodClient(cfg config.DNSPodConfig) (*dnsPodClient, error) {
 	return &dnsPodClient{domain: cleanDNSDomain(cfg.Domain)}, nil
 }
 
-func (c *dnsPodClient) api() (dnsPodAPI, error) {
-	return c.apiForContext(context.Background())
-}
-
 func (c *dnsPodClient) apiForContext(ctx context.Context) (dnsPodAPI, error) {
 	if c.client != nil {
 		return c.client, nil
@@ -223,16 +219,17 @@ func NewDNSClient(cfg config.DNSPodConfig) (dnsClient, error) {
 
 func (c *dnsPodClient) ensureAgainstExistingRecords(ctx context.Context, subdomain string, record managedDNSRecord, records []dnsRecord) error {
 	remark := managedDNSRemark(record)
-	for _, existing := range records {
-		if !dnsRecordOwnedBy(existing.remark, record) {
-			return fmt.Errorf("DNS record %s %s already exists and is not owned by mini-cloud service %s on plane %s", record.Host, record.RecordType, record.ServiceID, record.PlaneID)
-		}
-		if cleanDNSRecordValue(record.RecordType, existing.value) == record.Value && strings.TrimSpace(existing.remark) == remark {
-			return nil
-		}
-		return c.modifyRecord(ctx, existing.id, subdomain, record.RecordType, record.Value, remark)
+	if len(records) == 0 {
+		return errDNSRecordMissing
 	}
-	return errDNSRecordMissing
+	existing := records[0]
+	if !dnsRecordOwnedBy(existing.remark, record) {
+		return fmt.Errorf("DNS record %s %s already exists and is not owned by mini-cloud service %s on plane %s", record.Host, record.RecordType, record.ServiceID, record.PlaneID)
+	}
+	if cleanDNSRecordValue(record.RecordType, existing.value) == record.Value && strings.TrimSpace(existing.remark) == remark {
+		return nil
+	}
+	return c.modifyRecord(ctx, existing.id, subdomain, record.RecordType, record.Value, remark)
 }
 
 func (c *dnsPodClient) recordsForSubdomain(ctx context.Context, subdomain string, recordType string) ([]dnsRecord, error) {

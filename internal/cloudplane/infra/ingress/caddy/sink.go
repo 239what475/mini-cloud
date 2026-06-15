@@ -83,7 +83,7 @@ func (s *Sink) load(ctx context.Context, body []byte) error {
 	if err != nil {
 		return fmt.Errorf("load caddy config: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("load caddy config: status %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))

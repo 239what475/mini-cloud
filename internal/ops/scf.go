@@ -332,7 +332,7 @@ func (r *Runner) waitForControlPlaneSCF(ctx context.Context) error {
 	if url == "" {
 		return fmt.Errorf("SCF HTTP trigger URL is missing")
 	}
-	deadline := time.Now().Add(5 * time.Minute)
+	deadline := time.Now().Add(10 * time.Minute)
 	publicURL := r.controlPlanePublicURL(ctx)
 	healthURL := publicURL + "/api/healthz"
 	var lastStatus int

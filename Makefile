@@ -110,13 +110,21 @@ vet:
 
 # staticcheck 比 go vet 更严格，需要本机已经安装 staticcheck。
 staticcheck:
-	@echo "[check] staticcheck ./..."
-	staticcheck ./...
+	@if command -v staticcheck >/dev/null 2>&1; then
+	  echo "[check] staticcheck ./..."
+	  staticcheck ./...
+	else
+	  echo "[check] skip staticcheck: staticcheck is not installed"
+	fi
 
 # golangci-lint 聚合项目级 lint 规则，需要本机已经安装 golangci-lint。
 lint:
-	@echo "[check] golangci-lint run ./..."
-	golangci-lint run ./...
+	@if command -v golangci-lint >/dev/null 2>&1; then
+	  echo "[check] golangci-lint run ./..."
+	  golangci-lint run ./...
+	else
+	  echo "[check] skip golangci-lint: golangci-lint is not installed"
+	fi
 
 # Terraform 文件只做格式检查，不自动改写。
 # 没安装 terraform 时跳过，避免把基础 Go 检查和 IaC 工具安装强绑定。

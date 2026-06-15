@@ -53,7 +53,7 @@ func NewRunner(
 }
 
 func (r *Runner) Run(ctx context.Context) error {
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 
 	if nodeID, err := r.registerNode(ctx); err != nil {
 		r.logger.Warn("node agent initial registration failed", "instance_id", r.cfg.Node.InstanceID, "error", err)

@@ -24,7 +24,9 @@ func metricsHandler(syncer *coordination.PlaneSyncer) gin.HandlerFunc {
 			items = append(items, view.Plane)
 		}
 		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		fmt.Fprint(c.Writer, renderControlMetrics(items, time.Now().UTC()))
+		if _, err := fmt.Fprint(c.Writer, renderControlMetrics(items, time.Now().UTC())); err != nil {
+			return
+		}
 	}
 }
 

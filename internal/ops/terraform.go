@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 )
 
 type terraformValue[T any] struct {
@@ -69,6 +70,26 @@ type InstallEnv struct {
 func (r *Runner) terraform(ctx context.Context, plane Plane, args ...string) error {
 	full := append([]string{"-chdir=" + plane.Terraform.Dir}, args...)
 	return runInteractive(ctx, "terraform", full...)
+}
+
+func (r *Runner) terraformInit(ctx context.Context, plane Plane) error {
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		if attempt > 1 {
+			fmt.Printf("[mini-cloud ops] retry terraform init for plane %s (%d/3)\n", plane.Name, attempt)
+		}
+		if err := r.terraform(ctx, plane, "init"); err != nil {
+			lastErr = err
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(time.Duration(attempt*5) * time.Second):
+			}
+			continue
+		}
+		return nil
+	}
+	return lastErr
 }
 
 func (r *Runner) selectTerraformWorkspace(ctx context.Context, plane Plane) error {

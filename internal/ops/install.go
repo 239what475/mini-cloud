@@ -167,7 +167,7 @@ func (r *Runner) prepareCloudPlaneInstallPlans(ctx context.Context) ([]cloudPlan
 }
 
 func (r *Runner) prepareCloudPlaneInstallPlan(ctx context.Context, plane Plane) (cloudPlaneInstallPlan, error) {
-	if err := r.terraform(ctx, plane, "init"); err != nil {
+	if err := r.terraformInit(ctx, plane); err != nil {
 		return cloudPlaneInstallPlan{}, err
 	}
 	if err := r.selectTerraformWorkspace(ctx, plane); err != nil {
@@ -494,11 +494,6 @@ func removeFiles(paths []string) {
 			_ = os.Remove(path)
 		}
 	}
-}
-
-func portFromAddr(addr string) string {
-	parts := strings.Split(addr, ":")
-	return parts[len(parts)-1]
 }
 
 func rootDomain(baseDomain string) string {

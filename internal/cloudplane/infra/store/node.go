@@ -189,7 +189,7 @@ func (s *Store) ListNodes(ctx context.Context) ([]cloudmodel.Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("query nodes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.Node, 0)
 	for rows.Next() {
@@ -219,7 +219,7 @@ func (s *Store) ListElasticNodesByStatuses(ctx context.Context, statuses ...stri
 	if err != nil {
 		return nil, fmt.Errorf("query elastic nodes by statuses: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	items := make([]cloudmodel.Node, 0)
 	for rows.Next() {

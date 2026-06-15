@@ -30,7 +30,7 @@ func (r *Runner) Bootstrap(ctx context.Context) error {
 func (r *Runner) bootstrap(ctx context.Context) error {
 	for _, plane := range r.cfg.Planes {
 		fmt.Printf("[mini-cloud ops] bootstrap infrastructure for plane %s (%s)\n", plane.Name, plane.Provider)
-		if err := r.terraform(ctx, plane, "init"); err != nil {
+		if err := r.terraformInit(ctx, plane); err != nil {
 			return err
 		}
 		if err := r.selectTerraformWorkspace(ctx, plane); err != nil {

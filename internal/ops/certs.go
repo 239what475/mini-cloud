@@ -53,11 +53,7 @@ func (r *Runner) loadCertificateBundle(plans []cloudPlaneInstallPlan) (certifica
 			return certificateBundle{}, err
 		}
 	}
-	return certificateBundle{
-		CA:           state.CA,
-		ControlPlane: state.ControlPlane,
-		CloudPlanes:  state.CloudPlanes,
-	}, nil
+	return certificateBundle(state), nil
 }
 
 func (r *Runner) loadControlPlaneCertificate() (tlsTemplateData, error) {

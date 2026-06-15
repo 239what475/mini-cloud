@@ -36,7 +36,7 @@ func (r *Runner) uploadFile(ctx context.Context, sshConfig SSHConfig, host strin
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	remoteDir := filepath.Dir(remote)
 	args := append(sshArgs(sshConfig), host)
