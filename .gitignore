@@ -4,3 +4,21 @@ web/dist/
 web/node_modules/
 web/playwright-report/
 web/test-results/
+
+# Local secrets and cloud state must never be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*.tfvars
+*.auto.tfvars.json
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+**/.terraform/
