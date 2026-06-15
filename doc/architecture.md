@@ -2,6 +2,64 @@
 
 `mini-cloud` 的设计目标是做一个专注运维体验的 CaaS 原型，而不是做一个小型 Kubernetes。这份文档记录当前的核心架构取舍和设计决策，方便理解项目边界。
 
+## Architecture At A Glance
+
+`mini-cloud` 由一个无状态 control-plane、多个自治 cloud-plane 和按需创建的 worker node 组成。control-plane 只负责门户、请求下发、DNS 和全局视图；cloud-plane 才是运行态真相来源。
+
+```text
+operator / browser
+    |
+    v
++-----------------------------+
+| control-plane               |
+| - Web UI / HTTP API         |
+| - static plane registry     |
+| - DNSPod CNAME management   |
+| - cloud-plane snapshot view |
++--------------+--------------+
+               |
+               | gRPC + private CA TLS
+               |
+      +--------+---------+
+      |                  |
+      v                  v
++-------------+    +-------------+
+| Tencent     |    | Aliyun      |
+| cloud-plane |    | cloud-plane |
++------+------+    +------+------+
+       |                  |
+       | intranet gRPC    | intranet gRPC
+       v                  v
++-------------+    +-------------+
+| worker node |    | worker node |
+| node-agent  |    | node-agent  |
+| Docker app  |    | Docker app  |
++-------------+    +-------------+
+
+public request
+    -> DNSPod CNAME
+    -> provider CDN
+    -> cloud-plane Caddy
+    -> worker host port
+    -> container port
+```
+
+## Ownership
+
+| Resource / state | Owner | Reason |
+|------------------|-------|--------|
+| Web UI and user API | control-plane | Global entry point for operators. |
+| Plane list and cloud-plane endpoints | control-plane config | The demo uses explicit plane selection, not discovery. |
+| Service desired state | cloud-plane | Service runtime must survive control-plane restart or absence. |
+| Worker node lifecycle | cloud-plane | Nodes are local resources inside one cloud provider. |
+| Container execution | node-agent | Node-local Docker operations stay on the worker. |
+| Provider CDN domain | cloud-plane | CDN origin points to the cloud-plane entry host. |
+| DNSPod CNAME records | control-plane | DNS is the only global resource shared by all planes. |
+| Caddy routes | cloud-plane | Host routing is local to one cloud-plane entry host. |
+| Terraform bootstrap resources | minictl / Terraform | Bootstrap is an operator action, not runtime reconciliation. |
+
+The important boundary is simple: control-plane coordinates, cloud-plane runs, node-agent executes.
+
 ## Core Principle
 
 只保留能支撑这个闭环的能力：
