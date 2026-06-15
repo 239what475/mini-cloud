@@ -32,7 +32,7 @@ output "network" {
     subnet_cidr_block          = local.subnet_cidr_block
     cloud_plane_grpc_port      = var.cloud_plane_grpc_port
     ingress_http_port          = var.ingress_http_port
-    egress_proxy_port          = var.egress_proxy_port
+    workload_proxy_port        = var.workload_proxy_port
     artifact_http_port         = var.artifact_http_port
     node_host_port_min         = var.node_host_port_min
     node_host_port_max         = var.node_host_port_max
@@ -64,7 +64,7 @@ output "install_env" {
     zone_id                = local.selected_provider == "aliyun" ? var.aliyun.zone_id : var.tencent.zone_id
     cloud_plane_grpc_port  = var.cloud_plane_grpc_port
     ingress_http_port      = var.ingress_http_port
-    egress_proxy_port      = var.egress_proxy_port
+    workload_proxy_port    = var.workload_proxy_port
     artifact_http_port     = var.artifact_http_port
     node_host_port_min     = var.node_host_port_min
     node_host_port_max     = var.node_host_port_max

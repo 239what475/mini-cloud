@@ -20,8 +20,8 @@ func TestLoadNodeAgentConfig(t *testing.T) {
 	if cfg.ResolvedCapacity.Allocatable.CPUMilli != 3800 || cfg.ResolvedCapacity.Allocatable.MemoryMi != 7424 {
 		t.Fatalf("allocatable capacity = %+v", cfg.ResolvedCapacity.Allocatable)
 	}
-	if len(cfg.Network.EgressProxy.NoProxy) != 2 {
-		t.Fatalf("egress proxy noProxy = %+v", cfg.Network.EgressProxy.NoProxy)
+	if len(cfg.Network.WorkloadProxy.NoProxy) != 2 {
+		t.Fatalf("workload proxy noProxy = %+v", cfg.Network.WorkloadProxy.NoProxy)
 	}
 }
 
@@ -119,7 +119,7 @@ capacity:
     cpuMilli: 4000
     memoryMi: 8192
 network:
-  egressProxy:
+  workloadProxy:
     endpoint: http://10.1.0.6:3128
     noProxy:
       - 127.0.0.1

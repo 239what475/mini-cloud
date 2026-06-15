@@ -42,31 +42,31 @@ type controlPlanePlaneTemplateData struct {
 }
 
 type cloudPlaneTemplateData struct {
-	ListenGRPCAddr              string
-	TLS                         tlsTemplateData
-	PlaneName                   string
-	PlaneGRPCEndpoint           string
-	SouthboundToken             string
-	NodeAgentConnectEndpoint    string
-	NodeAgentToken              string
-	NodeAgentBinaryURL          string
-	Provider                    string
-	RegionID                    string
-	ZoneID                      string
-	TencentCredential           tencentCredential
-	InstanceType                string
-	RegistryMirrors             []string
-	WorkloadEgressProxyEndpoint string
-	NodeProvider                NodeProviderConfig
-	IngressBaseDomain           string
-	IngressPublicOrigin         string
-	OTLPEndpoint                string
+	ListenGRPCAddr           string
+	TLS                      tlsTemplateData
+	PlaneName                string
+	PlaneGRPCEndpoint        string
+	SouthboundToken          string
+	NodeAgentConnectEndpoint string
+	NodeAgentToken           string
+	NodeAgentBinaryURL       string
+	Provider                 string
+	RegionID                 string
+	ZoneID                   string
+	TencentCredential        tencentCredential
+	InstanceType             string
+	RegistryMirrors          []string
+	WorkloadProxyEndpoint    string
+	NodeProvider             NodeProviderConfig
+	IngressBaseDomain        string
+	IngressPublicOrigin      string
+	OTLPEndpoint             string
 }
 
 type remoteCloudPlaneInstallTemplateData struct {
 	InstallRoot        string
 	IngressHTTPPort    int
-	EgressProxyPort    int
+	WorkloadProxyPort  int
 	ArtifactHTTPPort   int
 	SubnetCIDRBlock    string
 	RegistryMirror     string
@@ -273,9 +273,9 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 
 	artifactPort := out.Network.Value.ArtifactHTTPPort
 	grpcPort := out.Network.Value.CloudPlaneGRPCPort
-	proxyPort := out.Network.Value.EgressProxyPort
+	workloadProxyPort := out.Network.Value.WorkloadProxyPort
 	ingressPort := out.Network.Value.IngressHTTPPort
-	if artifactPort == 0 || grpcPort == 0 || proxyPort == 0 || ingressPort == 0 {
+	if artifactPort == 0 || grpcPort == 0 || workloadProxyPort == 0 || ingressPort == 0 {
 		return installFiles{}, fmt.Errorf("terraform network outputs are incomplete")
 	}
 	nodeAgentURL := fmt.Sprintf("http://%s:%d/node-agent-linux-amd64", platformPrivateIP, artifactPort)
@@ -290,25 +290,25 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 	}
 
 	cloudPlaneConfig, err := renderTemplate("cloud-plane.yaml.tmpl", cloudPlaneTemplateData{
-		ListenGRPCAddr:              fmt.Sprintf("0.0.0.0:%d", grpcPort),
-		TLS:                         tlsData,
-		PlaneName:                   out.Platform.Value.Name,
-		PlaneGRPCEndpoint:           planeGRPCEndpoint,
-		SouthboundToken:             r.cfg.Tokens.ControlPlaneSouthbound,
-		NodeAgentConnectEndpoint:    nodeAgentConnectEndpoint,
-		NodeAgentToken:              r.cfg.Tokens.NodeAgent,
-		NodeAgentBinaryURL:          nodeAgentURL,
-		Provider:                    provider,
-		RegionID:                    out.RegionID(),
-		ZoneID:                      out.InstallEnv.Value.ZoneID,
-		TencentCredential:           tencentProviderCredential,
-		InstanceType:                instanceType,
-		RegistryMirrors:             []string{registryMirror},
-		WorkloadEgressProxyEndpoint: fmt.Sprintf("http://%s:%d", platformPrivateIP, proxyPort),
-		NodeProvider:                nodeProvider,
-		IngressBaseDomain:           r.cfg.Install.IngressBaseDomain,
-		IngressPublicOrigin:         platformPublicIP,
-		OTLPEndpoint:                r.cfg.Observability.WorkloadOTLPEndpoint,
+		ListenGRPCAddr:           fmt.Sprintf("0.0.0.0:%d", grpcPort),
+		TLS:                      tlsData,
+		PlaneName:                out.Platform.Value.Name,
+		PlaneGRPCEndpoint:        planeGRPCEndpoint,
+		SouthboundToken:          r.cfg.Tokens.ControlPlaneSouthbound,
+		NodeAgentConnectEndpoint: nodeAgentConnectEndpoint,
+		NodeAgentToken:           r.cfg.Tokens.NodeAgent,
+		NodeAgentBinaryURL:       nodeAgentURL,
+		Provider:                 provider,
+		RegionID:                 out.RegionID(),
+		ZoneID:                   out.InstallEnv.Value.ZoneID,
+		TencentCredential:        tencentProviderCredential,
+		InstanceType:             instanceType,
+		RegistryMirrors:          []string{registryMirror},
+		WorkloadProxyEndpoint:    fmt.Sprintf("http://%s:%d", platformPrivateIP, workloadProxyPort),
+		NodeProvider:             nodeProvider,
+		IngressBaseDomain:        r.cfg.Install.IngressBaseDomain,
+		IngressPublicOrigin:      platformPublicIP,
+		OTLPEndpoint:             r.cfg.Observability.WorkloadOTLPEndpoint,
 	})
 	if err != nil {
 		return installFiles{}, err
@@ -316,7 +316,7 @@ func (r *Runner) renderCloudPlaneInstallFiles(plane Plane, out TerraformOutput, 
 	remoteScript, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneInstallTemplateData{
 		InstallRoot:        r.cfg.Install.Root,
 		IngressHTTPPort:    ingressPort,
-		EgressProxyPort:    proxyPort,
+		WorkloadProxyPort:  workloadProxyPort,
 		ArtifactHTTPPort:   artifactPort,
 		SubnetCIDRBlock:    out.Network.Value.SubnetCIDRBlock,
 		RegistryMirror:     registryMirror,

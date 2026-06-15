@@ -155,7 +155,7 @@ func (r *Runner) ensureLighthouseFirewallRules(ctx context.Context, out Terrafor
 		description string
 	}{
 		{out.Network.Value.CloudPlaneGRPCPort, "0.0.0.0/0", "mini-cloud control-plane to cloud-plane"},
-		{out.Network.Value.EgressProxyPort, subnetCIDR, "mini-cloud node to workload egress proxy"},
+		{out.Network.Value.WorkloadProxyPort, subnetCIDR, "mini-cloud node to workload proxy"},
 		{out.Network.Value.ArtifactHTTPPort, subnetCIDR, "mini-cloud node to node-agent artifact server"},
 	}
 	for _, wanted := range ports {
@@ -209,7 +209,7 @@ func (r *Runner) deleteLighthouseFirewallRules(ctx context.Context, out Terrafor
 	}
 	wanted := map[string]bool{
 		firewallKey("TCP", strconv.Itoa(out.Network.Value.CloudPlaneGRPCPort), "0.0.0.0/0"): true,
-		firewallKey("TCP", strconv.Itoa(out.Network.Value.EgressProxyPort), subnetCIDR):     true,
+		firewallKey("TCP", strconv.Itoa(out.Network.Value.WorkloadProxyPort), subnetCIDR):   true,
 		firewallKey("TCP", strconv.Itoa(out.Network.Value.ArtifactHTTPPort), subnetCIDR):    true,
 		firewallKey("TCP", "18080", "0.0.0.0/0"):                                            true,
 	}

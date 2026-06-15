@@ -85,10 +85,10 @@ type Config struct {
 }
 
 type NetworkConfig struct {
-	EgressProxy EgressProxyConfig `yaml:"egressProxy"`
+	WorkloadProxy WorkloadProxyConfig `yaml:"workloadProxy"`
 }
 
-type EgressProxyConfig struct {
+type WorkloadProxyConfig struct {
 	Endpoint string   `yaml:"endpoint"`
 	NoProxy  []string `yaml:"noProxy"`
 }
@@ -134,17 +134,17 @@ func build(cfg Config) (Config, error) {
 		return Config{}, err
 	}
 
-	endpoint := strings.TrimSpace(cfg.Network.EgressProxy.Endpoint)
+	endpoint := strings.TrimSpace(cfg.Network.WorkloadProxy.Endpoint)
 	if endpoint != "" {
 		parsed, err := url.ParseRequestURI(endpoint)
 		if err != nil {
-			return Config{}, fmt.Errorf("network.egressProxy.endpoint must be a valid URL: %w", err)
+			return Config{}, fmt.Errorf("network.workloadProxy.endpoint must be a valid URL: %w", err)
 		}
 		if parsed.Scheme != "http" && parsed.Scheme != "https" {
-			return Config{}, fmt.Errorf("network.egressProxy.endpoint must use http or https")
+			return Config{}, fmt.Errorf("network.workloadProxy.endpoint must use http or https")
 		}
 		if parsed.Host == "" {
-			return Config{}, fmt.Errorf("network.egressProxy.endpoint must include host")
+			return Config{}, fmt.Errorf("network.workloadProxy.endpoint must include host")
 		}
 	}
 	cfg.Platform.Name = strings.TrimSpace(cfg.Platform.Name)
@@ -158,8 +158,8 @@ func build(cfg Config) (Config, error) {
 		return Config{}, err
 	}
 
-	cfg.Network.EgressProxy.Endpoint = endpoint
-	cfg.Network.EgressProxy.NoProxy = trimStringList(cfg.Network.EgressProxy.NoProxy)
+	cfg.Network.WorkloadProxy.Endpoint = endpoint
+	cfg.Network.WorkloadProxy.NoProxy = trimStringList(cfg.Network.WorkloadProxy.NoProxy)
 	cfg.Observability.WorkloadOTLPEndpoint = strings.TrimSpace(cfg.Observability.WorkloadOTLPEndpoint)
 
 	cfg.Server.URL = serverURL

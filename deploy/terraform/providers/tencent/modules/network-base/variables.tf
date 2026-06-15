@@ -68,11 +68,6 @@ variable "ingress_http_port" {
   default = 80
 }
 
-variable "egress_proxy_port" {
-  type    = number
-  default = 3128
-}
-
 variable "artifact_http_port" {
   type    = number
   default = 18082

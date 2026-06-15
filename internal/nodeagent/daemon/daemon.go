@@ -195,9 +195,9 @@ func (r *Runner) tryWorkCycle(ctx context.Context) {
 			LogTail:              agentconfig.WorkloadLogTailLineCount,
 		},
 		Network: work.NetworkOptions{
-			EgressProxy: work.EgressProxyOptions{
-				Endpoint: r.cfg.Network.EgressProxy.Endpoint,
-				NoProxy:  r.cfg.Network.EgressProxy.NoProxy,
+			WorkloadProxy: work.WorkloadProxyOptions{
+				Endpoint: r.cfg.Network.WorkloadProxy.Endpoint,
+				NoProxy:  r.cfg.Network.WorkloadProxy.NoProxy,
 			},
 		},
 	})

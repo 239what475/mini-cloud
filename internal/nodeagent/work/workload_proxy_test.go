@@ -2,10 +2,10 @@ package work
 
 import "testing"
 
-func TestInjectEgressProxyEnvAddsUpperAndLowerCaseVariables(t *testing.T) {
-	env := injectEgressProxyEnv(map[string]string{"APP_ENV": "prod"}, Options{
+func TestInjectWorkloadProxyEnvAddsUpperAndLowerCaseVariables(t *testing.T) {
+	env := injectWorkloadProxyEnv(map[string]string{"APP_ENV": "prod"}, Options{
 		Network: NetworkOptions{
-			EgressProxy: EgressProxyOptions{
+			WorkloadProxy: WorkloadProxyOptions{
 				Endpoint: "http://10.0.0.10:3128",
 				NoProxy:  []string{"127.0.0.1", "localhost"},
 			},

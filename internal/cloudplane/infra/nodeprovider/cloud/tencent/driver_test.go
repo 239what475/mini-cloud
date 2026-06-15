@@ -28,9 +28,9 @@ func testDriverConfig(provider cloudplaneconfig.TencentNodeConfig) cloudplanecon
 			BinaryURL:       "https://artifacts.example.com/node-agent-linux-amd64",
 		},
 		NodeProvisioning: cloudplaneconfig.NodeProvisioningConfig{
-			InstanceType:                "S5.MEDIUM4",
-			WorkloadEgressProxyEndpoint: "http://10.0.0.10:3128",
-			Tencent:                     provider,
+			InstanceType:          "S5.MEDIUM4",
+			WorkloadProxyEndpoint: "http://10.0.0.10:3128",
+			Tencent:               provider,
 		},
 		Observability: cloudplaneconfig.ObservabilityConfig{
 			OTLPEndpoint: "http://otel.example:4318",
@@ -102,11 +102,11 @@ func TestBuildNodeUserDataDoesNotTraceNodeAgentToken(t *testing.T) {
 	if strings.Contains(script, "Acquire::http::Proxy") || strings.Contains(script, "EnvironmentFile=-/etc/mini-cloud/node-agent/proxy.env") {
 		t.Fatalf("tencent node user-data applies workload proxy to apt or node-agent process")
 	}
-	if !strings.Contains(script, `Environment="HTTP_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"`) || !strings.Contains(script, `Environment="HTTPS_PROXY=$WORKLOAD_EGRESS_PROXY_ENDPOINT"`) {
+	if !strings.Contains(script, `Environment="HTTP_PROXY=$WORKLOAD_PROXY_ENDPOINT"`) || !strings.Contains(script, `Environment="HTTPS_PROXY=$WORKLOAD_PROXY_ENDPOINT"`) {
 		t.Fatalf("tencent node user-data does not configure docker daemon proxy")
 	}
 	if !strings.Contains(script, "endpoint: \"http://10.0.0.10:3128\"") {
-		t.Fatalf("tencent node user-data does not pass workload egress proxy to node-agent config")
+		t.Fatalf("tencent node user-data does not pass workload proxy to node-agent config")
 	}
 	if !strings.Contains(script, "workloadOTLPEndpoint: \"http://otel.example:4318\"") {
 		t.Fatalf("tencent node user-data does not pass workload OTLP endpoint to node-agent config")

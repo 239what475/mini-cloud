@@ -140,7 +140,7 @@ module "aliyun_network_base" {
   ingress_cidrs              = var.ingress_cidrs
   cloud_plane_grpc_port      = var.cloud_plane_grpc_port
   ingress_http_port          = var.ingress_http_port
-  egress_proxy_port          = var.egress_proxy_port
+  workload_proxy_port        = var.workload_proxy_port
   artifact_http_port         = var.artifact_http_port
   node_host_port_min         = var.node_host_port_min
   node_host_port_max         = var.node_host_port_max
@@ -166,7 +166,6 @@ module "tencent_network_base" {
   ingress_cidrs              = var.ingress_cidrs
   cloud_plane_grpc_port      = var.cloud_plane_grpc_port
   ingress_http_port          = var.ingress_http_port
-  egress_proxy_port          = var.egress_proxy_port
   artifact_http_port         = var.artifact_http_port
   node_host_port_min         = var.node_host_port_min
   node_host_port_max         = var.node_host_port_max

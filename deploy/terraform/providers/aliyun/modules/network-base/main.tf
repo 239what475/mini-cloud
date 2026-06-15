@@ -77,16 +77,16 @@ resource "alicloud_security_group_rule" "platform_grpc_from_node" {
   description              = "cloud-plane grpc from node security group"
 }
 
-resource "alicloud_security_group_rule" "platform_proxy_from_node" {
+resource "alicloud_security_group_rule" "platform_workload_proxy_from_node" {
   security_group_id        = var.platform_security_group_id
   type                     = "ingress"
   ip_protocol              = "tcp"
-  port_range               = "${var.egress_proxy_port}/${var.egress_proxy_port}"
+  port_range               = "${var.workload_proxy_port}/${var.workload_proxy_port}"
   source_security_group_id = alicloud_security_group.node.id
   priority                 = 1
   policy                   = "accept"
   nic_type                 = "intranet"
-  description              = "egress proxy from node security group"
+  description              = "workload proxy from node security group"
 }
 
 resource "alicloud_security_group_rule" "platform_artifacts_from_node" {

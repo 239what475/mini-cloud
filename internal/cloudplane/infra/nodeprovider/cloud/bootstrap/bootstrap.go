@@ -11,54 +11,54 @@ import (
 )
 
 type Config struct {
-	AgentBinaryURL              string
-	CACert                      string
-	Token                       string
-	ConnectEndpoint             string
-	DockerRegistryMirrors       []string
-	InstanceName                string
-	InstanceType                string
-	MetadataBase                string
-	MetadataGetFunction         string
-	MetadataInit                string
-	MetadataInstanceIDPath      string
-	MetadataPrivateIPPath       string
-	NoProxyItems                []string
-	PlatformName                string
-	Provider                    string
-	Region                      string
-	WorkloadEgressProxyEndpoint string
-	WorkloadOTLPEndpoint        string
-	CPUMilli                    int
-	MemoryMi                    int
+	AgentBinaryURL         string
+	CACert                 string
+	Token                  string
+	ConnectEndpoint        string
+	DockerRegistryMirrors  []string
+	InstanceName           string
+	InstanceType           string
+	MetadataBase           string
+	MetadataGetFunction    string
+	MetadataInit           string
+	MetadataInstanceIDPath string
+	MetadataPrivateIPPath  string
+	NoProxyItems           []string
+	PlatformName           string
+	Provider               string
+	Region                 string
+	WorkloadProxyEndpoint  string
+	WorkloadOTLPEndpoint   string
+	CPUMilli               int
+	MemoryMi               int
 }
 
 type templateData struct {
-	InstallRoot                 string
-	AgentBinaryURL              string
-	CACertBase64                string
-	DockerDaemonJSONBase64      string
-	DockerNoProxy               string
-	WorkloadEgressProxyEndpoint string
-	Token                       string
-	BootstrapLog                string
-	MetadataBase                string
-	MetadataGetFunction         string
-	MetadataInit                string
-	MetadataInstanceIDPath      string
-	MetadataPrivateIPPath       string
-	InstanceName                string
-	ConnectEndpoint             string
-	PlatformName                string
-	Provider                    string
-	Region                      string
-	InstanceType                string
-	CPUMilli                    int
-	MemoryMi                    int
-	NoProxyItems                []string
-	WorkloadOTLPEndpoint        string
-	NodeAgentBinaryPath         string
-	NodeAgentConfigPath         string
+	InstallRoot            string
+	AgentBinaryURL         string
+	CACertBase64           string
+	DockerDaemonJSONBase64 string
+	DockerNoProxy          string
+	WorkloadProxyEndpoint  string
+	Token                  string
+	BootstrapLog           string
+	MetadataBase           string
+	MetadataGetFunction    string
+	MetadataInit           string
+	MetadataInstanceIDPath string
+	MetadataPrivateIPPath  string
+	InstanceName           string
+	ConnectEndpoint        string
+	PlatformName           string
+	Provider               string
+	Region                 string
+	InstanceType           string
+	CPUMilli               int
+	MemoryMi               int
+	NoProxyItems           []string
+	WorkloadOTLPEndpoint   string
+	NodeAgentBinaryPath    string
+	NodeAgentConfigPath    string
 }
 
 //go:embed node_bootstrap.sh.tmpl
@@ -70,33 +70,33 @@ func RenderBase64(cfg Config) (string, error) {
 		return "", err
 	}
 
-	workloadEgressProxyEndpoint := strings.TrimSpace(cfg.WorkloadEgressProxyEndpoint)
+	workloadProxyEndpoint := strings.TrimSpace(cfg.WorkloadProxyEndpoint)
 	data := templateData{
-		InstallRoot:                 shellQuote("/opt/mini-cloud"),
-		AgentBinaryURL:              shellQuote(cfg.AgentBinaryURL),
-		CACertBase64:                shellQuote(base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(cfg.CACert)))),
-		DockerDaemonJSONBase64:      shellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
-		DockerNoProxy:               shellQuote(strings.Join(cleanNoProxyItems(cfg.NoProxyItems), ",")),
-		WorkloadEgressProxyEndpoint: shellQuote(workloadEgressProxyEndpoint),
-		Token:                       shellQuote(strings.TrimSpace(cfg.Token)),
-		BootstrapLog:                shellQuote("/var/log/mini-cloud-node-bootstrap.log"),
-		MetadataBase:                shellQuote(cfg.MetadataBase),
-		MetadataGetFunction:         strings.TrimSpace(cfg.MetadataGetFunction),
-		MetadataInit:                strings.TrimSpace(cfg.MetadataInit),
-		MetadataInstanceIDPath:      shellQuote(cfg.MetadataInstanceIDPath),
-		MetadataPrivateIPPath:       shellQuote(cfg.MetadataPrivateIPPath),
-		InstanceName:                shellQuote(cfg.InstanceName),
-		ConnectEndpoint:             shellQuote(strings.TrimRight(cfg.ConnectEndpoint, "/")),
-		PlatformName:                shellQuote(cfg.PlatformName),
-		Provider:                    shellQuote(cfg.Provider),
-		Region:                      shellQuote(cfg.Region),
-		InstanceType:                shellQuote(cfg.InstanceType),
-		CPUMilli:                    cfg.CPUMilli,
-		MemoryMi:                    cfg.MemoryMi,
-		NoProxyItems:                shellQuoteItems(cfg.NoProxyItems),
-		WorkloadOTLPEndpoint:        shellQuote(strings.TrimSpace(cfg.WorkloadOTLPEndpoint)),
-		NodeAgentBinaryPath:         shellQuote("/opt/mini-cloud/bin/node-agent"),
-		NodeAgentConfigPath:         shellQuote("/opt/mini-cloud/node-agent.yaml"),
+		InstallRoot:            shellQuote("/opt/mini-cloud"),
+		AgentBinaryURL:         shellQuote(cfg.AgentBinaryURL),
+		CACertBase64:           shellQuote(base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(cfg.CACert)))),
+		DockerDaemonJSONBase64: shellQuote(base64.StdEncoding.EncodeToString([]byte(dockerDaemonJSON))),
+		DockerNoProxy:          shellQuote(strings.Join(cleanNoProxyItems(cfg.NoProxyItems), ",")),
+		WorkloadProxyEndpoint:  shellQuote(workloadProxyEndpoint),
+		Token:                  shellQuote(strings.TrimSpace(cfg.Token)),
+		BootstrapLog:           shellQuote("/var/log/mini-cloud-node-bootstrap.log"),
+		MetadataBase:           shellQuote(cfg.MetadataBase),
+		MetadataGetFunction:    strings.TrimSpace(cfg.MetadataGetFunction),
+		MetadataInit:           strings.TrimSpace(cfg.MetadataInit),
+		MetadataInstanceIDPath: shellQuote(cfg.MetadataInstanceIDPath),
+		MetadataPrivateIPPath:  shellQuote(cfg.MetadataPrivateIPPath),
+		InstanceName:           shellQuote(cfg.InstanceName),
+		ConnectEndpoint:        shellQuote(strings.TrimRight(cfg.ConnectEndpoint, "/")),
+		PlatformName:           shellQuote(cfg.PlatformName),
+		Provider:               shellQuote(cfg.Provider),
+		Region:                 shellQuote(cfg.Region),
+		InstanceType:           shellQuote(cfg.InstanceType),
+		CPUMilli:               cfg.CPUMilli,
+		MemoryMi:               cfg.MemoryMi,
+		NoProxyItems:           shellQuoteItems(cfg.NoProxyItems),
+		WorkloadOTLPEndpoint:   shellQuote(strings.TrimSpace(cfg.WorkloadOTLPEndpoint)),
+		NodeAgentBinaryPath:    shellQuote("/opt/mini-cloud/bin/node-agent"),
+		NodeAgentConfigPath:    shellQuote("/opt/mini-cloud/node-agent.yaml"),
 	}
 	tmpl, err := template.New("node-bootstrap").Option("missingkey=error").Parse(nodeBootstrapTemplate)
 	if err != nil {

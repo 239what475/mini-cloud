@@ -71,10 +71,10 @@ type ObservabilityOptions struct {
 }
 
 type NetworkOptions struct {
-	EgressProxy EgressProxyOptions
+	WorkloadProxy WorkloadProxyOptions
 }
 
-type EgressProxyOptions struct {
+type WorkloadProxyOptions struct {
 	Endpoint string
 	NoProxy  []string
 }
@@ -232,7 +232,7 @@ func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 		PlatformName:         e.opts.Observability.PlatformName,
 		WorkloadOTLPEndpoint: e.opts.Observability.WorkloadOTLPEndpoint,
 	})
-	env = injectEgressProxyEnv(env, e.opts)
+	env = injectWorkloadProxyEnv(env, e.opts)
 	return e.containerRuntime.Run(runCtx, runtime.RunInput{
 		ContainerName: item.GetContainerName(),
 		NodeID:        e.opts.Node.ID,
@@ -249,17 +249,17 @@ func (e executor) runWorkItem(ctx context.Context, item *nodeagentv1.WorkItem) (
 	})
 }
 
-func injectEgressProxyEnv(env map[string]string, opts Options) map[string]string {
-	proxy := opts.Network.EgressProxy
-	if strings.TrimSpace(proxy.Endpoint) == "" {
+func injectWorkloadProxyEnv(env map[string]string, opts Options) map[string]string {
+	workloadProxy := opts.Network.WorkloadProxy
+	if strings.TrimSpace(workloadProxy.Endpoint) == "" {
 		return env
 	}
 	out := make(map[string]string, len(env)+6)
 	for key, value := range env {
 		out[key] = value
 	}
-	endpoint := strings.TrimSpace(proxy.Endpoint)
-	noProxy := strings.Join(proxy.NoProxy, ",")
+	endpoint := strings.TrimSpace(workloadProxy.Endpoint)
+	noProxy := strings.Join(workloadProxy.NoProxy, ",")
 	out["HTTP_PROXY"] = endpoint
 	out["HTTPS_PROXY"] = endpoint
 	out["http_proxy"] = endpoint

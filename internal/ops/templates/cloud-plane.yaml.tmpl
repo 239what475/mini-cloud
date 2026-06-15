@@ -41,7 +41,7 @@ nodeProvisioning:
 {{- range .RegistryMirrors}}
     - {{printf "%q" .}}
 {{- end}}
-  workloadEgressProxyEndpoint: {{printf "%q" .WorkloadEgressProxyEndpoint}}
+  workloadProxyEndpoint: {{printf "%q" .WorkloadProxyEndpoint}}
 {{- if eq .Provider "aliyun"}}
   aliyun:
     imageId: {{printf "%q" .NodeProvider.ImageID}}

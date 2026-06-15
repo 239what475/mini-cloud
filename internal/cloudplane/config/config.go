@@ -75,11 +75,11 @@ type TencentCredentialConfig struct {
 }
 
 type NodeProvisioningConfig struct {
-	InstanceType                string            `yaml:"instanceType"`
-	RegistryMirrors             []string          `yaml:"registryMirrors"`
-	WorkloadEgressProxyEndpoint string            `yaml:"workloadEgressProxyEndpoint"`
-	Aliyun                      AliyunNodeConfig  `yaml:"aliyun"`
-	Tencent                     TencentNodeConfig `yaml:"tencent"`
+	InstanceType          string            `yaml:"instanceType"`
+	RegistryMirrors       []string          `yaml:"registryMirrors"`
+	WorkloadProxyEndpoint string            `yaml:"workloadProxyEndpoint"`
+	Aliyun                AliyunNodeConfig  `yaml:"aliyun"`
+	Tencent               TencentNodeConfig `yaml:"tencent"`
 }
 
 type AliyunNodeConfig struct {
@@ -156,7 +156,7 @@ func (c *Config) normalize() {
 	c.NodeAgent.BinaryURL = strings.TrimSpace(c.NodeAgent.BinaryURL)
 	c.NodeProvisioning.InstanceType = strings.TrimSpace(c.NodeProvisioning.InstanceType)
 	c.NodeProvisioning.RegistryMirrors = trimStringList(c.NodeProvisioning.RegistryMirrors)
-	c.NodeProvisioning.WorkloadEgressProxyEndpoint = strings.TrimSpace(c.NodeProvisioning.WorkloadEgressProxyEndpoint)
+	c.NodeProvisioning.WorkloadProxyEndpoint = strings.TrimSpace(c.NodeProvisioning.WorkloadProxyEndpoint)
 	c.NodeProvisioning.Aliyun.ImageID = strings.TrimSpace(c.NodeProvisioning.Aliyun.ImageID)
 	c.NodeProvisioning.Aliyun.KeyPairName = strings.TrimSpace(c.NodeProvisioning.Aliyun.KeyPairName)
 	c.NodeProvisioning.Aliyun.VSwitchID = strings.TrimSpace(c.NodeProvisioning.Aliyun.VSwitchID)
@@ -242,8 +242,8 @@ func (c Config) Validate() error {
 			return err
 		}
 	}
-	if strings.TrimSpace(c.NodeProvisioning.WorkloadEgressProxyEndpoint) != "" {
-		if err := validateProxyEndpoint(c.NodeProvisioning.WorkloadEgressProxyEndpoint); err != nil {
+	if strings.TrimSpace(c.NodeProvisioning.WorkloadProxyEndpoint) != "" {
+		if err := validateWorkloadProxyEndpoint(c.NodeProvisioning.WorkloadProxyEndpoint); err != nil {
 			return err
 		}
 	}
@@ -313,16 +313,16 @@ func trimStringList(values []string) []string {
 	return out
 }
 
-func validateProxyEndpoint(value string) error {
+func validateWorkloadProxyEndpoint(value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return fmt.Errorf("parse nodeProvisioning.workloadEgressProxyEndpoint: %w", err)
+		return fmt.Errorf("parse nodeProvisioning.workloadProxyEndpoint: %w", err)
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
-		return fmt.Errorf("nodeProvisioning.workloadEgressProxyEndpoint must use http or https")
+		return fmt.Errorf("nodeProvisioning.workloadProxyEndpoint must use http or https")
 	}
 	if parsed.Host == "" {
-		return fmt.Errorf("nodeProvisioning.workloadEgressProxyEndpoint must include host")
+		return fmt.Errorf("nodeProvisioning.workloadProxyEndpoint must include host")
 	}
 	return nil
 }

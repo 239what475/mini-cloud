@@ -9,7 +9,7 @@ func TestRemoteInstallTemplatesRenderDockerFormats(t *testing.T) {
 	cloud, err := renderTemplate("remote-cloud-plane-install.sh.tmpl", remoteCloudPlaneInstallTemplateData{
 		InstallRoot:        "/opt/mini-cloud",
 		IngressHTTPPort:    80,
-		EgressProxyPort:    3128,
+		WorkloadProxyPort:  3128,
 		ArtifactHTTPPort:   18082,
 		SubnetCIDRBlock:    "10.1.0.0/24",
 		RegistryMirror:     "https://mirror.example",
@@ -110,9 +110,9 @@ func TestCloudPlaneConfigTemplateRendersProviderDriverConfig(t *testing.T) {
 			SecretKey: "skey",
 			Token:     "stok",
 		},
-		InstanceType:                "S5.MEDIUM2",
-		RegistryMirrors:             []string{"https://mirror.example"},
-		WorkloadEgressProxyEndpoint: "http://10.0.0.1:3128",
+		InstanceType:          "S5.MEDIUM2",
+		RegistryMirrors:       []string{"https://mirror.example"},
+		WorkloadProxyEndpoint: "http://10.0.0.1:3128",
 		NodeProvider: NodeProviderConfig{
 			ImageID:           "img-test",
 			KeyIDs:            []string{"key-test"},

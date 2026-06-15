@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_ROOT={{printf "%q" .InstallRoot}}
 INGRESS_HTTP_PORT={{.IngressHTTPPort}}
-EGRESS_PROXY_PORT={{.EgressProxyPort}}
+WORKLOAD_PROXY_PORT={{.WorkloadProxyPort}}
 ARTIFACT_HTTP_PORT={{.ArtifactHTTPPort}}
 SUBNET_CIDR_BLOCK={{printf "%q" .SubnetCIDRBlock}}
 REGISTRY_MIRROR={{printf "%q" .RegistryMirror}}
@@ -68,7 +68,7 @@ ensure_tinyproxy() {
   cat >/etc/tinyproxy/tinyproxy.conf <<EOF
 User tinyproxy
 Group tinyproxy
-Port $EGRESS_PROXY_PORT
+Port $WORKLOAD_PROXY_PORT
 Listen 0.0.0.0
 Timeout 600
 DefaultErrorFile "/usr/share/tinyproxy/default.html"
@@ -79,7 +79,7 @@ PidFile "/run/tinyproxy/tinyproxy.pid"
 MaxClients 100
 Allow 127.0.0.1
 Allow $SUBNET_CIDR_BLOCK
-ViaProxyName "mini-cloud-egress-proxy"
+ViaProxyName "mini-cloud-workload-proxy"
 EOF
   systemctl enable --now tinyproxy
   systemctl restart tinyproxy

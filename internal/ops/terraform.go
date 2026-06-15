@@ -50,7 +50,7 @@ type NetworkOutput struct {
 	SubnetCIDRBlock    string `json:"subnet_cidr_block"`
 	CloudPlaneGRPCPort int    `json:"cloud_plane_grpc_port"`
 	IngressHTTPPort    int    `json:"ingress_http_port"`
-	EgressProxyPort    int    `json:"egress_proxy_port"`
+	WorkloadProxyPort  int    `json:"workload_proxy_port"`
 	ArtifactHTTPPort   int    `json:"artifact_http_port"`
 }
 
