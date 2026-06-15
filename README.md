@@ -10,7 +10,6 @@
 
 - [`DEMO.md`](DEMO.md): 真实云 demo 流程和展示 checklist。
 - [`DESIGN.md`](DESIGN.md): 架构取舍和非目标说明。
-- [`REVIEW.md`](REVIEW.md): 后续代码审核准则。
 - [`deploy/ops/README.md`](deploy/ops/README.md): 真实云部署和回收细节。
 
 ## Highlights
